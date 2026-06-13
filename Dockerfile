@@ -1,4 +1,4 @@
-FROM node:20-alpine AS web-build
+FROM node:24-alpine AS web-build
 WORKDIR /src/website
 ARG VITE_BASE_PATH=/
 ARG VITE_API_BASE_URL=
@@ -9,13 +9,13 @@ RUN npm ci
 COPY website/ ./
 RUN npm run build
 
-FROM golang:1.22-alpine AS server-build
+FROM golang:1.26-alpine AS server-build
 WORKDIR /src/server
 COPY server/go.mod ./
 COPY server/ ./
 RUN CGO_ENABLED=0 GOOS=linux go build -o /out/kuviewer ./cmd/kuviewer-server
 
-FROM alpine:3.20
+FROM alpine:3.24
 RUN adduser -D -H -u 10001 kuviewer
 WORKDIR /app
 COPY --from=server-build /out/kuviewer /app/kuviewer

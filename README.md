@@ -90,9 +90,11 @@ Default server settings:
 ```text
 KUVIEWER_LISTEN_ADDR=127.0.0.1:8080
 KUVIEWER_ADMIN_TOKEN=kuviewer-admin
-KUVIEWER_CORS_ORIGIN=http://127.0.0.1:5174
+KUVIEWER_CORS_ORIGIN=
 KUVIEWER_SOURCE=mock
 ```
+
+Set `KUVIEWER_CORS_ORIGIN=http://127.0.0.1:5174` only when the Vite dev server calls a separately running local API server.
 
 API endpoints:
 
@@ -269,6 +271,8 @@ scripts/smoke-kubernetes-api.sh
 ## Single-container build
 
 The root [Dockerfile](/Users/pxzhu/vscode/kuviewer/Dockerfile) builds the React frontend and Go API server into one image. The Docker image defaults to root-path static assets for standalone subdomain deployment.
+
+The final runtime image uses a supported Alpine release and runs as the non-root `kuviewer` user.
 
 ```bash
 docker build -t kuviewer:local .
