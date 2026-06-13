@@ -268,7 +268,7 @@ scripts/smoke-kubernetes-api.sh
 
 ## Single-container build
 
-The root [Dockerfile](/Users/pxzhu/vscode/kuviewer/Dockerfile) builds the React frontend and Go API server into one image. The Go server serves both `/api/*` and the static SPA.
+The root [Dockerfile](/Users/pxzhu/vscode/kuviewer/Dockerfile) builds the React frontend and Go API server into one image. The Docker image defaults to root-path static assets for standalone subdomain deployment.
 
 ```bash
 docker build -t kuviewer:local .
@@ -283,7 +283,75 @@ Local container URL:
 http://127.0.0.1:8080
 ```
 
-The web UI in this image uses the same-origin API automatically, so `VITE_API_BASE_URL` is not needed for the container build.
+The default container build leaves `VITE_API_BASE_URL` empty, so the public UI starts with Upload and Mock modes and does not automatically call the live API. To intentionally enable same-origin live API mode, rebuild with:
+
+```bash
+docker build \
+  --build-arg VITE_BASE_PATH=/ \
+  --build-arg VITE_API_BASE_URL=/api \
+  -t kuviewer:live .
+```
+
+For the older `/kuviewer/` subpath preview build, keep using `npm run build` from `website`, or pass `--build-arg VITE_BASE_PATH=/kuviewer/` to Docker.
+
+## Shared 443 subdomain deployment
+
+Kuviewer can run as a separate service while sharing the server's external HTTPS port with the existing website. The host-level gateway routes by the request domain:
+
+```text
+www.nebbixh.com       -> 127.0.0.1:8080
+kuviewer.nebbixh.com  -> 127.0.0.1:18085
+```
+
+The two services share external `443`, but they use different localhost ports behind the gateway.
+
+Build the standalone image:
+
+```bash
+docker build --build-arg VITE_BASE_PATH=/ -t kuviewer:local .
+```
+
+Create the runtime env from the example and replace the placeholder admin token before starting:
+
+```bash
+cp deploy/standalone/.env.example deploy/standalone/.env
+docker compose --env-file deploy/standalone/.env -f deploy/standalone/docker-compose.yml up -d
+```
+
+The tracked compose file binds Kuviewer only to localhost:
+
+```text
+127.0.0.1:18085 -> container:8080
+```
+
+Gateway example:
+
+```caddyfile
+www.nebbixh.com {
+  reverse_proxy 127.0.0.1:8080
+}
+
+kuviewer.nebbixh.com {
+  reverse_proxy 127.0.0.1:18085
+}
+```
+
+The same example is tracked at [deploy/gateway/Caddyfile.kuviewer.example](/Users/pxzhu/vscode/kuviewer/deploy/gateway/Caddyfile.kuviewer.example). DNS for `kuviewer.nebbixh.com` should point to the same server as `www.nebbixh.com`, and TLS stays the responsibility of the host-level gateway.
+
+Local checks:
+
+```bash
+curl -fsS http://127.0.0.1:18085/healthz
+curl -fsS http://127.0.0.1:18085/robots.txt
+curl -fsS http://127.0.0.1:18085/sitemap.xml
+```
+
+Visual smoke against the standalone service:
+
+```bash
+cd website
+KUVIEWER_VISUAL_URL=http://127.0.0.1:18085/ npm run test:visual
+```
 
 ## Native Kubernetes install draft
 

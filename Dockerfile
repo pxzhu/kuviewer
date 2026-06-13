@@ -1,5 +1,9 @@
 FROM node:20-alpine AS web-build
 WORKDIR /src/website
+ARG VITE_BASE_PATH=/
+ARG VITE_API_BASE_URL=
+ENV VITE_BASE_PATH=$VITE_BASE_PATH
+ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
 COPY website/package*.json ./
 RUN npm ci
 COPY website/ ./

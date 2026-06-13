@@ -31,12 +31,19 @@ Kuviewer는 Kubernetes 리소스를 웹에서 시각적으로 보는 도구다. 
   - `실시간 클러스터`: API 설정이 있을 때만 연결.
 - UI는 주요 문구를 한글화했다. Kubernetes 리소스 Kind, 실제 리소스 이름, raw status/value는 식별성을 위해 일부 영어를 유지한다.
 - `/kuviewer` 하위 배포를 위해 Vite base를 `/kuviewer/`로 설정했다.
+- standalone subdomain 배포를 위해 `VITE_BASE_PATH=/`로 루트 경로 빌드도 가능하게 했다.
 - `VITE_API_BASE_URL`이 없으면 API base URL은 빈 값으로 처리한다. 정적 업로드/목업 모드는 API 없이 동작한다.
 - 기본 visual smoke URL은 `http://127.0.0.1:4174/kuviewer/`다.
+- standalone 운영 목표 URL은 `https://kuviewer.nebbixh.com/`다. 외부 443은 host gateway가 공유하고, Kuviewer는 내부 `127.0.0.1:18085`로 받는 구성을 기준으로 한다.
 
 ## 최근 변경 파일
 
 - `website/vite.config.ts`: `base: '/kuviewer/'` 추가.
+- `website/vite.config.ts`: `VITE_BASE_PATH`로 `/` 또는 `/kuviewer/` base 선택 가능.
+- `Dockerfile`: standalone Docker build 기본 base를 `/`로 설정하고 `VITE_API_BASE_URL` build arg를 추가.
+- `deploy/standalone/*`: localhost-only compose와 env 예시 추가.
+- `deploy/gateway/Caddyfile.kuviewer.example`: `kuviewer.nebbixh.com -> 127.0.0.1:18085` gateway 예시 추가.
+- `website/public/robots.txt`, `website/public/sitemap.xml`: `kuviewer.nebbixh.com` 검색 노출용 파일 추가.
 - `website/src/services/topologyApi.ts`: `VITE_API_BASE_URL` 없을 때 API 호출 비활성화.
 - `website/scripts/visual-smoke.mjs`: 기본 검증 URL을 `/kuviewer/` preview 경로로 변경.
 - 이전 작업에서 한글화 및 토폴로지/트래픽 UI 개선 파일:
@@ -81,15 +88,17 @@ https://nebbixh.com/kuviewer
 
 ## 다음 할 일
 
-1. Git 초기화/분리 관리 결정
-   - 현재 `/Users/pxzhu/vscode/kuviewer`는 git repo가 아님.
-   - 프론트 정적 배포 중심이면 별도 repo로 관리해도 괜찮음.
-   - server/API까지 같이 배포할 계획이면 같은 repo 유지가 버전 매칭에 유리함.
+1. Git/브랜치 관리
+   - 현재 `/Users/pxzhu/vscode/kuviewer`는 독립 Git repo다.
+   - 첫 커밋은 `f2eeb7a chore(repo): bootstrap kuviewer repository`.
+   - 작업 브랜치 규칙은 계속 `feat/*`, `fix/*`, `docs/*`, `chore/*`를 따른다.
 
-2. 정적 배포 연결
-   - `website/dist`를 `nebbixh.com/kuviewer` 하위에 서빙.
-   - 서버는 SPA fallback을 `/kuviewer/* -> /kuviewer/index.html`로 잡아두는 것이 안전함.
-   - 현재 앱은 React Router를 쓰지 않고 query string 중심이라 fallback 의존도는 낮지만, 새로고침 안정성을 위해 권장.
+2. standalone subdomain 배포 연결
+   - Docker image를 `VITE_BASE_PATH=/` 기준으로 빌드한다.
+   - `deploy/standalone/.env.example`을 `.env`로 복사하고 admin token placeholder를 교체한다.
+   - `docker compose --env-file deploy/standalone/.env -f deploy/standalone/docker-compose.yml up -d`.
+   - host gateway는 `kuviewer.nebbixh.com -> 127.0.0.1:18085`로 라우팅한다.
+   - 기존 `www.nebbixh.com -> 127.0.0.1:8080`과 외부 443을 공유한다.
 
 3. 업로드 모드 강화
    - 더 많은 Kubernetes kind 지원 여부 검토: Job, CronJob, NetworkPolicy, HPA 등.

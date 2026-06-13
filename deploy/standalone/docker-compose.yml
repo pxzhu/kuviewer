@@ -1,0 +1,12 @@
+services:
+  kuviewer:
+    image: ${KUVIEWER_IMAGE:-kuviewer:local}
+    container_name: kuviewer
+    restart: unless-stopped
+    environment:
+      KUVIEWER_LISTEN_ADDR: 0.0.0.0:8080
+      KUVIEWER_STATIC_DIR: /app/static
+      KUVIEWER_SOURCE: ${KUVIEWER_SOURCE:-mock}
+      KUVIEWER_ADMIN_TOKEN: ${KUVIEWER_ADMIN_TOKEN:?set KUVIEWER_ADMIN_TOKEN in deploy/standalone/.env}
+    ports:
+      - "${KUVIEWER_BIND_ADDR:-127.0.0.1}:${KUVIEWER_HOST_PORT:-18085}:8080"

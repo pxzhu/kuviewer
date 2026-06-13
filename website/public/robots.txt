@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://kuviewer.nebbixh.com/sitemap.xml
