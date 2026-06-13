@@ -1,0 +1,312 @@
+# Kuviewer
+
+Kuviewer is a Kubernetes topology viewer focused on visualizing clusters, namespaces, nodes, workloads, pods, services, ConfigMaps, Secrets, and storage relationships in a web UI.
+
+## Current direction
+
+- First target: native Kubernetes
+- Later validation: k3s, AKS, and other Kubernetes-compatible distributions
+- Initial auth model: no user accounts; live connector uses a single admin token
+- Primary data sources: browser-side YAML/JSON/ZIP upload, live Kubernetes API, and bundled mock data
+- Upload mode is SaaS-friendly: manifests are parsed in the browser and are not sent to a backend by the frontend
+- Frontend: React, TypeScript, Vite, Tailwind CSS
+
+## Current UI
+
+- Source modes: `Upload YAML`, `Live Cluster`, and `Mock Demo`
+- `Topology`: draggable React Flow resource relationship map with cluster and namespace zones
+- `Flow`: YAML-derived traffic flow view
+- Manual refresh, optional 30 second auto refresh, and last sync status for live mode
+- Backend provider/status line for source, read-only mode, Secret handling, and static UI mode
+- Connector diagnostics panel for backend source, API errors, sync time, and visible/total graph counts
+- YAML/ZIP upload, topology JSON import/export, and Secret value hiding for uploaded manifests
+- Flow evidence rows show source/target resources, YAML field paths, and observed/inferred confidence
+- Broken Flow cards show routed Services with no visible backend Pod endpoints
+- Flow filtering keeps the full path context while matching flows by the currently visible resources
+- Empty filter results clear the detail panel instead of showing a stale resource
+- Responsive graph stage keeps zoom/pan/drag inside the topology canvas and stores manual node positions per source
+
+The Flow view is intended to feel closer to real request movement than a generic resource graph. It derives paths such as:
+
+```text
+External client -> Ingress -> Service -> Pod -> Node
+In-cluster client -> Service -> Pod -> Node
+```
+
+The first implementation uses the same topology edge contract as the graph. The real Kubernetes connector should build those edges from fields visible in `kubectl get ... -o yaml`, including Ingress backends, Service selectors, EndpointSlice endpoints, Pod `spec.nodeName`, and Pod ConfigMap/Secret/PVC references.
+
+## MVP flow
+
+1. Build topology UI, source modes, upload parser, and traffic flow view.
+2. Validate resource graph, traffic flow, filters, color modes, node dragging, and detail panel.
+3. Add backend API with server-side admin token validation for live mode.
+4. Add native Kubernetes read-only connector.
+5. Add real sample infrastructure manifest and in-cluster deployment manifests.
+
+## Local frontend
+
+```bash
+cd website
+npm install
+npm run dev
+```
+
+Development URL:
+
+```text
+http://127.0.0.1:5174
+```
+
+Suggested local/admin token:
+
+```text
+kuviewer-admin
+```
+
+Upload and Mock modes do not require a token. Live Cluster mode sends the entered token as a `Bearer` token and lets the server validate it. The local API server defaults to `kuviewer-admin` unless `KUVIEWER_ADMIN_TOKEN` is set.
+
+## Upload mode
+
+The default UI source is `Upload YAML`. It accepts:
+
+- `.yaml` and `.yml` manifests, including multi-document YAML
+- Kubernetes `List` JSON/YAML documents
+- `.zip` archives containing YAML or JSON manifests
+- exported Kuviewer topology JSON from the `Export` button
+
+The parser builds the same topology contract as the live connector. It infers relationships from Kubernetes fields commonly visible in `kubectl get ... -o yaml`, including owner references, Ingress backends, Service selectors, Pod node scheduling, ServiceAccount use, ConfigMap/Secret env references, mounted volumes, PVC/PV bindings, and StorageClass references. Secret values are never decoded or displayed; uploaded Secret summaries show type/key count only.
+
+## Local API server
+
+The server currently exposes the same topology contract as the frontend mock data.
+
+```bash
+cd server
+go run ./cmd/kuviewer-server
+```
+
+Default server settings:
+
+```text
+KUVIEWER_LISTEN_ADDR=127.0.0.1:8080
+KUVIEWER_ADMIN_TOKEN=kuviewer-admin
+KUVIEWER_CORS_ORIGIN=http://127.0.0.1:5174
+KUVIEWER_SOURCE=mock
+```
+
+API endpoints:
+
+```text
+GET /healthz
+GET /api/status
+GET /api/topology
+Authorization: Bearer <admin-token>
+```
+
+To make the frontend read from the API server, create `website/.env.local`:
+
+```bash
+VITE_API_BASE_URL=http://127.0.0.1:8080
+```
+
+Then restart `npm run dev`.
+
+In production/static builds, the frontend defaults to the same origin API when `VITE_API_BASE_URL` is not set. For example, a page served from `http://127.0.0.1:8080` calls `http://127.0.0.1:8080/api/topology`.
+
+## Kubernetes API source
+
+The first Kubernetes provider is implemented as a read-only snapshot reader using the Kubernetes REST API.
+
+In-cluster mode:
+
+```bash
+KUVIEWER_SOURCE=kubernetes \
+KUVIEWER_ADMIN_TOKEN=your-ui-token \
+go run ./cmd/kuviewer-server
+```
+
+When running inside a Pod, Kuviewer reads:
+
+```text
+KUBERNETES_SERVICE_HOST
+KUBERNETES_SERVICE_PORT
+/var/run/secrets/kubernetes.io/serviceaccount/token
+/var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+```
+
+External API mode:
+
+```bash
+KUVIEWER_SOURCE=kubernetes \
+KUVIEWER_KUBE_API_SERVER=https://your-api-server:6443 \
+KUVIEWER_KUBE_BEARER_TOKEN=your-readonly-token \
+KUVIEWER_KUBE_CA_FILE=/path/to/ca.crt \
+go run ./cmd/kuviewer-server
+```
+
+Supported snapshot resources in the first provider:
+
+- Namespace
+- Node
+- Pod
+- ServiceAccount
+- Service
+- EndpointSlice
+- ConfigMap
+- Deployment
+- ReplicaSet
+- StatefulSet
+- DaemonSet
+- Ingress
+- PersistentVolume
+- PersistentVolumeClaim
+- StorageClass
+- referenced Secret metadata only
+
+Secret list/read RBAC is intentionally not granted. Secret nodes are created from Pod references such as `envFrom`, `env.valueFrom`, `volumes.secret`, and `imagePullSecrets`, and values are never displayed.
+
+### Real sample infrastructure
+
+Apply [deploy/sample-infra/kuviewer-demo.yaml](/Users/pxzhu/vscode/kuviewer/deploy/sample-infra/kuviewer-demo.yaml) to create a real Kubernetes topology for UI validation:
+
+```bash
+kubectl apply -f deploy/sample-infra/kuviewer-demo.yaml
+```
+
+It creates sample namespaces with real Kubernetes objects:
+
+- `kuviewer-demo`: gateway/API/db/node-agent baseline topology
+- `kuviewer-commerce`: orders API, queue StatefulSet, Ingress, Secret/ConfigMap references
+- `kuviewer-observability`: telemetry Deployment, telemetry-agent DaemonSet, ConfigMap mounts
+- Services and EndpointSlices for gateway/API/db/queue/telemetry traffic
+- ConfigMap, Secret reference, ServiceAccount, PVC, PV, and StorageClass relationships
+
+Remove it when done:
+
+```bash
+kubectl delete namespace kuviewer-demo kuviewer-commerce kuviewer-observability
+```
+
+Do not commit real tokens, kubeconfigs, private keys, Kubernetes Secret values, or cloud credentials.
+
+### Kubernetes smoke test from macOS
+
+Use [scripts/smoke-kubernetes-api.sh](/Users/pxzhu/vscode/kuviewer/scripts/smoke-kubernetes-api.sh) to test the real Kubernetes provider against the current `kubectl` context. The script creates temporary read-only RBAC, starts Kuviewer locally with `KUVIEWER_SOURCE=kubernetes`, verifies `/api/status` and `/api/topology`, then removes the temporary resources.
+
+Dry-run the temporary manifest first:
+
+```bash
+KUVIEWER_SMOKE_DRY_RUN=1 scripts/smoke-kubernetes-api.sh
+```
+
+Run the actual smoke test:
+
+```bash
+scripts/smoke-kubernetes-api.sh
+```
+
+Keep the local Kubernetes-backed web UI running after the smoke checks:
+
+```bash
+KUVIEWER_SMOKE_HOLD=1 scripts/smoke-kubernetes-api.sh
+```
+
+Default local smoke URL and token:
+
+```text
+http://127.0.0.1:18083
+kuviewer-admin
+```
+
+### Visual smoke test
+
+The website includes a Playwright visual smoke script for checking source modes, topology view, node dragging, traffic flow view, and desktop/mobile horizontal overflow.
+
+Install the Chromium browser once if Playwright asks for it:
+
+```bash
+cd website
+npx playwright install chromium
+```
+
+Run against a local Kuviewer server:
+
+```bash
+cd website
+KUVIEWER_VISUAL_URL=http://127.0.0.1:18084 \
+KUVIEWER_ADMIN_TOKEN=kuviewer-admin \
+npm run test:visual
+```
+
+Run the upload-mode smoke without needing a live Kubernetes API:
+
+```bash
+cd website
+KUVIEWER_VISUAL_MODE=upload \
+KUVIEWER_VISUAL_URL=http://127.0.0.1:18084 \
+npm run test:visual
+```
+
+Screenshots are written to `website/artifacts/visual-smoke` by default.
+
+Supported visual modes:
+
+```text
+KUVIEWER_VISUAL_MODE=live
+KUVIEWER_VISUAL_MODE=upload
+KUVIEWER_VISUAL_MODE=mock
+```
+
+Useful overrides:
+
+```bash
+KUVIEWER_ADMIN_TOKEN=your-ui-token \
+KUVIEWER_SMOKE_PORT=18084 \
+KUVIEWER_SMOKE_HOLD=1 \
+scripts/smoke-kubernetes-api.sh
+```
+
+## Single-container build
+
+The root [Dockerfile](/Users/pxzhu/vscode/kuviewer/Dockerfile) builds the React frontend and Go API server into one image. The Go server serves both `/api/*` and the static SPA.
+
+```bash
+docker build -t kuviewer:local .
+docker run --rm -p 127.0.0.1:8080:8080 \
+  -e KUVIEWER_ADMIN_TOKEN=kuviewer-admin \
+  kuviewer:local
+```
+
+Local container URL:
+
+```text
+http://127.0.0.1:8080
+```
+
+The web UI in this image uses the same-origin API automatically, so `VITE_API_BASE_URL` is not needed for the container build.
+
+## Native Kubernetes install draft
+
+The first manifest is available at [deploy/kubernetes/kuviewer.yaml](/Users/pxzhu/vscode/kuviewer/deploy/kubernetes/kuviewer.yaml).
+
+Before applying it, change the placeholder admin token:
+
+```yaml
+stringData:
+  admin-token: change-me
+```
+
+Then apply and port-forward:
+
+```bash
+kubectl apply -f deploy/kubernetes/kuviewer.yaml
+kubectl -n kuviewer port-forward svc/kuviewer 8080:8080
+```
+
+Open:
+
+```text
+http://127.0.0.1:8080
+```
+
+The draft RBAC intentionally does not grant `secrets` read access. Secret nodes are inferred from Pod references only.

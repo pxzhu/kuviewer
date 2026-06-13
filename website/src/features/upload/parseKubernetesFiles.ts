@@ -1,0 +1,468 @@
+import { unzipSync, strFromU8 } from 'fflate';
+import { loadAll } from 'js-yaml';
+import type { ClusterSummary, EdgeType, ResourceKind, ResourceStatus, TopologyEdge, TopologyNode, TopologySnapshot } from '../../types/topology';
+
+export interface UploadedTopologyState {
+  snapshot: TopologySnapshot;
+  files: string[];
+  warnings: string[];
+  loadedAt: number;
+}
+
+interface KubeObject {
+  apiVersion?: string;
+  kind?: string;
+  metadata?: {
+    name?: string;
+    namespace?: string;
+    labels?: Record<string, string>;
+    ownerReferences?: Array<{ kind?: string; name?: string }>;
+    creationTimestamp?: string;
+  };
+  spec?: Record<string, unknown>;
+  status?: Record<string, unknown>;
+  data?: Record<string, unknown>;
+  binaryData?: Record<string, unknown>;
+  items?: KubeObject[];
+}
+
+interface BuildContext {
+  clusterId: string;
+  nodeSet: Set<string>;
+  edgeSet: Set<string>;
+  nodes: TopologyNode[];
+  edges: TopologyEdge[];
+  warnings: string[];
+}
+
+const supportedKinds = new Set<ResourceKind>([
+  'Cluster',
+  'Namespace',
+  'Node',
+  'Deployment',
+  'ReplicaSet',
+  'StatefulSet',
+  'DaemonSet',
+  'Pod',
+  'ServiceAccount',
+  'Service',
+  'EndpointSlice',
+  'Ingress',
+  'ConfigMap',
+  'Secret',
+  'PersistentVolumeClaim',
+  'PersistentVolume',
+  'StorageClass',
+]);
+
+export async function parseKubernetesFiles(files: File[]): Promise<UploadedTopologyState> {
+  const parsedObjects: KubeObject[] = [];
+  const parsedFiles: string[] = [];
+  const warnings: string[] = [];
+
+  for (const file of files) {
+    if (file.name.toLowerCase().endsWith('.zip')) {
+      const archive = unzipSync(new Uint8Array(await file.arrayBuffer()));
+      Object.entries(archive).forEach(([name, content]) => {
+        if (!isManifestName(name)) {
+          return;
+        }
+        parsedFiles.push(`${file.name}/${name}`);
+        parsedObjects.push(...parseManifestText(strFromU8(content), `${file.name}/${name}`, warnings));
+      });
+      continue;
+    }
+
+    if (!isManifestName(file.name)) {
+      warnings.push(`Skipped unsupported file: ${file.name}`);
+      continue;
+    }
+    parsedFiles.push(file.name);
+    parsedObjects.push(...parseManifestText(await file.text(), file.name, warnings));
+  }
+
+  return {
+    snapshot: buildSnapshotFromKubernetesObjects(parsedObjects, warnings),
+    files: parsedFiles,
+    warnings,
+    loadedAt: Date.now(),
+  };
+}
+
+export function importTopologySnapshot(value: unknown): TopologySnapshot {
+  if (!isSnapshot(value)) {
+    throw new Error('invalid_topology_json');
+  }
+  return value;
+}
+
+function parseManifestText(text: string, filename: string, warnings: string[]) {
+  const objects: KubeObject[] = [];
+  try {
+    if (filename.toLowerCase().endsWith('.json')) {
+      collectObject(JSON.parse(text), objects);
+      return objects;
+    }
+
+    loadAll(text).forEach((document) => collectObject(document, objects));
+  } catch (error) {
+    const message = error instanceof Error ? error.message : '파싱 실패';
+    warnings.push(`${filename}: ${message}`);
+  }
+  return objects;
+}
+
+function buildSnapshotFromKubernetesObjects(objects: KubeObject[], warnings: string[]): TopologySnapshot {
+  const context: BuildContext = {
+    clusterId: 'uploaded-bundle',
+    nodeSet: new Set(),
+    edgeSet: new Set(),
+    nodes: [],
+    edges: [],
+    warnings,
+  };
+  const validObjects = objects.filter((object) => object.kind && object.metadata?.name);
+  const namespaces = new Set<string>();
+  const pods = validObjects.filter((object) => object.kind === 'Pod');
+  const services = validObjects.filter((object) => object.kind === 'Service');
+
+  validObjects.forEach((object) => {
+    const namespace = object.metadata?.namespace || '';
+    if (namespace) {
+      namespaces.add(namespace);
+    }
+    if (object.kind === 'Namespace' && object.metadata?.name) {
+      namespaces.add(object.metadata.name);
+    }
+  });
+
+  addNode(context, 'Cluster', '', 'uploaded-bundle', 'healthy', { provider: 'upload' }, { objects: validObjects.length, namespaces: namespaces.size });
+  namespaces.forEach((namespace) => {
+    addNode(context, 'Namespace', '', namespace, 'healthy', {}, { source: 'uploaded' });
+    addEdge(context, 'owns', id(context.clusterId, '', 'Cluster', 'uploaded-bundle'), id(context.clusterId, '', 'Namespace', namespace), 'metadata.namespace', 'observed');
+  });
+
+  validObjects.forEach((object) => addObjectNode(context, object));
+  validObjects.forEach((object) => addObjectEdges(context, object));
+  addServiceSelectorEdges(context, services, pods);
+
+  const clusterSummary: ClusterSummary = {
+    id: context.clusterId,
+    name: 'uploaded-bundle',
+    provider: 'Upload',
+    version: 'yaml',
+    nodeReady: context.nodes.filter((node) => node.kind === 'Node' && node.status === 'healthy').length,
+    nodeTotal: context.nodes.filter((node) => node.kind === 'Node').length,
+    podRunning: context.nodes.filter((node) => node.kind === 'Pod' && node.status === 'healthy').length,
+    podWarning: context.nodes.filter((node) => node.kind === 'Pod' && node.status !== 'healthy').length,
+    namespaces: namespaces.size,
+  };
+
+  return { clusters: [clusterSummary], nodes: context.nodes, edges: context.edges };
+}
+
+function addObjectNode(context: BuildContext, object: KubeObject) {
+  const kind = normalizeKind(object.kind);
+  if (!kind) {
+    context.warnings.push(`지원하지 않는 kind: ${object.kind || 'unknown'}`);
+    return;
+  }
+  const name = object.metadata?.name || '';
+  const namespace = object.metadata?.namespace || '';
+  addNode(context, kind, namespace, name, objectStatus(kind, object), labels(object), objectSummary(kind, object));
+}
+
+function addObjectEdges(context: BuildContext, object: KubeObject) {
+  const kind = normalizeKind(object.kind);
+  const name = object.metadata?.name || '';
+  const namespace = object.metadata?.namespace || '';
+  if (!kind || !name) {
+    return;
+  }
+
+  const objectId = id(context.clusterId, namespace, kind, name);
+  object.metadata?.ownerReferences?.forEach((owner) => {
+    const ownerKind = normalizeKind(owner.kind);
+    if (ownerKind && owner.name) {
+      addEdge(context, 'owns', id(context.clusterId, namespace, ownerKind, owner.name), objectId, 'metadata.ownerReferences', 'observed');
+    }
+  });
+
+  if (namespace) {
+    addEdge(context, 'owns', id(context.clusterId, '', 'Namespace', namespace), objectId, 'metadata.namespace', 'observed');
+  }
+
+  if (kind === 'Pod') {
+    addPodEdges(context, object, objectId, namespace);
+  }
+  if (kind === 'Ingress') {
+    ingressBackends(object).forEach((serviceName) => {
+      ensureReferenceNode(context, 'Service', namespace, serviceName);
+      addEdge(context, 'routes-to', objectId, id(context.clusterId, namespace, 'Service', serviceName), 'Ingress.spec.rules.http.paths.backend.service', 'observed');
+    });
+  }
+  if (kind === 'PersistentVolumeClaim') {
+    const volumeName = stringAt(object, ['spec', 'volumeName']);
+    const storageClassName = stringAt(object, ['spec', 'storageClassName']);
+    if (volumeName) {
+      ensureReferenceNode(context, 'PersistentVolume', '', volumeName);
+      addEdge(context, 'binds-storage', objectId, id(context.clusterId, '', 'PersistentVolume', volumeName), 'PersistentVolumeClaim.spec.volumeName', 'observed');
+    }
+    if (storageClassName) {
+      ensureReferenceNode(context, 'StorageClass', '', storageClassName);
+      addEdge(context, 'binds-storage', objectId, id(context.clusterId, '', 'StorageClass', storageClassName), 'PersistentVolumeClaim.spec.storageClassName', 'observed');
+    }
+  }
+  if (kind === 'PersistentVolume') {
+    const storageClassName = stringAt(object, ['spec', 'storageClassName']);
+    if (storageClassName) {
+      ensureReferenceNode(context, 'StorageClass', '', storageClassName);
+      addEdge(context, 'binds-storage', objectId, id(context.clusterId, '', 'StorageClass', storageClassName), 'PersistentVolume.spec.storageClassName', 'observed');
+    }
+  }
+}
+
+function addPodEdges(context: BuildContext, pod: KubeObject, podId: string, namespace: string) {
+  const nodeName = stringAt(pod, ['spec', 'nodeName']);
+  const serviceAccountName = stringAt(pod, ['spec', 'serviceAccountName']);
+  if (nodeName) {
+    ensureReferenceNode(context, 'Node', '', nodeName);
+    addEdge(context, 'scheduled-on', podId, id(context.clusterId, '', 'Node', nodeName), 'Pod.spec.nodeName', 'observed');
+  }
+  if (serviceAccountName) {
+    ensureReferenceNode(context, 'ServiceAccount', namespace, serviceAccountName);
+    addEdge(context, 'uses-service-account', podId, id(context.clusterId, namespace, 'ServiceAccount', serviceAccountName), 'Pod.spec.serviceAccountName', 'observed');
+  }
+
+  forEachContainer(pod, (container) => {
+    asArray(container.envFrom).forEach((entry) => {
+      const configMapName = stringAt(entry, ['configMapRef', 'name']);
+      const secretName = stringAt(entry, ['secretRef', 'name']);
+      if (configMapName) {
+        ensureReferenceNode(context, 'ConfigMap', namespace, configMapName);
+        addEdge(context, 'env-from', podId, id(context.clusterId, namespace, 'ConfigMap', configMapName), 'Pod.spec.containers.envFrom.configMapRef', 'observed');
+      }
+      if (secretName) {
+        ensureReferenceNode(context, 'Secret', namespace, secretName);
+        addEdge(context, 'env-from', podId, id(context.clusterId, namespace, 'Secret', secretName), 'Pod.spec.containers.envFrom.secretRef', 'observed');
+      }
+    });
+    asArray(container.env).forEach((entry) => {
+      const configMapName = stringAt(entry, ['valueFrom', 'configMapKeyRef', 'name']);
+      const secretName = stringAt(entry, ['valueFrom', 'secretKeyRef', 'name']);
+      if (configMapName) {
+        ensureReferenceNode(context, 'ConfigMap', namespace, configMapName);
+        addEdge(context, 'env-from', podId, id(context.clusterId, namespace, 'ConfigMap', configMapName), 'Pod.spec.containers.env.valueFrom.configMapKeyRef', 'observed');
+      }
+      if (secretName) {
+        ensureReferenceNode(context, 'Secret', namespace, secretName);
+        addEdge(context, 'env-from', podId, id(context.clusterId, namespace, 'Secret', secretName), 'Pod.spec.containers.env.valueFrom.secretKeyRef', 'observed');
+      }
+    });
+  });
+
+  asArray(readAt(pod, ['spec', 'volumes'])).forEach((volume) => {
+    const configMapName = stringAt(volume, ['configMap', 'name']);
+    const secretName = stringAt(volume, ['secret', 'secretName']);
+    const claimName = stringAt(volume, ['persistentVolumeClaim', 'claimName']);
+    if (configMapName) {
+      ensureReferenceNode(context, 'ConfigMap', namespace, configMapName);
+      addEdge(context, 'mounts', podId, id(context.clusterId, namespace, 'ConfigMap', configMapName), 'Pod.spec.volumes.configMap', 'observed');
+    }
+    if (secretName) {
+      ensureReferenceNode(context, 'Secret', namespace, secretName);
+      addEdge(context, 'mounts', podId, id(context.clusterId, namespace, 'Secret', secretName), 'Pod.spec.volumes.secret', 'observed');
+    }
+    if (claimName) {
+      ensureReferenceNode(context, 'PersistentVolumeClaim', namespace, claimName);
+      addEdge(context, 'binds-storage', podId, id(context.clusterId, namespace, 'PersistentVolumeClaim', claimName), 'Pod.spec.volumes.persistentVolumeClaim', 'observed');
+    }
+  });
+}
+
+function addServiceSelectorEdges(context: BuildContext, services: KubeObject[], pods: KubeObject[]) {
+  services.forEach((service) => {
+    const namespace = service.metadata?.namespace || '';
+    const serviceName = service.metadata?.name || '';
+    const selector = readAt(service, ['spec', 'selector']);
+    if (!isRecord(selector) || Object.keys(selector).length === 0) {
+      return;
+    }
+
+    pods
+      .filter((pod) => (pod.metadata?.namespace || '') === namespace && labelsMatch(labels(pod), selector as Record<string, string>))
+      .forEach((pod) => {
+        addEdge(context, 'service-endpoint', id(context.clusterId, namespace, 'Service', serviceName), id(context.clusterId, namespace, 'Pod', pod.metadata?.name || ''), 'Service.spec.selector', 'inferred');
+      });
+  });
+}
+
+function addNode(context: BuildContext, kind: ResourceKind, namespace: string, name: string, status: ResourceStatus, labels: Record<string, string>, summary: Record<string, string | number | boolean>) {
+  const nodeId = id(context.clusterId, namespace, kind, name);
+  if (!name || context.nodeSet.has(nodeId)) {
+    return nodeId;
+  }
+  context.nodes.push({ id: nodeId, clusterId: context.clusterId, kind, namespace: namespace || undefined, name, status, labels, summary, x: 0, y: 0 });
+  context.nodeSet.add(nodeId);
+  return nodeId;
+}
+
+function ensureReferenceNode(context: BuildContext, kind: ResourceKind, namespace: string, name: string) {
+  const summary: Record<string, string | number | boolean> = { referenced: true };
+  if (kind === 'Secret') {
+    summary.values = 'hidden';
+  }
+  return addNode(context, kind, namespace, name, 'unknown', {}, summary);
+}
+
+function addEdge(context: BuildContext, type: EdgeType, source: string, target: string, sourceField: string, confidence: TopologyEdge['confidence']) {
+  if (!source || !target || !context.nodeSet.has(source) || !context.nodeSet.has(target)) {
+    return;
+  }
+  const edgeId = `${source}->${target}:${type}:${sourceField}`;
+  if (context.edgeSet.has(edgeId)) {
+    return;
+  }
+  context.edges.push({ id: edgeId, clusterId: context.clusterId, source, target, type, confidence, sourceField });
+  context.edgeSet.add(edgeId);
+}
+
+function objectSummary(kind: ResourceKind, object: KubeObject): Record<string, string | number | boolean> {
+  if (kind === 'Secret') {
+    return { type: stringAt(object, ['type']) || 'Opaque', keys: Object.keys(object.data || {}).length, values: 'hidden' };
+  }
+  if (kind === 'ConfigMap') {
+    return { keys: Object.keys(object.data || {}).length + Object.keys(object.binaryData || {}).length };
+  }
+  if (kind === 'Deployment' || kind === 'ReplicaSet' || kind === 'StatefulSet') {
+    const desired = numberAt(object, ['spec', 'replicas']) ?? 1;
+    const ready = numberAt(object, ['status', 'readyReplicas']) ?? numberAt(object, ['status', 'availableReplicas']) ?? 0;
+    return { replicas: `${ready}/${desired}`, selector: selectorSummary(readAt(object, ['spec', 'selector', 'matchLabels'])) };
+  }
+  if (kind === 'DaemonSet') {
+    return { ready: `${numberAt(object, ['status', 'numberReady']) ?? 0}/${numberAt(object, ['status', 'desiredNumberScheduled']) ?? 0}` };
+  }
+  if (kind === 'Pod') {
+    return { phase: stringAt(object, ['status', 'phase']) || 'Pending', node: stringAt(object, ['spec', 'nodeName']) || '-', containers: asArray(readAt(object, ['spec', 'containers'])).length };
+  }
+  if (kind === 'Service') {
+    return { type: stringAt(object, ['spec', 'type']) || 'ClusterIP', ports: asArray(readAt(object, ['spec', 'ports'])).length };
+  }
+  if (kind === 'Ingress') {
+    return { rules: asArray(readAt(object, ['spec', 'rules'])).length, tls: asArray(readAt(object, ['spec', 'tls'])).length > 0 };
+  }
+  if (kind === 'PersistentVolumeClaim') {
+    return { storage: stringAt(object, ['spec', 'resources', 'requests', 'storage']) || '-', storageClass: stringAt(object, ['spec', 'storageClassName']) || '-' };
+  }
+  if (kind === 'PersistentVolume') {
+    return { storage: stringAt(object, ['spec', 'capacity', 'storage']) || '-', storageClass: stringAt(object, ['spec', 'storageClassName']) || '-' };
+  }
+  if (kind === 'StorageClass') {
+    return { provisioner: stringAt(object, ['provisioner']) || stringAt(object, ['spec', 'provisioner']) || '-' };
+  }
+  return { source: 'uploaded' };
+}
+
+function objectStatus(kind: ResourceKind, object: KubeObject): ResourceStatus {
+  if (kind === 'Secret') {
+    return 'unknown';
+  }
+  if (kind === 'Pod') {
+    const phase = stringAt(object, ['status', 'phase']);
+    return phase === 'Running' || phase === 'Succeeded' ? 'healthy' : phase ? 'warning' : 'unknown';
+  }
+  if (kind === 'PersistentVolumeClaim') {
+    const phase = stringAt(object, ['status', 'phase']);
+    return !phase || phase === 'Bound' ? 'healthy' : 'warning';
+  }
+  return 'healthy';
+}
+
+function ingressBackends(object: KubeObject) {
+  const services = new Set<string>();
+  asArray(readAt(object, ['spec', 'rules'])).forEach((rule) => {
+    asArray(readAt(rule, ['http', 'paths'])).forEach((path) => {
+      const serviceName = stringAt(path, ['backend', 'service', 'name']);
+      if (serviceName) {
+        services.add(serviceName);
+      }
+    });
+  });
+  const defaultBackend = stringAt(object, ['spec', 'defaultBackend', 'service', 'name']);
+  if (defaultBackend) {
+    services.add(defaultBackend);
+  }
+  return Array.from(services);
+}
+
+function forEachContainer(object: KubeObject, callback: (container: Record<string, unknown>) => void) {
+  [...asArray(readAt(object, ['spec', 'containers'])), ...asArray(readAt(object, ['spec', 'initContainers']))].forEach((container) => {
+    if (isRecord(container)) {
+      callback(container);
+    }
+  });
+}
+
+function collectObject(value: unknown, target: KubeObject[]) {
+  if (!isRecord(value)) {
+    return;
+  }
+  const object = value as KubeObject;
+  if (object.kind === 'List' && Array.isArray(object.items)) {
+    object.items.forEach((item) => collectObject(item, target));
+    return;
+  }
+  if (object.kind && object.metadata?.name) {
+    target.push(object);
+  }
+}
+
+function normalizeKind(kind: unknown): ResourceKind | undefined {
+  return typeof kind === 'string' && supportedKinds.has(kind as ResourceKind) ? (kind as ResourceKind) : undefined;
+}
+
+function id(clusterId: string, namespace: string, kind: ResourceKind, name: string) {
+  return namespace ? `${clusterId}:${namespace}:${kind}:${name}` : `${clusterId}:${kind}:${name}`;
+}
+
+function isManifestName(name: string) {
+  return /\.(ya?ml|json)$/i.test(name);
+}
+
+function labels(object: KubeObject) {
+  return object.metadata?.labels || {};
+}
+
+function labelsMatch(labels: Record<string, string>, selector: Record<string, string>) {
+  return Object.entries(selector).every(([key, value]) => labels[key] === value);
+}
+
+function selectorSummary(value: unknown) {
+  return isRecord(value) ? Object.keys(value).join(',') || '-' : '-';
+}
+
+function isSnapshot(value: unknown): value is TopologySnapshot {
+  return isRecord(value) && Array.isArray(value.clusters) && Array.isArray(value.nodes) && Array.isArray(value.edges);
+}
+
+function readAt(value: unknown, path: string[]): unknown {
+  return path.reduce<unknown>((current, key) => (isRecord(current) ? current[key] : undefined), value);
+}
+
+function stringAt(value: unknown, path: string[]) {
+  const result = readAt(value, path);
+  return typeof result === 'string' ? result : '';
+}
+
+function numberAt(value: unknown, path: string[]) {
+  const result = readAt(value, path);
+  return typeof result === 'number' ? result : undefined;
+}
+
+function asArray(value: unknown): Record<string, unknown>[] {
+  return Array.isArray(value) ? (value.filter(isRecord) as Record<string, unknown>[]) : [];
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}

@@ -1,0 +1,8 @@
+.git
+website/node_modules
+website/dist
+server/tmp
+*.log
+.env
+.env.*
+!.env.example

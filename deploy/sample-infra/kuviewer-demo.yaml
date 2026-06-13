@@ -1,0 +1,547 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: kuviewer-demo
+  labels:
+    kuviewer.io/sample: "true"
+    team: platform
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: demo-api
+  namespace: kuviewer-demo
+  labels:
+    kuviewer.io/sample: "true"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: demo-app-config
+  namespace: kuviewer-demo
+  labels:
+    kuviewer.io/sample: "true"
+data:
+  APP_MODE: production
+  FEATURE_CANARY: "true"
+  UPSTREAM_SERVICE: demo-api.kuviewer-demo.svc.cluster.local
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: demo-api-secret
+  namespace: kuviewer-demo
+  labels:
+    kuviewer.io/sample: "true"
+type: Opaque
+stringData:
+  API_TOKEN: kuviewer-demo-token
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: demo-gateway
+  namespace: kuviewer-demo
+  labels:
+    kuviewer.io/sample: "true"
+    app.kubernetes.io/name: demo-gateway
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: demo-gateway
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: demo-gateway
+  namespace: kuviewer-demo
+  labels:
+    kuviewer.io/sample: "true"
+    app.kubernetes.io/name: demo-gateway
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: demo-gateway
+  template:
+    metadata:
+      labels:
+        kuviewer.io/sample: "true"
+        app.kubernetes.io/name: demo-gateway
+        tier: edge
+    spec:
+      serviceAccountName: demo-api
+      containers:
+        - name: gateway
+          image: nginx:1.27-alpine
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 80
+          envFrom:
+            - configMapRef:
+                name: demo-app-config
+            - secretRef:
+                name: demo-api-secret
+          volumeMounts:
+            - name: gateway-config
+              mountPath: /etc/kuviewer-demo
+              readOnly: true
+      volumes:
+        - name: gateway-config
+          configMap:
+            name: demo-app-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: demo-api
+  namespace: kuviewer-demo
+  labels:
+    kuviewer.io/sample: "true"
+    app.kubernetes.io/name: demo-api
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: demo-api
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: demo-api
+  namespace: kuviewer-demo
+  labels:
+    kuviewer.io/sample: "true"
+    app.kubernetes.io/name: demo-api
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: demo-api
+  template:
+    metadata:
+      labels:
+        kuviewer.io/sample: "true"
+        app.kubernetes.io/name: demo-api
+        tier: backend
+    spec:
+      serviceAccountName: demo-api
+      containers:
+        - name: api
+          image: nginx:1.27-alpine
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 80
+          env:
+            - name: API_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: demo-api-secret
+                  key: API_TOKEN
+            - name: APP_MODE
+              valueFrom:
+                configMapKeyRef:
+                  name: demo-app-config
+                  key: APP_MODE
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: demo-edge
+  namespace: kuviewer-demo
+  labels:
+    kuviewer.io/sample: "true"
+  annotations:
+    kuviewer.io/traffic-note: external-client-to-gateway-and-api
+spec:
+  rules:
+    - host: kuviewer-demo.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: demo-gateway
+                port:
+                  number: 80
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: demo-api
+                port:
+                  number: 8080
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: demo-db
+  namespace: kuviewer-demo
+  labels:
+    kuviewer.io/sample: "true"
+    app.kubernetes.io/name: demo-db
+spec:
+  clusterIP: None
+  selector:
+    app.kubernetes.io/name: demo-db
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: postgres
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: demo-db
+  namespace: kuviewer-demo
+  labels:
+    kuviewer.io/sample: "true"
+    app.kubernetes.io/name: demo-db
+spec:
+  serviceName: demo-db
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: demo-db
+  template:
+    metadata:
+      labels:
+        kuviewer.io/sample: "true"
+        app.kubernetes.io/name: demo-db
+        tier: data
+    spec:
+      serviceAccountName: demo-api
+      containers:
+        - name: db
+          image: busybox:1.36
+          imagePullPolicy: IfNotPresent
+          command: ["sh", "-c", "while true; do date > /data/heartbeat; sleep 30; done"]
+          ports:
+            - name: postgres
+              containerPort: 5432
+          volumeMounts:
+            - name: data
+              mountPath: /data
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+        labels:
+          kuviewer.io/sample: "true"
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 256Mi
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: demo-node-agent
+  namespace: kuviewer-demo
+  labels:
+    kuviewer.io/sample: "true"
+    app.kubernetes.io/name: demo-node-agent
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: demo-node-agent
+  template:
+    metadata:
+      labels:
+        kuviewer.io/sample: "true"
+        app.kubernetes.io/name: demo-node-agent
+        tier: node
+    spec:
+      serviceAccountName: demo-api
+      containers:
+        - name: agent
+          image: busybox:1.36
+          imagePullPolicy: IfNotPresent
+          command: ["sh", "-c", "while true; do sleep 60; done"]
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: kuviewer-commerce
+  labels:
+    kuviewer.io/sample: "true"
+    team: commerce
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: commerce-api
+  namespace: kuviewer-commerce
+  labels:
+    kuviewer.io/sample: "true"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: commerce-config
+  namespace: kuviewer-commerce
+  labels:
+    kuviewer.io/sample: "true"
+data:
+  CHECKOUT_MODE: active
+  PAYMENT_PROVIDER: sandbox
+  QUEUE_SERVICE: commerce-queue.kuviewer-commerce.svc.cluster.local
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: commerce-secret
+  namespace: kuviewer-commerce
+  labels:
+    kuviewer.io/sample: "true"
+type: Opaque
+stringData:
+  PAYMENT_TOKEN: sample-payment-token
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: orders-api
+  namespace: kuviewer-commerce
+  labels:
+    kuviewer.io/sample: "true"
+    app.kubernetes.io/name: orders-api
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: orders-api
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: orders-api
+  namespace: kuviewer-commerce
+  labels:
+    kuviewer.io/sample: "true"
+    app.kubernetes.io/name: orders-api
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: orders-api
+  template:
+    metadata:
+      labels:
+        kuviewer.io/sample: "true"
+        app.kubernetes.io/name: orders-api
+        tier: backend
+    spec:
+      serviceAccountName: commerce-api
+      containers:
+        - name: api
+          image: nginx:1.27-alpine
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 80
+          envFrom:
+            - configMapRef:
+                name: commerce-config
+            - secretRef:
+                name: commerce-secret
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: commerce-queue
+  namespace: kuviewer-commerce
+  labels:
+    kuviewer.io/sample: "true"
+    app.kubernetes.io/name: commerce-queue
+spec:
+  clusterIP: None
+  selector:
+    app.kubernetes.io/name: commerce-queue
+  ports:
+    - name: queue
+      port: 5672
+      targetPort: queue
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: commerce-queue
+  namespace: kuviewer-commerce
+  labels:
+    kuviewer.io/sample: "true"
+    app.kubernetes.io/name: commerce-queue
+spec:
+  serviceName: commerce-queue
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: commerce-queue
+  template:
+    metadata:
+      labels:
+        kuviewer.io/sample: "true"
+        app.kubernetes.io/name: commerce-queue
+        tier: messaging
+    spec:
+      serviceAccountName: commerce-api
+      containers:
+        - name: queue
+          image: busybox:1.36
+          imagePullPolicy: IfNotPresent
+          command: ["sh", "-c", "while true; do date > /queue/heartbeat; sleep 30; done"]
+          ports:
+            - name: queue
+              containerPort: 5672
+          volumeMounts:
+            - name: queue-data
+              mountPath: /queue
+  volumeClaimTemplates:
+    - metadata:
+        name: queue-data
+        labels:
+          kuviewer.io/sample: "true"
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 256Mi
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: commerce-edge
+  namespace: kuviewer-commerce
+  labels:
+    kuviewer.io/sample: "true"
+  annotations:
+    kuviewer.io/traffic-note: external-client-to-orders-api
+spec:
+  rules:
+    - host: commerce.kuviewer-demo.local
+      http:
+        paths:
+          - path: /orders
+            pathType: Prefix
+            backend:
+              service:
+                name: orders-api
+                port:
+                  number: 8080
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: kuviewer-observability
+  labels:
+    kuviewer.io/sample: "true"
+    team: platform
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: telemetry-config
+  namespace: kuviewer-observability
+  labels:
+    kuviewer.io/sample: "true"
+data:
+  OTLP_ENDPOINT: http://telemetry.kuviewer-observability.svc.cluster.local:4317
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: telemetry
+  namespace: kuviewer-observability
+  labels:
+    kuviewer.io/sample: "true"
+    app.kubernetes.io/name: telemetry
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: telemetry
+  ports:
+    - name: otlp
+      port: 4317
+      targetPort: otlp
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: telemetry
+  namespace: kuviewer-observability
+  labels:
+    kuviewer.io/sample: "true"
+    app.kubernetes.io/name: telemetry
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: telemetry
+  template:
+    metadata:
+      labels:
+        kuviewer.io/sample: "true"
+        app.kubernetes.io/name: telemetry
+        tier: observability
+    spec:
+      containers:
+        - name: telemetry
+          image: nginx:1.27-alpine
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: otlp
+              containerPort: 80
+          volumeMounts:
+            - name: telemetry-config
+              mountPath: /etc/telemetry
+              readOnly: true
+      volumes:
+        - name: telemetry-config
+          configMap:
+            name: telemetry-config
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: telemetry-agent
+  namespace: kuviewer-observability
+  labels:
+    kuviewer.io/sample: "true"
+    app.kubernetes.io/name: telemetry-agent
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: telemetry-agent
+  template:
+    metadata:
+      labels:
+        kuviewer.io/sample: "true"
+        app.kubernetes.io/name: telemetry-agent
+        tier: node
+    spec:
+      containers:
+        - name: agent
+          image: busybox:1.36
+          imagePullPolicy: IfNotPresent
+          command: ["sh", "-c", "while true; do sleep 60; done"]
+          volumeMounts:
+            - name: telemetry-config
+              mountPath: /etc/telemetry
+              readOnly: true
+      volumes:
+        - name: telemetry-config
+          configMap:
+            name: telemetry-config
