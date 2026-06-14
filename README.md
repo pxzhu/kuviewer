@@ -171,6 +171,9 @@ Supported snapshot resources in the first provider:
 - Ingress
 - Gateway
 - HTTPRoute
+- GRPCRoute
+- TLSRoute
+- TCPRoute
 - NetworkPolicy
 - PersistentVolume
 - PersistentVolumeClaim
@@ -197,7 +200,7 @@ It creates sample namespaces with real Kubernetes objects:
 - NetworkPolicy ingress/egress intent examples, including namespaceSelector + podSelector matching
 - ConfigMap, Secret reference, ServiceAccount, PVC, PV, and StorageClass relationships
 
-Gateway API resources are optional because they require Gateway API CRDs. Apply [deploy/sample-infra/gateway-api-demo.yaml](/Users/pxzhu/vscode/kuviewer/deploy/sample-infra/gateway-api-demo.yaml) only on clusters where `gateway.networking.k8s.io/v1` is installed:
+Gateway API resources are optional because they require Gateway API CRDs. Kuviewer supports Gateway, HTTPRoute, GRPCRoute, and optional TLSRoute/TCPRoute when those CRDs are installed. Apply [deploy/sample-infra/gateway-api-demo.yaml](/Users/pxzhu/vscode/kuviewer/deploy/sample-infra/gateway-api-demo.yaml) only on clusters where Gateway API resources are installed:
 
 ```bash
 kubectl apply -f deploy/sample-infra/gateway-api-demo.yaml

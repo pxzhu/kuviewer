@@ -574,7 +574,7 @@ function columnForKind(kind: ResourceKind): LayoutColumn {
   if (kind === 'Cluster' || kind === 'Namespace') {
     return 'scope';
   }
-  if (kind === 'Ingress' || kind === 'Gateway' || kind === 'HTTPRoute') {
+  if (kind === 'Ingress' || kind === 'Gateway' || kind === 'HTTPRoute' || kind === 'GRPCRoute' || kind === 'TLSRoute' || kind === 'TCPRoute') {
     return 'ingress';
   }
   if (kind === 'Service' || kind === 'EndpointSlice') {

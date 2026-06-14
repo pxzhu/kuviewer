@@ -150,6 +150,9 @@ rules:
     resources:
       - gateways
       - httproutes
+      - grpcroutes
+      - tlsroutes
+      - tcproutes
     verbs: ["get", "list"]
   - apiGroups: ["storage.k8s.io"]
     resources:
