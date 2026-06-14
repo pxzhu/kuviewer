@@ -37,7 +37,9 @@ export type EdgeType =
   | 'uses-service-account'
   | 'targets-scale'
   | 'applies-to'
-  | 'attaches-to';
+  | 'attaches-to'
+  | 'allows-ingress'
+  | 'allows-egress';
 
 export interface TopologyNode {
   id: string;

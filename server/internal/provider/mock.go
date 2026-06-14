@@ -41,7 +41,7 @@ func (MockProvider) Snapshot(_ context.Context) (topology.Snapshot, error) {
 			node("Service", "checkout", "checkout-api", "warning", map[string]string{"app": "checkout"}, map[string]interface{}{"type": "ClusterIP", "readyEndpoints": "2/3"}, 1080, 520),
 			node("Service", "checkout", "checkout-canary", "error", map[string]string{"app": "checkout-canary"}, map[string]interface{}{"type": "ClusterIP", "readyEndpoints": "0/0"}, 1280, 610),
 			node("HorizontalPodAutoscaler", "checkout", "checkout-api", "healthy", map[string]string{"app": "checkout"}, map[string]interface{}{"target": "Deployment/checkout-api", "replicas": "3/3", "range": "2-6"}, 860, 610),
-			node("NetworkPolicy", "checkout", "checkout-api-ingress", "healthy", map[string]string{"app": "checkout"}, map[string]interface{}{"policyTypes": "Ingress", "selector": "app"}, 1280, 520),
+			node("NetworkPolicy", "checkout", "checkout-api-ingress", "healthy", map[string]string{"app": "checkout"}, map[string]interface{}{"policyTypes": "Ingress,Egress", "selector": "app", "ingress": "1 rule: pod:app; TCP:80", "egress": "1 rule: pod:app; TCP:5432", "ports": "TCP:80, TCP:5432"}, 1280, 520),
 			node("CronJob", "checkout", "checkout-reconcile", "healthy", map[string]string{"app": "checkout"}, map[string]interface{}{"schedule": "*/15 * * * *", "active": 0}, 860, 780),
 			node("Job", "checkout", "checkout-reconcile-286", "healthy", map[string]string{"app": "checkout"}, map[string]interface{}{"completions": 1, "succeeded": 1, "failed": 0}, 1080, 780),
 			node("StatefulSet", "checkout", "checkout-db", "healthy", map[string]string{"app": "checkout-db"}, map[string]interface{}{"replicas": "1/1", "storage": "20Gi"}, 860, 690),
@@ -62,7 +62,9 @@ func (MockProvider) Snapshot(_ context.Context) (topology.Snapshot, error) {
 			edge("httproute-gateway", nodeID("HTTPRoute", "checkout", "checkout-route"), nodeID("Gateway", "checkout", "checkout-gateway"), "attaches-to", "HTTPRoute.spec.parentRefs"),
 			edge("httproute-service", nodeID("HTTPRoute", "checkout", "checkout-route"), nodeID("Service", "checkout", "checkout-api"), "routes-to", "HTTPRoute.spec.rules.backendRefs"),
 			edge("hpa-deploy", nodeID("HorizontalPodAutoscaler", "checkout", "checkout-api"), nodeID("Deployment", "checkout", "checkout-api"), "targets-scale", "HorizontalPodAutoscaler.spec.scaleTargetRef"),
-			edge("policy-pod", nodeID("NetworkPolicy", "checkout", "checkout-api-ingress"), nodeID("Pod", "checkout", "checkout-api-7c8f9"), "applies-to", "NetworkPolicy.spec.podSelector"),
+			edgeWithConfidence("policy-pod", nodeID("NetworkPolicy", "checkout", "checkout-api-ingress"), nodeID("Pod", "checkout", "checkout-api-7c8f9"), "applies-to", "NetworkPolicy.spec.podSelector", "inferred"),
+			edgeWithConfidence("policy-ingress-platform", nodeID("NetworkPolicy", "checkout", "checkout-api-ingress"), nodeID("Pod", "platform", "kuviewer-api-6d9c4"), "allows-ingress", "NetworkPolicy.spec.ingress.from", "inferred"),
+			edgeWithConfidence("policy-egress-db", nodeID("NetworkPolicy", "checkout", "checkout-api-ingress"), nodeID("Pod", "checkout", "checkout-db-0"), "allows-egress", "NetworkPolicy.spec.egress.to", "inferred"),
 			edge("cronjob-job", nodeID("CronJob", "checkout", "checkout-reconcile"), nodeID("Job", "checkout", "checkout-reconcile-286"), "owns", "metadata.ownerReferences"),
 			edge("service-checkout-pod", nodeID("Service", "checkout", "checkout-api"), nodeID("Pod", "checkout", "checkout-api-7c8f9"), "service-endpoint", "EndpointSlice.endpoints.targetRef"),
 			edge("stateful-pvc", nodeID("StatefulSet", "checkout", "checkout-db"), nodeID("PersistentVolumeClaim", "checkout", "checkout-db-data"), "binds-storage", "volumeClaimTemplates"),
@@ -88,13 +90,17 @@ func node(kind string, namespace string, name string, status string, labels map[
 }
 
 func edge(id string, source string, target string, edgeType string, sourceField string) topology.Edge {
+	return edgeWithConfidence(id, source, target, edgeType, sourceField, "observed")
+}
+
+func edgeWithConfidence(id string, source string, target string, edgeType string, sourceField string, confidence string) topology.Edge {
 	return topology.Edge{
 		ID:          id,
 		ClusterID:   clusterID,
 		Source:      source,
 		Target:      target,
 		Type:        edgeType,
-		Confidence:  "observed",
+		Confidence:  confidence,
 		SourceField: sourceField,
 	}
 }

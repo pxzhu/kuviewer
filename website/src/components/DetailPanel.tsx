@@ -59,10 +59,12 @@ export function DetailPanel({ node, edges, nodeMap }: DetailPanelProps) {
               return (
                 <div key={edge.id} className="rounded-[11px] border border-[rgba(60,60,67,0.12)] bg-white/78 px-3 py-2">
                   <p className="font-mono text-[11px] font-semibold uppercase tracking-[0.04em] text-[rgba(60,60,67,0.58)]">
-                    {isOutgoing ? '대상' : '출처'} · {edge.type}
+                    {isOutgoing ? '대상' : '출처'} · {relationLabel(edge.type)}
                   </p>
                   <p className="mt-1 break-words text-sm font-semibold text-[#1d1d1f]">{related?.name || '알 수 없음'}</p>
-                  <p className="mt-1 break-words font-mono text-[11px] font-semibold text-[rgba(60,60,67,0.58)]">{edge.sourceField}</p>
+                  <p className="mt-1 break-words font-mono text-[11px] font-semibold text-[rgba(60,60,67,0.58)]">
+                    {edge.sourceField} · {edge.confidence === 'inferred' ? '추론' : '관측'}
+                  </p>
                 </div>
               );
             })}
@@ -71,4 +73,26 @@ export function DetailPanel({ node, edges, nodeMap }: DetailPanelProps) {
       </div>
     </section>
   );
+}
+
+function relationLabel(edgeType: TopologyEdge['type']) {
+  if (edgeType === 'allows-ingress') {
+    return 'NetworkPolicy ingress 의도';
+  }
+  if (edgeType === 'allows-egress') {
+    return 'NetworkPolicy egress 의도';
+  }
+  if (edgeType === 'applies-to') {
+    return 'NetworkPolicy 적용 대상';
+  }
+  if (edgeType === 'routes-to') {
+    return '라우팅 백엔드';
+  }
+  if (edgeType === 'service-endpoint') {
+    return 'Service 엔드포인트';
+  }
+  if (edgeType === 'attaches-to') {
+    return 'Gateway 연결';
+  }
+  return edgeType;
 }

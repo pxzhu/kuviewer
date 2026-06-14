@@ -361,6 +361,23 @@ spec:
       app: checkout-api
   policyTypes:
     - Ingress
+    - Egress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: kuviewer-api
+      ports:
+        - protocol: TCP
+          port: 80
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app: checkout-db
+      ports:
+        - protocol: TCP
+          port: 5432
 ---
 apiVersion: batch/v1
 kind: CronJob

@@ -53,7 +53,7 @@ export const mockTopology: TopologySnapshot = {
     node(local, 'Service', 'checkout', 'checkout-db', 'healthy', { app: 'checkout-db' }, { type: 'Headless', port: 5432 }),
     node(local, 'Deployment', 'checkout', 'checkout-api', 'warning', { app: 'checkout', tier: 'backend' }, { replicas: '2/3', image: 'checkout/api:mock' }),
     node(local, 'HorizontalPodAutoscaler', 'checkout', 'checkout-api', 'healthy', { app: 'checkout' }, { target: 'Deployment/checkout-api', replicas: '3/3', range: '2-6' }),
-    node(local, 'NetworkPolicy', 'checkout', 'checkout-api-ingress', 'healthy', { app: 'checkout' }, { policyTypes: 'Ingress', selector: 'app' }),
+    node(local, 'NetworkPolicy', 'checkout', 'checkout-api-ingress', 'healthy', { app: 'checkout' }, { policyTypes: 'Ingress,Egress', selector: 'app', ingress: '1 rule: pod:app; TCP:80', egress: '1 rule: pod:app; TCP:5432', ports: 'TCP:80, TCP:5432' }),
     node(local, 'CronJob', 'checkout', 'checkout-reconcile', 'healthy', { app: 'checkout' }, { schedule: '*/15 * * * *', active: 0 }),
     node(local, 'Job', 'checkout', 'checkout-reconcile-286', 'healthy', { app: 'checkout' }, { completions: 1, succeeded: 1, failed: 0 }),
     node(local, 'ReplicaSet', 'checkout', 'checkout-api-7c8f9', 'warning', { app: 'checkout', hash: '7c8f9' }, { replicas: '2/3' }),
@@ -130,8 +130,10 @@ export const mockTopology: TopologySnapshot = {
     owns(local, 'checkout', 'Deployment', 'checkout-api', 'checkout', 'ReplicaSet', 'checkout-api-7c8f9'),
     owns(local, 'checkout', 'CronJob', 'checkout-reconcile', 'checkout', 'Job', 'checkout-reconcile-286'),
     ref(local, 'checkout', 'HorizontalPodAutoscaler', 'checkout-api', 'checkout', 'Deployment', 'checkout-api', 'targets-scale', 'HorizontalPodAutoscaler.spec.scaleTargetRef'),
-    ref(local, 'checkout', 'NetworkPolicy', 'checkout-api-ingress', 'checkout', 'Pod', 'checkout-api-7c8f9-a', 'applies-to', 'NetworkPolicy.spec.podSelector'),
-    ref(local, 'checkout', 'NetworkPolicy', 'checkout-api-ingress', 'checkout', 'Pod', 'checkout-api-7c8f9-b', 'applies-to', 'NetworkPolicy.spec.podSelector'),
+    ref(local, 'checkout', 'NetworkPolicy', 'checkout-api-ingress', 'checkout', 'Pod', 'checkout-api-7c8f9-a', 'applies-to', 'NetworkPolicy.spec.podSelector', 'inferred'),
+    ref(local, 'checkout', 'NetworkPolicy', 'checkout-api-ingress', 'checkout', 'Pod', 'checkout-api-7c8f9-b', 'applies-to', 'NetworkPolicy.spec.podSelector', 'inferred'),
+    ref(local, 'checkout', 'NetworkPolicy', 'checkout-api-ingress', 'platform', 'Pod', 'kuviewer-api-6d9c4-a', 'allows-ingress', 'NetworkPolicy.spec.ingress.from', 'inferred'),
+    ref(local, 'checkout', 'NetworkPolicy', 'checkout-api-ingress', 'checkout', 'Pod', 'checkout-db-0', 'allows-egress', 'NetworkPolicy.spec.egress.to', 'inferred'),
     owns(local, 'checkout', 'ReplicaSet', 'checkout-api-7c8f9', 'checkout', 'Pod', 'checkout-api-7c8f9-a'),
     owns(local, 'checkout', 'ReplicaSet', 'checkout-api-7c8f9', 'checkout', 'Pod', 'checkout-api-7c8f9-b'),
     endpoint(local, 'checkout', 'Service', 'checkout-api', 'checkout', 'Pod', 'checkout-api-7c8f9-a'),
@@ -237,6 +239,7 @@ function ref(
   targetName: string,
   type: EdgeType,
   sourceField: string,
+  confidence: TopologyEdge['confidence'] = 'observed',
 ): TopologyEdge {
   const source = id(clusterId, sourceNamespace, sourceKind, sourceName);
   const target = id(clusterId, targetNamespace, targetKind, targetName);
@@ -246,7 +249,7 @@ function ref(
     source,
     target,
     type,
-    confidence: 'observed',
+    confidence,
     sourceField,
   };
 }

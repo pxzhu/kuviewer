@@ -329,6 +329,8 @@ const edgeColors: Record<string, string> = {
   'targets-scale': '#64d2ff',
   'applies-to': '#00c7be',
   'attaches-to': '#ff9f0a',
+  'allows-ingress': '#00c7be',
+  'allows-egress': '#5ac8fa',
 };
 
 function colorFromString(value: string) {

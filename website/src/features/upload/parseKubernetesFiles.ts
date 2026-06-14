@@ -35,6 +35,11 @@ interface BuildContext {
   warnings: string[];
 }
 
+interface NamespaceRecord {
+  name: string;
+  labels: Record<string, string>;
+}
+
 const supportedKinds = new Set<ResourceKind>([
   'Cluster',
   'Namespace',
@@ -132,6 +137,7 @@ function buildSnapshotFromKubernetesObjects(objects: KubeObject[], warnings: str
   const pods = validObjects.filter((object) => object.kind === 'Pod');
   const services = validObjects.filter((object) => object.kind === 'Service');
   const networkPolicies = validObjects.filter((object) => object.kind === 'NetworkPolicy');
+  const namespaceObjects = validObjects.filter((object) => object.kind === 'Namespace');
 
   validObjects.forEach((object) => {
     const namespace = object.metadata?.namespace || '';
@@ -152,7 +158,7 @@ function buildSnapshotFromKubernetesObjects(objects: KubeObject[], warnings: str
   validObjects.forEach((object) => addObjectNode(context, object));
   validObjects.forEach((object) => addObjectEdges(context, object));
   addServiceSelectorEdges(context, services, pods);
-  addNetworkPolicyEdges(context, networkPolicies, pods);
+  addNetworkPolicyEdges(context, networkPolicies, pods, namespaceRecords(namespaces, namespaceObjects));
 
   const clusterSummary: ClusterSummary = {
     id: context.clusterId,
@@ -323,23 +329,76 @@ function addServiceSelectorEdges(context: BuildContext, services: KubeObject[], 
   });
 }
 
-function addNetworkPolicyEdges(context: BuildContext, networkPolicies: KubeObject[], pods: KubeObject[]) {
+function addNetworkPolicyEdges(context: BuildContext, networkPolicies: KubeObject[], pods: KubeObject[], namespaces: NamespaceRecord[]) {
   networkPolicies.forEach((networkPolicy) => {
     const namespace = networkPolicy.metadata?.namespace || '';
     const name = networkPolicy.metadata?.name || '';
     const networkPolicyId = id(context.clusterId, namespace, 'NetworkPolicy', name);
-    const selector = readAt(networkPolicy, ['spec', 'podSelector', 'matchLabels']);
-    const matchLabels = isRecord(selector) ? (selector as Record<string, string>) : {};
-    const matchingPods = pods.filter((pod) => (pod.metadata?.namespace || '') === namespace && selectorMatchesLabels(matchLabels, labels(pod)));
+    const podSelector = readAt(networkPolicy, ['spec', 'podSelector']);
+    const matchingPods = selectorHasExpressions(podSelector)
+      ? []
+      : pods.filter((pod) => (pod.metadata?.namespace || '') === namespace && selectorMatchesLabels(selectorMatchLabels(podSelector), labels(pod)));
 
     if (matchingPods.length === 0) {
       const namespaceId = id(context.clusterId, '', 'Namespace', namespace);
       addEdge(context, 'applies-to', networkPolicyId, namespaceId, 'NetworkPolicy.spec.podSelector', 'observed');
+    } else {
+      matchingPods.forEach((pod) => {
+        addEdge(context, 'applies-to', networkPolicyId, id(context.clusterId, namespace, 'Pod', pod.metadata?.name || ''), 'NetworkPolicy.spec.podSelector', 'inferred');
+      });
+    }
+
+    const policyTypes = networkPolicyTypes(networkPolicy);
+    if (policyTypes.includes('Ingress')) {
+      asArray(readAt(networkPolicy, ['spec', 'ingress'])).forEach((rule) => {
+        addNetworkPolicyPeerEdges(context, networkPolicyId, namespace, rule, 'from', 'allows-ingress', 'NetworkPolicy.spec.ingress.from', pods, namespaces);
+      });
+    }
+    if (policyTypes.includes('Egress')) {
+      asArray(readAt(networkPolicy, ['spec', 'egress'])).forEach((rule) => {
+        addNetworkPolicyPeerEdges(context, networkPolicyId, namespace, rule, 'to', 'allows-egress', 'NetworkPolicy.spec.egress.to', pods, namespaces);
+      });
+    }
+  });
+}
+
+function addNetworkPolicyPeerEdges(
+  context: BuildContext,
+  networkPolicyId: string,
+  policyNamespace: string,
+  rule: Record<string, unknown>,
+  peerKey: 'from' | 'to',
+  edgeType: Extract<EdgeType, 'allows-ingress' | 'allows-egress'>,
+  sourceField: string,
+  pods: KubeObject[],
+  namespaces: NamespaceRecord[],
+) {
+  asArray(rule[peerKey]).forEach((peer) => {
+    if (isRecord(peer.ipBlock)) {
       return;
     }
 
-    matchingPods.forEach((pod) => {
-      addEdge(context, 'applies-to', networkPolicyId, id(context.clusterId, namespace, 'Pod', pod.metadata?.name || ''), 'NetworkPolicy.spec.podSelector', 'inferred');
+    const podSelector = peer.podSelector;
+    const namespaceSelector = peer.namespaceSelector;
+    if (!isRecord(podSelector) && !isRecord(namespaceSelector)) {
+      return;
+    }
+    if (selectorHasExpressions(podSelector) || selectorHasExpressions(namespaceSelector)) {
+      return;
+    }
+
+    const matchingNamespaces = matchingNetworkPolicyNamespaces(namespaces, policyNamespace, namespaceSelector);
+    if (isRecord(podSelector)) {
+      pods
+        .filter((pod) => matchingNamespaces.has(pod.metadata?.namespace || '') && selectorMatchesLabels(selectorMatchLabels(podSelector), labels(pod)))
+        .forEach((pod) => {
+          addEdge(context, edgeType, networkPolicyId, id(context.clusterId, pod.metadata?.namespace || '', 'Pod', pod.metadata?.name || ''), sourceField, 'inferred');
+        });
+      return;
+    }
+
+    matchingNamespaces.forEach((namespace) => {
+      addEdge(context, edgeType, networkPolicyId, id(context.clusterId, '', 'Namespace', namespace), sourceField, 'inferred');
     });
   });
 }
@@ -411,9 +470,14 @@ function objectSummary(kind: ResourceKind, object: KubeObject): Record<string, s
     };
   }
   if (kind === 'NetworkPolicy') {
+    const policyTypes = networkPolicyTypes(object);
+    const intent = networkPolicyIntentSummary(object, policyTypes);
     return {
-      policyTypes: asStringArray(readAt(object, ['spec', 'policyTypes'])).join(',') || 'Ingress',
-      selector: selectorSummaryOrAll(readAt(object, ['spec', 'podSelector', 'matchLabels'])),
+      policyTypes: policyTypes.join(','),
+      selector: selectorSummaryOrAll(readAt(object, ['spec', 'podSelector'])),
+      ingress: intent.ingress,
+      egress: intent.egress,
+      ports: intent.ports,
     };
   }
   if (kind === 'Pod') {
@@ -583,8 +647,128 @@ function selectorSummary(value: unknown) {
   return isRecord(value) ? Object.keys(value).join(',') || '-' : '-';
 }
 
-function selectorSummaryOrAll(value: unknown) {
-  return isRecord(value) && Object.keys(value).length > 0 ? Object.keys(value).join(',') : 'all pods';
+function selectorSummaryOrAll(value: unknown, emptyLabel = 'all pods') {
+  const matchLabels = selectorMatchLabels(value);
+  const keys = Object.keys(matchLabels);
+  const expressions = asArray(readAt(value, ['matchExpressions'])).length;
+  if (keys.length === 0 && expressions === 0) {
+    return emptyLabel;
+  }
+  return [...keys, expressions > 0 ? `${expressions} expressions` : ''].filter(Boolean).join(',');
+}
+
+function namespaceRecords(namespaces: Set<string>, namespaceObjects: KubeObject[]): NamespaceRecord[] {
+  const labelsByNamespace = new Map(namespaceObjects.map((namespace) => [namespace.metadata?.name || '', labels(namespace)]));
+  return Array.from(namespaces)
+    .sort()
+    .map((name) => ({ name, labels: labelsByNamespace.get(name) || {} }));
+}
+
+function selectorMatchLabels(selector: unknown) {
+  const matchLabels = readAt(selector, ['matchLabels']);
+  return isRecord(matchLabels) ? stringRecord(matchLabels) : {};
+}
+
+function selectorHasExpressions(selector: unknown) {
+  return asArray(readAt(selector, ['matchExpressions'])).length > 0;
+}
+
+function matchingNetworkPolicyNamespaces(namespaces: NamespaceRecord[], policyNamespace: string, namespaceSelector: unknown) {
+  if (!isRecord(namespaceSelector)) {
+    return new Set([policyNamespace]);
+  }
+  const matchLabels = selectorMatchLabels(namespaceSelector);
+  return new Set(namespaces.filter((namespace) => selectorMatchesLabels(matchLabels, namespace.labels)).map((namespace) => namespace.name));
+}
+
+function networkPolicyTypes(object: KubeObject) {
+  const explicit = asStringArray(readAt(object, ['spec', 'policyTypes']));
+  if (explicit.length > 0) {
+    return uniqueStrings(explicit);
+  }
+
+  const types = ['Ingress'];
+  if (asArray(readAt(object, ['spec', 'egress'])).length > 0) {
+    types.push('Egress');
+  }
+  return types;
+}
+
+function networkPolicyIntentSummary(object: KubeObject, policyTypes: string[]) {
+  const ingressRules = asArray(readAt(object, ['spec', 'ingress']));
+  const egressRules = asArray(readAt(object, ['spec', 'egress']));
+  const ports = uniqueStrings([...rulePortSummaries(ingressRules), ...rulePortSummaries(egressRules)]);
+
+  return {
+    ingress: networkPolicyDirectionSummary(policyTypes.includes('Ingress'), ingressRules, 'from'),
+    egress: networkPolicyDirectionSummary(policyTypes.includes('Egress'), egressRules, 'to'),
+    ports: limitSummary(ports, 4) || '-',
+  };
+}
+
+function networkPolicyDirectionSummary(isIsolated: boolean, rules: Record<string, unknown>[], peerKey: 'from' | 'to') {
+  if (!isIsolated) {
+    return 'not isolated';
+  }
+  if (rules.length === 0) {
+    return 'deny all';
+  }
+
+  const peerValues = uniqueStrings(rules.flatMap((rule) => peerSummaries(asArray(rule[peerKey]))));
+  const portValues = uniqueStrings(rulePortSummaries(rules));
+  const peers = limitSummary(peerValues, 3) || 'all peers';
+  const ports = limitSummary(portValues, 3) || 'all ports';
+  return `${rules.length} rule${rules.length === 1 ? '' : 's'}: ${peers}; ${ports}`;
+}
+
+function peerSummaries(peers: Record<string, unknown>[]) {
+  if (peers.length === 0) {
+    return ['all peers'];
+  }
+  return peers.map((peer) => {
+    const parts: string[] = [];
+    const namespaceSelector = peer.namespaceSelector;
+    const podSelector = peer.podSelector;
+    const ipBlock = peer.ipBlock;
+    if (isRecord(namespaceSelector)) {
+      parts.push(`ns:${selectorSummaryOrAll(namespaceSelector, 'all namespaces')}`);
+    }
+    if (isRecord(podSelector)) {
+      parts.push(`pod:${selectorSummaryOrAll(podSelector)}`);
+    }
+    if (isRecord(ipBlock)) {
+      parts.push(`ip:${stringAt(ipBlock, ['cidr']) || 'cidr'}`);
+    }
+    return parts.join('+') || 'all peers';
+  });
+}
+
+function rulePortSummaries(rules: Record<string, unknown>[]) {
+  return rules.flatMap((rule) => {
+    const ports = asArray(rule.ports);
+    if (ports.length === 0) {
+      return [];
+    }
+    return ports.map((port) => {
+      const protocol = stringAt(port, ['protocol']) || 'TCP';
+      const value = readAt(port, ['port']);
+      const endPort = readAt(port, ['endPort']);
+      const portValue = typeof value === 'number' || typeof value === 'string' ? String(value) : '*';
+      const suffix = typeof endPort === 'number' ? `-${endPort}` : '';
+      return `${protocol}:${portValue}${suffix}`;
+    });
+  });
+}
+
+function limitSummary(values: string[], limit: number) {
+  if (values.length <= limit) {
+    return values.join(', ');
+  }
+  return `${values.slice(0, limit).join(', ')} +${values.length - limit}`;
+}
+
+function stringRecord(value: Record<string, unknown>) {
+  return Object.fromEntries(Object.entries(value).filter((entry): entry is [string, string] => typeof entry[1] === 'string'));
 }
 
 function isSnapshot(value: unknown): value is TopologySnapshot {

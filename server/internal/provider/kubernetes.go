@@ -105,6 +105,7 @@ func (p KubernetesProvider) Snapshot(ctx context.Context) (topology.Snapshot, er
 	podWarning := 0
 	serviceEndpointCounts := endpointCounts(endpointSlices)
 	mergeSelectorEndpointCounts(serviceEndpointCounts, services, pods)
+	namespaceIndex := namespaceRecords(namespaces)
 
 	for _, node := range nodes.Items {
 		if nodeReady(node.Status.Conditions) {
@@ -277,9 +278,14 @@ func (p KubernetesProvider) Snapshot(ctx context.Context) (topology.Snapshot, er
 	}
 
 	for _, networkPolicy := range networkPolicies.Items {
+		policyTypes := networkPolicyTypes(networkPolicy)
+		intent := networkPolicyIntentSummary(networkPolicy, policyTypes)
 		builder.addNode("NetworkPolicy", networkPolicy.Metadata.Namespace, networkPolicy.Metadata.Name, "healthy", networkPolicy.Metadata.Labels, map[string]interface{}{
-			"policyTypes": strings.Join(networkPolicy.Spec.PolicyTypes, ","),
-			"selector":    selectorSummary(networkPolicy.Spec.PodSelector.MatchLabels),
+			"policyTypes": strings.Join(policyTypes, ","),
+			"selector":    labelSelectorSummary(networkPolicy.Spec.PodSelector),
+			"ingress":     intent.ingress,
+			"egress":      intent.egress,
+			"ports":       intent.ports,
 		})
 	}
 
@@ -379,15 +385,28 @@ func (p KubernetesProvider) Snapshot(ctx context.Context) (topology.Snapshot, er
 	for _, networkPolicy := range networkPolicies.Items {
 		networkPolicyID := builder.nodeID("NetworkPolicy", networkPolicy.Metadata.Namespace, networkPolicy.Metadata.Name)
 		matches := 0
-		for _, pod := range pods.Items {
-			if pod.Metadata.Namespace != networkPolicy.Metadata.Namespace || !selectorMatchesLabels(networkPolicy.Spec.PodSelector.MatchLabels, pod.Metadata.Labels) {
-				continue
+		if !labelSelectorHasExpressions(&networkPolicy.Spec.PodSelector) {
+			for _, pod := range pods.Items {
+				if pod.Metadata.Namespace != networkPolicy.Metadata.Namespace || !selectorMatchesLabels(networkPolicy.Spec.PodSelector.MatchLabels, pod.Metadata.Labels) {
+					continue
+				}
+				matches++
+				builder.addEdge("applies-to", networkPolicyID, builder.nodeID("Pod", pod.Metadata.Namespace, pod.Metadata.Name), "NetworkPolicy.spec.podSelector", "inferred")
 			}
-			matches++
-			builder.addEdge("applies-to", networkPolicyID, builder.nodeID("Pod", pod.Metadata.Namespace, pod.Metadata.Name), "NetworkPolicy.spec.podSelector", "inferred")
 		}
 		if matches == 0 && networkPolicy.Metadata.Namespace != "" {
 			builder.addEdge("applies-to", networkPolicyID, builder.nodeID("Namespace", "", networkPolicy.Metadata.Namespace), "NetworkPolicy.spec.podSelector", "observed")
+		}
+		policyTypes := networkPolicyTypes(networkPolicy)
+		if containsString(policyTypes, "Ingress") {
+			for _, rule := range networkPolicy.Spec.Ingress {
+				builder.addNetworkPolicyPeerEdges(networkPolicyID, networkPolicy.Metadata.Namespace, rule.From, "allows-ingress", "NetworkPolicy.spec.ingress.from", pods, namespaceIndex)
+			}
+		}
+		if containsString(policyTypes, "Egress") {
+			for _, rule := range networkPolicy.Spec.Egress {
+				builder.addNetworkPolicyPeerEdges(networkPolicyID, networkPolicy.Metadata.Namespace, rule.To, "allows-egress", "NetworkPolicy.spec.egress.to", pods, namespaceIndex)
+			}
 		}
 	}
 
@@ -627,6 +646,35 @@ func (b *graphBuilder) addOwnerEdge(kind string, meta metadata) {
 	for _, owner := range meta.OwnerReferences {
 		ownerID := b.nodeID(owner.Kind, meta.Namespace, owner.Name)
 		b.addEdge("owns", ownerID, childID, "metadata.ownerReferences", "observed")
+	}
+}
+
+func (b *graphBuilder) addNetworkPolicyPeerEdges(networkPolicyID string, policyNamespace string, peers []networkPolicyPeer, edgeType string, sourceField string, pods podList, namespaces []namespaceRecord) {
+	for _, peer := range peers {
+		if peer.IPBlock != nil && peer.PodSelector == nil && peer.NamespaceSelector == nil {
+			continue
+		}
+		if peer.PodSelector == nil && peer.NamespaceSelector == nil {
+			continue
+		}
+		if labelSelectorHasExpressions(peer.PodSelector) || labelSelectorHasExpressions(peer.NamespaceSelector) {
+			continue
+		}
+
+		matchingNamespaces := matchingNetworkPolicyNamespaces(namespaces, policyNamespace, peer.NamespaceSelector)
+		if peer.PodSelector != nil {
+			for _, pod := range pods.Items {
+				if !matchingNamespaces[pod.Metadata.Namespace] || !selectorMatchesLabels(peer.PodSelector.MatchLabels, pod.Metadata.Labels) {
+					continue
+				}
+				b.addEdge(edgeType, networkPolicyID, b.nodeID("Pod", pod.Metadata.Namespace, pod.Metadata.Name), sourceField, "inferred")
+			}
+			continue
+		}
+
+		for namespace := range matchingNamespaces {
+			b.addEdge(edgeType, networkPolicyID, b.nodeID("Namespace", "", namespace), sourceField, "inferred")
+		}
 	}
 }
 
@@ -1068,15 +1116,58 @@ type networkPolicyList struct {
 }
 
 type networkPolicyResource struct {
-	Metadata metadata `json:"metadata"`
-	Spec     struct {
-		PodSelector labelSelector `json:"podSelector"`
-		PolicyTypes []string      `json:"policyTypes"`
-	} `json:"spec"`
+	Metadata metadata          `json:"metadata"`
+	Spec     networkPolicySpec `json:"spec"`
+}
+
+type networkPolicySpec struct {
+	PodSelector labelSelector              `json:"podSelector"`
+	PolicyTypes []string                   `json:"policyTypes"`
+	Ingress     []networkPolicyIngressRule `json:"ingress"`
+	Egress      []networkPolicyEgressRule  `json:"egress"`
+}
+
+type networkPolicyIngressRule struct {
+	From  []networkPolicyPeer `json:"from"`
+	Ports []networkPolicyPort `json:"ports"`
+}
+
+type networkPolicyEgressRule struct {
+	To    []networkPolicyPeer `json:"to"`
+	Ports []networkPolicyPort `json:"ports"`
+}
+
+type networkPolicyPeer struct {
+	PodSelector       *labelSelector        `json:"podSelector"`
+	NamespaceSelector *labelSelector        `json:"namespaceSelector"`
+	IPBlock           *networkPolicyIPBlock `json:"ipBlock"`
+}
+
+type networkPolicyIPBlock struct {
+	CIDR   string   `json:"cidr"`
+	Except []string `json:"except"`
+}
+
+type networkPolicyPort struct {
+	Protocol string      `json:"protocol"`
+	Port     interface{} `json:"port"`
+	EndPort  *int        `json:"endPort"`
 }
 
 type labelSelector struct {
-	MatchLabels map[string]string `json:"matchLabels"`
+	MatchLabels      map[string]string              `json:"matchLabels"`
+	MatchExpressions []labelSelectorMatchExpression `json:"matchExpressions"`
+}
+
+type labelSelectorMatchExpression struct {
+	Key      string   `json:"key"`
+	Operator string   `json:"operator"`
+	Values   []string `json:"values"`
+}
+
+type namespaceRecord struct {
+	name   string
+	labels map[string]string
 }
 
 type endpointCounter struct {
@@ -1397,6 +1488,167 @@ func selectorMatchesLabels(selector map[string]string, labels map[string]string)
 	return true
 }
 
+func namespaceRecords(namespaces namespaceList) []namespaceRecord {
+	records := make([]namespaceRecord, 0, len(namespaces.Items))
+	for _, namespace := range namespaces.Items {
+		records = append(records, namespaceRecord{
+			name:   namespace.Metadata.Name,
+			labels: labelsOrEmpty(namespace.Metadata.Labels),
+		})
+	}
+	return records
+}
+
+func matchingNetworkPolicyNamespaces(namespaces []namespaceRecord, policyNamespace string, namespaceSelector *labelSelector) map[string]bool {
+	if namespaceSelector == nil {
+		return map[string]bool{policyNamespace: true}
+	}
+
+	matches := map[string]bool{}
+	for _, namespace := range namespaces {
+		if selectorMatchesLabels(namespaceSelector.MatchLabels, namespace.labels) {
+			matches[namespace.name] = true
+		}
+	}
+	return matches
+}
+
+func labelSelectorHasExpressions(selector *labelSelector) bool {
+	return selector != nil && len(selector.MatchExpressions) > 0
+}
+
+func networkPolicyTypes(policy networkPolicyResource) []string {
+	if len(policy.Spec.PolicyTypes) > 0 {
+		return uniqueStrings(policy.Spec.PolicyTypes)
+	}
+
+	types := []string{"Ingress"}
+	if len(policy.Spec.Egress) > 0 {
+		types = append(types, "Egress")
+	}
+	return types
+}
+
+type networkPolicyIntent struct {
+	ingress string
+	egress  string
+	ports   string
+}
+
+func networkPolicyIntentSummary(policy networkPolicyResource, policyTypes []string) networkPolicyIntent {
+	ports := uniqueStrings(append(networkPolicyIngressPortSummaries(policy.Spec.Ingress), networkPolicyEgressPortSummaries(policy.Spec.Egress)...))
+	return networkPolicyIntent{
+		ingress: networkPolicyDirectionSummary(containsString(policyTypes, "Ingress"), len(policy.Spec.Ingress), ingressPeers(policy.Spec.Ingress), networkPolicyIngressPortSummaries(policy.Spec.Ingress)),
+		egress:  networkPolicyDirectionSummary(containsString(policyTypes, "Egress"), len(policy.Spec.Egress), egressPeers(policy.Spec.Egress), networkPolicyEgressPortSummaries(policy.Spec.Egress)),
+		ports:   limitSummary(ports, 4, "-"),
+	}
+}
+
+func networkPolicyDirectionSummary(isIsolated bool, ruleCount int, peerValues []string, portValues []string) string {
+	if !isIsolated {
+		return "not isolated"
+	}
+	if ruleCount == 0 {
+		return "deny all"
+	}
+
+	peers := limitSummary(uniqueStrings(peerValues), 3, "all peers")
+	ports := limitSummary(uniqueStrings(portValues), 3, "all ports")
+	return fmt.Sprintf("%d rule%s: %s; %s", ruleCount, pluralSuffix(ruleCount), peers, ports)
+}
+
+func ingressPeers(rules []networkPolicyIngressRule) []string {
+	if len(rules) == 0 {
+		return nil
+	}
+	values := []string{}
+	for _, rule := range rules {
+		values = append(values, peerSummaries(rule.From)...)
+	}
+	return values
+}
+
+func egressPeers(rules []networkPolicyEgressRule) []string {
+	if len(rules) == 0 {
+		return nil
+	}
+	values := []string{}
+	for _, rule := range rules {
+		values = append(values, peerSummaries(rule.To)...)
+	}
+	return values
+}
+
+func peerSummaries(peers []networkPolicyPeer) []string {
+	if len(peers) == 0 {
+		return []string{"all peers"}
+	}
+
+	values := []string{}
+	for _, peer := range peers {
+		parts := []string{}
+		if peer.NamespaceSelector != nil {
+			parts = append(parts, "ns:"+labelSelectorSummaryWithFallback(*peer.NamespaceSelector, "all namespaces"))
+		}
+		if peer.PodSelector != nil {
+			parts = append(parts, "pod:"+labelSelectorSummary(*peer.PodSelector))
+		}
+		if peer.IPBlock != nil {
+			cidr := peer.IPBlock.CIDR
+			if cidr == "" {
+				cidr = "cidr"
+			}
+			parts = append(parts, "ip:"+cidr)
+		}
+		if len(parts) == 0 {
+			values = append(values, "all peers")
+			continue
+		}
+		values = append(values, strings.Join(parts, "+"))
+	}
+	return values
+}
+
+func networkPolicyIngressPortSummaries(rules []networkPolicyIngressRule) []string {
+	values := []string{}
+	for _, rule := range rules {
+		values = append(values, networkPolicyPortSummaries(rule.Ports)...)
+	}
+	return values
+}
+
+func networkPolicyEgressPortSummaries(rules []networkPolicyEgressRule) []string {
+	values := []string{}
+	for _, rule := range rules {
+		values = append(values, networkPolicyPortSummaries(rule.Ports)...)
+	}
+	return values
+}
+
+func networkPolicyPortSummaries(ports []networkPolicyPort) []string {
+	values := []string{}
+	for _, port := range ports {
+		protocol := port.Protocol
+		if protocol == "" {
+			protocol = "TCP"
+		}
+		portValue := "*"
+		switch value := port.Port.(type) {
+		case string:
+			if value != "" {
+				portValue = value
+			}
+		case float64:
+			portValue = strconv.Itoa(int(value))
+		}
+		if port.EndPort != nil {
+			portValue = fmt.Sprintf("%s-%d", portValue, *port.EndPort)
+		}
+		values = append(values, protocol+":"+portValue)
+	}
+	return values
+}
+
 func readyContainers(statuses []containerStatus) int {
 	ready := 0
 	for _, status := range statuses {
@@ -1443,16 +1695,33 @@ func boolSummary(value *bool) string {
 	return "false"
 }
 
-func selectorSummary(selector map[string]string) string {
+func labelSelectorSummary(selector labelSelector) string {
+	return labelSelectorSummaryWithFallback(selector, "all pods")
+}
+
+func labelSelectorSummaryWithFallback(selector labelSelector, fallback string) string {
+	expressions := len(selector.MatchExpressions)
+	if len(selector.MatchLabels) == 0 && expressions == 0 {
+		return fallback
+	}
+
+	parts := selectorSummaryParts(selector.MatchLabels)
+	if expressions > 0 {
+		parts = append(parts, fmt.Sprintf("%d expressions", expressions))
+	}
+	return strings.Join(parts, ",")
+}
+
+func selectorSummaryParts(selector map[string]string) []string {
 	if len(selector) == 0 {
-		return "all pods"
+		return []string{}
 	}
 	keys := make([]string, 0, len(selector))
 	for key := range selector {
 		keys = append(keys, key)
 	}
 	sort.Strings(keys)
-	return strings.Join(keys, ",")
+	return keys
 }
 
 func age(timestamp string) string {
@@ -1506,6 +1775,32 @@ func uniqueStrings(values []string) []string {
 	}
 	sort.Strings(result)
 	return result
+}
+
+func containsString(values []string, target string) bool {
+	for _, value := range values {
+		if value == target {
+			return true
+		}
+	}
+	return false
+}
+
+func limitSummary(values []string, limit int, fallback string) string {
+	if len(values) == 0 {
+		return fallback
+	}
+	if len(values) <= limit {
+		return strings.Join(values, ", ")
+	}
+	return fmt.Sprintf("%s +%d", strings.Join(values[:limit], ", "), len(values)-limit)
+}
+
+func pluralSuffix(count int) string {
+	if count == 1 {
+		return ""
+	}
+	return "s"
 }
 
 func envOrDefault(key string, fallback string) string {

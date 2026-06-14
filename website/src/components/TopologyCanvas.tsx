@@ -100,6 +100,7 @@ const statusLegend = [
 
 const edgeLegend = [
   { label: '트래픽', color: '#007aff' },
+  { label: '정책 의도', color: '#00c7be' },
   { label: '소유', color: '#8e8e93' },
   { label: '런타임 참조', color: '#5856d6' },
 ];
@@ -618,7 +619,7 @@ function isSystemNamespace(namespace: string) {
 }
 
 function isTrafficEdge(edgeType: EdgeType) {
-  return edgeType === 'routes-to' || edgeType === 'service-endpoint' || edgeType === 'attaches-to';
+  return edgeType === 'routes-to' || edgeType === 'service-endpoint' || edgeType === 'attaches-to' || edgeType === 'allows-ingress' || edgeType === 'allows-egress';
 }
 
 function sortResources<T extends TopologyNode>(resources: T[]) {
