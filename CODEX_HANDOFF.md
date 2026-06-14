@@ -102,7 +102,8 @@ https://nebbixh.com/kuviewer
 
 3. 업로드 모드 강화
    - Job, CronJob, NetworkPolicy, HPA는 업로드/라이브 provider의 1차 지원 대상에 포함됐다.
-   - 다음 확장 후보는 Gateway/HTTPRoute, CRD discovery, 정책 영향도 상세 해석이다.
+   - Gateway/HTTPRoute는 Gateway API CRD가 있는 환경에서 optional 1차 지원 대상에 포함됐다.
+   - 다음 확장 후보는 CRD discovery, 정책 영향도 상세 해석, TLSRoute/TCPRoute/GRPCRoute다.
    - YAML 파싱 경고 UI를 더 친절하게 표시.
    - 업로드된 파일 묶음의 cluster/name metadata 입력 옵션 검토.
 

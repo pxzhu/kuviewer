@@ -355,6 +355,9 @@ function buildDisplayGraph(nodes: TopologyNode[], edges: TopologyEdge[], hideSys
       if (trafficNodeIds.has(edge.source) && ['scheduled-on', 'binds-storage', 'env-from', 'uses-service-account'].includes(edge.type)) {
         trafficNodeIds.add(edge.target);
       }
+      if (edge.type === 'attaches-to' && trafficNodeIds.has(edge.source)) {
+        trafficNodeIds.add(edge.target);
+      }
     });
 
     const trafficNodes = visibleNodes.filter((node) => trafficNodeIds.has(node.id));
@@ -372,7 +375,7 @@ function buildDisplayGraph(nodes: TopologyNode[], edges: TopologyEdge[], hideSys
 
     visibleNodes = visibleNodes.filter((node) => trafficNodeIds.has(node.id));
     visibleNodeIds = new Set(visibleNodes.map((node) => node.id));
-    visibleEdges = visibleEdges.filter((edge) => visibleNodeIds.has(edge.source) && visibleNodeIds.has(edge.target) && (isTrafficEdge(edge.type) || ['owns', 'scheduled-on', 'binds-storage', 'env-from', 'uses-service-account', 'targets-scale', 'applies-to'].includes(edge.type)));
+    visibleEdges = visibleEdges.filter((edge) => visibleNodeIds.has(edge.source) && visibleNodeIds.has(edge.target) && (isTrafficEdge(edge.type) || ['owns', 'scheduled-on', 'binds-storage', 'env-from', 'uses-service-account', 'targets-scale', 'applies-to', 'attaches-to'].includes(edge.type)));
   }
 
   return { nodes: visibleNodes, edges: visibleEdges };
@@ -570,7 +573,7 @@ function columnForKind(kind: ResourceKind): LayoutColumn {
   if (kind === 'Cluster' || kind === 'Namespace') {
     return 'scope';
   }
-  if (kind === 'Ingress') {
+  if (kind === 'Ingress' || kind === 'Gateway' || kind === 'HTTPRoute') {
     return 'ingress';
   }
   if (kind === 'Service' || kind === 'EndpointSlice') {
@@ -615,7 +618,7 @@ function isSystemNamespace(namespace: string) {
 }
 
 function isTrafficEdge(edgeType: EdgeType) {
-  return edgeType === 'routes-to' || edgeType === 'service-endpoint';
+  return edgeType === 'routes-to' || edgeType === 'service-endpoint' || edgeType === 'attaches-to';
 }
 
 function sortResources<T extends TopologyNode>(resources: T[]) {

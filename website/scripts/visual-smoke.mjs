@@ -402,6 +402,34 @@ spec:
                 port:
                   number: 80
 ---
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: checkout-gateway
+  namespace: checkout
+spec:
+  gatewayClassName: example
+  listeners:
+    - name: http
+      protocol: HTTP
+      port: 80
+      hostname: checkout.local
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: checkout-route
+  namespace: checkout
+spec:
+  parentRefs:
+    - name: checkout-gateway
+  hostnames:
+    - checkout.local
+  rules:
+    - backendRefs:
+        - name: checkout-api
+          port: 80
+---
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:

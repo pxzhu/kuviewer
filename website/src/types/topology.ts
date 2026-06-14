@@ -14,6 +14,8 @@ export type ResourceKind =
   | 'Service'
   | 'EndpointSlice'
   | 'Ingress'
+  | 'Gateway'
+  | 'HTTPRoute'
   | 'NetworkPolicy'
   | 'ConfigMap'
   | 'Secret'
@@ -34,7 +36,8 @@ export type EdgeType =
   | 'binds-storage'
   | 'uses-service-account'
   | 'targets-scale'
-  | 'applies-to';
+  | 'applies-to'
+  | 'attaches-to';
 
 export interface TopologyNode {
   id: string;

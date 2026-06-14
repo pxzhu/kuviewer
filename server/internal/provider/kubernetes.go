@@ -61,6 +61,8 @@ func (p KubernetesProvider) Snapshot(ctx context.Context) (topology.Snapshot, er
 	cronJobs := cronJobList{}
 	hpas := horizontalPodAutoscalerList{}
 	ingresses := ingressList{}
+	gateways := gatewayList{}
+	httpRoutes := httpRouteList{}
 	networkPolicies := networkPolicyList{}
 	pvcs := pvcList{}
 	pvs := pvList{}
@@ -90,6 +92,8 @@ func (p KubernetesProvider) Snapshot(ctx context.Context) (topology.Snapshot, er
 	_ = p.client.getJSON(ctx, "/apis/batch/v1/cronjobs", &cronJobs, true)
 	_ = p.client.getJSON(ctx, "/apis/autoscaling/v2/horizontalpodautoscalers", &hpas, true)
 	_ = p.client.getJSON(ctx, "/apis/networking.k8s.io/v1/ingresses", &ingresses, true)
+	_ = p.client.getJSON(ctx, "/apis/gateway.networking.k8s.io/v1/gateways", &gateways, true)
+	_ = p.client.getJSON(ctx, "/apis/gateway.networking.k8s.io/v1/httproutes", &httpRoutes, true)
 	_ = p.client.getJSON(ctx, "/apis/networking.k8s.io/v1/networkpolicies", &networkPolicies, true)
 	_ = p.client.getJSON(ctx, "/api/v1/persistentvolumeclaims", &pvcs, true)
 	_ = p.client.getJSON(ctx, "/api/v1/persistentvolumes", &pvs, true)
@@ -256,6 +260,22 @@ func (p KubernetesProvider) Snapshot(ctx context.Context) (topology.Snapshot, er
 		})
 	}
 
+	for _, gateway := range gateways.Items {
+		builder.addNode("Gateway", gateway.Metadata.Namespace, gateway.Metadata.Name, "healthy", gateway.Metadata.Labels, map[string]interface{}{
+			"class":     gateway.Spec.GatewayClassName,
+			"listeners": len(gateway.Spec.Listeners),
+			"hosts":     strings.Join(gatewayHosts(gateway), ", "),
+		})
+	}
+
+	for _, httpRoute := range httpRoutes.Items {
+		builder.addNode("HTTPRoute", httpRoute.Metadata.Namespace, httpRoute.Metadata.Name, "healthy", httpRoute.Metadata.Labels, map[string]interface{}{
+			"hosts":    strings.Join(httpRoute.Spec.Hostnames, ", "),
+			"rules":    len(httpRoute.Spec.Rules),
+			"backends": len(httpRouteBackendRefs(httpRoute)),
+		})
+	}
+
 	for _, networkPolicy := range networkPolicies.Items {
 		builder.addNode("NetworkPolicy", networkPolicy.Metadata.Namespace, networkPolicy.Metadata.Name, "healthy", networkPolicy.Metadata.Labels, map[string]interface{}{
 			"policyTypes": strings.Join(networkPolicy.Spec.PolicyTypes, ","),
@@ -330,6 +350,18 @@ func (p KubernetesProvider) Snapshot(ctx context.Context) (topology.Snapshot, er
 		ingressID := builder.nodeID("Ingress", ingress.Metadata.Namespace, ingress.Metadata.Name)
 		for _, serviceName := range ingressServiceNames(ingress) {
 			builder.addEdge("routes-to", ingressID, builder.nodeID("Service", ingress.Metadata.Namespace, serviceName), "Ingress.spec.rules.http.paths.backend.service", "observed")
+		}
+	}
+
+	for _, httpRoute := range httpRoutes.Items {
+		httpRouteID := builder.nodeID("HTTPRoute", httpRoute.Metadata.Namespace, httpRoute.Metadata.Name)
+		for _, parentRef := range httpRouteGatewayParentRefs(httpRoute) {
+			builder.ensureReferenceNode("Gateway", parentRef.Namespace, parentRef.Name)
+			builder.addEdge("attaches-to", httpRouteID, builder.nodeID("Gateway", parentRef.Namespace, parentRef.Name), "HTTPRoute.spec.parentRefs", "observed")
+		}
+		for _, backendRef := range httpRouteBackendRefs(httpRoute) {
+			builder.ensureReferenceNode("Service", backendRef.Namespace, backendRef.Name)
+			builder.addEdge("routes-to", httpRouteID, builder.nodeID("Service", backendRef.Namespace, backendRef.Name), "HTTPRoute.spec.rules.backendRefs", "observed")
 		}
 	}
 
@@ -611,6 +643,8 @@ func (b *graphBuilder) nextPosition(kind string) (int, int) {
 		"Namespace":               280,
 		"Node":                    520,
 		"Ingress":                 720,
+		"Gateway":                 720,
+		"HTTPRoute":               840,
 		"Deployment":              760,
 		"ReplicaSet":              900,
 		"StatefulSet":             760,
@@ -944,6 +978,47 @@ type ingressBackend struct {
 	} `json:"service"`
 }
 
+type gatewayList struct {
+	Items []gatewayResource `json:"items"`
+}
+
+type gatewayResource struct {
+	Metadata metadata `json:"metadata"`
+	Spec     struct {
+		GatewayClassName string `json:"gatewayClassName"`
+		Listeners        []struct {
+			Name     string `json:"name"`
+			Protocol string `json:"protocol"`
+			Port     int    `json:"port"`
+			Hostname string `json:"hostname"`
+		} `json:"listeners"`
+	} `json:"spec"`
+}
+
+type httpRouteList struct {
+	Items []httpRouteResource `json:"items"`
+}
+
+type httpRouteResource struct {
+	Metadata metadata `json:"metadata"`
+	Spec     struct {
+		Hostnames  []string           `json:"hostnames"`
+		ParentRefs []gatewayReference `json:"parentRefs"`
+		Rules      []httpRouteRule    `json:"rules"`
+	} `json:"spec"`
+}
+
+type gatewayReference struct {
+	Group     string `json:"group"`
+	Kind      string `json:"kind"`
+	Namespace string `json:"namespace"`
+	Name      string `json:"name"`
+}
+
+type httpRouteRule struct {
+	BackendRefs []gatewayReference `json:"backendRefs"`
+}
+
 type pvcList struct {
 	Items []pvcResource `json:"items"`
 }
@@ -1252,6 +1327,58 @@ func ingressHosts(ingress ingressResource) []string {
 	return uniqueStrings(hosts)
 }
 
+func gatewayHosts(gateway gatewayResource) []string {
+	hosts := []string{}
+	for _, listener := range gateway.Spec.Listeners {
+		if listener.Hostname != "" {
+			hosts = append(hosts, listener.Hostname)
+		}
+	}
+	return uniqueStrings(hosts)
+}
+
+func httpRouteGatewayParentRefs(httpRoute httpRouteResource) []gatewayReference {
+	refs := []gatewayReference{}
+	for _, ref := range httpRoute.Spec.ParentRefs {
+		if ref.Name == "" {
+			continue
+		}
+		if ref.Kind != "" && ref.Kind != "Gateway" {
+			continue
+		}
+		if ref.Group != "" && ref.Group != "gateway.networking.k8s.io" {
+			continue
+		}
+		if ref.Namespace == "" {
+			ref.Namespace = httpRoute.Metadata.Namespace
+		}
+		refs = append(refs, ref)
+	}
+	return uniqueGatewayReferences(refs)
+}
+
+func httpRouteBackendRefs(httpRoute httpRouteResource) []gatewayReference {
+	refs := []gatewayReference{}
+	for _, rule := range httpRoute.Spec.Rules {
+		for _, ref := range rule.BackendRefs {
+			if ref.Name == "" {
+				continue
+			}
+			if ref.Kind != "" && ref.Kind != "Service" {
+				continue
+			}
+			if ref.Group != "" {
+				continue
+			}
+			if ref.Namespace == "" {
+				ref.Namespace = httpRoute.Metadata.Namespace
+			}
+			refs = append(refs, ref)
+		}
+	}
+	return uniqueGatewayReferences(refs)
+}
+
 func labelsMatch(selector map[string]string, labels map[string]string) bool {
 	for key, value := range selector {
 		if labels[key] != value {
@@ -1351,6 +1478,20 @@ func summaryOrEmpty(summary map[string]interface{}) map[string]interface{} {
 		return map[string]interface{}{}
 	}
 	return summary
+}
+
+func uniqueGatewayReferences(values []gatewayReference) []gatewayReference {
+	seen := map[string]bool{}
+	result := []gatewayReference{}
+	for _, value := range values {
+		key := value.Namespace + "/" + value.Name
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		result = append(result, value)
+	}
+	return result
 }
 
 func uniqueStrings(values []string) []string {

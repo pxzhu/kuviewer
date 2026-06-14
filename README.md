@@ -74,7 +74,7 @@ The default UI source is `Upload YAML`. It accepts:
 - `.zip` archives containing YAML or JSON manifests
 - exported Kuviewer topology JSON from the `Export` button
 
-The parser builds the same topology contract as the live connector. It infers relationships from Kubernetes fields commonly visible in `kubectl get ... -o yaml`, including owner references, Ingress backends, Service selectors, Pod node scheduling, ServiceAccount use, ConfigMap/Secret env references, mounted volumes, PVC/PV bindings, and StorageClass references. Secret values are never decoded or displayed; uploaded Secret summaries show type/key count only.
+The parser builds the same topology contract as the live connector. It infers relationships from Kubernetes fields commonly visible in `kubectl get ... -o yaml`, including owner references, Ingress and HTTPRoute backends, HTTPRoute parent Gateways, Service selectors, Pod node scheduling, ServiceAccount use, ConfigMap/Secret env references, mounted volumes, PVC/PV bindings, and StorageClass references. Secret values are never decoded or displayed; uploaded Secret summaries show type/key count only.
 
 ## Local API server
 
@@ -165,6 +165,8 @@ Supported snapshot resources in the first provider:
 - CronJob
 - HorizontalPodAutoscaler
 - Ingress
+- Gateway
+- HTTPRoute
 - NetworkPolicy
 - PersistentVolume
 - PersistentVolumeClaim
@@ -190,10 +192,17 @@ It creates sample namespaces with real Kubernetes objects:
 - Job, CronJob, HorizontalPodAutoscaler, and NetworkPolicy resources for expanded topology validation
 - ConfigMap, Secret reference, ServiceAccount, PVC, PV, and StorageClass relationships
 
+Gateway API resources are optional because they require Gateway API CRDs. Apply [deploy/sample-infra/gateway-api-demo.yaml](/Users/pxzhu/vscode/kuviewer/deploy/sample-infra/gateway-api-demo.yaml) only on clusters where `gateway.networking.k8s.io/v1` is installed:
+
+```bash
+kubectl apply -f deploy/sample-infra/gateway-api-demo.yaml
+```
+
 Remove it when done:
 
 ```bash
-kubectl delete namespace kuviewer-demo kuviewer-commerce kuviewer-observability
+kubectl delete namespace kuviewer-demo kuviewer-commerce kuviewer-observability --ignore-not-found
+kubectl delete namespace kuviewer-gateway-demo --ignore-not-found
 ```
 
 Do not commit real tokens, kubeconfigs, private keys, Kubernetes Secret values, or cloud credentials.

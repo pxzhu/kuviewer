@@ -79,6 +79,8 @@ export const mockTopology: TopologySnapshot = {
 
     node(aks, 'Namespace', '', 'edge', 'healthy', { team: 'edge' }, { workloads: 2, services: 2 }),
     node(aks, 'Ingress', 'edge', 'public-edge', 'healthy', { app: 'edge-gateway' }, { host: 'api.example.com', tls: true }),
+    node(aks, 'Gateway', 'edge', 'public-gateway', 'healthy', { app: 'edge-gateway' }, { class: 'azure-alb', listeners: 1, hosts: 'api.example.com' }),
+    node(aks, 'HTTPRoute', 'edge', 'edge-api', 'healthy', { app: 'edge-gateway' }, { hosts: 'api.example.com', rules: 1, backends: 1 }),
     node(aks, 'Service', 'edge', 'edge-gateway', 'healthy', { app: 'edge-gateway' }, { type: 'LoadBalancer', port: 443 }),
     node(aks, 'Deployment', 'edge', 'edge-gateway', 'healthy', { app: 'edge-gateway' }, { replicas: '2/2' }),
     node(aks, 'Pod', 'edge', 'edge-gateway-a', 'healthy', { app: 'edge-gateway' }, { ready: true, restarts: 0, node: 'aks-node-a' }),
@@ -153,6 +155,8 @@ export const mockTopology: TopologySnapshot = {
     schedule(local, 'observability', 'node-agent-b', 'worker-b'),
 
     route(aks, 'edge', 'Ingress', 'public-edge', 'edge', 'Service', 'edge-gateway'),
+    ref(aks, 'edge', 'HTTPRoute', 'edge-api', 'edge', 'Gateway', 'public-gateway', 'attaches-to', 'HTTPRoute.spec.parentRefs'),
+    ref(aks, 'edge', 'HTTPRoute', 'edge-api', 'edge', 'Service', 'edge-gateway', 'routes-to', 'HTTPRoute.spec.rules.backendRefs'),
     endpoint(aks, 'edge', 'Service', 'edge-gateway', 'edge', 'Pod', 'edge-gateway-a'),
     endpoint(aks, 'edge', 'Service', 'edge-gateway', 'edge', 'Pod', 'edge-gateway-b'),
     owns(aks, 'edge', 'Deployment', 'edge-gateway', 'edge', 'Pod', 'edge-gateway-a'),
