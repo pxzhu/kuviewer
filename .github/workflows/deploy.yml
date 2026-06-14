@@ -52,7 +52,12 @@ jobs:
 
       - name: Deploy on server
         run: |
-          ssh -i ~/.ssh/deploy_key.pem -o IdentitiesOnly=yes -p "${{ secrets.SERVER_PORT }}" \
+          ssh -i ~/.ssh/deploy_key.pem \
+            -o IdentitiesOnly=yes \
+            -o ServerAliveInterval=30 \
+            -o ServerAliveCountMax=20 \
+            -o TCPKeepAlive=yes \
+            -p "${{ secrets.SERVER_PORT }}" \
             "${{ secrets.SERVER_FUSER }}@${{ secrets.SERVER_FHOST }}" \
             "set -e
              DEPLOY_PATH='${{ env.DEPLOY_PATH }}'
