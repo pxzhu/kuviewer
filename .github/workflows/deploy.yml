@@ -19,7 +19,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: kuviewer-production-deploy
+  group: kuviewer-production-image-deploy
   cancel-in-progress: true
 
 jobs:
