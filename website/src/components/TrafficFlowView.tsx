@@ -48,7 +48,7 @@ export function TrafficFlowView({ nodes, edges, visibleNodeIds, selectedNodeId, 
       <div className="flex items-center justify-between border-b border-[rgba(60,60,67,0.12)] px-4 py-3">
         <div>
           <h2 className="text-sm font-semibold text-[#1d1d1f]">트래픽 흐름</h2>
-          <p className="ku-meta mt-1">Ingress/Service spec 및 EndpointSlice 상태에서 추론한 YAML 기반 요청 경로</p>
+          <p className="ku-meta mt-1">Ingress/Gateway API/Service spec 및 EndpointSlice 상태에서 추론한 YAML 기반 요청 경로</p>
         </div>
         <div className="ku-chip">
           <Workflow size={16} aria-hidden="true" />
@@ -192,7 +192,7 @@ function buildTrafficFlows(nodes: TopologyNode[], edges: TopologyEdge[]): Traffi
           ingress,
           service,
           dependencies: [],
-          evidenceEdges: [routeEdge],
+          evidenceEdges: [...gatewayEvidenceEdges(routeEdge.source, edges), routeEdge],
           issue: 'Service에 표시 가능한 EndpointSlice 대상 또는 selector와 일치하는 Pod가 없습니다.',
           nodeMap,
         }));
@@ -216,7 +216,7 @@ function buildTrafficFlows(nodes: TopologyNode[], edges: TopologyEdge[]): Traffi
           pod,
           node: targetNode(pod, edges, nodeMap),
           dependencies: podDependencies(pod, edges, nodeMap),
-          evidenceEdges: [routeEdge, endpointEdge, ...podEvidenceEdges(pod, edges)],
+          evidenceEdges: [...gatewayEvidenceEdges(routeEdge.source, edges), routeEdge, endpointEdge, ...podEvidenceEdges(pod, edges)],
           nodeMap,
         }));
       });
@@ -344,6 +344,10 @@ function podEvidenceEdges(pod: TopologyNode, edges: TopologyEdge[]) {
     .filter(Boolean);
 }
 
+function gatewayEvidenceEdges(routeSourceId: string, edges: TopologyEdge[]) {
+  return edges.filter((edge) => edge.source === routeSourceId && edge.type === 'attaches-to');
+}
+
 function edgeEvidence(edges: TopologyEdge[], nodeMap: Map<string, TopologyNode>) {
   const seen = new Set<string>();
   const evidence: FlowEvidence[] = [];
@@ -385,7 +389,10 @@ function confidenceLabel(confidence: TopologyEdge['confidence']) {
 
 function relationLabel(edgeType: TopologyEdge['type']) {
   if (edgeType === 'routes-to') {
-    return 'Ingress 백엔드';
+    return '라우팅 백엔드';
+  }
+  if (edgeType === 'attaches-to') {
+    return 'Gateway 연결';
   }
   if (edgeType === 'service-endpoint') {
     return 'Service 엔드포인트';

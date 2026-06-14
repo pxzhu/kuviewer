@@ -146,6 +146,11 @@ rules:
       - ingresses
       - networkpolicies
     verbs: ["get", "list"]
+  - apiGroups: ["gateway.networking.k8s.io"]
+    resources:
+      - gateways
+      - httproutes
+    verbs: ["get", "list"]
   - apiGroups: ["storage.k8s.io"]
     resources:
       - storageclasses

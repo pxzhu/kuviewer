@@ -51,6 +51,8 @@ const supportedKinds = new Set<ResourceKind>([
   'Service',
   'EndpointSlice',
   'Ingress',
+  'Gateway',
+  'HTTPRoute',
   'NetworkPolicy',
   'ConfigMap',
   'Secret',
@@ -205,6 +207,16 @@ function addObjectEdges(context: BuildContext, object: KubeObject) {
     ingressBackends(object).forEach((serviceName) => {
       ensureReferenceNode(context, 'Service', namespace, serviceName);
       addEdge(context, 'routes-to', objectId, id(context.clusterId, namespace, 'Service', serviceName), 'Ingress.spec.rules.http.paths.backend.service', 'observed');
+    });
+  }
+  if (kind === 'HTTPRoute') {
+    httpRouteParentGateways(object, namespace).forEach((gatewayRef) => {
+      ensureReferenceNode(context, 'Gateway', gatewayRef.namespace, gatewayRef.name);
+      addEdge(context, 'attaches-to', objectId, id(context.clusterId, gatewayRef.namespace, 'Gateway', gatewayRef.name), 'HTTPRoute.spec.parentRefs', 'observed');
+    });
+    httpRouteBackendServices(object, namespace).forEach((serviceRef) => {
+      ensureReferenceNode(context, 'Service', serviceRef.namespace, serviceRef.name);
+      addEdge(context, 'routes-to', objectId, id(context.clusterId, serviceRef.namespace, 'Service', serviceRef.name), 'HTTPRoute.spec.rules.backendRefs', 'observed');
     });
   }
   if (kind === 'HorizontalPodAutoscaler') {
@@ -413,6 +425,20 @@ function objectSummary(kind: ResourceKind, object: KubeObject): Record<string, s
   if (kind === 'Ingress') {
     return { rules: asArray(readAt(object, ['spec', 'rules'])).length, tls: asArray(readAt(object, ['spec', 'tls'])).length > 0 };
   }
+  if (kind === 'Gateway') {
+    return {
+      class: stringAt(object, ['spec', 'gatewayClassName']) || '-',
+      listeners: asArray(readAt(object, ['spec', 'listeners'])).length,
+      hosts: gatewayHosts(object).join(',') || '-',
+    };
+  }
+  if (kind === 'HTTPRoute') {
+    return {
+      hosts: asStringArray(readAt(object, ['spec', 'hostnames'])).join(',') || '-',
+      rules: asArray(readAt(object, ['spec', 'rules'])).length,
+      backends: httpRouteBackendServices(object, object.metadata?.namespace || '').length,
+    };
+  }
   if (kind === 'PersistentVolumeClaim') {
     return { storage: stringAt(object, ['spec', 'resources', 'requests', 'storage']) || '-', storageClass: stringAt(object, ['spec', 'storageClassName']) || '-' };
   }
@@ -468,6 +494,43 @@ function ingressBackends(object: KubeObject) {
     services.add(defaultBackend);
   }
   return Array.from(services);
+}
+
+function httpRouteParentGateways(object: KubeObject, namespace: string) {
+  return asArray(readAt(object, ['spec', 'parentRefs']))
+    .filter((parentRef) => {
+      const kind = stringAt(parentRef, ['kind']);
+      const group = stringAt(parentRef, ['group']);
+      return (!kind || kind === 'Gateway') && (!group || group === 'gateway.networking.k8s.io');
+    })
+    .map((parentRef) => ({
+      name: stringAt(parentRef, ['name']),
+      namespace: stringAt(parentRef, ['namespace']) || namespace,
+    }))
+    .filter((parentRef) => parentRef.name);
+}
+
+function httpRouteBackendServices(object: KubeObject, namespace: string) {
+  const services: Array<{ name: string; namespace: string }> = [];
+  asArray(readAt(object, ['spec', 'rules'])).forEach((rule) => {
+    asArray(readAt(rule, ['backendRefs'])).forEach((backendRef) => {
+      const kind = stringAt(backendRef, ['kind']);
+      const group = stringAt(backendRef, ['group']);
+      const name = stringAt(backendRef, ['name']);
+      if (name && (!kind || kind === 'Service') && !group) {
+        services.push({ name, namespace: stringAt(backendRef, ['namespace']) || namespace });
+      }
+    });
+  });
+  return uniqueRefs(services);
+}
+
+function gatewayHosts(object: KubeObject) {
+  return uniqueStrings(
+    asArray(readAt(object, ['spec', 'listeners']))
+      .map((listener) => stringAt(listener, ['hostname']))
+      .filter(Boolean),
+  );
 }
 
 function forEachContainer(object: KubeObject, callback: (container: Record<string, unknown>) => void) {
@@ -553,6 +616,22 @@ function asArray(value: unknown): Record<string, unknown>[] {
 
 function asStringArray(value: unknown) {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
+}
+
+function uniqueRefs(values: Array<{ name: string; namespace: string }>) {
+  const seen = new Set<string>();
+  return values.filter((value) => {
+    const key = `${value.namespace}/${value.name}`;
+    if (seen.has(key)) {
+      return false;
+    }
+    seen.add(key);
+    return true;
+  });
+}
+
+function uniqueStrings(values: string[]) {
+  return Array.from(new Set(values)).sort();
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

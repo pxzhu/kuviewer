@@ -298,6 +298,8 @@ const kindColors: Partial<Record<ResourceKind, string>> = {
   ServiceAccount: '#636366',
   Service: '#ff9500',
   Ingress: '#ff2d55',
+  Gateway: '#ff375f',
+  HTTPRoute: '#ff9f0a',
   NetworkPolicy: '#00c7be',
   ConfigMap: '#bf5af2',
   Secret: '#ff3b30',
@@ -326,6 +328,7 @@ const edgeColors: Record<string, string> = {
   'uses-service-account': '#636366',
   'targets-scale': '#64d2ff',
   'applies-to': '#00c7be',
+  'attaches-to': '#ff9f0a',
 };
 
 function colorFromString(value: string) {
