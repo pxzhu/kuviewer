@@ -48,7 +48,15 @@ jobs:
           mkdir -p ~/.ssh
           printf '%s\n' "${{ secrets.SERVER_SSH_KEY }}" > ~/.ssh/deploy_key.pem
           chmod 600 ~/.ssh/deploy_key.pem
-          ssh-keyscan -p "${{ secrets.SERVER_PORT }}" "${{ secrets.SERVER_FHOST }}" >> ~/.ssh/known_hosts
+          scanned=false
+          for attempt in 1 2 3; do
+            if ssh-keyscan -T 30 -p "${{ secrets.SERVER_PORT }}" "${{ secrets.SERVER_FHOST }}" >> ~/.ssh/known_hosts; then
+              scanned=true
+              break
+            fi
+            sleep 5
+          done
+          test "$scanned" = true
 
       - name: Deploy on server
         run: |
