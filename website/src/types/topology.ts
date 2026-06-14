@@ -6,11 +6,15 @@ export type ResourceKind =
   | 'ReplicaSet'
   | 'StatefulSet'
   | 'DaemonSet'
+  | 'Job'
+  | 'CronJob'
+  | 'HorizontalPodAutoscaler'
   | 'Pod'
   | 'ServiceAccount'
   | 'Service'
   | 'EndpointSlice'
   | 'Ingress'
+  | 'NetworkPolicy'
   | 'ConfigMap'
   | 'Secret'
   | 'PersistentVolumeClaim'
@@ -28,7 +32,9 @@ export type EdgeType =
   | 'env-from'
   | 'scheduled-on'
   | 'binds-storage'
-  | 'uses-service-account';
+  | 'uses-service-account'
+  | 'targets-scale'
+  | 'applies-to';
 
 export interface TopologyNode {
   id: string;

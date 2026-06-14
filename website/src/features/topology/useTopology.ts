@@ -155,7 +155,9 @@ export function useTopology(
         node.name.toLowerCase().includes(query) ||
         node.kind.toLowerCase().includes(query) ||
         node.clusterId.toLowerCase().includes(query) ||
-        node.namespace?.toLowerCase().includes(query);
+        node.namespace?.toLowerCase().includes(query) ||
+        searchableRecord(node.labels).includes(query) ||
+        searchableRecord(node.summary).includes(query);
       const matchesCluster = filters.cluster === 'all' || node.clusterId === filters.cluster;
       const matchesNamespace = matchesNamespaceFilter(node, filters.namespace);
       const matchesNode = matchesNodeFilter(node, filters.node);
@@ -289,10 +291,14 @@ const kindColors: Partial<Record<ResourceKind, string>> = {
   Node: '#34c759',
   Deployment: '#0a84ff',
   StatefulSet: '#5856d6',
+  Job: '#ff9f0a',
+  CronJob: '#bf5af2',
+  HorizontalPodAutoscaler: '#64d2ff',
   Pod: '#30d158',
   ServiceAccount: '#636366',
   Service: '#ff9500',
   Ingress: '#ff2d55',
+  NetworkPolicy: '#00c7be',
   ConfigMap: '#bf5af2',
   Secret: '#ff3b30',
   PersistentVolumeClaim: '#5e5ce6',
@@ -318,6 +324,8 @@ const edgeColors: Record<string, string> = {
   'scheduled-on': '#34c759',
   'binds-storage': '#5856d6',
   'uses-service-account': '#636366',
+  'targets-scale': '#64d2ff',
+  'applies-to': '#00c7be',
 };
 
 function colorFromString(value: string) {
@@ -326,4 +334,11 @@ function colorFromString(value: string) {
     hash = (hash * 31 + value.charCodeAt(index)) >>> 0;
   }
   return stablePalette[hash % stablePalette.length];
+}
+
+function searchableRecord(value: Record<string, unknown>) {
+  return Object.entries(value)
+    .map(([key, recordValue]) => `${key}:${String(recordValue)}`)
+    .join(' ')
+    .toLowerCase();
 }

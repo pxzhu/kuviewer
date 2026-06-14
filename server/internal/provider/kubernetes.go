@@ -57,7 +57,11 @@ func (p KubernetesProvider) Snapshot(ctx context.Context) (topology.Snapshot, er
 	replicaSets := replicaSetList{}
 	statefulSets := statefulSetList{}
 	daemonSets := daemonSetList{}
+	jobs := jobList{}
+	cronJobs := cronJobList{}
+	hpas := horizontalPodAutoscalerList{}
 	ingresses := ingressList{}
+	networkPolicies := networkPolicyList{}
 	pvcs := pvcList{}
 	pvs := pvList{}
 	storageClasses := storageClassList{}
@@ -82,7 +86,11 @@ func (p KubernetesProvider) Snapshot(ctx context.Context) (topology.Snapshot, er
 	_ = p.client.getJSON(ctx, "/apis/apps/v1/replicasets", &replicaSets, true)
 	_ = p.client.getJSON(ctx, "/apis/apps/v1/statefulsets", &statefulSets, true)
 	_ = p.client.getJSON(ctx, "/apis/apps/v1/daemonsets", &daemonSets, true)
+	_ = p.client.getJSON(ctx, "/apis/batch/v1/jobs", &jobs, true)
+	_ = p.client.getJSON(ctx, "/apis/batch/v1/cronjobs", &cronJobs, true)
+	_ = p.client.getJSON(ctx, "/apis/autoscaling/v2/horizontalpodautoscalers", &hpas, true)
 	_ = p.client.getJSON(ctx, "/apis/networking.k8s.io/v1/ingresses", &ingresses, true)
+	_ = p.client.getJSON(ctx, "/apis/networking.k8s.io/v1/networkpolicies", &networkPolicies, true)
 	_ = p.client.getJSON(ctx, "/api/v1/persistentvolumeclaims", &pvcs, true)
 	_ = p.client.getJSON(ctx, "/api/v1/persistentvolumes", &pvs, true)
 	_ = p.client.getJSON(ctx, "/apis/storage.k8s.io/v1/storageclasses", &storageClasses, true)
@@ -167,6 +175,31 @@ func (p KubernetesProvider) Snapshot(ctx context.Context) (topology.Snapshot, er
 		})
 	}
 
+	for _, job := range jobs.Items {
+		builder.addNode("Job", job.Metadata.Namespace, job.Metadata.Name, jobStatus(job), job.Metadata.Labels, map[string]interface{}{
+			"completions": valueOrDefault(job.Spec.Completions, 1),
+			"succeeded":   job.Status.Succeeded,
+			"failed":      job.Status.Failed,
+			"active":      job.Status.Active,
+		})
+	}
+
+	for _, cronJob := range cronJobs.Items {
+		builder.addNode("CronJob", cronJob.Metadata.Namespace, cronJob.Metadata.Name, "healthy", cronJob.Metadata.Labels, map[string]interface{}{
+			"schedule": cronJob.Spec.Schedule,
+			"suspend":  boolSummary(cronJob.Spec.Suspend),
+			"active":   len(cronJob.Status.Active),
+		})
+	}
+
+	for _, hpa := range hpas.Items {
+		builder.addNode("HorizontalPodAutoscaler", hpa.Metadata.Namespace, hpa.Metadata.Name, hpaStatus(hpa), hpa.Metadata.Labels, map[string]interface{}{
+			"target":   hpa.Spec.ScaleTargetRef.Kind + "/" + hpa.Spec.ScaleTargetRef.Name,
+			"replicas": formatReplicas(hpa.Status.CurrentReplicas, hpa.Status.DesiredReplicas),
+			"range":    fmt.Sprintf("%d-%d", valueOrDefault(hpa.Spec.MinReplicas, 1), hpa.Spec.MaxReplicas),
+		})
+	}
+
 	for _, serviceAccount := range serviceAccounts.Items {
 		builder.addNode("ServiceAccount", serviceAccount.Metadata.Namespace, serviceAccount.Metadata.Name, "healthy", serviceAccount.Metadata.Labels, map[string]interface{}{
 			"age": age(serviceAccount.Metadata.CreationTimestamp),
@@ -223,6 +256,13 @@ func (p KubernetesProvider) Snapshot(ctx context.Context) (topology.Snapshot, er
 		})
 	}
 
+	for _, networkPolicy := range networkPolicies.Items {
+		builder.addNode("NetworkPolicy", networkPolicy.Metadata.Namespace, networkPolicy.Metadata.Name, "healthy", networkPolicy.Metadata.Labels, map[string]interface{}{
+			"policyTypes": strings.Join(networkPolicy.Spec.PolicyTypes, ","),
+			"selector":    selectorSummary(networkPolicy.Spec.PodSelector.MatchLabels),
+		})
+	}
+
 	for _, pod := range pods.Items {
 		builder.addNode("Pod", pod.Metadata.Namespace, pod.Metadata.Name, podStatus(pod), pod.Metadata.Labels, map[string]interface{}{
 			"phase":    pod.Status.Phase,
@@ -243,6 +283,12 @@ func (p KubernetesProvider) Snapshot(ctx context.Context) (topology.Snapshot, er
 	}
 	for _, daemonSet := range daemonSets.Items {
 		builder.addOwnerEdge("DaemonSet", daemonSet.Metadata)
+	}
+	for _, cronJob := range cronJobs.Items {
+		builder.addOwnerEdge("CronJob", cronJob.Metadata)
+	}
+	for _, job := range jobs.Items {
+		builder.addOwnerEdge("Job", job.Metadata)
 	}
 	for _, pod := range pods.Items {
 		builder.addOwnerEdge("Pod", pod.Metadata)
@@ -284,6 +330,32 @@ func (p KubernetesProvider) Snapshot(ctx context.Context) (topology.Snapshot, er
 		ingressID := builder.nodeID("Ingress", ingress.Metadata.Namespace, ingress.Metadata.Name)
 		for _, serviceName := range ingressServiceNames(ingress) {
 			builder.addEdge("routes-to", ingressID, builder.nodeID("Service", ingress.Metadata.Namespace, serviceName), "Ingress.spec.rules.http.paths.backend.service", "observed")
+		}
+	}
+
+	for _, hpa := range hpas.Items {
+		hpaID := builder.nodeID("HorizontalPodAutoscaler", hpa.Metadata.Namespace, hpa.Metadata.Name)
+		targetKind := hpa.Spec.ScaleTargetRef.Kind
+		targetName := hpa.Spec.ScaleTargetRef.Name
+		if targetKind == "" || targetName == "" {
+			continue
+		}
+		builder.ensureReferenceNode(targetKind, hpa.Metadata.Namespace, targetName)
+		builder.addEdge("targets-scale", hpaID, builder.nodeID(targetKind, hpa.Metadata.Namespace, targetName), "HorizontalPodAutoscaler.spec.scaleTargetRef", "observed")
+	}
+
+	for _, networkPolicy := range networkPolicies.Items {
+		networkPolicyID := builder.nodeID("NetworkPolicy", networkPolicy.Metadata.Namespace, networkPolicy.Metadata.Name)
+		matches := 0
+		for _, pod := range pods.Items {
+			if pod.Metadata.Namespace != networkPolicy.Metadata.Namespace || !selectorMatchesLabels(networkPolicy.Spec.PodSelector.MatchLabels, pod.Metadata.Labels) {
+				continue
+			}
+			matches++
+			builder.addEdge("applies-to", networkPolicyID, builder.nodeID("Pod", pod.Metadata.Namespace, pod.Metadata.Name), "NetworkPolicy.spec.podSelector", "inferred")
+		}
+		if matches == 0 && networkPolicy.Metadata.Namespace != "" {
+			builder.addEdge("applies-to", networkPolicyID, builder.nodeID("Namespace", "", networkPolicy.Metadata.Namespace), "NetworkPolicy.spec.podSelector", "observed")
 		}
 	}
 
@@ -535,22 +607,26 @@ func (b *graphBuilder) nodeID(kind string, namespace string, name string) string
 
 func (b *graphBuilder) nextPosition(kind string) (int, int) {
 	xByKind := map[string]int{
-		"Cluster":               90,
-		"Namespace":             280,
-		"Node":                  520,
-		"Ingress":               720,
-		"Deployment":            760,
-		"ReplicaSet":            900,
-		"StatefulSet":           760,
-		"DaemonSet":             760,
-		"Service":               980,
-		"Pod":                   1080,
-		"ServiceAccount":        1220,
-		"ConfigMap":             1220,
-		"Secret":                1220,
-		"PersistentVolumeClaim": 1220,
-		"PersistentVolume":      1380,
-		"StorageClass":          1380,
+		"Cluster":                 90,
+		"Namespace":               280,
+		"Node":                    520,
+		"Ingress":                 720,
+		"Deployment":              760,
+		"ReplicaSet":              900,
+		"StatefulSet":             760,
+		"DaemonSet":               760,
+		"Job":                     900,
+		"CronJob":                 760,
+		"HorizontalPodAutoscaler": 720,
+		"Service":                 980,
+		"Pod":                     1080,
+		"NetworkPolicy":           1180,
+		"ServiceAccount":          1220,
+		"ConfigMap":               1220,
+		"Secret":                  1220,
+		"PersistentVolumeClaim":   1220,
+		"PersistentVolume":        1380,
+		"StorageClass":            1380,
 	}
 	x := xByKind[kind]
 	if x == 0 {
@@ -793,6 +869,54 @@ type replicaStatus struct {
 	AvailableReplicas int `json:"availableReplicas"`
 }
 
+type jobList struct {
+	Items []jobResource `json:"items"`
+}
+
+type jobResource struct {
+	Metadata metadata `json:"metadata"`
+	Spec     struct {
+		Completions *int `json:"completions"`
+	} `json:"spec"`
+	Status struct {
+		Active    int `json:"active"`
+		Succeeded int `json:"succeeded"`
+		Failed    int `json:"failed"`
+	} `json:"status"`
+}
+
+type cronJobList struct {
+	Items []cronJobResource `json:"items"`
+}
+
+type cronJobResource struct {
+	Metadata metadata `json:"metadata"`
+	Spec     struct {
+		Schedule string `json:"schedule"`
+		Suspend  *bool  `json:"suspend"`
+	} `json:"spec"`
+	Status struct {
+		Active []objectReference `json:"active"`
+	} `json:"status"`
+}
+
+type horizontalPodAutoscalerList struct {
+	Items []horizontalPodAutoscalerResource `json:"items"`
+}
+
+type horizontalPodAutoscalerResource struct {
+	Metadata metadata `json:"metadata"`
+	Spec     struct {
+		ScaleTargetRef objectReference `json:"scaleTargetRef"`
+		MinReplicas    *int            `json:"minReplicas"`
+		MaxReplicas    int             `json:"maxReplicas"`
+	} `json:"spec"`
+	Status struct {
+		CurrentReplicas int `json:"currentReplicas"`
+		DesiredReplicas int `json:"desiredReplicas"`
+	} `json:"status"`
+}
+
 type ingressList struct {
 	Items []ingressResource `json:"items"`
 }
@@ -862,6 +986,22 @@ type storageClassResource struct {
 	Provisioner          string   `json:"provisioner"`
 	VolumeBindingMode    string   `json:"volumeBindingMode"`
 	AllowVolumeExpansion *bool    `json:"allowVolumeExpansion"`
+}
+
+type networkPolicyList struct {
+	Items []networkPolicyResource `json:"items"`
+}
+
+type networkPolicyResource struct {
+	Metadata metadata `json:"metadata"`
+	Spec     struct {
+		PodSelector labelSelector `json:"podSelector"`
+		PolicyTypes []string      `json:"policyTypes"`
+	} `json:"spec"`
+}
+
+type labelSelector struct {
+	MatchLabels map[string]string `json:"matchLabels"`
 }
 
 type endpointCounter struct {
@@ -975,6 +1115,23 @@ func statefulSetStatus(statefulSet statefulSetResource) string {
 
 func daemonSetStatus(daemonSet daemonSetResource) string {
 	if daemonSet.Status.NumberReady >= daemonSet.Status.DesiredNumberScheduled {
+		return "healthy"
+	}
+	return "warning"
+}
+
+func jobStatus(job jobResource) string {
+	if job.Status.Failed > 0 {
+		return "error"
+	}
+	if job.Status.Succeeded >= valueOrDefault(job.Spec.Completions, 1) {
+		return "healthy"
+	}
+	return "warning"
+}
+
+func hpaStatus(hpa horizontalPodAutoscalerResource) string {
+	if hpa.Status.DesiredReplicas == 0 || hpa.Status.CurrentReplicas >= hpa.Status.DesiredReplicas {
 		return "healthy"
 	}
 	return "warning"
@@ -1104,6 +1261,15 @@ func labelsMatch(selector map[string]string, labels map[string]string) bool {
 	return len(selector) > 0
 }
 
+func selectorMatchesLabels(selector map[string]string, labels map[string]string) bool {
+	for key, value := range selector {
+		if labels[key] != value {
+			return false
+		}
+	}
+	return true
+}
+
 func readyContainers(statuses []containerStatus) int {
 	ready := 0
 	for _, status := range statuses {
@@ -1133,6 +1299,13 @@ func valueOrZero(value *int) int {
 	return *value
 }
 
+func valueOrDefault(value *int, fallback int) int {
+	if value == nil {
+		return fallback
+	}
+	return *value
+}
+
 func boolSummary(value *bool) string {
 	if value == nil {
 		return "unset"
@@ -1141,6 +1314,18 @@ func boolSummary(value *bool) string {
 		return "true"
 	}
 	return "false"
+}
+
+func selectorSummary(selector map[string]string) string {
+	if len(selector) == 0 {
+		return "all pods"
+	}
+	keys := make([]string, 0, len(selector))
+	for key := range selector {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return strings.Join(keys, ",")
 }
 
 func age(timestamp string) string {

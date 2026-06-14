@@ -35,6 +35,7 @@ function Dashboard() {
   const [liveUnlocked, setLiveUnlocked] = useState(() => isValidAdminToken(getStoredAdminToken()));
   const [uploadedState, setUploadedState] = useState<UploadedTopologyState | null>(null);
   const [uploadError, setUploadError] = useState('');
+  const [liveSessionMessage, setLiveSessionMessage] = useState('');
   const [selectedNodeId, setSelectedNodeId] = useState('');
   const liveActive = sourceMode === 'live' && liveUnlocked;
 
@@ -62,6 +63,7 @@ function Dashboard() {
     if (sourceMode === 'live' && (connectorError.endsWith(':401') || error.endsWith(':401'))) {
       clearAdminToken();
       setLiveUnlocked(false);
+      setLiveSessionMessage('실시간 세션 잠김 · token 재입력 필요');
       setAutoRefresh(false);
     }
   }, [connectorError, error, setAutoRefresh, sourceMode]);
@@ -96,6 +98,7 @@ function Dashboard() {
       setSelectedNodeId('');
       if (nextMode !== 'live') {
         setAutoRefresh(false);
+        setLiveSessionMessage('');
       }
     },
     [setAutoRefresh],
@@ -146,6 +149,7 @@ function Dashboard() {
   const handleLiveLock = useCallback(() => {
     clearAdminToken();
     setLiveUnlocked(false);
+    setLiveSessionMessage('');
     setAutoRefresh(false);
     if (sourceMode === 'live') {
       setSourceMode('upload');
@@ -253,6 +257,7 @@ function Dashboard() {
       <div className="mx-auto grid max-w-[1760px] gap-3 px-3 py-3 sm:px-4 lg:gap-4 lg:px-6 lg:py-4">
         <SourceModeBar
           canExport={snapshot.nodes.length > 0 || snapshot.edges.length > 0}
+          liveSessionMessage={liveSessionMessage}
           liveUnlocked={liveUnlocked}
           mode={sourceMode}
           uploadedState={uploadedState}
@@ -260,7 +265,10 @@ function Dashboard() {
           onExportJson={handleExportJson}
           onImportJson={handleImportJson}
           onLiveLock={handleLiveLock}
-          onLiveUnlock={() => setLiveUnlocked(true)}
+          onLiveUnlock={() => {
+            setLiveUnlocked(true);
+            setLiveSessionMessage('');
+          }}
           onModeChange={handleSourceModeChange}
           onUploadFiles={handleUploadFiles}
         />

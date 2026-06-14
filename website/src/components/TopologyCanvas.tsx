@@ -78,7 +78,7 @@ interface LayoutResult {
   edgeCount: number;
 }
 
-type LayoutColumn = 'scope' | 'ingress' | 'service' | 'workload' | 'pod' | 'config' | 'storage' | 'node';
+type LayoutColumn = 'scope' | 'ingress' | 'service' | 'workload' | 'pod' | 'policy' | 'config' | 'storage' | 'node';
 
 const flowNodeWidth = 220;
 const flowNodeHeight = 106;
@@ -89,7 +89,7 @@ const groupPadding = 30;
 const namespaceGap = 58;
 const clusterGap = 96;
 const maxRowsPerLane = 4;
-const columnOrder: LayoutColumn[] = ['scope', 'ingress', 'service', 'workload', 'pod', 'config', 'storage', 'node'];
+const columnOrder: LayoutColumn[] = ['scope', 'ingress', 'service', 'workload', 'pod', 'policy', 'config', 'storage', 'node'];
 
 const statusLegend = [
   { label: 'healthy', color: '#34c759' },
@@ -372,7 +372,7 @@ function buildDisplayGraph(nodes: TopologyNode[], edges: TopologyEdge[], hideSys
 
     visibleNodes = visibleNodes.filter((node) => trafficNodeIds.has(node.id));
     visibleNodeIds = new Set(visibleNodes.map((node) => node.id));
-    visibleEdges = visibleEdges.filter((edge) => visibleNodeIds.has(edge.source) && visibleNodeIds.has(edge.target) && (isTrafficEdge(edge.type) || ['owns', 'scheduled-on', 'binds-storage', 'env-from', 'uses-service-account'].includes(edge.type)));
+    visibleEdges = visibleEdges.filter((edge) => visibleNodeIds.has(edge.source) && visibleNodeIds.has(edge.target) && (isTrafficEdge(edge.type) || ['owns', 'scheduled-on', 'binds-storage', 'env-from', 'uses-service-account', 'targets-scale', 'applies-to'].includes(edge.type)));
   }
 
   return { nodes: visibleNodes, edges: visibleEdges };
@@ -576,11 +576,14 @@ function columnForKind(kind: ResourceKind): LayoutColumn {
   if (kind === 'Service' || kind === 'EndpointSlice') {
     return 'service';
   }
-  if (kind === 'Deployment' || kind === 'ReplicaSet' || kind === 'StatefulSet' || kind === 'DaemonSet') {
+  if (kind === 'Deployment' || kind === 'ReplicaSet' || kind === 'StatefulSet' || kind === 'DaemonSet' || kind === 'Job' || kind === 'CronJob' || kind === 'HorizontalPodAutoscaler') {
     return 'workload';
   }
   if (kind === 'Pod') {
     return 'pod';
+  }
+  if (kind === 'NetworkPolicy') {
+    return 'policy';
   }
   if (kind === 'ConfigMap' || kind === 'Secret' || kind === 'ServiceAccount') {
     return 'config';

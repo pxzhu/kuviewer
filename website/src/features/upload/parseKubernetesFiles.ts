@@ -43,11 +43,15 @@ const supportedKinds = new Set<ResourceKind>([
   'ReplicaSet',
   'StatefulSet',
   'DaemonSet',
+  'Job',
+  'CronJob',
+  'HorizontalPodAutoscaler',
   'Pod',
   'ServiceAccount',
   'Service',
   'EndpointSlice',
   'Ingress',
+  'NetworkPolicy',
   'ConfigMap',
   'Secret',
   'PersistentVolumeClaim',
@@ -125,6 +129,7 @@ function buildSnapshotFromKubernetesObjects(objects: KubeObject[], warnings: str
   const namespaces = new Set<string>();
   const pods = validObjects.filter((object) => object.kind === 'Pod');
   const services = validObjects.filter((object) => object.kind === 'Service');
+  const networkPolicies = validObjects.filter((object) => object.kind === 'NetworkPolicy');
 
   validObjects.forEach((object) => {
     const namespace = object.metadata?.namespace || '';
@@ -145,6 +150,7 @@ function buildSnapshotFromKubernetesObjects(objects: KubeObject[], warnings: str
   validObjects.forEach((object) => addObjectNode(context, object));
   validObjects.forEach((object) => addObjectEdges(context, object));
   addServiceSelectorEdges(context, services, pods);
+  addNetworkPolicyEdges(context, networkPolicies, pods);
 
   const clusterSummary: ClusterSummary = {
     id: context.clusterId,
@@ -200,6 +206,14 @@ function addObjectEdges(context: BuildContext, object: KubeObject) {
       ensureReferenceNode(context, 'Service', namespace, serviceName);
       addEdge(context, 'routes-to', objectId, id(context.clusterId, namespace, 'Service', serviceName), 'Ingress.spec.rules.http.paths.backend.service', 'observed');
     });
+  }
+  if (kind === 'HorizontalPodAutoscaler') {
+    const targetKind = normalizeKind(stringAt(object, ['spec', 'scaleTargetRef', 'kind']));
+    const targetName = stringAt(object, ['spec', 'scaleTargetRef', 'name']);
+    if (targetKind && targetName) {
+      ensureReferenceNode(context, targetKind, namespace, targetName);
+      addEdge(context, 'targets-scale', objectId, id(context.clusterId, namespace, targetKind, targetName), 'HorizontalPodAutoscaler.spec.scaleTargetRef', 'observed');
+    }
   }
   if (kind === 'PersistentVolumeClaim') {
     const volumeName = stringAt(object, ['spec', 'volumeName']);
@@ -297,6 +311,27 @@ function addServiceSelectorEdges(context: BuildContext, services: KubeObject[], 
   });
 }
 
+function addNetworkPolicyEdges(context: BuildContext, networkPolicies: KubeObject[], pods: KubeObject[]) {
+  networkPolicies.forEach((networkPolicy) => {
+    const namespace = networkPolicy.metadata?.namespace || '';
+    const name = networkPolicy.metadata?.name || '';
+    const networkPolicyId = id(context.clusterId, namespace, 'NetworkPolicy', name);
+    const selector = readAt(networkPolicy, ['spec', 'podSelector', 'matchLabels']);
+    const matchLabels = isRecord(selector) ? (selector as Record<string, string>) : {};
+    const matchingPods = pods.filter((pod) => (pod.metadata?.namespace || '') === namespace && selectorMatchesLabels(matchLabels, labels(pod)));
+
+    if (matchingPods.length === 0) {
+      const namespaceId = id(context.clusterId, '', 'Namespace', namespace);
+      addEdge(context, 'applies-to', networkPolicyId, namespaceId, 'NetworkPolicy.spec.podSelector', 'observed');
+      return;
+    }
+
+    matchingPods.forEach((pod) => {
+      addEdge(context, 'applies-to', networkPolicyId, id(context.clusterId, namespace, 'Pod', pod.metadata?.name || ''), 'NetworkPolicy.spec.podSelector', 'inferred');
+    });
+  });
+}
+
 function addNode(context: BuildContext, kind: ResourceKind, namespace: string, name: string, status: ResourceStatus, labels: Record<string, string>, summary: Record<string, string | number | boolean>) {
   const nodeId = id(context.clusterId, namespace, kind, name);
   if (!name || context.nodeSet.has(nodeId)) {
@@ -342,6 +377,33 @@ function objectSummary(kind: ResourceKind, object: KubeObject): Record<string, s
   if (kind === 'DaemonSet') {
     return { ready: `${numberAt(object, ['status', 'numberReady']) ?? 0}/${numberAt(object, ['status', 'desiredNumberScheduled']) ?? 0}` };
   }
+  if (kind === 'Job') {
+    return {
+      completions: numberAt(object, ['spec', 'completions']) ?? 1,
+      succeeded: numberAt(object, ['status', 'succeeded']) ?? 0,
+      failed: numberAt(object, ['status', 'failed']) ?? 0,
+    };
+  }
+  if (kind === 'CronJob') {
+    return {
+      schedule: stringAt(object, ['spec', 'schedule']) || '-',
+      suspend: boolAt(object, ['spec', 'suspend']) ?? false,
+      active: asArray(readAt(object, ['status', 'active'])).length,
+    };
+  }
+  if (kind === 'HorizontalPodAutoscaler') {
+    return {
+      target: `${stringAt(object, ['spec', 'scaleTargetRef', 'kind']) || '-'}/${stringAt(object, ['spec', 'scaleTargetRef', 'name']) || '-'}`,
+      replicas: `${numberAt(object, ['status', 'currentReplicas']) ?? 0}/${numberAt(object, ['status', 'desiredReplicas']) ?? 0}`,
+      range: `${numberAt(object, ['spec', 'minReplicas']) ?? 1}-${numberAt(object, ['spec', 'maxReplicas']) ?? 0}`,
+    };
+  }
+  if (kind === 'NetworkPolicy') {
+    return {
+      policyTypes: asStringArray(readAt(object, ['spec', 'policyTypes'])).join(',') || 'Ingress',
+      selector: selectorSummaryOrAll(readAt(object, ['spec', 'podSelector', 'matchLabels'])),
+    };
+  }
   if (kind === 'Pod') {
     return { phase: stringAt(object, ['status', 'phase']) || 'Pending', node: stringAt(object, ['spec', 'nodeName']) || '-', containers: asArray(readAt(object, ['spec', 'containers'])).length };
   }
@@ -370,6 +432,19 @@ function objectStatus(kind: ResourceKind, object: KubeObject): ResourceStatus {
   if (kind === 'Pod') {
     const phase = stringAt(object, ['status', 'phase']);
     return phase === 'Running' || phase === 'Succeeded' ? 'healthy' : phase ? 'warning' : 'unknown';
+  }
+  if (kind === 'Job') {
+    if ((numberAt(object, ['status', 'failed']) ?? 0) > 0) {
+      return 'error';
+    }
+    const completions = numberAt(object, ['spec', 'completions']) ?? 1;
+    const succeeded = numberAt(object, ['status', 'succeeded']) ?? 0;
+    return succeeded >= completions ? 'healthy' : 'warning';
+  }
+  if (kind === 'HorizontalPodAutoscaler') {
+    const desired = numberAt(object, ['status', 'desiredReplicas']) ?? 0;
+    const current = numberAt(object, ['status', 'currentReplicas']) ?? 0;
+    return desired === 0 || current >= desired ? 'healthy' : 'warning';
   }
   if (kind === 'PersistentVolumeClaim') {
     const phase = stringAt(object, ['status', 'phase']);
@@ -437,8 +512,16 @@ function labelsMatch(labels: Record<string, string>, selector: Record<string, st
   return Object.entries(selector).every(([key, value]) => labels[key] === value);
 }
 
+function selectorMatchesLabels(selector: Record<string, string>, labels: Record<string, string>) {
+  return Object.entries(selector).every(([key, value]) => labels[key] === value);
+}
+
 function selectorSummary(value: unknown) {
   return isRecord(value) ? Object.keys(value).join(',') || '-' : '-';
+}
+
+function selectorSummaryOrAll(value: unknown) {
+  return isRecord(value) && Object.keys(value).length > 0 ? Object.keys(value).join(',') : 'all pods';
 }
 
 function isSnapshot(value: unknown): value is TopologySnapshot {
@@ -459,8 +542,17 @@ function numberAt(value: unknown, path: string[]) {
   return typeof result === 'number' ? result : undefined;
 }
 
+function boolAt(value: unknown, path: string[]) {
+  const result = readAt(value, path);
+  return typeof result === 'boolean' ? result : undefined;
+}
+
 function asArray(value: unknown): Record<string, unknown>[] {
   return Array.isArray(value) ? (value.filter(isRecord) as Record<string, unknown>[]) : [];
+}
+
+function asStringArray(value: unknown) {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

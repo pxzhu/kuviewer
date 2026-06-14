@@ -21,6 +21,7 @@ interface SourceModeBarProps {
   liveUnlocked: boolean;
   uploadedState: UploadedTopologyState | null;
   uploadError: string;
+  liveSessionMessage: string;
   canExport: boolean;
   onModeChange: (mode: TopologySourceMode) => void;
   onUploadFiles: (files: File[]) => void;
@@ -41,6 +42,7 @@ export function SourceModeBar({
   liveUnlocked,
   uploadedState,
   uploadError,
+  liveSessionMessage,
   canExport,
   onModeChange,
   onUploadFiles,
@@ -164,6 +166,11 @@ export function SourceModeBar({
             <span className="ku-chip border-[rgba(255,149,0,0.24)] bg-[rgba(255,149,0,0.12)] text-[#b05f00]" title={tokenError}>
               <AlertTriangle size={13} aria-hidden="true" />
               {shortError(tokenError)}
+            </span>
+          ) : liveSessionMessage ? (
+            <span className="ku-chip border-[rgba(255,149,0,0.24)] bg-[rgba(255,149,0,0.12)] text-[#b05f00]" title={liveSessionMessage}>
+              <AlertTriangle size={13} aria-hidden="true" />
+              {liveSessionMessage}
             </span>
           ) : null}
         </div>

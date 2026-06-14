@@ -96,6 +96,31 @@ spec:
           configMap:
             name: demo-app-config
 ---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: demo-cache-refresh
+  namespace: kuviewer-demo
+  labels:
+    kuviewer.io/sample: "true"
+    app.kubernetes.io/name: demo-cache-refresh
+spec:
+  schedule: "*/15 * * * *"
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            kuviewer.io/sample: "true"
+            app.kubernetes.io/name: demo-cache-refresh
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: refresh
+              image: busybox:1.36
+              imagePullPolicy: IfNotPresent
+              command: ["sh", "-c", "echo refresh demo cache"]
+---
 apiVersion: v1
 kind: Service
 metadata:
@@ -359,6 +384,51 @@ spec:
             - secretRef:
                 name: commerce-secret
 ---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: orders-api
+  namespace: kuviewer-commerce
+  labels:
+    kuviewer.io/sample: "true"
+    app.kubernetes.io/name: orders-api
+spec:
+  minReplicas: 2
+  maxReplicas: 5
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: orders-api
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: orders-api-ingress
+  namespace: kuviewer-commerce
+  labels:
+    kuviewer.io/sample: "true"
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: orders-api
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: commerce-queue
+      ports:
+        - protocol: TCP
+          port: 8080
+---
 apiVersion: v1
 kind: Service
 metadata:
@@ -512,6 +582,28 @@ spec:
         - name: telemetry-config
           configMap:
             name: telemetry-config
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: telemetry-index-bootstrap
+  namespace: kuviewer-observability
+  labels:
+    kuviewer.io/sample: "true"
+    app.kubernetes.io/name: telemetry-index-bootstrap
+spec:
+  template:
+    metadata:
+      labels:
+        kuviewer.io/sample: "true"
+        app.kubernetes.io/name: telemetry-index-bootstrap
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: bootstrap
+          image: busybox:1.36
+          imagePullPolicy: IfNotPresent
+          command: ["sh", "-c", "echo bootstrap telemetry index"]
 ---
 apiVersion: apps/v1
 kind: DaemonSet
