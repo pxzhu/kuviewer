@@ -189,6 +189,36 @@ func TestCORSPreflight(t *testing.T) {
 	if got := recorder.Header().Get("Access-Control-Allow-Origin"); got != "http://127.0.0.1:5174" {
 		t.Fatalf("Access-Control-Allow-Origin = %q", got)
 	}
+	if got := recorder.Header().Get("Vary"); got != "Origin" {
+		t.Fatalf("Vary = %q, want Origin", got)
+	}
+}
+
+func TestSecurityHeaders(t *testing.T) {
+	handler := NewServer(stubProvider{snapshot: testSnapshot()}, "secret-token", "", "")
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+
+	handler.ServeHTTP(recorder, request)
+
+	expectedHeaders := map[string]string{
+		"X-Content-Type-Options": "nosniff",
+		"Referrer-Policy":        "no-referrer",
+		"X-Frame-Options":        "DENY",
+		"Permissions-Policy":     "camera=(), microphone=(), geolocation=(), payment=(), usb=()",
+	}
+	for header, want := range expectedHeaders {
+		if got := recorder.Header().Get(header); got != want {
+			t.Fatalf("%s = %q, want %q", header, got, want)
+		}
+	}
+
+	csp := recorder.Header().Get("Content-Security-Policy")
+	for _, fragment := range []string{"default-src 'self'", "frame-ancestors 'none'", "script-src 'self'", "style-src 'self' 'unsafe-inline'"} {
+		if !strings.Contains(csp, fragment) {
+			t.Fatalf("Content-Security-Policy missing %q: %q", fragment, csp)
+		}
+	}
 }
 
 func TestStaticSPAFallback(t *testing.T) {

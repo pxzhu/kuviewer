@@ -1,14 +1,17 @@
 const storageKey = 'kuviewer_admin_token';
 
 export function getStoredAdminToken() {
-  return window.localStorage.getItem(storageKey) || '';
+  window.localStorage.removeItem(storageKey);
+  return window.sessionStorage.getItem(storageKey) || '';
 }
 
 export function storeAdminToken(token: string) {
-  window.localStorage.setItem(storageKey, token.trim());
+  window.localStorage.removeItem(storageKey);
+  window.sessionStorage.setItem(storageKey, token.trim());
 }
 
 export function clearAdminToken() {
+  window.sessionStorage.removeItem(storageKey);
   window.localStorage.removeItem(storageKey);
 }
 

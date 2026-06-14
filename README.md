@@ -63,7 +63,7 @@ Suggested local/admin token:
 kuviewer-admin
 ```
 
-Upload and Mock modes do not require a token. Live Cluster mode sends the entered token as a `Bearer` token and lets the server validate it. The local API server defaults to `kuviewer-admin` only when it listens on loopback; public binds such as `0.0.0.0:8080` require `KUVIEWER_ADMIN_TOKEN`.
+Upload and Mock modes do not require a token. Live Cluster mode stores the entered token in `sessionStorage`, sends it as a `Bearer` token, and lets the server validate it. The local API server defaults to `kuviewer-admin` only when it listens on loopback; public binds such as `0.0.0.0:8080` require `KUVIEWER_ADMIN_TOKEN`.
 
 ## Upload mode
 
@@ -361,7 +361,7 @@ KUVIEWER_VISUAL_URL=http://127.0.0.1:18085/ npm run test:visual
 
 ## GitHub Actions deploy
 
-Kuviewer can deploy without a container registry. The workflow in `.github/workflows/deploy.yml` SSHes into the server, updates the Git checkout, builds `kuviewer:local` on the server, and runs the standalone compose file.
+Kuviewer can deploy without a container registry. The workflow in `.github/workflows/deploy.yml` builds `kuviewer:local` on the GitHub runner, saves it as a compressed image archive, uploads that archive to the server over SSH/SCP, updates the Git checkout, loads the image with Docker, and runs the standalone compose file.
 
 Required repository secrets:
 

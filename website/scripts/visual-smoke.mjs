@@ -24,7 +24,8 @@ async function runViewport(name, viewport) {
   const browser = await chromium.launch();
   const context = await browser.newContext({ viewport });
   await context.addInitScript((token) => {
-    window.localStorage.setItem('kuviewer_admin_token', token);
+    window.localStorage.removeItem('kuviewer_admin_token');
+    window.sessionStorage.setItem('kuviewer_admin_token', token);
   }, adminToken);
   const page = await context.newPage();
 

@@ -8,6 +8,10 @@ export function getTopologyApiBaseUrl() {
     return configuredBaseUrl;
   }
 
+  if (import.meta.env.PROD) {
+    return window.location.origin;
+  }
+
   return '';
 }
 
