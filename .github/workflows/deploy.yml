@@ -20,11 +20,12 @@ permissions:
 
 concurrency:
   group: kuviewer-production-deploy
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
 
     steps:
       - name: Validate required secrets
@@ -43,6 +44,29 @@ jobs:
             printf 'ref=%s\n' "${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.ref.outputs.ref }}
+
+      - name: Build deployment image
+        run: |
+          build_ok=false
+          for attempt in 1 2 3; do
+            echo "Docker build attempt ${attempt}/3"
+            if docker build --build-arg VITE_BASE_PATH=/ -t kuviewer:local .; then
+              build_ok=true
+              break
+            fi
+            sleep 20
+          done
+          test "$build_ok" = true
+
+      - name: Save deployment image
+        run: |
+          docker save kuviewer:local | gzip > kuviewer-image.tar.gz
+          ls -lh kuviewer-image.tar.gz
+
       - name: Prepare SSH key
         run: |
           mkdir -p ~/.ssh
@@ -57,6 +81,17 @@ jobs:
             sleep 5
           done
           test "$scanned" = true
+
+      - name: Upload image to server
+        run: |
+          scp -i ~/.ssh/deploy_key.pem \
+            -o IdentitiesOnly=yes \
+            -o ServerAliveInterval=30 \
+            -o ServerAliveCountMax=20 \
+            -o TCPKeepAlive=yes \
+            -P "${{ secrets.SERVER_PORT }}" \
+            kuviewer-image.tar.gz \
+            "${{ secrets.SERVER_FUSER }}@${{ secrets.SERVER_FHOST }}:/tmp/kuviewer-image.tar.gz"
 
       - name: Deploy on server
         run: |
@@ -79,6 +114,8 @@ jobs:
                DOCKER='sudo -n docker'
              fi
 
+             trap 'rm -f /tmp/kuviewer-image.tar.gz' EXIT
+
              if [ ! -d \"\$DEPLOY_PATH/.git\" ]; then
                mkdir -p \"\$DEPLOY_PATH\"
                git clone \"\$REPO_URL\" \"\$DEPLOY_PATH\"
@@ -90,16 +127,8 @@ jobs:
              git reset --hard \"origin/\$DEPLOY_REF\" 2>/dev/null || git reset --hard \"\$DEPLOY_REF\"
 
              test -f deploy/standalone/.env
+             test -f /tmp/kuviewer-image.tar.gz
 
-             build_ok=false
-             for attempt in 1 2 3; do
-               if sh -c \"\$DOCKER build --build-arg VITE_BASE_PATH=/ -t kuviewer:local .\"; then
-                 build_ok=true
-                 break
-               fi
-               sleep 20
-             done
-             test \"\$build_ok\" = true
-
-             sh -c \"\$DOCKER compose --env-file deploy/standalone/.env -f deploy/standalone/docker-compose.yml up -d --remove-orphans\"
+             sh -c \"gzip -dc /tmp/kuviewer-image.tar.gz | \$DOCKER load\"
+             sh -c \"\$DOCKER compose --env-file deploy/standalone/.env -f deploy/standalone/docker-compose.yml up -d --force-recreate --remove-orphans\"
              curl -fsS \"\$HEALTH_URL\""
