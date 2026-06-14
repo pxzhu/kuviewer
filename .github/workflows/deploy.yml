@@ -14,6 +14,9 @@ on:
 env:
   DEPLOY_PATH: ${{ vars.DEPLOY_PATH || '/home/ubuntu/kuviewer' }}
   HEALTH_URL: ${{ vars.HEALTH_URL || 'http://127.0.0.1:18085/healthz' }}
+  IMAGE_TAR: kuviewer-image-${{ github.run_id }}.tar.gz
+  REMOTE_IMAGE_TAR: /tmp/kuviewer-image-${{ github.run_id }}.tar.gz
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 permissions:
   contents: read
@@ -64,8 +67,8 @@ jobs:
 
       - name: Save deployment image
         run: |
-          docker save kuviewer:local | gzip > kuviewer-image.tar.gz
-          ls -lh kuviewer-image.tar.gz
+          docker save kuviewer:local | gzip > "${IMAGE_TAR}"
+          ls -lh "${IMAGE_TAR}"
 
       - name: Prepare SSH key
         run: |
@@ -90,8 +93,8 @@ jobs:
             -o ServerAliveCountMax=20 \
             -o TCPKeepAlive=yes \
             -P "${{ secrets.SERVER_PORT }}" \
-            kuviewer-image.tar.gz \
-            "${{ secrets.SERVER_FUSER }}@${{ secrets.SERVER_FHOST }}:/tmp/kuviewer-image.tar.gz"
+            "${IMAGE_TAR}" \
+            "${{ secrets.SERVER_FUSER }}@${{ secrets.SERVER_FHOST }}:${REMOTE_IMAGE_TAR}"
 
       - name: Deploy on server
         run: |
@@ -107,6 +110,7 @@ jobs:
              REPO_URL='https://github.com/${{ github.repository }}.git'
              DEPLOY_REF='${{ steps.ref.outputs.ref }}'
              HEALTH_URL='${{ env.HEALTH_URL }}'
+             IMAGE_TAR='${{ env.REMOTE_IMAGE_TAR }}'
 
              if docker info >/dev/null 2>&1; then
                DOCKER='docker'
@@ -114,7 +118,7 @@ jobs:
                DOCKER='sudo -n docker'
              fi
 
-             trap 'rm -f /tmp/kuviewer-image.tar.gz' EXIT
+             trap 'rm -f "$IMAGE_TAR"' EXIT
 
              if [ ! -d \"\$DEPLOY_PATH/.git\" ]; then
                mkdir -p \"\$DEPLOY_PATH\"
@@ -127,8 +131,8 @@ jobs:
              git reset --hard \"origin/\$DEPLOY_REF\" 2>/dev/null || git reset --hard \"\$DEPLOY_REF\"
 
              test -f deploy/standalone/.env
-             test -f /tmp/kuviewer-image.tar.gz
+             test -f \"\$IMAGE_TAR\"
 
-             sh -c \"gzip -dc /tmp/kuviewer-image.tar.gz | \$DOCKER load\"
+             sh -c \"gzip -dc '\$IMAGE_TAR' | \$DOCKER load\"
              sh -c \"\$DOCKER compose --env-file deploy/standalone/.env -f deploy/standalone/docker-compose.yml up -d --force-recreate --remove-orphans\"
              curl -fsS \"\$HEALTH_URL\""
