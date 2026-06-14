@@ -357,6 +357,39 @@ cd website
 KUVIEWER_VISUAL_URL=http://127.0.0.1:18085/ npm run test:visual
 ```
 
+## GitHub Actions deploy
+
+Kuviewer can deploy without a container registry. The workflow in `.github/workflows/deploy.yml` SSHes into the server, updates the Git checkout, builds `kuviewer:local` on the server, and runs the standalone compose file.
+
+Required repository secrets:
+
+```text
+SERVER_FHOST
+SERVER_FUSER
+SERVER_PORT
+SERVER_SSH_KEY
+```
+
+Optional repository variables:
+
+```text
+DEPLOY_PATH=/home/ubuntu/kuviewer
+HEALTH_URL=http://127.0.0.1:18085/healthz
+```
+
+Server prerequisite:
+
+```bash
+cd /home/ubuntu/kuviewer
+cp deploy/standalone/.env.example deploy/standalone/.env
+# edit KUVIEWER_ADMIN_TOKEN before the first deploy
+```
+
+Deployment triggers:
+
+- Push to `main`: deploys `main`.
+- Manual `workflow_dispatch`: deploys the selected branch, tag, or SHA.
+
 ## Native Kubernetes install draft
 
 The first manifest is available at [deploy/kubernetes/kuviewer.yaml](/Users/pxzhu/vscode/kuviewer/deploy/kubernetes/kuviewer.yaml).

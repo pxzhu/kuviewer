@@ -1,0 +1,83 @@
+name: deploy
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Branch, tag, or SHA to deploy
+        required: false
+        default: ''
+
+env:
+  DEPLOY_PATH: ${{ vars.DEPLOY_PATH || '/home/ubuntu/kuviewer' }}
+  HEALTH_URL: ${{ vars.HEALTH_URL || 'http://127.0.0.1:18085/healthz' }}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: kuviewer-production-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Validate required secrets
+        run: |
+          test -n "${{ secrets.SERVER_FHOST }}"
+          test -n "${{ secrets.SERVER_FUSER }}"
+          test -n "${{ secrets.SERVER_PORT }}"
+          test -n "${{ secrets.SERVER_SSH_KEY }}"
+
+      - name: Resolve deploy ref
+        id: ref
+        run: |
+          if [ -n "${{ inputs.ref }}" ]; then
+            printf 'ref=%s\n' "${{ inputs.ref }}" >> "$GITHUB_OUTPUT"
+          else
+            printf 'ref=%s\n' "${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Prepare SSH key
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "${{ secrets.SERVER_SSH_KEY }}" > ~/.ssh/deploy_key.pem
+          chmod 600 ~/.ssh/deploy_key.pem
+          ssh-keyscan -p "${{ secrets.SERVER_PORT }}" "${{ secrets.SERVER_FHOST }}" >> ~/.ssh/known_hosts
+
+      - name: Deploy on server
+        run: |
+          ssh -i ~/.ssh/deploy_key.pem -o IdentitiesOnly=yes -p "${{ secrets.SERVER_PORT }}" \
+            "${{ secrets.SERVER_FUSER }}@${{ secrets.SERVER_FHOST }}" \
+            "set -e
+             DEPLOY_PATH='${{ env.DEPLOY_PATH }}'
+             REPO_URL='https://github.com/${{ github.repository }}.git'
+             DEPLOY_REF='${{ steps.ref.outputs.ref }}'
+             HEALTH_URL='${{ env.HEALTH_URL }}'
+
+             if docker info >/dev/null 2>&1; then
+               DOCKER='docker'
+             else
+               DOCKER='sudo -n docker'
+             fi
+
+             if [ ! -d \"\$DEPLOY_PATH/.git\" ]; then
+               mkdir -p \"\$DEPLOY_PATH\"
+               git clone \"\$REPO_URL\" \"\$DEPLOY_PATH\"
+             fi
+
+             cd \"\$DEPLOY_PATH\"
+             git fetch --prune origin
+             git checkout --force \"\$DEPLOY_REF\"
+             git reset --hard \"origin/\$DEPLOY_REF\" 2>/dev/null || git reset --hard \"\$DEPLOY_REF\"
+
+             test -f deploy/standalone/.env
+
+             sh -c \"\$DOCKER build --build-arg VITE_BASE_PATH=/ -t kuviewer:local .\"
+             sh -c \"\$DOCKER compose --env-file deploy/standalone/.env -f deploy/standalone/docker-compose.yml up -d --remove-orphans\"
+             curl -fsS \"\$HEALTH_URL\""
