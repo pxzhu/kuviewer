@@ -63,7 +63,7 @@ Suggested local/admin token:
 kuviewer-admin
 ```
 
-Upload and Mock modes do not require a token. Live Cluster mode sends the entered token as a `Bearer` token and lets the server validate it. The local API server defaults to `kuviewer-admin` unless `KUVIEWER_ADMIN_TOKEN` is set.
+Upload and Mock modes do not require a token. Live Cluster mode sends the entered token as a `Bearer` token and lets the server validate it. The local API server defaults to `kuviewer-admin` only when it listens on loopback; public binds such as `0.0.0.0:8080` require `KUVIEWER_ADMIN_TOKEN`.
 
 ## Upload mode
 
@@ -85,7 +85,7 @@ cd server
 go run ./cmd/kuviewer-server
 ```
 
-Default server settings:
+Default loopback server settings:
 
 ```text
 KUVIEWER_LISTEN_ADDR=127.0.0.1:8080
@@ -95,6 +95,8 @@ KUVIEWER_SOURCE=mock
 ```
 
 Set `KUVIEWER_CORS_ORIGIN=http://127.0.0.1:5174` only when the Vite dev server calls a separately running local API server.
+
+When `KUVIEWER_LISTEN_ADDR` is set to a non-loopback address, `KUVIEWER_ADMIN_TOKEN` must be set explicitly or the server exits before listening.
 
 API endpoints:
 
