@@ -91,6 +91,15 @@ jobs:
 
              test -f deploy/standalone/.env
 
-             sh -c \"\$DOCKER build --build-arg VITE_BASE_PATH=/ -t kuviewer:local .\"
+             build_ok=false
+             for attempt in 1 2 3; do
+               if sh -c \"\$DOCKER build --build-arg VITE_BASE_PATH=/ -t kuviewer:local .\"; then
+                 build_ok=true
+                 break
+               fi
+               sleep 20
+             done
+             test \"\$build_ok\" = true
+
              sh -c \"\$DOCKER compose --env-file deploy/standalone/.env -f deploy/standalone/docker-compose.yml up -d --remove-orphans\"
              curl -fsS \"\$HEALTH_URL\""
