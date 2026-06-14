@@ -35,6 +35,7 @@ Kuviewer는 Kubernetes 리소스를 웹에서 시각적으로 보는 도구다. 
 - `VITE_API_BASE_URL`이 없으면 API base URL은 빈 값으로 처리한다. 정적 업로드/목업 모드는 API 없이 동작한다.
 - 기본 visual smoke URL은 `http://127.0.0.1:4174/kuviewer/`다.
 - standalone 운영 목표 URL은 `https://kuviewer.nebbixh.com/`다. 외부 443은 host gateway가 공유하고, Kuviewer는 내부 `127.0.0.1:18085`로 받는 구성을 기준으로 한다.
+- NetworkPolicy는 `applies-to`와 함께 `allows-ingress` / `allows-egress` 정책 의도 edge를 표시한다. 이는 실제 CNI traffic 관측이 아니라 spec 기반 해석이며, `matchLabels`만 edge로 추론하고 `matchExpressions`/`ipBlock`은 summary-only로 둔다.
 
 ## 최근 변경 파일
 
@@ -102,8 +103,9 @@ https://nebbixh.com/kuviewer
 
 3. 업로드 모드 강화
    - Job, CronJob, NetworkPolicy, HPA는 업로드/라이브 provider의 1차 지원 대상에 포함됐다.
+   - NetworkPolicy ingress/egress intent summary와 `allows-ingress` / `allows-egress` edge 추론이 포함됐다.
    - Gateway/HTTPRoute는 Gateway API CRD가 있는 환경에서 optional 1차 지원 대상에 포함됐다.
-   - 다음 확장 후보는 CRD discovery, 정책 영향도 상세 해석, TLSRoute/TCPRoute/GRPCRoute다.
+   - 다음 확장 후보는 CRD discovery, NetworkPolicy matchExpressions 평가, TLSRoute/TCPRoute/GRPCRoute다.
    - YAML 파싱 경고 UI를 더 친절하게 표시.
    - 업로드된 파일 묶음의 cluster/name metadata 입력 옵션 검토.
 

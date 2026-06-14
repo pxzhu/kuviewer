@@ -216,7 +216,7 @@ function buildTrafficFlows(nodes: TopologyNode[], edges: TopologyEdge[]): Traffi
           pod,
           node: targetNode(pod, edges, nodeMap),
           dependencies: podDependencies(pod, edges, nodeMap),
-          evidenceEdges: [...gatewayEvidenceEdges(routeEdge.source, edges), routeEdge, endpointEdge, ...podEvidenceEdges(pod, edges)],
+          evidenceEdges: [...gatewayEvidenceEdges(routeEdge.source, edges), routeEdge, endpointEdge, ...podEvidenceEdges(pod, edges), ...podPolicyEvidenceEdges(pod, edges)],
           nodeMap,
         }));
       });
@@ -242,7 +242,7 @@ function buildTrafficFlows(nodes: TopologyNode[], edges: TopologyEdge[]): Traffi
         pod,
         node: targetNode(pod, edges, nodeMap),
         dependencies: podDependencies(pod, edges, nodeMap),
-        evidenceEdges: [endpointEdge, ...podEvidenceEdges(pod, edges)],
+        evidenceEdges: [endpointEdge, ...podEvidenceEdges(pod, edges), ...podPolicyEvidenceEdges(pod, edges)],
         nodeMap,
       }));
     });
@@ -344,6 +344,16 @@ function podEvidenceEdges(pod: TopologyNode, edges: TopologyEdge[]) {
     .filter(Boolean);
 }
 
+function podPolicyEvidenceEdges(pod: TopologyNode, edges: TopologyEdge[]) {
+  const appliedPolicyIds = new Set(edges.filter((edge) => edge.target === pod.id && edge.type === 'applies-to').map((edge) => edge.source));
+  return edges.filter((edge) => {
+    if (edge.type === 'applies-to' && edge.target === pod.id) {
+      return true;
+    }
+    return appliedPolicyIds.has(edge.source) && (edge.type === 'allows-ingress' || edge.type === 'allows-egress');
+  });
+}
+
 function gatewayEvidenceEdges(routeSourceId: string, edges: TopologyEdge[]) {
   return edges.filter((edge) => edge.source === routeSourceId && edge.type === 'attaches-to');
 }
@@ -411,6 +421,15 @@ function relationLabel(edgeType: TopologyEdge['type']) {
   }
   if (edgeType === 'uses-service-account') {
     return 'ServiceAccount 바인딩';
+  }
+  if (edgeType === 'applies-to') {
+    return 'NetworkPolicy 적용 대상';
+  }
+  if (edgeType === 'allows-ingress') {
+    return 'NetworkPolicy ingress 의도';
+  }
+  if (edgeType === 'allows-egress') {
+    return 'NetworkPolicy egress 의도';
   }
   return edgeType;
 }
