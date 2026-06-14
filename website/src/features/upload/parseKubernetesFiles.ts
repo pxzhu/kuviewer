@@ -63,6 +63,9 @@ const supportedKinds = new Set<ResourceKind>([
   'Ingress',
   'Gateway',
   'HTTPRoute',
+  'GRPCRoute',
+  'TLSRoute',
+  'TCPRoute',
   'NetworkPolicy',
   'ConfigMap',
   'Secret',
@@ -222,14 +225,14 @@ function addObjectEdges(context: BuildContext, object: KubeObject) {
       addEdge(context, 'routes-to', objectId, id(context.clusterId, namespace, 'Service', serviceName), 'Ingress.spec.rules.http.paths.backend.service', 'observed');
     });
   }
-  if (kind === 'HTTPRoute') {
-    httpRouteParentGateways(object, namespace).forEach((gatewayRef) => {
+  if (isGatewayRouteKind(kind)) {
+    gatewayRouteParentGateways(object, namespace).forEach((gatewayRef) => {
       ensureReferenceNode(context, 'Gateway', gatewayRef.namespace, gatewayRef.name);
-      addEdge(context, 'attaches-to', objectId, id(context.clusterId, gatewayRef.namespace, 'Gateway', gatewayRef.name), 'HTTPRoute.spec.parentRefs', 'observed');
+      addEdge(context, 'attaches-to', objectId, id(context.clusterId, gatewayRef.namespace, 'Gateway', gatewayRef.name), `${kind}.spec.parentRefs`, 'observed');
     });
-    httpRouteBackendServices(object, namespace).forEach((serviceRef) => {
+    gatewayRouteBackendServices(object, namespace).forEach((serviceRef) => {
       ensureReferenceNode(context, 'Service', serviceRef.namespace, serviceRef.name);
-      addEdge(context, 'routes-to', objectId, id(context.clusterId, serviceRef.namespace, 'Service', serviceRef.name), 'HTTPRoute.spec.rules.backendRefs', 'observed');
+      addEdge(context, 'routes-to', objectId, id(context.clusterId, serviceRef.namespace, 'Service', serviceRef.name), `${kind}.spec.rules.backendRefs`, 'observed');
     });
   }
   if (kind === 'HorizontalPodAutoscaler') {
@@ -503,11 +506,12 @@ function objectSummary(kind: ResourceKind, object: KubeObject): Record<string, s
       hosts: gatewayHosts(object).join(',') || '-',
     };
   }
-  if (kind === 'HTTPRoute') {
+  if (isGatewayRouteKind(kind)) {
     return {
-      hosts: asStringArray(readAt(object, ['spec', 'hostnames'])).join(',') || '-',
+      ...(kind !== 'TCPRoute' ? { hosts: asStringArray(readAt(object, ['spec', 'hostnames'])).join(',') || '-' } : {}),
       rules: asArray(readAt(object, ['spec', 'rules'])).length,
-      backends: httpRouteBackendServices(object, object.metadata?.namespace || '').length,
+      backends: gatewayRouteBackendServices(object, object.metadata?.namespace || '').length,
+      ...(kind === 'GRPCRoute' ? { methods: grpcRouteMethods(object).join(',') || '-' } : {}),
     };
   }
   if (kind === 'PersistentVolumeClaim') {
@@ -567,7 +571,7 @@ function ingressBackends(object: KubeObject) {
   return Array.from(services);
 }
 
-function httpRouteParentGateways(object: KubeObject, namespace: string) {
+function gatewayRouteParentGateways(object: KubeObject, namespace: string) {
   return asArray(readAt(object, ['spec', 'parentRefs']))
     .filter((parentRef) => {
       const kind = stringAt(parentRef, ['kind']);
@@ -581,7 +585,7 @@ function httpRouteParentGateways(object: KubeObject, namespace: string) {
     .filter((parentRef) => parentRef.name);
 }
 
-function httpRouteBackendServices(object: KubeObject, namespace: string) {
+function gatewayRouteBackendServices(object: KubeObject, namespace: string) {
   const services: Array<{ name: string; namespace: string }> = [];
   asArray(readAt(object, ['spec', 'rules'])).forEach((rule) => {
     asArray(readAt(rule, ['backendRefs'])).forEach((backendRef) => {
@@ -594,6 +598,22 @@ function httpRouteBackendServices(object: KubeObject, namespace: string) {
     });
   });
   return uniqueRefs(services);
+}
+
+function grpcRouteMethods(object: KubeObject) {
+  return uniqueStrings(
+    asArray(readAt(object, ['spec', 'rules'])).flatMap((rule) =>
+      asArray(rule.matches).map((match) => {
+        const service = stringAt(match, ['method', 'service']);
+        const method = stringAt(match, ['method', 'method']);
+        return service && method ? `${service}/${method}` : service || method;
+      }),
+    ),
+  );
+}
+
+function isGatewayRouteKind(kind: ResourceKind) {
+  return kind === 'HTTPRoute' || kind === 'GRPCRoute' || kind === 'TLSRoute' || kind === 'TCPRoute';
 }
 
 function gatewayHosts(object: KubeObject) {

@@ -63,6 +63,9 @@ rules:
     resources:
       - gateways
       - httproutes
+      - grpcroutes
+      - tlsroutes
+      - tcproutes
     verbs: ["get", "list", "watch"]
   - apiGroups: ["storage.k8s.io"]
     resources:

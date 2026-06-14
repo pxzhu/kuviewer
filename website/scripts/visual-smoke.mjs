@@ -456,6 +456,53 @@ spec:
         - name: checkout-api
           port: 80
 ---
+apiVersion: gateway.networking.k8s.io/v1
+kind: GRPCRoute
+metadata:
+  name: checkout-grpc
+  namespace: checkout
+spec:
+  parentRefs:
+    - name: checkout-gateway
+  hostnames:
+    - grpc.checkout.local
+  rules:
+    - matches:
+        - method:
+            service: checkout.v1.Checkout
+            method: Get
+      backendRefs:
+        - name: checkout-api
+          port: 80
+---
+apiVersion: gateway.networking.k8s.io/v1alpha2
+kind: TLSRoute
+metadata:
+  name: checkout-tls
+  namespace: checkout
+spec:
+  parentRefs:
+    - name: checkout-gateway
+  hostnames:
+    - tls.checkout.local
+  rules:
+    - backendRefs:
+        - name: checkout-api
+          port: 443
+---
+apiVersion: gateway.networking.k8s.io/v1alpha2
+kind: TCPRoute
+metadata:
+  name: checkout-tcp
+  namespace: checkout
+spec:
+  parentRefs:
+    - name: checkout-gateway
+  rules:
+    - backendRefs:
+        - name: checkout-api
+          port: 80
+---
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
