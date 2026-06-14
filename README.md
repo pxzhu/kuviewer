@@ -161,7 +161,11 @@ Supported snapshot resources in the first provider:
 - ReplicaSet
 - StatefulSet
 - DaemonSet
+- Job
+- CronJob
+- HorizontalPodAutoscaler
 - Ingress
+- NetworkPolicy
 - PersistentVolume
 - PersistentVolumeClaim
 - StorageClass
@@ -183,6 +187,7 @@ It creates sample namespaces with real Kubernetes objects:
 - `kuviewer-commerce`: orders API, queue StatefulSet, Ingress, Secret/ConfigMap references
 - `kuviewer-observability`: telemetry Deployment, telemetry-agent DaemonSet, ConfigMap mounts
 - Services and EndpointSlices for gateway/API/db/queue/telemetry traffic
+- Job, CronJob, HorizontalPodAutoscaler, and NetworkPolicy resources for expanded topology validation
 - ConfigMap, Secret reference, ServiceAccount, PVC, PV, and StorageClass relationships
 
 Remove it when done:
@@ -389,8 +394,8 @@ cp deploy/standalone/.env.example deploy/standalone/.env
 
 Deployment triggers:
 
-- Push to `main`: deploys `main`.
-- Manual `workflow_dispatch`: deploys the selected branch, tag, or SHA.
+- Push a release tag matching `v*.*.*`: deploys that tag after confirming the tagged commit is contained in `origin/main`.
+- Manual `workflow_dispatch`: deploys the selected branch, tag, or SHA for controlled operations.
 
 ## Native Kubernetes install draft
 

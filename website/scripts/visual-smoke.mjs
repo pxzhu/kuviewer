@@ -334,6 +334,56 @@ spec:
     - port: 80
       targetPort: 8080
 ---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: checkout-api
+  namespace: checkout
+spec:
+  minReplicas: 2
+  maxReplicas: 6
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: checkout-api
+status:
+  currentReplicas: 2
+  desiredReplicas: 2
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: checkout-api-ingress
+  namespace: checkout
+spec:
+  podSelector:
+    matchLabels:
+      app: checkout-api
+  policyTypes:
+    - Ingress
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: checkout-reconcile
+  namespace: checkout
+spec:
+  schedule: "*/15 * * * *"
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: checkout-reconcile-286
+  namespace: checkout
+  ownerReferences:
+    - apiVersion: batch/v1
+      kind: CronJob
+      name: checkout-reconcile
+spec:
+  completions: 1
+status:
+  succeeded: 1
+---
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:

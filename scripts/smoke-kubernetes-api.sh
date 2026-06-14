@@ -132,9 +132,19 @@ rules:
       - statefulsets
       - daemonsets
     verbs: ["get", "list"]
+  - apiGroups: ["batch"]
+    resources:
+      - jobs
+      - cronjobs
+    verbs: ["get", "list"]
+  - apiGroups: ["autoscaling"]
+    resources:
+      - horizontalpodautoscalers
+    verbs: ["get", "list"]
   - apiGroups: ["networking.k8s.io"]
     resources:
       - ingresses
+      - networkpolicies
     verbs: ["get", "list"]
   - apiGroups: ["storage.k8s.io"]
     resources:
