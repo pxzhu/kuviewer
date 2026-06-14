@@ -78,6 +78,8 @@ The default UI source is `Upload YAML`. It accepts:
 
 The parser builds the same topology contract as the live connector. It infers relationships from Kubernetes fields commonly visible in `kubectl get ... -o yaml`, including owner references, Ingress and HTTPRoute backends, HTTPRoute parent Gateways, Service selectors, Pod node scheduling, ServiceAccount use, ConfigMap/Secret env references, mounted volumes, PVC/PV bindings, and StorageClass references. Secret values are never decoded or displayed; uploaded Secret summaries show type/key count only.
 
+Before uploading, the UI lets you set a browser-local cluster name and cluster id for the bundle. Empty values fall back to `uploaded-bundle`, and the chosen cluster id is used in generated topology JSON exports. Upload diagnostics show skipped files, YAML/JSON parse errors, unsupported Kubernetes kinds, and import validation errors without displaying manifest body content.
+
 ## Local API server
 
 The server currently exposes the same topology contract as the frontend mock data.
