@@ -105,9 +105,8 @@ https://nebbixh.com/kuviewer
    - Job, CronJob, NetworkPolicy, HPA는 업로드/라이브 provider의 1차 지원 대상에 포함됐다.
    - NetworkPolicy ingress/egress intent summary와 `allows-ingress` / `allows-egress` edge 추론이 포함됐다.
    - Gateway/HTTPRoute는 Gateway API CRD가 있는 환경에서 optional 1차 지원 대상에 포함됐다.
+   - 업로드 bundle의 cluster name/id 입력과 YAML 파싱/지원 kind 경고 UI가 포함됐다.
    - 다음 확장 후보는 CRD discovery, NetworkPolicy matchExpressions 평가, TLSRoute/TCPRoute/GRPCRoute다.
-   - YAML 파싱 경고 UI를 더 친절하게 표시.
-   - 업로드된 파일 묶음의 cluster/name metadata 입력 옵션 검토.
 
 4. 실제 Kubernetes 연결 설계
    - 브라우저에 kube credential을 직접 넣지 않는 방향 유지.

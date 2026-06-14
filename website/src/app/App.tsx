@@ -34,6 +34,8 @@ function Dashboard() {
   const [sourceMode, setSourceMode] = useState<TopologySourceMode>(() => initialSourceMode());
   const [liveUnlocked, setLiveUnlocked] = useState(() => isValidAdminToken(getStoredAdminToken()));
   const [uploadedState, setUploadedState] = useState<UploadedTopologyState | null>(null);
+  const [uploadClusterName, setUploadClusterName] = useState('uploaded-bundle');
+  const [uploadClusterId, setUploadClusterId] = useState('uploaded-bundle');
   const [uploadError, setUploadError] = useState('');
   const [liveSessionMessage, setLiveSessionMessage] = useState('');
   const [selectedNodeId, setSelectedNodeId] = useState('');
@@ -107,7 +109,7 @@ function Dashboard() {
   const handleUploadFiles = useCallback(async (files: File[]) => {
     setUploadError('');
     try {
-      const nextUploadedState = await parseKubernetesFiles(files);
+      const nextUploadedState = await parseKubernetesFiles(files, { clusterId: uploadClusterId, clusterName: uploadClusterName });
       setUploadedState(nextUploadedState);
       setSourceMode('upload');
       setFilters(initialFilters);
@@ -115,7 +117,7 @@ function Dashboard() {
     } catch (requestError) {
       setUploadError(requestError instanceof Error ? requestError.message : 'upload_parse_failed');
     }
-  }, []);
+  }, [uploadClusterId, uploadClusterName]);
 
   const handleImportJson = useCallback(async (file: File) => {
     setUploadError('');
@@ -141,10 +143,10 @@ function Dashboard() {
     const url = window.URL.createObjectURL(blob);
     const anchor = document.createElement('a');
     anchor.href = url;
-    anchor.download = `kuviewer-${sourceMode}-topology.json`;
+    anchor.download = `kuviewer-${exportSourceName(sourceMode, uploadedState)}-topology.json`;
     anchor.click();
     window.URL.revokeObjectURL(url);
-  }, [snapshot, sourceMode]);
+  }, [snapshot, sourceMode, uploadedState]);
 
   const handleLiveLock = useCallback(() => {
     clearAdminToken();
@@ -260,6 +262,8 @@ function Dashboard() {
           liveSessionMessage={liveSessionMessage}
           liveUnlocked={liveUnlocked}
           mode={sourceMode}
+          uploadClusterId={uploadClusterId}
+          uploadClusterName={uploadClusterName}
           uploadedState={uploadedState}
           uploadError={uploadError}
           onExportJson={handleExportJson}
@@ -270,6 +274,8 @@ function Dashboard() {
             setLiveSessionMessage('');
           }}
           onModeChange={handleSourceModeChange}
+          onUploadClusterIdChange={setUploadClusterId}
+          onUploadClusterNameChange={setUploadClusterName}
           onUploadFiles={handleUploadFiles}
         />
         <StatTiles clusters={clusters} selectedClusterId={filters.cluster} />
@@ -356,6 +362,17 @@ function sourceModeLabel(sourceMode: TopologySourceMode) {
     return '목업';
   }
   return '실시간';
+}
+
+function exportSourceName(sourceMode: TopologySourceMode, uploadedState: UploadedTopologyState | null) {
+  if (sourceMode === 'upload' && uploadedState?.snapshot.clusters[0]?.id) {
+    return sanitizeFilenamePart(uploadedState.snapshot.clusters[0].id);
+  }
+  return sanitizeFilenamePart(sourceMode);
+}
+
+function sanitizeFilenamePart(value: string) {
+  return value.trim().toLowerCase().replace(/[^a-z0-9._-]+/g, '-') || 'topology';
 }
 
 function formatConnectorStatus(

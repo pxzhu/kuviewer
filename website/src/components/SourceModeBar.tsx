@@ -3,6 +3,7 @@ import {
   AlertTriangle,
   Boxes,
   CheckCircle2,
+  ChevronDown,
   Download,
   FileArchive,
   FileJson,
@@ -19,11 +20,15 @@ import { fetchConnectorStatusWithToken } from '../services/statusApi';
 interface SourceModeBarProps {
   mode: TopologySourceMode;
   liveUnlocked: boolean;
+  uploadClusterId: string;
+  uploadClusterName: string;
   uploadedState: UploadedTopologyState | null;
   uploadError: string;
   liveSessionMessage: string;
   canExport: boolean;
   onModeChange: (mode: TopologySourceMode) => void;
+  onUploadClusterIdChange: (value: string) => void;
+  onUploadClusterNameChange: (value: string) => void;
   onUploadFiles: (files: File[]) => void;
   onImportJson: (file: File) => void;
   onExportJson: () => void;
@@ -40,11 +45,15 @@ const modeOptions: Array<{ mode: TopologySourceMode; label: string; icon: typeof
 export function SourceModeBar({
   mode,
   liveUnlocked,
+  uploadClusterId,
+  uploadClusterName,
   uploadedState,
   uploadError,
   liveSessionMessage,
   canExport,
   onModeChange,
+  onUploadClusterIdChange,
+  onUploadClusterNameChange,
   onUploadFiles,
   onImportJson,
   onExportJson,
@@ -56,6 +65,7 @@ export function SourceModeBar({
   const [token, setToken] = useState(() => getStoredAdminToken());
   const [checkingToken, setCheckingToken] = useState(false);
   const [tokenError, setTokenError] = useState('');
+  const [warningsOpen, setWarningsOpen] = useState(false);
 
   const handleLiveUnlock = async () => {
     const trimmedToken = token.trim();
@@ -176,6 +186,37 @@ export function SourceModeBar({
         </div>
       </div>
 
+      {mode === 'upload' ? (
+        <div className="grid gap-3 border-t border-[rgba(60,60,67,0.1)] bg-white/45 px-3 py-3 md:grid-cols-[minmax(160px,240px)_minmax(160px,240px)_minmax(0,1fr)] lg:px-4">
+          <label className="min-w-0">
+            <span className="ku-meta">Cluster name</span>
+            <input
+              className="ku-field mt-1 h-9 w-full"
+              data-testid="upload-cluster-name"
+              placeholder="uploaded-bundle"
+              value={uploadClusterName}
+              onChange={(event) => onUploadClusterNameChange(event.target.value)}
+            />
+          </label>
+          <label className="min-w-0">
+            <span className="ku-meta">Cluster id</span>
+            <input
+              className="ku-field mt-1 h-9 w-full font-mono"
+              data-testid="upload-cluster-id"
+              placeholder="uploaded-bundle"
+              value={uploadClusterId}
+              onChange={(event) => onUploadClusterIdChange(event.target.value)}
+            />
+          </label>
+          <UploadWarnings
+            open={warningsOpen}
+            uploadedState={uploadedState}
+            uploadError={uploadError}
+            onToggle={() => setWarningsOpen((current) => !current)}
+          />
+        </div>
+      ) : null}
+
       <input
         ref={uploadInputRef}
         className="hidden"
@@ -227,9 +268,64 @@ function UploadSummary({ uploadedState, uploadError }: { uploadedState: Uploaded
   return (
     <span className={`ku-chip ${warningCount ? 'border-[rgba(255,149,0,0.24)] bg-[rgba(255,149,0,0.12)] text-[#b05f00]' : ''}`} title={uploadedState.warnings.slice(0, 3).join('\n')}>
       {warningCount ? <AlertTriangle size={13} aria-hidden="true" /> : <CheckCircle2 size={13} aria-hidden="true" />}
-      리소스 {uploadedState.snapshot.nodes.length}개 · 파일 {uploadedState.files.length}개
+      리소스 {uploadedState.snapshot.nodes.length}개 · 파일 {uploadedState.files.length}개 · 경고 {warningCount}개
     </span>
   );
+}
+
+function UploadWarnings({
+  open,
+  uploadedState,
+  uploadError,
+  onToggle,
+}: {
+  open: boolean;
+  uploadedState: UploadedTopologyState | null;
+  uploadError: string;
+  onToggle: () => void;
+}) {
+  const warnings = uploadWarnings(uploadedState, uploadError);
+  const visibleWarnings = warnings.slice(0, 5);
+  const hiddenCount = Math.max(0, warnings.length - visibleWarnings.length);
+
+  return (
+    <div className="min-w-0 self-end">
+      <button
+        className={`inline-flex h-9 max-w-full items-center gap-2 rounded-[10px] border px-3 text-sm font-semibold transition ${
+          warnings.length ? 'border-[rgba(255,149,0,0.24)] bg-[rgba(255,149,0,0.12)] text-[#b05f00]' : 'border-[rgba(52,199,89,0.22)] bg-[rgba(52,199,89,0.1)] text-[#248a3d]'
+        }`}
+        data-testid="upload-warning-toggle"
+        type="button"
+        aria-expanded={open}
+        onClick={onToggle}
+      >
+        {warnings.length ? <AlertTriangle size={14} aria-hidden="true" /> : <CheckCircle2 size={14} aria-hidden="true" />}
+        <span className="truncate">{warnings.length ? `업로드 진단 ${warnings.length}개` : '업로드 진단 정상'}</span>
+        <ChevronDown className={`shrink-0 transition ${open ? 'rotate-180' : ''}`} size={14} aria-hidden="true" />
+      </button>
+
+      {open ? (
+        <div className="mt-2 rounded-[11px] border border-[rgba(60,60,67,0.12)] bg-white/88 p-3 shadow-[0_4px_16px_rgba(0,0,0,0.04)]" data-testid="upload-warning-panel">
+          {warnings.length ? (
+            <ul className="space-y-2">
+              {visibleWarnings.map((warning, index) => (
+                <li key={`${warning}-${index}`} className="break-words font-mono text-[11px] font-semibold leading-relaxed text-[rgba(60,60,67,0.72)]">
+                  {warning}
+                </li>
+              ))}
+              {hiddenCount ? <li className="font-mono text-[11px] font-semibold text-[#b05f00]">+{hiddenCount} more</li> : null}
+            </ul>
+          ) : (
+            <p className="text-sm font-semibold text-[rgba(60,60,67,0.66)]">표시할 업로드 경고가 없습니다.</p>
+          )}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function uploadWarnings(uploadedState: UploadedTopologyState | null, uploadError: string) {
+  return [uploadError, ...(uploadedState?.warnings || [])].filter(Boolean);
 }
 
 function shortError(error: string) {

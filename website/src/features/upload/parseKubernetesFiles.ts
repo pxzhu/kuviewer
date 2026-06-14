@@ -9,6 +9,11 @@ export interface UploadedTopologyState {
   loadedAt: number;
 }
 
+export interface UploadParseOptions {
+  clusterId?: string;
+  clusterName?: string;
+}
+
 interface KubeObject {
   apiVersion?: string;
   kind?: string;
@@ -66,7 +71,9 @@ const supportedKinds = new Set<ResourceKind>([
   'StorageClass',
 ]);
 
-export async function parseKubernetesFiles(files: File[]): Promise<UploadedTopologyState> {
+const defaultUploadedCluster = 'uploaded-bundle';
+
+export async function parseKubernetesFiles(files: File[], options: UploadParseOptions = {}): Promise<UploadedTopologyState> {
   const parsedObjects: KubeObject[] = [];
   const parsedFiles: string[] = [];
   const warnings: string[] = [];
@@ -93,7 +100,7 @@ export async function parseKubernetesFiles(files: File[]): Promise<UploadedTopol
   }
 
   return {
-    snapshot: buildSnapshotFromKubernetesObjects(parsedObjects, warnings),
+    snapshot: buildSnapshotFromKubernetesObjects(parsedObjects, warnings, normalizeUploadOptions(options)),
     files: parsedFiles,
     warnings,
     loadedAt: Date.now(),
@@ -123,9 +130,9 @@ function parseManifestText(text: string, filename: string, warnings: string[]) {
   return objects;
 }
 
-function buildSnapshotFromKubernetesObjects(objects: KubeObject[], warnings: string[]): TopologySnapshot {
+function buildSnapshotFromKubernetesObjects(objects: KubeObject[], warnings: string[], options: Required<UploadParseOptions>): TopologySnapshot {
   const context: BuildContext = {
-    clusterId: 'uploaded-bundle',
+    clusterId: options.clusterId,
     nodeSet: new Set(),
     edgeSet: new Set(),
     nodes: [],
@@ -149,10 +156,10 @@ function buildSnapshotFromKubernetesObjects(objects: KubeObject[], warnings: str
     }
   });
 
-  addNode(context, 'Cluster', '', 'uploaded-bundle', 'healthy', { provider: 'upload' }, { objects: validObjects.length, namespaces: namespaces.size });
+  addNode(context, 'Cluster', '', options.clusterName, 'healthy', { provider: 'upload' }, { objects: validObjects.length, namespaces: namespaces.size });
   namespaces.forEach((namespace) => {
     addNode(context, 'Namespace', '', namespace, 'healthy', {}, { source: 'uploaded' });
-    addEdge(context, 'owns', id(context.clusterId, '', 'Cluster', 'uploaded-bundle'), id(context.clusterId, '', 'Namespace', namespace), 'metadata.namespace', 'observed');
+    addEdge(context, 'owns', id(context.clusterId, '', 'Cluster', options.clusterName), id(context.clusterId, '', 'Namespace', namespace), 'metadata.namespace', 'observed');
   });
 
   validObjects.forEach((object) => addObjectNode(context, object));
@@ -162,7 +169,7 @@ function buildSnapshotFromKubernetesObjects(objects: KubeObject[], warnings: str
 
   const clusterSummary: ClusterSummary = {
     id: context.clusterId,
-    name: 'uploaded-bundle',
+    name: options.clusterName,
     provider: 'Upload',
     version: 'yaml',
     nodeReady: context.nodes.filter((node) => node.kind === 'Node' && node.status === 'healthy').length,
@@ -816,6 +823,23 @@ function uniqueRefs(values: Array<{ name: string; namespace: string }>) {
 
 function uniqueStrings(values: string[]) {
   return Array.from(new Set(values)).sort();
+}
+
+function normalizeUploadOptions(options: UploadParseOptions): Required<UploadParseOptions> {
+  const clusterName = options.clusterName?.trim() || defaultUploadedCluster;
+  return {
+    clusterName,
+    clusterId: normalizeClusterId(options.clusterId || clusterName),
+  };
+}
+
+function normalizeClusterId(value: string) {
+  const normalized = value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  return normalized || defaultUploadedCluster;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

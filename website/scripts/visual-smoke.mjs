@@ -69,7 +69,11 @@ async function runViewport(name, viewport) {
 async function selectVisualMode(page, mode) {
   if (mode === 'upload') {
     await page.getByTestId('source-mode-upload').click();
+    await page.getByTestId('upload-cluster-name').fill('visual upload');
+    await page.getByTestId('upload-cluster-id').fill('visual-upload');
     await page.setInputFiles('[data-testid="upload-files"]', uploadManifestPath);
+    await page.getByTestId('upload-warning-toggle').click();
+    await expect(page.getByTestId('upload-warning-panel')).toContainText('지원하지 않는 kind', { timeout: 10_000 });
     return;
   }
 
@@ -400,6 +404,11 @@ spec:
   completions: 1
 status:
   succeeded: 1
+---
+apiVersion: example.com/v1
+kind: UnsupportedWidget
+metadata:
+  name: upload-warning-demo
 ---
 apiVersion: networking.k8s.io/v1
 kind: Ingress
