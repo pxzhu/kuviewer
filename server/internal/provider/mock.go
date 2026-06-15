@@ -31,6 +31,7 @@ func (MockProvider) Snapshot(_ context.Context) (topology.Snapshot, error) {
 			node("Node", "", "worker-b", "healthy", map[string]string{"zone": "b"}, map[string]interface{}{"cpu": "48%", "memory": "58%", "pods": 7}, 600, 260),
 			node("Node", "", "worker-c", "warning", map[string]string{"zone": "c"}, map[string]interface{}{"cpu": "82%", "memory": "86%", "pods": 5}, 600, 440),
 			node("CustomResourceDefinition", "", "widgets.platform.example.com", "healthy", map[string]string{"group": "platform.example.com"}, map[string]interface{}{"group": "platform.example.com", "kind": "Widget", "plural": "widgets", "scope": "Namespaced", "servedVersions": "v1", "storageVersion": "v1"}, 1500, 120),
+			node("CustomResource", "platform", "Widget:checkout-dashboard", "healthy", map[string]string{"app": "checkout"}, map[string]interface{}{"apiVersion": "platform.example.com/v1", "kind": "Widget", "name": "checkout-dashboard", "crd": "widgets.platform.example.com", "group": "platform.example.com", "scope": "Namespaced", "version": "v1", "specFields": 2, "statusFields": 1, "conditions": "Ready=True"}, 1500, 260),
 			node("Deployment", "platform", "kuviewer-api", "healthy", map[string]string{"app": "kuviewer", "tier": "api"}, map[string]interface{}{"replicas": "2/2", "image": "kuviewer/api:mock"}, 900, 120),
 			node("Service", "platform", "kuviewer-api", "healthy", map[string]string{"app": "kuviewer"}, map[string]interface{}{"type": "ClusterIP", "port": 8080}, 1160, 120),
 			node("Pod", "platform", "kuviewer-api-6d9c4", "healthy", map[string]string{"app": "kuviewer"}, map[string]interface{}{"ready": true, "restarts": 0, "node": "worker-a"}, 920, 260),
@@ -55,6 +56,7 @@ func (MockProvider) Snapshot(_ context.Context) (topology.Snapshot, error) {
 		Edges: []topology.Edge{
 			edge("cluster-platform", nodeID("Cluster", "", "native-dev"), nodeID("Namespace", "", "platform"), "owns", "metadata.namespace"),
 			edge("cluster-checkout", nodeID("Cluster", "", "native-dev"), nodeID("Namespace", "", "checkout"), "owns", "metadata.namespace"),
+			edge("crd-widget", nodeID("CustomResourceDefinition", "", "widgets.platform.example.com"), nodeID("CustomResource", "platform", "Widget:checkout-dashboard"), "owns", "CustomResourceDefinition.spec.names.kind"),
 			edge("platform-worker-a", nodeID("Pod", "platform", "kuviewer-api-6d9c4"), nodeID("Node", "", "worker-a"), "scheduled-on", "Pod.spec.nodeName"),
 			edge("checkout-worker-c", nodeID("Pod", "checkout", "checkout-api-7c8f9"), nodeID("Node", "", "worker-c"), "scheduled-on", "Pod.spec.nodeName"),
 			edge("deploy-pod", nodeID("Deployment", "platform", "kuviewer-api"), nodeID("Pod", "platform", "kuviewer-api-6d9c4"), "owns", "metadata.ownerReferences"),

@@ -310,6 +310,7 @@ const kindColors: Partial<Record<ResourceKind, string>> = {
   PersistentVolume: '#5e5ce6',
   StorageClass: '#64d2ff',
   CustomResourceDefinition: '#ffcc00',
+  CustomResource: '#ffd60a',
 };
 
 const nodeColors: Record<string, string> = {

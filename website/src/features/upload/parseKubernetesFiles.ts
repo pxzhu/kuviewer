@@ -45,6 +45,14 @@ interface NamespaceRecord {
   labels: Record<string, string>;
 }
 
+interface CustomResourceDefinitionRecord {
+  name: string;
+  group: string;
+  kind: string;
+  versions: string[];
+  scope: string;
+}
+
 const supportedKinds = new Set<ResourceKind>([
   'Cluster',
   'Namespace',
@@ -149,6 +157,7 @@ function buildSnapshotFromKubernetesObjects(objects: KubeObject[], warnings: str
   const services = validObjects.filter((object) => object.kind === 'Service');
   const networkPolicies = validObjects.filter((object) => object.kind === 'NetworkPolicy');
   const namespaceObjects = validObjects.filter((object) => object.kind === 'Namespace');
+  const customResourceDefinitions = customResourceDefinitionRecords(validObjects);
 
   validObjects.forEach((object) => {
     const namespace = object.metadata?.namespace || '';
@@ -166,8 +175,8 @@ function buildSnapshotFromKubernetesObjects(objects: KubeObject[], warnings: str
     addEdge(context, 'owns', id(context.clusterId, '', 'Cluster', options.clusterName), id(context.clusterId, '', 'Namespace', namespace), 'metadata.namespace', 'observed');
   });
 
-  validObjects.forEach((object) => addObjectNode(context, object));
-  validObjects.forEach((object) => addObjectEdges(context, object));
+  validObjects.forEach((object) => addObjectNode(context, object, customResourceDefinitions));
+  validObjects.forEach((object) => addObjectEdges(context, object, customResourceDefinitions));
   addServiceSelectorEdges(context, services, pods);
   addNetworkPolicyEdges(context, networkPolicies, pods, namespaceRecords(namespaces, namespaceObjects));
 
@@ -186,20 +195,20 @@ function buildSnapshotFromKubernetesObjects(objects: KubeObject[], warnings: str
   return { clusters: [clusterSummary], nodes: context.nodes, edges: context.edges };
 }
 
-function addObjectNode(context: BuildContext, object: KubeObject) {
-  const kind = normalizeKind(object.kind);
+function addObjectNode(context: BuildContext, object: KubeObject, customResourceDefinitions: CustomResourceDefinitionRecord[]) {
+  const { kind, customResourceDefinition } = normalizeObjectKind(object, customResourceDefinitions);
   if (!kind) {
     context.warnings.push(`지원하지 않는 kind: ${object.kind || 'unknown'}`);
     return;
   }
-  const name = object.metadata?.name || '';
+  const name = objectNameForKind(kind, object);
   const namespace = object.metadata?.namespace || '';
-  addNode(context, kind, namespace, name, objectStatus(kind, object), labels(object), objectSummary(kind, object));
+  addNode(context, kind, namespace, name, objectStatus(kind, object), labels(object), objectSummary(kind, object, customResourceDefinition));
 }
 
-function addObjectEdges(context: BuildContext, object: KubeObject) {
-  const kind = normalizeKind(object.kind);
-  const name = object.metadata?.name || '';
+function addObjectEdges(context: BuildContext, object: KubeObject, customResourceDefinitions: CustomResourceDefinitionRecord[]) {
+  const { kind, customResourceDefinition } = normalizeObjectKind(object, customResourceDefinitions);
+  const name = kind ? objectNameForKind(kind, object) : '';
   const namespace = object.metadata?.namespace || '';
   if (!kind || !name) {
     return;
@@ -215,6 +224,11 @@ function addObjectEdges(context: BuildContext, object: KubeObject) {
 
   if (namespace) {
     addEdge(context, 'owns', id(context.clusterId, '', 'Namespace', namespace), objectId, 'metadata.namespace', 'observed');
+  }
+
+  if (kind === 'CustomResource' && customResourceDefinition) {
+    addEdge(context, 'owns', id(context.clusterId, '', 'CustomResourceDefinition', customResourceDefinition.name), objectId, 'CustomResourceDefinition.spec.names.kind', 'observed');
+    return;
   }
 
   if (kind === 'Pod') {
@@ -439,7 +453,7 @@ function addEdge(context: BuildContext, type: EdgeType, source: string, target: 
   context.edgeSet.add(edgeId);
 }
 
-function objectSummary(kind: ResourceKind, object: KubeObject): Record<string, string | number | boolean> {
+function objectSummary(kind: ResourceKind, object: KubeObject, customResourceDefinition?: CustomResourceDefinitionRecord): Record<string, string | number | boolean> {
   if (kind === 'Secret') {
     return { type: stringAt(object, ['type']) || 'Opaque', keys: Object.keys(object.data || {}).length, values: 'hidden' };
   }
@@ -529,6 +543,22 @@ function objectSummary(kind: ResourceKind, object: KubeObject): Record<string, s
       storageVersion: crdStorageVersion(object) || '-',
     };
   }
+  if (kind === 'CustomResource') {
+    const apiVersion = object.apiVersion || (customResourceDefinition ? `${customResourceDefinition.group}/${customResourceDefinition.versions[0] || '-'}` : '-');
+    const apiParts = apiVersionParts(apiVersion);
+    return {
+      apiVersion,
+      kind: object.kind || customResourceDefinition?.kind || '-',
+      name: object.metadata?.name || '-',
+      crd: customResourceDefinition?.name || '-',
+      group: customResourceDefinition?.group || apiParts.group || '-',
+      scope: customResourceDefinition?.scope || '-',
+      version: apiParts.version || customResourceDefinition?.versions[0] || '-',
+      specFields: fieldCount(object.spec),
+      statusFields: fieldCount(object.status),
+      conditions: customResourceConditionSummary(object) || '-',
+    };
+  }
   return { source: 'uploaded' };
 }
 
@@ -538,6 +568,9 @@ function objectStatus(kind: ResourceKind, object: KubeObject): ResourceStatus {
   }
   if (kind === 'CustomResourceDefinition') {
     return crdEstablished(object) ? 'healthy' : 'unknown';
+  }
+  if (kind === 'CustomResource') {
+    return customResourceStatus(object);
   }
   if (kind === 'Pod') {
     const phase = stringAt(object, ['status', 'phase']);
@@ -643,6 +676,84 @@ function crdEstablished(object: KubeObject) {
   return asArray(readAt(object, ['status', 'conditions'])).some((condition) => isRecord(condition) && condition.type === 'Established' && condition.status === 'True');
 }
 
+function customResourceDefinitionRecords(objects: KubeObject[]): CustomResourceDefinitionRecord[] {
+  return objects
+    .filter((object) => object.kind === 'CustomResourceDefinition')
+    .map((object) => {
+      const storageVersion = crdStorageVersion(object);
+      const servedVersions = crdServedVersions(object);
+      const versions = servedVersions.length > 0 ? servedVersions : storageVersion ? [storageVersion] : [];
+      return {
+        name: object.metadata?.name || '',
+        group: stringAt(object, ['spec', 'group']),
+        kind: stringAt(object, ['spec', 'names', 'kind']),
+        versions,
+        scope: stringAt(object, ['spec', 'scope']) || '-',
+      };
+    })
+    .filter((definition) => definition.name && definition.group && definition.kind && definition.versions.length > 0);
+}
+
+function customResourceDefinitionForObject(object: KubeObject, definitions: CustomResourceDefinitionRecord[]) {
+  if (!object.kind || !object.apiVersion) {
+    return undefined;
+  }
+  const { group, version } = apiVersionParts(object.apiVersion);
+  if (!group || !version) {
+    return undefined;
+  }
+  return definitions.find((definition) => definition.group === group && definition.kind === object.kind && definition.versions.includes(version));
+}
+
+function customResourceDisplayName(object: KubeObject) {
+  const kind = object.kind || 'CustomResource';
+  return `${kind}:${object.metadata?.name || ''}`;
+}
+
+function customResourceStatus(object: KubeObject): ResourceStatus {
+  const conditions = customResourceConditions(object);
+  if (conditions.length === 0) {
+    return 'unknown';
+  }
+  const readinessConditions = conditions.filter((condition) => condition.type === 'Ready' || condition.type === 'Synced' || condition.type === 'Reconciled');
+  if (readinessConditions.some((condition) => condition.status === 'True')) {
+    return 'healthy';
+  }
+  if (readinessConditions.some((condition) => condition.status === 'False')) {
+    return 'warning';
+  }
+  return 'unknown';
+}
+
+function customResourceConditionSummary(object: KubeObject) {
+  return customResourceConditions(object)
+    .map((condition) => `${condition.type}=${condition.status || '-'}`)
+    .sort()
+    .join(', ');
+}
+
+function customResourceConditions(object: KubeObject) {
+  return asArray(readAt(object, ['status', 'conditions']))
+    .filter(isRecord)
+    .map((condition) => ({
+      type: stringAt(condition, ['type']),
+      status: stringAt(condition, ['status']),
+    }))
+    .filter((condition) => condition.type);
+}
+
+function apiVersionParts(apiVersion: string) {
+  const parts = apiVersion.split('/');
+  if (parts.length === 1) {
+    return { group: '', version: parts[0] || '' };
+  }
+  return { group: parts.slice(0, -1).join('/'), version: parts[parts.length - 1] || '' };
+}
+
+function fieldCount(value: unknown) {
+  return isRecord(value) ? Object.keys(value).length : 0;
+}
+
 function gatewayHosts(object: KubeObject) {
   return uniqueStrings(
     asArray(readAt(object, ['spec', 'listeners']))
@@ -675,6 +786,22 @@ function collectObject(value: unknown, target: KubeObject[]) {
 
 function normalizeKind(kind: unknown): ResourceKind | undefined {
   return typeof kind === 'string' && supportedKinds.has(kind as ResourceKind) ? (kind as ResourceKind) : undefined;
+}
+
+function normalizeObjectKind(object: KubeObject, customResourceDefinitions: CustomResourceDefinitionRecord[]): { kind?: ResourceKind; customResourceDefinition?: CustomResourceDefinitionRecord } {
+  const knownKind = normalizeKind(object.kind);
+  if (knownKind) {
+    return { kind: knownKind };
+  }
+  const customResourceDefinition = customResourceDefinitionForObject(object, customResourceDefinitions);
+  if (customResourceDefinition) {
+    return { kind: 'CustomResource', customResourceDefinition };
+  }
+  return {};
+}
+
+function objectNameForKind(kind: ResourceKind, object: KubeObject) {
+  return kind === 'CustomResource' ? customResourceDisplayName(object) : object.metadata?.name || '';
 }
 
 function id(clusterId: string, namespace: string, kind: ResourceKind, name: string) {
