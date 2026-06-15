@@ -35,6 +35,16 @@ func (p eventStubProvider) ResourceEvents(context.Context, provider.ResourceRef)
 	return p.events, p.eventErr
 }
 
+type logStubProvider struct {
+	stubProvider
+	logs   topology.ResourceLogs
+	logErr error
+}
+
+func (p logStubProvider) ResourceLogs(context.Context, provider.ResourceRef) (topology.ResourceLogs, error) {
+	return p.logs, p.logErr
+}
+
 type panicProvider struct{}
 
 func (panicProvider) Snapshot(context.Context) (topology.Snapshot, error) {
@@ -393,6 +403,93 @@ func TestResourceDetailAndEvents(t *testing.T) {
 
 		if recorder.Code != http.StatusNotFound {
 			t.Fatalf("status = %d, want %d", recorder.Code, http.StatusNotFound)
+		}
+	})
+}
+
+func TestResourceLogs(t *testing.T) {
+	handler := NewServer(stubProvider{snapshot: resourceTestSnapshot()}, "secret-token", "", "")
+
+	t.Run("logs require token", func(t *testing.T) {
+		recorder := httptest.NewRecorder()
+		request := httptest.NewRequest(http.MethodGet, "/api/resources/Pod/checkout/checkout-api/logs", nil)
+		handler.ServeHTTP(recorder, request)
+
+		if recorder.Code != http.StatusUnauthorized {
+			t.Fatalf("status = %d, want %d", recorder.Code, http.StatusUnauthorized)
+		}
+	})
+
+	t.Run("non pod not found", func(t *testing.T) {
+		recorder := httptest.NewRecorder()
+		request := httptest.NewRequest(http.MethodGet, "/api/resources/Secret/checkout/checkout-secret/logs", nil)
+		request.Header.Set("Authorization", "Bearer secret-token")
+		handler.ServeHTTP(recorder, request)
+
+		if recorder.Code != http.StatusNotFound {
+			t.Fatalf("status = %d, want %d", recorder.Code, http.StatusNotFound)
+		}
+	})
+
+	t.Run("missing log provider fallback", func(t *testing.T) {
+		recorder := httptest.NewRecorder()
+		request := httptest.NewRequest(http.MethodGet, "/api/resources/Pod/checkout/checkout-api/logs", nil)
+		request.Header.Set("Authorization", "Bearer secret-token")
+		handler.ServeHTTP(recorder, request)
+
+		if recorder.Code != http.StatusOK {
+			t.Fatalf("status = %d, want %d", recorder.Code, http.StatusOK)
+		}
+		var logs topology.ResourceLogs
+		if err := json.NewDecoder(recorder.Body).Decode(&logs); err != nil {
+			t.Fatalf("decode logs: %v", err)
+		}
+		if logs.Warning != "logs_unavailable" || len(logs.Lines) != 0 || logs.TailLines != 200 {
+			t.Fatalf("logs = %+v, want unavailable warning", logs)
+		}
+	})
+
+	t.Run("provider logs", func(t *testing.T) {
+		logHandler := NewServer(logStubProvider{
+			stubProvider: stubProvider{snapshot: resourceTestSnapshot()},
+			logs:         topology.ResourceLogs{Lines: []string{"started", "ready"}, TailLines: 200},
+		}, "secret-token", "", "")
+		recorder := httptest.NewRecorder()
+		request := httptest.NewRequest(http.MethodGet, "/api/resources/Pod/checkout/checkout-api/logs", nil)
+		request.Header.Set("Authorization", "Bearer secret-token")
+		logHandler.ServeHTTP(recorder, request)
+
+		if recorder.Code != http.StatusOK {
+			t.Fatalf("status = %d, want %d", recorder.Code, http.StatusOK)
+		}
+		var logs topology.ResourceLogs
+		if err := json.NewDecoder(recorder.Body).Decode(&logs); err != nil {
+			t.Fatalf("decode logs: %v", err)
+		}
+		if len(logs.Lines) != 2 || logs.Lines[1] != "ready" {
+			t.Fatalf("logs = %+v, want provider lines", logs)
+		}
+	})
+
+	t.Run("provider logs fallback warning", func(t *testing.T) {
+		logHandler := NewServer(logStubProvider{
+			stubProvider: stubProvider{snapshot: resourceTestSnapshot()},
+			logErr:       errors.New("forbidden"),
+		}, "secret-token", "", "")
+		recorder := httptest.NewRecorder()
+		request := httptest.NewRequest(http.MethodGet, "/api/resources/Pod/checkout/checkout-api/logs", nil)
+		request.Header.Set("Authorization", "Bearer secret-token")
+		logHandler.ServeHTTP(recorder, request)
+
+		if recorder.Code != http.StatusOK {
+			t.Fatalf("status = %d, want %d", recorder.Code, http.StatusOK)
+		}
+		var logs topology.ResourceLogs
+		if err := json.NewDecoder(recorder.Body).Decode(&logs); err != nil {
+			t.Fatalf("decode logs: %v", err)
+		}
+		if logs.Warning != "logs_unavailable" || len(logs.Lines) != 0 {
+			t.Fatalf("logs fallback = %+v, want warning and empty lines", logs)
 		}
 	})
 }

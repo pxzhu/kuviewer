@@ -24,6 +24,10 @@ type EventProvider interface {
 	ResourceEvents(ctx context.Context, ref ResourceRef) (topology.ResourceEvents, error)
 }
 
+type LogProvider interface {
+	ResourceLogs(ctx context.Context, ref ResourceRef) (topology.ResourceLogs, error)
+}
+
 func New(source string) (TopologyProvider, error) {
 	if source == "kubernetes" {
 		return NewKubernetesProviderFromEnv()

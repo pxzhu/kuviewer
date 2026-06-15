@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import { Activity, AlertTriangle, Boxes, FileText, Link2, Search, Tags } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
-import { fetchResourceEvents, fetchResources, resourcesFromSnapshot } from '../services/resourceApi';
+import { fetchResourceEvents, fetchResourceLogs, fetchResources, resourcesFromSnapshot } from '../services/resourceApi';
 import type { ResourceEvent, ResourceExplorerItem } from '../types/resourceExplorer';
 import type { TopologySnapshot } from '../types/topology';
 import type { TopologySourceMode } from '../features/topology/useTopology';
@@ -155,6 +155,10 @@ function ResourceExplorerDetail({ liveEnabled, resource, onSelectNode }: { liveE
   const [events, setEvents] = useState<ResourceEvent[]>([]);
   const [eventsError, setEventsError] = useState('');
   const [eventsWarning, setEventsWarning] = useState('');
+  const [logLines, setLogLines] = useState<string[]>([]);
+  const [logsError, setLogsError] = useState('');
+  const [logsWarning, setLogsWarning] = useState('');
+  const [logsLoading, setLogsLoading] = useState(false);
 
   useEffect(() => {
     if (!resource || !liveEnabled) {
@@ -181,6 +185,13 @@ function ResourceExplorerDetail({ liveEnabled, resource, onSelectNode }: { liveE
     return () => controller.abort();
   }, [liveEnabled, resource]);
 
+  useEffect(() => {
+    setLogLines([]);
+    setLogsError('');
+    setLogsWarning('');
+    setLogsLoading(false);
+  }, [resource?.id]);
+
   if (!resource) {
     return (
       <div className="ku-panel p-6 text-center">
@@ -194,6 +205,26 @@ function ResourceExplorerDetail({ liveEnabled, resource, onSelectNode }: { liveE
   const summaryPreview = {
     ...recordFromUnknown(resource.preview.summary),
     ...(resource.preview.secretValues ? { secretValues: resource.preview.secretValues } : {}),
+  };
+  const canFetchLogs = liveEnabled && resource.kind === 'Pod';
+
+  const handleFetchLogs = async () => {
+    if (!canFetchLogs) {
+      return;
+    }
+    setLogsLoading(true);
+    setLogsError('');
+    setLogsWarning('');
+    try {
+      const response = await fetchResourceLogs(resource);
+      setLogLines(response.lines);
+      setLogsWarning(response.warning || '');
+    } catch (requestError) {
+      setLogLines([]);
+      setLogsError(requestError instanceof Error ? requestError.message : 'resource_logs_request_failed');
+    } finally {
+      setLogsLoading(false);
+    }
   };
 
   return (
@@ -266,6 +297,39 @@ function ResourceExplorerDetail({ liveEnabled, resource, onSelectNode }: { liveE
                   </p>
                 </div>
               ))}
+            </div>
+          )}
+        </DetailSection>
+        <DetailSection icon={FileText} title="Logs">
+          {!canFetchLogs ? (
+            <p className="ku-meta">Pod 로그 없음</p>
+          ) : (
+            <div className="grid gap-2">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="ku-meta">최근 200줄 · 읽기 전용 · 저장 안 함</p>
+                <button
+                  className="rounded-[9px] border border-[rgba(0,122,255,0.22)] bg-[rgba(0,122,255,0.08)] px-2.5 py-1.5 text-xs font-semibold text-[#0057b8] transition hover:bg-[rgba(0,122,255,0.13)] disabled:cursor-not-allowed disabled:opacity-55"
+                  type="button"
+                  onClick={handleFetchLogs}
+                  disabled={logsLoading}
+                >
+                  {logsLoading ? '불러오는 중' : '로그 불러오기'}
+                </button>
+              </div>
+              {logsWarning ? <InlineWarning message="로그 조회 권한이 없거나 API가 없어 빈 목록으로 표시합니다." /> : null}
+              {logsError ? <InlineWarning message={`로그 조회 실패: ${logsError}`} /> : null}
+              {logLines.length === 0 ? (
+                <p className="ku-meta">표시할 로그가 없습니다.</p>
+              ) : (
+                <pre className="max-h-[320px] overflow-auto rounded-[10px] border border-[rgba(60,60,67,0.12)] bg-[#111827] p-3 font-mono text-[11px] leading-5 text-[#d1d5db]">
+                  {logLines.map((line, index) => (
+                    <span key={`${index}:${line.slice(0, 16)}`}>
+                      {line}
+                      {'\n'}
+                    </span>
+                  ))}
+                </pre>
+              )}
             </div>
           )}
         </DetailSection>

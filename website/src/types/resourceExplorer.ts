@@ -40,3 +40,10 @@ export interface ResourceEvent {
   source: string;
   timestamp: string;
 }
+
+export interface ResourceLogs {
+  lines: string[];
+  warning?: string;
+  container?: string;
+  tailLines: number;
+}

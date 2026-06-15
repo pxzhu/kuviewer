@@ -1,5 +1,5 @@
 import { getStoredAdminToken } from '../features/auth/adminToken';
-import type { ResourceEvents, ResourceExplorerItem, ResourceExplorerList } from '../types/resourceExplorer';
+import type { ResourceEvents, ResourceExplorerItem, ResourceExplorerList, ResourceLogs } from '../types/resourceExplorer';
 import type { TopologySnapshot } from '../types/topology';
 import { getTopologyApiBaseUrl } from './topologyApi';
 
@@ -33,6 +33,22 @@ export async function fetchResourceEvents(resource: Pick<ResourceExplorerItem, '
     throw new Error(`resource_events_request_failed:${response.status}`);
   }
   return response.json() as Promise<ResourceEvents>;
+}
+
+export async function fetchResourceLogs(resource: Pick<ResourceExplorerItem, 'kind' | 'namespace' | 'name'>, signal?: AbortSignal): Promise<ResourceLogs> {
+  const baseUrl = getTopologyApiBaseUrl().replace(/\/$/, '');
+  if (!baseUrl) {
+    throw new Error('api_base_url_not_configured');
+  }
+
+  const response = await fetch(`${baseUrl}/api/resources/${encodePath(resource.kind)}/${encodePath(resource.namespace || '-')}/${encodePath(resource.name)}/logs`, {
+    headers: { Authorization: `Bearer ${getStoredAdminToken()}` },
+    signal,
+  });
+  if (!response.ok) {
+    throw new Error(`resource_logs_request_failed:${response.status}`);
+  }
+  return response.json() as Promise<ResourceLogs>;
 }
 
 export function resourcesFromSnapshot(snapshot: TopologySnapshot): ResourceExplorerList {

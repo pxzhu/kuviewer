@@ -22,6 +22,9 @@ import (
 const (
 	serviceAccountTokenFile = "/var/run/secrets/kubernetes.io/serviceaccount/token"
 	serviceAccountCAFile    = "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
+	podLogTailLines         = 200
+	podLogMaxBytes          = 256 * 1024
+	podLogMaxLineBytes      = 4096
 )
 
 type KubernetesProvider struct {
@@ -517,6 +520,20 @@ func (p KubernetesProvider) ResourceEvents(ctx context.Context, ref ResourceRef)
 	return topology.ResourceEvents{Items: items}, nil
 }
 
+func (p KubernetesProvider) ResourceLogs(ctx context.Context, ref ResourceRef) (topology.ResourceLogs, error) {
+	if ref.Kind != "Pod" || ref.Namespace == "" || ref.Name == "" {
+		return topology.ResourceLogs{Lines: []string{}, Warning: "logs_unavailable", TailLines: podLogTailLines}, nil
+	}
+
+	path := "/api/v1/namespaces/" + url.PathEscape(ref.Namespace) + "/pods/" + url.PathEscape(ref.Name) + "/log?tailLines=" + strconv.Itoa(podLogTailLines)
+	found, body, err := p.client.getTextStatus(ctx, path, true, podLogMaxBytes)
+	if err != nil || !found {
+		return topology.ResourceLogs{Lines: []string{}, Warning: "logs_unavailable", TailLines: podLogTailLines}, nil
+	}
+
+	return topology.ResourceLogs{Lines: cappedLogLines(body), TailLines: podLogTailLines}, nil
+}
+
 func (p KubernetesProvider) customResourceInstances(ctx context.Context, crds customResourceDefinitionList) []customResourceInstance {
 	resources := []customResourceInstance{}
 	for _, crd := range crds.Items {
@@ -677,6 +694,38 @@ func (c *kubeAPIClient) getJSONStatus(ctx context.Context, path string, out inte
 	}
 
 	return true, json.NewDecoder(response.Body).Decode(out)
+}
+
+func (c *kubeAPIClient) getTextStatus(ctx context.Context, path string, optional bool, maxBytes int64) (bool, string, error) {
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+path, nil)
+	if err != nil {
+		return false, "", err
+	}
+	request.Header.Set("Authorization", "Bearer "+c.bearer)
+	request.Header.Set("Accept", "text/plain")
+
+	response, err := c.httpClient.Do(request)
+	if err != nil {
+		return false, "", err
+	}
+	defer response.Body.Close()
+
+	if optional && (response.StatusCode == http.StatusNotFound || response.StatusCode == http.StatusForbidden || response.StatusCode == http.StatusBadRequest) {
+		return false, "", nil
+	}
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		body, _ := io.ReadAll(io.LimitReader(response.Body, 512))
+		return false, "", fmt.Errorf("kubernetes api %s returned %s: %s", path, response.Status, strings.TrimSpace(string(body)))
+	}
+
+	body, err := io.ReadAll(io.LimitReader(response.Body, maxBytes+1))
+	if err != nil {
+		return false, "", err
+	}
+	if int64(len(body)) > maxBytes {
+		body = body[:maxBytes]
+	}
+	return true, string(body), nil
 }
 
 func (c *kubeAPIClient) getGatewayRouteJSON(ctx context.Context, resource string, out interface{}) error {
@@ -1614,6 +1663,23 @@ func genericConditions(status map[string]interface{}) []condition {
 		conditions = append(conditions, condition{Type: conditionType, Status: conditionStatus})
 	}
 	return conditions
+}
+
+func cappedLogLines(body string) []string {
+	trimmed := strings.TrimSuffix(body, "\n")
+	if trimmed == "" {
+		return []string{}
+	}
+	lines := strings.Split(trimmed, "\n")
+	if len(lines) > podLogTailLines {
+		lines = lines[len(lines)-podLogTailLines:]
+	}
+	for index, line := range lines {
+		if len(line) > podLogMaxLineBytes {
+			lines[index] = line[:podLogMaxLineBytes] + "..."
+		}
+	}
+	return lines
 }
 
 func deploymentStatus(deployment deploymentResource) string {

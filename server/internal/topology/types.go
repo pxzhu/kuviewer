@@ -85,3 +85,10 @@ type ResourceEvent struct {
 	Source    string `json:"source"`
 	Timestamp string `json:"timestamp"`
 }
+
+type ResourceLogs struct {
+	Lines     []string `json:"lines"`
+	Warning   string   `json:"warning,omitempty"`
+	Container string   `json:"container,omitempty"`
+	TailLines int      `json:"tailLines"`
+}
