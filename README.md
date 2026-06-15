@@ -35,7 +35,7 @@ In-cluster client -> Service -> Pod -> Node
 
 The first implementation uses the same topology edge contract as the graph. The real Kubernetes connector should build those edges from fields visible in `kubectl get ... -o yaml`, including Ingress backends, Service selectors, EndpointSlice endpoints, Pod `spec.nodeName`, and Pod ConfigMap/Secret/PVC references.
 
-NetworkPolicy rendering is policy intent, not observed CNI traffic. Kuviewer parses `policyTypes`, `ingress`, `egress`, peers, and ports, then infers `allows-ingress` / `allows-egress` edges only from `matchLabels` selectors that can be resolved against the loaded Pod and Namespace labels. `matchExpressions` and `ipBlock` are shown in summaries only.
+NetworkPolicy rendering is policy intent, not observed CNI traffic. Kuviewer parses `policyTypes`, `ingress`, `egress`, peers, and ports, then infers `allows-ingress` / `allows-egress` edges from selectors that can be resolved against the loaded Pod and Namespace labels. `matchLabels` and the `In`, `NotIn`, `Exists`, and `DoesNotExist` `matchExpressions` operators are evaluated; `ipBlock` remains summary-only.
 
 ## MVP flow
 

@@ -418,6 +418,11 @@ spec:
   podSelector:
     matchLabels:
       app.kubernetes.io/name: orders-api
+    matchExpressions:
+      - key: tier
+        operator: In
+        values:
+          - backend
   policyTypes:
     - Ingress
     - Egress
@@ -426,6 +431,9 @@ spec:
         - podSelector:
             matchLabels:
               app.kubernetes.io/name: commerce-queue
+            matchExpressions:
+              - key: tier
+                operator: Exists
       ports:
         - protocol: TCP
           port: 8080
@@ -434,9 +442,19 @@ spec:
         - namespaceSelector:
             matchLabels:
               team: platform
+            matchExpressions:
+              - key: kuviewer.io/sample
+                operator: In
+                values:
+                  - "true"
           podSelector:
             matchLabels:
               app.kubernetes.io/name: telemetry
+            matchExpressions:
+              - key: tier
+                operator: NotIn
+                values:
+                  - frontend
       ports:
         - protocol: TCP
           port: 4317
