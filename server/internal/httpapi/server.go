@@ -174,7 +174,20 @@ func (s *Server) handleResourceRoute(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusNotFound, "resource_not_found")
 			return
 		}
-		writeJSON(w, http.StatusOK, topology.ResourceEvents{Items: []topology.ResourceEvent{}})
+		eventProvider, ok := s.provider.(provider.EventProvider)
+		if !ok {
+			writeJSON(w, http.StatusOK, topology.ResourceEvents{Items: []topology.ResourceEvent{}})
+			return
+		}
+		resourceEvents, err := eventProvider.ResourceEvents(r.Context(), provider.ResourceRef{Kind: kind, Namespace: namespace, Name: name})
+		if err != nil {
+			writeJSON(w, http.StatusOK, topology.ResourceEvents{Items: []topology.ResourceEvent{}, Warning: "events_unavailable"})
+			return
+		}
+		if resourceEvents.Items == nil {
+			resourceEvents.Items = []topology.ResourceEvent{}
+		}
+		writeJSON(w, http.StatusOK, resourceEvents)
 		return
 	}
 
@@ -344,7 +357,7 @@ func resourcesFromSnapshot(snapshot topology.Snapshot) []topology.Resource {
 			Name:        node.Name,
 			Status:      node.Status,
 			Labels:      cloneStringMap(node.Labels),
-			Annotations: map[string]string{},
+			Annotations: safeAnnotations(node.Annotations),
 			Summary:     safeSummary(node),
 			Preview:     safePreview(node),
 			Related:     relatedResources(node.ID, snapshot.Edges, nodeByID),
@@ -394,7 +407,7 @@ func safeSummary(node topology.Node) map[string]interface{} {
 	summary := cloneInterfaceMap(node.Summary)
 	for key := range summary {
 		lowerKey := strings.ToLower(key)
-		if lowerKey == "data" || lowerKey == "stringdata" || strings.Contains(lowerKey, "token") || strings.Contains(lowerKey, "password") || strings.Contains(lowerKey, "key") {
+		if lowerKey == "data" || lowerKey == "stringdata" || sensitiveField(lowerKey) {
 			delete(summary, key)
 		}
 	}
@@ -404,17 +417,86 @@ func safeSummary(node topology.Node) map[string]interface{} {
 
 func safePreview(node topology.Node) map[string]interface{} {
 	preview := map[string]interface{}{
-		"kind":      node.Kind,
-		"name":      node.Name,
-		"namespace": node.Namespace,
-		"status":    node.Status,
-		"labels":    cloneStringMap(node.Labels),
-		"summary":   safeSummary(node),
+		"metadata": map[string]interface{}{
+			"kind":              node.Kind,
+			"name":              node.Name,
+			"namespace":         node.Namespace,
+			"cluster":           node.ClusterID,
+			"uid":               shortUID(node.UID),
+			"age":               node.Age,
+			"owners":            cloneStringSlice(node.Owners),
+			"labels":            len(node.Labels),
+			"safeAnnotations":   len(safeAnnotations(node.Annotations)),
+			"hiddenAnnotations": hiddenAnnotationCount(node.Annotations),
+		},
+		"status":  statusPreview(node),
+		"summary": safeSummary(node),
 	}
 	if node.Kind == "Secret" {
 		preview["secretValues"] = "hidden"
 	}
 	return preview
+}
+
+func statusPreview(node topology.Node) map[string]interface{} {
+	preview := safeSummary(node)
+	preview["status"] = node.Status
+	return preview
+}
+
+func safeAnnotations(values map[string]string) map[string]string {
+	if values == nil {
+		return map[string]string{}
+	}
+	safe := map[string]string{}
+	for key, value := range values {
+		if sensitiveField(key) || sensitiveField(value) {
+			safe[key] = "redacted"
+			continue
+		}
+		safe[key] = value
+	}
+	return safe
+}
+
+func hiddenAnnotationCount(values map[string]string) int {
+	count := 0
+	for key, value := range values {
+		if value == "redacted" || sensitiveField(key) || sensitiveField(value) {
+			count++
+		}
+	}
+	return count
+}
+
+func sensitiveField(value string) bool {
+	lowerValue := strings.ToLower(value)
+	return strings.Contains(lowerValue, "token") ||
+		strings.Contains(lowerValue, "password") ||
+		strings.Contains(lowerValue, "secret") ||
+		strings.Contains(lowerValue, "credential") ||
+		strings.Contains(lowerValue, "apikey") ||
+		strings.Contains(lowerValue, "api-key") ||
+		strings.Contains(lowerValue, "accesskey") ||
+		strings.Contains(lowerValue, "access-key") ||
+		strings.Contains(lowerValue, "private-key") ||
+		strings.Contains(lowerValue, "client-key")
+}
+
+func shortUID(uid string) string {
+	if len(uid) <= 12 {
+		return uid
+	}
+	return uid[:12]
+}
+
+func cloneStringSlice(values []string) []string {
+	if values == nil {
+		return []string{}
+	}
+	cloned := make([]string, len(values))
+	copy(cloned, values)
+	return cloned
 }
 
 func cloneStringMap(values map[string]string) map[string]string {

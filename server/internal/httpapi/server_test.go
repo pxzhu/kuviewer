@@ -25,6 +25,16 @@ func (p stubProvider) Snapshot(context.Context) (topology.Snapshot, error) {
 	return p.snapshot, p.err
 }
 
+type eventStubProvider struct {
+	stubProvider
+	events   topology.ResourceEvents
+	eventErr error
+}
+
+func (p eventStubProvider) ResourceEvents(context.Context, provider.ResourceRef) (topology.ResourceEvents, error) {
+	return p.events, p.eventErr
+}
+
 type panicProvider struct{}
 
 func (panicProvider) Snapshot(context.Context) (topology.Snapshot, error) {
@@ -231,11 +241,31 @@ func TestResourcesReturnSafeResourceList(t *testing.T) {
 	}
 
 	var secret topology.Resource
+	var pod topology.Resource
 	for _, resource := range resources.Items {
 		if resource.Kind == "Secret" {
 			secret = resource
-			break
 		}
+		if resource.Kind == "Pod" {
+			pod = resource
+		}
+	}
+	if pod.Name != "checkout-api" {
+		t.Fatalf("pod resource not found: %+v", resources.Items)
+	}
+	if got := pod.Annotations["owner"]; got != "checkout" {
+		t.Fatalf("pod annotation owner = %q, want checkout", got)
+	}
+	metadata, ok := pod.Preview["metadata"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("pod metadata preview missing: %+v", pod.Preview)
+	}
+	if got := metadata["uid"]; got != "12345678-abc" {
+		t.Fatalf("pod preview uid = %v, want short uid", got)
+	}
+	owners, ok := metadata["owners"].([]interface{})
+	if !ok || len(owners) != 1 || owners[0] != "ReplicaSet/checkout-api-abc" {
+		t.Fatalf("pod preview owners = %#v, want ReplicaSet owner", metadata["owners"])
 	}
 	if secret.Name != "checkout-secret" {
 		t.Fatalf("secret resource not found: %+v", resources.Items)
@@ -245,6 +275,12 @@ func TestResourcesReturnSafeResourceList(t *testing.T) {
 	}
 	if got := secret.Preview["secretValues"]; got != "hidden" {
 		t.Fatalf("secretValues = %v, want hidden", got)
+	}
+	if got := secret.Annotations["token"]; got != "redacted" {
+		t.Fatalf("secret token annotation = %q, want redacted", got)
+	}
+	if strings.Contains(string(mustMarshalJSON(t, secret)), "redaction-fixture") {
+		t.Fatalf("secret value leaked in resource response: %+v", secret)
 	}
 }
 
@@ -284,6 +320,68 @@ func TestResourceDetailAndEvents(t *testing.T) {
 		}
 		if len(events.Items) != 0 {
 			t.Fatalf("events = %d, want 0", len(events.Items))
+		}
+	})
+
+	t.Run("events require token", func(t *testing.T) {
+		recorder := httptest.NewRecorder()
+		request := httptest.NewRequest(http.MethodGet, "/api/resources/Pod/checkout/checkout-api/events", nil)
+		handler.ServeHTTP(recorder, request)
+
+		if recorder.Code != http.StatusUnauthorized {
+			t.Fatalf("status = %d, want %d", recorder.Code, http.StatusUnauthorized)
+		}
+	})
+
+	t.Run("provider events", func(t *testing.T) {
+		eventHandler := NewServer(eventStubProvider{
+			stubProvider: stubProvider{snapshot: resourceTestSnapshot()},
+			events: topology.ResourceEvents{Items: []topology.ResourceEvent{
+				{
+					Type:      "Warning",
+					Reason:    "Unhealthy",
+					Message:   "Readiness probe failed",
+					Source:    "kubelet",
+					Timestamp: "2026-06-15T11:00:00Z",
+				},
+			}},
+		}, "secret-token", "", "")
+		recorder := httptest.NewRecorder()
+		request := httptest.NewRequest(http.MethodGet, "/api/resources/Pod/checkout/checkout-api/events", nil)
+		request.Header.Set("Authorization", "Bearer secret-token")
+		eventHandler.ServeHTTP(recorder, request)
+
+		if recorder.Code != http.StatusOK {
+			t.Fatalf("status = %d, want %d", recorder.Code, http.StatusOK)
+		}
+		var events topology.ResourceEvents
+		if err := json.NewDecoder(recorder.Body).Decode(&events); err != nil {
+			t.Fatalf("decode events: %v", err)
+		}
+		if len(events.Items) != 1 || events.Items[0].Reason != "Unhealthy" {
+			t.Fatalf("events = %+v, want converted provider event", events.Items)
+		}
+	})
+
+	t.Run("provider events fallback warning", func(t *testing.T) {
+		eventHandler := NewServer(eventStubProvider{
+			stubProvider: stubProvider{snapshot: resourceTestSnapshot()},
+			eventErr:     errors.New("forbidden"),
+		}, "secret-token", "", "")
+		recorder := httptest.NewRecorder()
+		request := httptest.NewRequest(http.MethodGet, "/api/resources/Pod/checkout/checkout-api/events", nil)
+		request.Header.Set("Authorization", "Bearer secret-token")
+		eventHandler.ServeHTTP(recorder, request)
+
+		if recorder.Code != http.StatusOK {
+			t.Fatalf("status = %d, want %d", recorder.Code, http.StatusOK)
+		}
+		var events topology.ResourceEvents
+		if err := json.NewDecoder(recorder.Body).Decode(&events); err != nil {
+			t.Fatalf("decode events: %v", err)
+		}
+		if events.Warning != "events_unavailable" || len(events.Items) != 0 {
+			t.Fatalf("events fallback = %+v, want warning and empty items", events)
 		}
 	})
 
@@ -406,6 +504,15 @@ func writeFile(t *testing.T, path string, contents string) {
 	}
 }
 
+func mustMarshalJSON(t *testing.T, value interface{}) []byte {
+	t.Helper()
+	data, err := json.Marshal(value)
+	if err != nil {
+		t.Fatalf("marshal json: %v", err)
+	}
+	return data
+}
+
 func testSnapshot() topology.Snapshot {
 	return topology.Snapshot{
 		Clusters: []topology.ClusterSummary{
@@ -433,6 +540,8 @@ func resourceTestSnapshot() topology.Snapshot {
 			Name:      "checkout",
 			Status:    "healthy",
 			Labels:    map[string]string{"team": "commerce"},
+			UID:       "namespace-uid",
+			Age:       "24h0m0s",
 			Summary:   map[string]interface{}{"workloads": 1},
 		},
 		{
@@ -443,7 +552,13 @@ func resourceTestSnapshot() topology.Snapshot {
 			Name:      "checkout-api",
 			Status:    "healthy",
 			Labels:    map[string]string{"app": "checkout-api"},
-			Summary:   map[string]interface{}{"phase": "Running"},
+			Annotations: map[string]string{
+				"owner": "checkout",
+			},
+			UID:     "12345678-abcd-ef00-9876-abcdefghijkl",
+			Age:     "2h0m0s",
+			Owners:  []string{"ReplicaSet/checkout-api-abc"},
+			Summary: map[string]interface{}{"phase": "Running", "ready": "1/1", "conditions": "Ready=True"},
 		},
 		{
 			ID:        "test:checkout:Secret:checkout-secret",
@@ -453,7 +568,11 @@ func resourceTestSnapshot() topology.Snapshot {
 			Name:      "checkout-secret",
 			Status:    "healthy",
 			Labels:    map[string]string{"app": "checkout-api"},
-			Summary:   map[string]interface{}{"type": "Opaque", "token": "super-secret"},
+			Annotations: map[string]string{
+				"token": "redaction-fixture",
+				"owner": "checkout",
+			},
+			Summary: map[string]interface{}{"type": "Opaque", "token": "redaction-fixture"},
 		},
 	}
 	snapshot.Edges = []topology.Edge{

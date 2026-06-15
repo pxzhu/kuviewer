@@ -30,6 +30,7 @@ export interface RelatedResource {
 
 export interface ResourceEvents {
   items: ResourceEvent[];
+  warning?: string;
 }
 
 export interface ResourceEvent {
