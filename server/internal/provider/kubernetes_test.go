@@ -1,6 +1,120 @@
 package provider
 
-import "testing"
+import (
+	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+)
+
+func TestKubernetesProviderResourceEventsConvertsCoreEvents(t *testing.T) {
+	var gotPath string
+	var gotSelector string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		gotSelector = r.URL.Query().Get("fieldSelector")
+		if got := r.Header.Get("Authorization"); got != "Bearer test-token" {
+			t.Fatalf("Authorization = %q, want bearer token", got)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(map[string]interface{}{
+			"items": []map[string]interface{}{
+				{
+					"type":               "Normal",
+					"reason":             "Scheduled",
+					"message":            "Assigned checkout/checkout-api to worker-a",
+					"lastTimestamp":      "2026-06-15T09:00:00Z",
+					"reportingComponent": "default-scheduler",
+				},
+				{
+					"type":           "Warning",
+					"reason":         "Unhealthy",
+					"message":        "Readiness probe failed",
+					"firstTimestamp": "2026-06-15T10:00:00Z",
+					"source": map[string]interface{}{
+						"component": "kubelet",
+						"host":      "worker-a",
+					},
+				},
+			},
+		}); err != nil {
+			t.Fatalf("write response: %v", err)
+		}
+	}))
+	defer server.Close()
+
+	provider := KubernetesProvider{
+		client: &kubeAPIClient{
+			baseURL:    server.URL,
+			bearer:     "test-token",
+			httpClient: server.Client(),
+		},
+	}
+	events, err := provider.ResourceEvents(context.Background(), ResourceRef{Kind: "Pod", Namespace: "checkout", Name: "checkout-api"})
+	if err != nil {
+		t.Fatalf("ResourceEvents() error = %v", err)
+	}
+
+	if gotPath != "/api/v1/namespaces/checkout/events" {
+		t.Fatalf("path = %q, want namespaced events path", gotPath)
+	}
+	if gotSelector != "involvedObject.kind=Pod,involvedObject.name=checkout-api" {
+		t.Fatalf("fieldSelector = %q, want involvedObject selector", gotSelector)
+	}
+	if len(events.Items) != 2 {
+		t.Fatalf("events = %d, want 2", len(events.Items))
+	}
+	if events.Items[0].Reason != "Unhealthy" || events.Items[0].Source != "kubelet@worker-a" {
+		t.Fatalf("newest event = %+v, want warning kubelet event first", events.Items[0])
+	}
+	if events.Items[1].Reason != "Scheduled" || events.Items[1].Source != "default-scheduler" {
+		t.Fatalf("older event = %+v, want scheduled event second", events.Items[1])
+	}
+}
+
+func TestKubernetesProviderResourceEventsForbiddenFallsBack(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "forbidden", http.StatusForbidden)
+	}))
+	defer server.Close()
+
+	provider := KubernetesProvider{
+		client: &kubeAPIClient{
+			baseURL:    server.URL,
+			bearer:     "test-token",
+			httpClient: server.Client(),
+		},
+	}
+	events, err := provider.ResourceEvents(context.Background(), ResourceRef{Kind: "Node", Name: "worker-a"})
+	if err != nil {
+		t.Fatalf("ResourceEvents() error = %v", err)
+	}
+	if events.Warning != "events_unavailable" || len(events.Items) != 0 {
+		t.Fatalf("events = %+v, want unavailable warning and empty list", events)
+	}
+}
+
+func TestGraphBuilderRedactsSensitiveAnnotations(t *testing.T) {
+	builder := newKubeGraphBuilder("test")
+	builder.addResourceNode("ConfigMap", metadata{
+		Name: "app-config",
+		Annotations: map[string]string{
+			"owner":             "platform",
+			"example.com/token": "redaction-fixture",
+		},
+	}, "healthy", nil)
+
+	if len(builder.nodes) != 1 {
+		t.Fatalf("nodes = %d, want 1", len(builder.nodes))
+	}
+	if got := builder.nodes[0].Annotations["owner"]; got != "platform" {
+		t.Fatalf("owner annotation = %q, want platform", got)
+	}
+	if got := builder.nodes[0].Annotations["example.com/token"]; got != "redacted" {
+		t.Fatalf("token annotation = %q, want redacted", got)
+	}
+}
 
 func TestNetworkPolicyTypesDefaultEgressWhenRulesExist(t *testing.T) {
 	policy := networkPolicyResource{}

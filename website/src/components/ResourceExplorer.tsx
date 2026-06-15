@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
-import { Boxes, FileText, Link2, Search } from 'lucide-react';
+import { Activity, AlertTriangle, Boxes, FileText, Link2, Search, Tags } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { fetchResourceEvents, fetchResources, resourcesFromSnapshot } from '../services/resourceApi';
 import type { ResourceEvent, ResourceExplorerItem } from '../types/resourceExplorer';
@@ -154,24 +154,28 @@ export function ResourceExplorer({ liveEnabled, selectedNodeId, snapshot, source
 function ResourceExplorerDetail({ liveEnabled, resource, onSelectNode }: { liveEnabled: boolean; resource?: ResourceExplorerItem; onSelectNode: (nodeId: string) => void }) {
   const [events, setEvents] = useState<ResourceEvent[]>([]);
   const [eventsError, setEventsError] = useState('');
+  const [eventsWarning, setEventsWarning] = useState('');
 
   useEffect(() => {
     if (!resource || !liveEnabled) {
       setEvents([]);
       setEventsError('');
+      setEventsWarning('');
       return;
     }
 
     const controller = new AbortController();
     fetchResourceEvents(resource, controller.signal)
       .then((response) => {
-        setEvents(response.items);
+        setEvents([...response.items].sort((a, b) => b.timestamp.localeCompare(a.timestamp)));
         setEventsError('');
+        setEventsWarning(response.warning || '');
       })
       .catch((requestError: unknown) => {
         if (!controller.signal.aborted) {
           setEvents([]);
           setEventsError(requestError instanceof Error ? requestError.message : 'resource_events_request_failed');
+          setEventsWarning('');
         }
       });
     return () => controller.abort();
@@ -184,6 +188,13 @@ function ResourceExplorerDetail({ liveEnabled, resource, onSelectNode }: { liveE
       </div>
     );
   }
+
+  const metadataPreview = recordFromUnknown(resource.preview.metadata);
+  const statusPreview = recordFromUnknown(resource.preview.status);
+  const summaryPreview = {
+    ...recordFromUnknown(resource.preview.summary),
+    ...(resource.preview.secretValues ? { secretValues: resource.preview.secretValues } : {}),
+  };
 
   return (
     <div className="ku-panel overflow-hidden">
@@ -201,11 +212,20 @@ function ResourceExplorerDetail({ liveEnabled, resource, onSelectNode }: { liveE
       </div>
 
       <div className="grid gap-3 p-3">
-        <DetailSection icon={FileText} title="Safe Preview">
-          <KeyValueGrid values={resource.preview} />
+        <DetailSection icon={FileText} title="Metadata">
+          <KeyValueGrid values={metadataPreview} />
         </DetailSection>
-        <DetailSection icon={Boxes} title="Labels">
+        <DetailSection icon={Activity} title="Status">
+          <KeyValueGrid values={statusPreview} />
+        </DetailSection>
+        <DetailSection icon={FileText} title="Safe Preview">
+          <KeyValueGrid values={summaryPreview} />
+        </DetailSection>
+        <DetailSection icon={Tags} title="Labels">
           <KeyValueGrid values={resource.labels} empty="labels 없음" />
+        </DetailSection>
+        <DetailSection icon={Tags} title="Annotations">
+          <KeyValueGrid values={resource.annotations} empty="annotations 없음" />
         </DetailSection>
         <DetailSection icon={Link2} title="Relations">
           {resource.related.length === 0 ? (
@@ -226,16 +246,24 @@ function ResourceExplorerDetail({ liveEnabled, resource, onSelectNode }: { liveE
             </div>
           )}
         </DetailSection>
-        <DetailSection icon={FileText} title="Events">
-          {eventsError ? <p className="text-xs font-semibold text-[#b26a00]">{eventsError}</p> : null}
+        <DetailSection icon={Boxes} title="Events">
+          {eventsWarning ? <InlineWarning message="이벤트 조회 권한이 없거나 API가 없어 빈 목록으로 표시합니다." /> : null}
+          {eventsError ? <InlineWarning message={`이벤트 조회 실패: ${eventsError}`} /> : null}
           {events.length === 0 ? (
             <p className="ku-meta">표시할 이벤트가 없습니다.</p>
           ) : (
             <div className="grid gap-2">
               {events.map((event, index) => (
                 <div key={`${event.timestamp}:${event.reason}:${index}`} className="rounded-[10px] border border-[rgba(60,60,67,0.12)] bg-white/75 p-2">
-                  <p className="text-xs font-semibold text-[#1d1d1f]">{event.reason || event.type}</p>
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="text-xs font-semibold text-[#1d1d1f]">{event.reason || event.type || 'Event'}</p>
+                    <span className="font-mono text-[10px] font-semibold uppercase text-[rgba(60,60,67,0.54)]">{event.type || 'Normal'}</span>
+                  </div>
                   <p className="mt-1 text-xs text-[rgba(60,60,67,0.72)]">{event.message}</p>
+                  <p className="mt-1 font-mono text-[10px] font-semibold text-[rgba(60,60,67,0.54)]">
+                    {formatEventTimestamp(event.timestamp)}
+                    {event.source ? ` · ${event.source}` : ''}
+                  </p>
                 </div>
               ))}
             </div>
@@ -243,6 +271,15 @@ function ResourceExplorerDetail({ liveEnabled, resource, onSelectNode }: { liveE
         </DetailSection>
       </div>
     </div>
+  );
+}
+
+function InlineWarning({ message }: { message: string }) {
+  return (
+    <p className="mb-2 flex items-start gap-1.5 rounded-[9px] border border-[rgba(255,149,0,0.22)] bg-[rgba(255,149,0,0.08)] px-2 py-1.5 text-xs font-semibold text-[#8a4d00]">
+      <AlertTriangle className="mt-0.5 shrink-0" size={13} aria-hidden="true" />
+      <span>{message}</span>
+    </p>
   );
 }
 
@@ -275,7 +312,7 @@ function DetailSection({ icon: Icon, title, children }: { icon: LucideIcon; titl
 }
 
 function KeyValueGrid({ values, empty = '데이터 없음' }: { values: Record<string, unknown>; empty?: string }) {
-  const entries = Object.entries(values).filter(([, value]) => value !== undefined && value !== '');
+  const entries = Object.entries(values).filter(([, value]) => value !== undefined && value !== '' && (!Array.isArray(value) || value.length > 0));
   if (entries.length === 0) {
     return <p className="ku-meta">{empty}</p>;
   }
@@ -316,8 +353,29 @@ function recordText(values: Record<string, unknown>) {
 }
 
 function formatValue(value: unknown) {
+  if (Array.isArray(value)) {
+    return value.length > 0 ? value.join(', ') : '';
+  }
   if (typeof value === 'object' && value !== null) {
     return JSON.stringify(value);
   }
   return String(value);
+}
+
+function recordFromUnknown(value: unknown): Record<string, unknown> {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    return {};
+  }
+  return value as Record<string, unknown>;
+}
+
+function formatEventTimestamp(value: string) {
+  if (!value) {
+    return 'timestamp unknown';
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+  return date.toLocaleString();
 }

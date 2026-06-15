@@ -155,7 +155,12 @@ async function verifyNodeDrag(page, viewportName) {
 async function verifyResourceExplorer(page) {
   await page.getByRole('button', { name: /리소스 탐색/ }).click();
   await expect(page.getByRole('heading', { name: '리소스 탐색' })).toBeVisible({ timeout: 10_000 });
-  await expect(page.getByText('Safe Preview')).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByRole('heading', { name: 'Metadata' })).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByRole('heading', { name: 'Status' })).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByRole('heading', { name: 'Safe Preview' })).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByRole('heading', { name: 'Relations' })).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByRole('heading', { name: 'Events' })).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByText('표시할 이벤트가 없습니다')).toBeVisible({ timeout: 10_000 });
   await expect(page.getByText(/Secret value 숨김/)).toBeVisible({ timeout: 10_000 });
 }
 

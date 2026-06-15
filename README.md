@@ -16,7 +16,7 @@ Kuviewer is a Kubernetes topology viewer focused on visualizing clusters, namesp
 - Source modes: `Upload YAML`, `Live Cluster`, and `Mock Demo`
 - `Topology`: draggable React Flow resource relationship map with cluster and namespace zones
 - `Flow`: YAML-derived traffic flow view
-- `Resource Explorer`: OpenLens-style read-only resource list and safe detail preview
+- `Resource Explorer`: OpenLens-style read-only resource list, safe detail preview, topology relations, and live Events
 - Manual refresh, optional 30 second auto refresh, and last sync status for live mode
 - Backend provider/status line for source, read-only mode, Secret handling, and static UI mode
 - Connector diagnostics panel for backend source, API errors, sync time, and visible/total graph counts
@@ -116,7 +116,9 @@ GET /api/resources/{kind}/{namespace-or--}/{name}/events
 Authorization: Bearer <admin-token>
 ```
 
-The resource explorer endpoints are read-only. They expose metadata, labels, status, safe summary/preview data, and topology relations derived from the current snapshot. Secret values, `data`, and `stringData` are not returned.
+The resource explorer endpoints are read-only. They expose metadata, labels, redacted annotations, age/owner/uid summary, status, safe summary/preview data, and topology relations derived from the current snapshot. Secret values, `data`, and `stringData` are not returned.
+
+In live Kubernetes mode, `/api/resources/{kind}/{namespace-or--}/{name}/events` reads core v1 Events with an `involvedObject` field selector and returns newest events first. If Events are unavailable because of RBAC or API differences, Kuviewer returns an empty event list with a safe warning instead of failing the whole resource detail panel. Upload and mock modes keep returning an empty event list.
 
 To make the frontend read from the API server, create `website/.env.local`:
 
@@ -186,8 +188,9 @@ Supported snapshot resources in the first provider:
 - PersistentVolumeClaim
 - StorageClass
 - referenced Secret metadata only
+- live core v1 Events for the selected resource detail
 
-Secret list/read RBAC is intentionally not granted. Secret nodes are created from Pod references such as `envFrom`, `env.valueFrom`, `volumes.secret`, and `imagePullSecrets`, and values are never displayed.
+Secret list/read RBAC is intentionally not granted. Secret nodes are created from Pod references such as `envFrom`, `env.valueFrom`, `volumes.secret`, and `imagePullSecrets`, and values are never displayed. Events read RBAC is granted for read-only resource detail context.
 
 ### Real sample infrastructure
 
@@ -445,4 +448,4 @@ Open:
 http://127.0.0.1:8080
 ```
 
-The draft RBAC intentionally does not grant `secrets` read access. Secret nodes are inferred from Pod references only.
+The draft RBAC intentionally does not grant `secrets` read access. Secret nodes are inferred from Pod references only. It grants read-only `events` access so Resource Explorer can show selected-resource Events when the cluster allows it.

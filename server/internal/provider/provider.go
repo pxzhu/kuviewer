@@ -14,6 +14,16 @@ type TopologyProvider interface {
 	Snapshot(ctx context.Context) (topology.Snapshot, error)
 }
 
+type ResourceRef struct {
+	Kind      string
+	Namespace string
+	Name      string
+}
+
+type EventProvider interface {
+	ResourceEvents(ctx context.Context, ref ResourceRef) (topology.ResourceEvents, error)
+}
+
 func New(source string) (TopologyProvider, error) {
 	if source == "kubernetes" {
 		return NewKubernetesProviderFromEnv()

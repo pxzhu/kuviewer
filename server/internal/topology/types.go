@@ -19,16 +19,20 @@ type ClusterSummary struct {
 }
 
 type Node struct {
-	ID        string                 `json:"id"`
-	ClusterID string                 `json:"clusterId"`
-	Kind      string                 `json:"kind"`
-	Namespace string                 `json:"namespace,omitempty"`
-	Name      string                 `json:"name"`
-	Status    string                 `json:"status"`
-	Labels    map[string]string      `json:"labels"`
-	Summary   map[string]interface{} `json:"summary"`
-	X         int                    `json:"x"`
-	Y         int                    `json:"y"`
+	ID          string                 `json:"id"`
+	ClusterID   string                 `json:"clusterId"`
+	Kind        string                 `json:"kind"`
+	Namespace   string                 `json:"namespace,omitempty"`
+	Name        string                 `json:"name"`
+	Status      string                 `json:"status"`
+	Labels      map[string]string      `json:"labels"`
+	Annotations map[string]string      `json:"annotations,omitempty"`
+	Summary     map[string]interface{} `json:"summary"`
+	UID         string                 `json:"uid,omitempty"`
+	Age         string                 `json:"age,omitempty"`
+	Owners      []string               `json:"owners,omitempty"`
+	X           int                    `json:"x"`
+	Y           int                    `json:"y"`
 }
 
 type Edge struct {
@@ -70,7 +74,8 @@ type RelatedResource struct {
 }
 
 type ResourceEvents struct {
-	Items []ResourceEvent `json:"items"`
+	Items   []ResourceEvent `json:"items"`
+	Warning string          `json:"warning,omitempty"`
 }
 
 type ResourceEvent struct {

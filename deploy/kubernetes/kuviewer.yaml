@@ -31,6 +31,7 @@ rules:
       - serviceaccounts
       - services
       - configmaps
+      - events
       - persistentvolumes
       - persistentvolumeclaims
     verbs: ["get", "list", "watch"]

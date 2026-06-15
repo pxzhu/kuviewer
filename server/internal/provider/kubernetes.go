@@ -9,6 +9,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"sort"
 	"strconv"
@@ -147,14 +148,14 @@ func (p KubernetesProvider) Snapshot(ctx context.Context) (topology.Snapshot, er
 	})
 
 	for _, namespace := range namespaces.Items {
-		builder.addNode("Namespace", "", namespace.Metadata.Name, "healthy", namespace.Metadata.Labels, map[string]interface{}{
+		builder.addResourceNode("Namespace", namespace.Metadata, "healthy", map[string]interface{}{
 			"age": age(namespace.Metadata.CreationTimestamp),
 		})
 		builder.addEdge("owns", clusterNodeID(p.clusterID, p.clusterName), builder.nodeID("Namespace", "", namespace.Metadata.Name), "metadata.namespace", "observed")
 	}
 
 	for _, node := range nodes.Items {
-		builder.addNode("Node", "", node.Metadata.Name, nodeStatus(node), node.Metadata.Labels, map[string]interface{}{
+		builder.addResourceNode("Node", node.Metadata, nodeStatus(node), map[string]interface{}{
 			"kubeletVersion": node.Status.NodeInfo.KubeletVersion,
 			"cpu":            node.Status.Capacity["cpu"],
 			"memory":         node.Status.Capacity["memory"],
@@ -162,32 +163,32 @@ func (p KubernetesProvider) Snapshot(ctx context.Context) (topology.Snapshot, er
 	}
 
 	for _, deployment := range deployments.Items {
-		builder.addNode("Deployment", deployment.Metadata.Namespace, deployment.Metadata.Name, deploymentStatus(deployment), deployment.Metadata.Labels, map[string]interface{}{
+		builder.addResourceNode("Deployment", deployment.Metadata, deploymentStatus(deployment), map[string]interface{}{
 			"replicas":          formatReplicas(deployment.Status.ReadyReplicas, valueOrZero(deployment.Spec.Replicas)),
 			"availableReplicas": deployment.Status.AvailableReplicas,
 		})
 	}
 
 	for _, replicaSet := range replicaSets.Items {
-		builder.addNode("ReplicaSet", replicaSet.Metadata.Namespace, replicaSet.Metadata.Name, replicaSetStatus(replicaSet), replicaSet.Metadata.Labels, map[string]interface{}{
+		builder.addResourceNode("ReplicaSet", replicaSet.Metadata, replicaSetStatus(replicaSet), map[string]interface{}{
 			"replicas": formatReplicas(replicaSet.Status.ReadyReplicas, valueOrZero(replicaSet.Spec.Replicas)),
 		})
 	}
 
 	for _, statefulSet := range statefulSets.Items {
-		builder.addNode("StatefulSet", statefulSet.Metadata.Namespace, statefulSet.Metadata.Name, statefulSetStatus(statefulSet), statefulSet.Metadata.Labels, map[string]interface{}{
+		builder.addResourceNode("StatefulSet", statefulSet.Metadata, statefulSetStatus(statefulSet), map[string]interface{}{
 			"replicas": formatReplicas(statefulSet.Status.ReadyReplicas, valueOrZero(statefulSet.Spec.Replicas)),
 		})
 	}
 
 	for _, daemonSet := range daemonSets.Items {
-		builder.addNode("DaemonSet", daemonSet.Metadata.Namespace, daemonSet.Metadata.Name, daemonSetStatus(daemonSet), daemonSet.Metadata.Labels, map[string]interface{}{
+		builder.addResourceNode("DaemonSet", daemonSet.Metadata, daemonSetStatus(daemonSet), map[string]interface{}{
 			"ready": fmt.Sprintf("%d/%d", daemonSet.Status.NumberReady, daemonSet.Status.DesiredNumberScheduled),
 		})
 	}
 
 	for _, job := range jobs.Items {
-		builder.addNode("Job", job.Metadata.Namespace, job.Metadata.Name, jobStatus(job), job.Metadata.Labels, map[string]interface{}{
+		builder.addResourceNode("Job", job.Metadata, jobStatus(job), map[string]interface{}{
 			"completions": valueOrDefault(job.Spec.Completions, 1),
 			"succeeded":   job.Status.Succeeded,
 			"failed":      job.Status.Failed,
@@ -196,7 +197,7 @@ func (p KubernetesProvider) Snapshot(ctx context.Context) (topology.Snapshot, er
 	}
 
 	for _, cronJob := range cronJobs.Items {
-		builder.addNode("CronJob", cronJob.Metadata.Namespace, cronJob.Metadata.Name, "healthy", cronJob.Metadata.Labels, map[string]interface{}{
+		builder.addResourceNode("CronJob", cronJob.Metadata, "healthy", map[string]interface{}{
 			"schedule": cronJob.Spec.Schedule,
 			"suspend":  boolSummary(cronJob.Spec.Suspend),
 			"active":   len(cronJob.Status.Active),
@@ -204,7 +205,7 @@ func (p KubernetesProvider) Snapshot(ctx context.Context) (topology.Snapshot, er
 	}
 
 	for _, hpa := range hpas.Items {
-		builder.addNode("HorizontalPodAutoscaler", hpa.Metadata.Namespace, hpa.Metadata.Name, hpaStatus(hpa), hpa.Metadata.Labels, map[string]interface{}{
+		builder.addResourceNode("HorizontalPodAutoscaler", hpa.Metadata, hpaStatus(hpa), map[string]interface{}{
 			"target":   hpa.Spec.ScaleTargetRef.Kind + "/" + hpa.Spec.ScaleTargetRef.Name,
 			"replicas": formatReplicas(hpa.Status.CurrentReplicas, hpa.Status.DesiredReplicas),
 			"range":    fmt.Sprintf("%d-%d", valueOrDefault(hpa.Spec.MinReplicas, 1), hpa.Spec.MaxReplicas),
@@ -212,20 +213,20 @@ func (p KubernetesProvider) Snapshot(ctx context.Context) (topology.Snapshot, er
 	}
 
 	for _, serviceAccount := range serviceAccounts.Items {
-		builder.addNode("ServiceAccount", serviceAccount.Metadata.Namespace, serviceAccount.Metadata.Name, "healthy", serviceAccount.Metadata.Labels, map[string]interface{}{
+		builder.addResourceNode("ServiceAccount", serviceAccount.Metadata, "healthy", map[string]interface{}{
 			"age": age(serviceAccount.Metadata.CreationTimestamp),
 		})
 	}
 
 	for _, configMap := range configMaps.Items {
-		builder.addNode("ConfigMap", configMap.Metadata.Namespace, configMap.Metadata.Name, "healthy", configMap.Metadata.Labels, map[string]interface{}{
+		builder.addResourceNode("ConfigMap", configMap.Metadata, "healthy", map[string]interface{}{
 			"keys":      len(configMap.Data) + len(configMap.BinaryData),
 			"immutable": boolSummary(configMap.Immutable),
 		})
 	}
 
 	for _, storageClass := range storageClasses.Items {
-		builder.addNode("StorageClass", "", storageClass.Metadata.Name, "healthy", storageClass.Metadata.Labels, map[string]interface{}{
+		builder.addResourceNode("StorageClass", storageClass.Metadata, "healthy", map[string]interface{}{
 			"provisioner":          storageClass.Provisioner,
 			"volumeBindingMode":    storageClass.VolumeBindingMode,
 			"allowVolumeExpansion": boolSummary(storageClass.AllowVolumeExpansion),
@@ -233,7 +234,7 @@ func (p KubernetesProvider) Snapshot(ctx context.Context) (topology.Snapshot, er
 	}
 
 	for _, pv := range pvs.Items {
-		builder.addNode("PersistentVolume", "", pv.Metadata.Name, pvStatus(pv), pv.Metadata.Labels, map[string]interface{}{
+		builder.addResourceNode("PersistentVolume", pv.Metadata, pvStatus(pv), map[string]interface{}{
 			"phase":        pv.Status.Phase,
 			"storage":      pv.Spec.Capacity["storage"],
 			"storageClass": pv.Spec.StorageClassName,
@@ -241,7 +242,7 @@ func (p KubernetesProvider) Snapshot(ctx context.Context) (topology.Snapshot, er
 	}
 
 	for _, pvc := range pvcs.Items {
-		builder.addNode("PersistentVolumeClaim", pvc.Metadata.Namespace, pvc.Metadata.Name, pvcStatus(pvc), pvc.Metadata.Labels, map[string]interface{}{
+		builder.addResourceNode("PersistentVolumeClaim", pvc.Metadata, pvcStatus(pvc), map[string]interface{}{
 			"phase":        pvc.Status.Phase,
 			"storage":      pvc.Spec.Resources.Requests["storage"],
 			"volume":       pvc.Spec.VolumeName,
@@ -252,7 +253,7 @@ func (p KubernetesProvider) Snapshot(ctx context.Context) (topology.Snapshot, er
 	for _, service := range services.Items {
 		counts := serviceEndpointCounts[serviceKey(service.Metadata.Namespace, service.Metadata.Name)]
 		status := serviceStatus(service, counts)
-		builder.addNode("Service", service.Metadata.Namespace, service.Metadata.Name, status, service.Metadata.Labels, map[string]interface{}{
+		builder.addResourceNode("Service", service.Metadata, status, map[string]interface{}{
 			"type":           service.Spec.Type,
 			"clusterIP":      service.Spec.ClusterIP,
 			"ports":          len(service.Spec.Ports),
@@ -261,14 +262,14 @@ func (p KubernetesProvider) Snapshot(ctx context.Context) (topology.Snapshot, er
 	}
 
 	for _, ingress := range ingresses.Items {
-		builder.addNode("Ingress", ingress.Metadata.Namespace, ingress.Metadata.Name, "healthy", ingress.Metadata.Labels, map[string]interface{}{
+		builder.addResourceNode("Ingress", ingress.Metadata, "healthy", map[string]interface{}{
 			"hosts": strings.Join(ingressHosts(ingress), ", "),
 			"rules": len(ingress.Spec.Rules),
 		})
 	}
 
 	for _, gateway := range gateways.Items {
-		builder.addNode("Gateway", gateway.Metadata.Namespace, gateway.Metadata.Name, "healthy", gateway.Metadata.Labels, map[string]interface{}{
+		builder.addResourceNode("Gateway", gateway.Metadata, "healthy", map[string]interface{}{
 			"class":     gateway.Spec.GatewayClassName,
 			"listeners": len(gateway.Spec.Listeners),
 			"hosts":     strings.Join(gatewayHosts(gateway), ", "),
@@ -283,7 +284,7 @@ func (p KubernetesProvider) Snapshot(ctx context.Context) (topology.Snapshot, er
 	for _, networkPolicy := range networkPolicies.Items {
 		policyTypes := networkPolicyTypes(networkPolicy)
 		intent := networkPolicyIntentSummary(networkPolicy, policyTypes)
-		builder.addNode("NetworkPolicy", networkPolicy.Metadata.Namespace, networkPolicy.Metadata.Name, "healthy", networkPolicy.Metadata.Labels, map[string]interface{}{
+		builder.addResourceNode("NetworkPolicy", networkPolicy.Metadata, "healthy", map[string]interface{}{
 			"policyTypes": strings.Join(policyTypes, ","),
 			"selector":    labelSelectorSummary(networkPolicy.Spec.PodSelector),
 			"ingress":     intent.ingress,
@@ -293,11 +294,12 @@ func (p KubernetesProvider) Snapshot(ctx context.Context) (topology.Snapshot, er
 	}
 
 	for _, pod := range pods.Items {
-		builder.addNode("Pod", pod.Metadata.Namespace, pod.Metadata.Name, podStatus(pod), pod.Metadata.Labels, map[string]interface{}{
-			"phase":    pod.Status.Phase,
-			"ready":    formatReplicas(readyContainers(pod.Status.ContainerStatuses), len(pod.Status.ContainerStatuses)),
-			"restarts": restartCount(pod.Status.ContainerStatuses),
-			"node":     pod.Spec.NodeName,
+		builder.addResourceNode("Pod", pod.Metadata, podStatus(pod), map[string]interface{}{
+			"phase":      pod.Status.Phase,
+			"ready":      formatReplicas(readyContainers(pod.Status.ContainerStatuses), len(pod.Status.ContainerStatuses)),
+			"restarts":   restartCount(pod.Status.ContainerStatuses),
+			"node":       pod.Spec.NodeName,
+			"conditions": conditionSummary(pod.Status.Conditions),
 		})
 	}
 
@@ -447,6 +449,37 @@ func (p KubernetesProvider) Snapshot(ctx context.Context) (topology.Snapshot, er
 	}, nil
 }
 
+func (p KubernetesProvider) ResourceEvents(ctx context.Context, ref ResourceRef) (topology.ResourceEvents, error) {
+	events := eventList{}
+	selector := url.QueryEscape("involvedObject.kind=" + ref.Kind + ",involvedObject.name=" + ref.Name)
+	path := "/api/v1/events?fieldSelector=" + selector
+	if ref.Namespace != "" {
+		path = "/api/v1/namespaces/" + url.PathEscape(ref.Namespace) + "/events?fieldSelector=" + selector
+	}
+	found, err := p.client.getJSONStatus(ctx, path, &events, true)
+	if err != nil {
+		return topology.ResourceEvents{}, err
+	}
+	if !found {
+		return topology.ResourceEvents{Items: []topology.ResourceEvent{}, Warning: "events_unavailable"}, nil
+	}
+
+	items := make([]topology.ResourceEvent, 0, len(events.Items))
+	for _, event := range events.Items {
+		items = append(items, topology.ResourceEvent{
+			Type:      event.Type,
+			Reason:    event.Reason,
+			Message:   event.Message,
+			Source:    eventSource(event),
+			Timestamp: eventTimestamp(event),
+		})
+	}
+	sort.SliceStable(items, func(i, j int) bool {
+		return items[i].Timestamp > items[j].Timestamp
+	})
+	return topology.ResourceEvents{Items: items}, nil
+}
+
 type kubeProviderConfig struct {
 	client      *kubeAPIClient
 	clusterID   string
@@ -541,28 +574,33 @@ func kubeHTTPClient(apiServer string, caFile string) (*http.Client, error) {
 }
 
 func (c *kubeAPIClient) getJSON(ctx context.Context, path string, out interface{}, optional bool) error {
+	_, err := c.getJSONStatus(ctx, path, out, optional)
+	return err
+}
+
+func (c *kubeAPIClient) getJSONStatus(ctx context.Context, path string, out interface{}, optional bool) (bool, error) {
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+path, nil)
 	if err != nil {
-		return err
+		return false, err
 	}
 	request.Header.Set("Authorization", "Bearer "+c.bearer)
 	request.Header.Set("Accept", "application/json")
 
 	response, err := c.httpClient.Do(request)
 	if err != nil {
-		return err
+		return false, err
 	}
 	defer response.Body.Close()
 
 	if optional && (response.StatusCode == http.StatusNotFound || response.StatusCode == http.StatusForbidden) {
-		return nil
+		return false, nil
 	}
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		body, _ := io.ReadAll(io.LimitReader(response.Body, 512))
-		return fmt.Errorf("kubernetes api %s returned %s: %s", path, response.Status, strings.TrimSpace(string(body)))
+		return false, fmt.Errorf("kubernetes api %s returned %s: %s", path, response.Status, strings.TrimSpace(string(body)))
 	}
 
-	return json.NewDecoder(response.Body).Decode(out)
+	return true, json.NewDecoder(response.Body).Decode(out)
 }
 
 func (c *kubeAPIClient) getGatewayRouteJSON(ctx context.Context, resource string, out interface{}) error {
@@ -591,22 +629,34 @@ func newKubeGraphBuilder(clusterID string) *graphBuilder {
 }
 
 func (b *graphBuilder) addNode(kind string, namespace string, name string, status string, labels map[string]string, summary map[string]interface{}) string {
+	return b.addNodeWithMetadata(kind, namespace, name, status, labels, map[string]string{}, "", "", nil, summary)
+}
+
+func (b *graphBuilder) addResourceNode(kind string, meta metadata, status string, summary map[string]interface{}) string {
+	return b.addNodeWithMetadata(kind, meta.Namespace, meta.Name, status, meta.Labels, meta.Annotations, meta.UID, age(meta.CreationTimestamp), ownerSummaries(meta.OwnerReferences), summary)
+}
+
+func (b *graphBuilder) addNodeWithMetadata(kind string, namespace string, name string, status string, labels map[string]string, annotations map[string]string, uid string, ageValue string, owners []string, summary map[string]interface{}) string {
 	id := b.nodeID(kind, namespace, name)
 	if name == "" || b.nodeSet[id] {
 		return id
 	}
 	x, y := b.nextPosition(kind)
 	b.nodes = append(b.nodes, topology.Node{
-		ID:        id,
-		ClusterID: b.clusterID,
-		Kind:      kind,
-		Namespace: namespace,
-		Name:      name,
-		Status:    status,
-		Labels:    labelsOrEmpty(labels),
-		Summary:   summaryOrEmpty(summary),
-		X:         x,
-		Y:         y,
+		ID:          id,
+		ClusterID:   b.clusterID,
+		Kind:        kind,
+		Namespace:   namespace,
+		Name:        name,
+		Status:      status,
+		Labels:      labelsOrEmpty(labels),
+		Annotations: safeMetadataAnnotations(annotations),
+		Summary:     summaryOrEmpty(summary),
+		UID:         uid,
+		Age:         ageValue,
+		Owners:      owners,
+		X:           x,
+		Y:           y,
 	})
 	b.nodeSet[id] = true
 	return id
@@ -663,7 +713,7 @@ func (b *graphBuilder) addGatewayRouteNodes(kind string, routes gatewayRouteList
 			summary["methods"] = strings.Join(grpcRouteMethods(route), ", ")
 		}
 		builderStatus := "healthy"
-		b.addNode(kind, route.Metadata.Namespace, route.Metadata.Name, builderStatus, route.Metadata.Labels, summary)
+		b.addResourceNode(kind, route.Metadata, builderStatus, summary)
 	}
 }
 
@@ -764,6 +814,7 @@ type metadata struct {
 	Namespace         string            `json:"namespace"`
 	UID               string            `json:"uid"`
 	Labels            map[string]string `json:"labels"`
+	Annotations       map[string]string `json:"annotations"`
 	CreationTimestamp string            `json:"creationTimestamp"`
 	OwnerReferences   []ownerReference  `json:"ownerReferences"`
 }
@@ -777,6 +828,25 @@ type ownerReference struct {
 type condition struct {
 	Type   string `json:"type"`
 	Status string `json:"status"`
+}
+
+type eventList struct {
+	Items []eventResource `json:"items"`
+}
+
+type eventResource struct {
+	Metadata           metadata `json:"metadata"`
+	Type               string   `json:"type"`
+	Reason             string   `json:"reason"`
+	Message            string   `json:"message"`
+	FirstTimestamp     string   `json:"firstTimestamp"`
+	LastTimestamp      string   `json:"lastTimestamp"`
+	EventTime          string   `json:"eventTime"`
+	ReportingComponent string   `json:"reportingComponent"`
+	Source             struct {
+		Component string `json:"component"`
+		Host      string `json:"host"`
+	} `json:"source"`
 }
 
 type namespaceList struct {
@@ -1294,6 +1364,21 @@ func podStatus(pod podResource) string {
 		return "warning"
 	}
 	return "healthy"
+}
+
+func conditionSummary(conditions []condition) string {
+	if len(conditions) == 0 {
+		return ""
+	}
+	values := make([]string, 0, len(conditions))
+	for _, condition := range conditions {
+		if condition.Type == "" {
+			continue
+		}
+		values = append(values, condition.Type+"="+condition.Status)
+	}
+	sort.Strings(values)
+	return strings.Join(values, ", ")
 }
 
 func deploymentStatus(deployment deploymentResource) string {
@@ -1822,6 +1907,72 @@ func age(timestamp string) string {
 		return "unknown"
 	}
 	return time.Since(createdAt).Round(time.Hour).String()
+}
+
+func eventSource(event eventResource) string {
+	if event.ReportingComponent != "" {
+		return event.ReportingComponent
+	}
+	if event.Source.Component != "" && event.Source.Host != "" {
+		return event.Source.Component + "@" + event.Source.Host
+	}
+	if event.Source.Component != "" {
+		return event.Source.Component
+	}
+	return event.Source.Host
+}
+
+func eventTimestamp(event eventResource) string {
+	for _, value := range []string{event.EventTime, event.LastTimestamp, event.FirstTimestamp, event.Metadata.CreationTimestamp} {
+		if value != "" {
+			return value
+		}
+	}
+	return ""
+}
+
+func ownerSummaries(owners []ownerReference) []string {
+	if len(owners) == 0 {
+		return []string{}
+	}
+	values := make([]string, 0, len(owners))
+	for _, owner := range owners {
+		if owner.Kind == "" || owner.Name == "" {
+			continue
+		}
+		values = append(values, owner.Kind+"/"+owner.Name)
+	}
+	sort.Strings(values)
+	return values
+}
+
+func safeMetadataAnnotations(values map[string]string) map[string]string {
+	if values == nil {
+		return map[string]string{}
+	}
+	safe := make(map[string]string, len(values))
+	for key, value := range values {
+		if sensitiveMetadataField(key) || sensitiveMetadataField(value) {
+			safe[key] = "redacted"
+			continue
+		}
+		safe[key] = value
+	}
+	return safe
+}
+
+func sensitiveMetadataField(value string) bool {
+	normalized := strings.ToLower(value)
+	return strings.Contains(normalized, "token") ||
+		strings.Contains(normalized, "password") ||
+		strings.Contains(normalized, "secret") ||
+		strings.Contains(normalized, "credential") ||
+		strings.Contains(normalized, "apikey") ||
+		strings.Contains(normalized, "api-key") ||
+		strings.Contains(normalized, "accesskey") ||
+		strings.Contains(normalized, "access-key") ||
+		strings.Contains(normalized, "private-key") ||
+		strings.Contains(normalized, "client-key")
 }
 
 func labelsOrEmpty(labels map[string]string) map[string]string {

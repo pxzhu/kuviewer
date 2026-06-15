@@ -52,6 +52,10 @@ export interface TopologyNode {
   name: string;
   status: ResourceStatus;
   labels: Record<string, string>;
+  annotations?: Record<string, string>;
+  uid?: string;
+  age?: string;
+  owners?: string[];
   summary: Record<string, string | number | boolean>;
   x: number;
   y: number;

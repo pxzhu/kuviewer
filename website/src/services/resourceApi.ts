@@ -45,18 +45,10 @@ export function resourcesFromSnapshot(snapshot: TopologySnapshot): ResourceExplo
       namespace: node.namespace,
       name: node.name,
       status: node.status,
-      labels: node.labels,
-      annotations: {},
+      labels: node.labels ?? {},
+      annotations: safeAnnotations(node.annotations),
       summary: safeSummary(node.kind, node.summary),
-      preview: {
-        kind: node.kind,
-        name: node.name,
-        namespace: node.namespace || '',
-        status: node.status,
-        labels: node.labels,
-        summary: safeSummary(node.kind, node.summary),
-        ...(node.kind === 'Secret' ? { secretValues: 'hidden' } : {}),
-      },
+      preview: safePreview(node),
       related: snapshot.edges.flatMap((edge) => {
         const outgoing = edge.source === node.id;
         const incoming = edge.target === node.id;
@@ -83,6 +75,33 @@ export function resourcesFromSnapshot(snapshot: TopologySnapshot): ResourceExplo
   };
 }
 
+function safePreview(node: TopologySnapshot['nodes'][number]) {
+  const safeNodeAnnotations = safeAnnotations(node.annotations);
+  const preview: Record<string, unknown> = {
+    metadata: {
+      kind: node.kind,
+      name: node.name,
+      namespace: node.namespace || '',
+      cluster: node.clusterId,
+      uid: shortUid(node.uid),
+      age: node.age || '',
+      owners: node.owners ?? [],
+      labels: Object.keys(node.labels ?? {}).length,
+      safeAnnotations: Object.keys(safeNodeAnnotations).length,
+      hiddenAnnotations: hiddenAnnotationCount(node.annotations),
+    },
+    status: {
+      status: node.status,
+      ...safeSummary(node.kind, node.summary),
+    },
+    summary: safeSummary(node.kind, node.summary),
+  };
+  if (node.kind === 'Secret') {
+    preview.secretValues = 'hidden';
+  }
+  return preview;
+}
+
 function safeSummary(kind: string, summary: Record<string, string | number | boolean>) {
   if (kind !== 'Secret') {
     return summary;
@@ -91,9 +110,48 @@ function safeSummary(kind: string, summary: Record<string, string | number | boo
   return Object.fromEntries(
     Object.entries(summary).filter(([key]) => {
       const lowerKey = key.toLowerCase();
-      return lowerKey !== 'data' && lowerKey !== 'stringdata' && !lowerKey.includes('token') && !lowerKey.includes('password') && !lowerKey.includes('key');
+      return lowerKey !== 'data' && lowerKey !== 'stringdata' && !sensitiveField(lowerKey);
     }),
   );
+}
+
+function safeAnnotations(values?: Record<string, string>) {
+  if (!values) {
+    return {};
+  }
+  return Object.fromEntries(
+    Object.entries(values).map(([key, value]) => [key, sensitiveField(key) || sensitiveField(value) ? 'redacted' : value]),
+  );
+}
+
+function hiddenAnnotationCount(values?: Record<string, string>) {
+  if (!values) {
+    return 0;
+  }
+  return Object.entries(values).filter(([key, value]) => value === 'redacted' || sensitiveField(key) || sensitiveField(value)).length;
+}
+
+function sensitiveField(value: string) {
+  const normalized = value.toLowerCase();
+  return (
+    normalized.includes('token') ||
+    normalized.includes('password') ||
+    normalized.includes('secret') ||
+    normalized.includes('credential') ||
+    normalized.includes('apikey') ||
+    normalized.includes('api-key') ||
+    normalized.includes('accesskey') ||
+    normalized.includes('access-key') ||
+    normalized.includes('private-key') ||
+    normalized.includes('client-key')
+  );
+}
+
+function shortUid(uid?: string) {
+  if (!uid) {
+    return '';
+  }
+  return uid.length <= 12 ? uid : uid.slice(0, 12);
 }
 
 function encodePath(value: string) {
