@@ -381,14 +381,12 @@ func (p KubernetesProvider) Snapshot(ctx context.Context) (topology.Snapshot, er
 	for _, networkPolicy := range networkPolicies.Items {
 		networkPolicyID := builder.nodeID("NetworkPolicy", networkPolicy.Metadata.Namespace, networkPolicy.Metadata.Name)
 		matches := 0
-		if !labelSelectorHasExpressions(&networkPolicy.Spec.PodSelector) {
-			for _, pod := range pods.Items {
-				if pod.Metadata.Namespace != networkPolicy.Metadata.Namespace || !selectorMatchesLabels(networkPolicy.Spec.PodSelector.MatchLabels, pod.Metadata.Labels) {
-					continue
-				}
-				matches++
-				builder.addEdge("applies-to", networkPolicyID, builder.nodeID("Pod", pod.Metadata.Namespace, pod.Metadata.Name), "NetworkPolicy.spec.podSelector", "inferred")
+		for _, pod := range pods.Items {
+			if pod.Metadata.Namespace != networkPolicy.Metadata.Namespace || !labelSelectorMatches(&networkPolicy.Spec.PodSelector, pod.Metadata.Labels) {
+				continue
 			}
+			matches++
+			builder.addEdge("applies-to", networkPolicyID, builder.nodeID("Pod", pod.Metadata.Namespace, pod.Metadata.Name), "NetworkPolicy.spec.podSelector", "inferred")
 		}
 		if matches == 0 && networkPolicy.Metadata.Namespace != "" {
 			builder.addEdge("applies-to", networkPolicyID, builder.nodeID("Namespace", "", networkPolicy.Metadata.Namespace), "NetworkPolicy.spec.podSelector", "observed")
@@ -691,14 +689,11 @@ func (b *graphBuilder) addNetworkPolicyPeerEdges(networkPolicyID string, policyN
 		if peer.PodSelector == nil && peer.NamespaceSelector == nil {
 			continue
 		}
-		if labelSelectorHasExpressions(peer.PodSelector) || labelSelectorHasExpressions(peer.NamespaceSelector) {
-			continue
-		}
 
 		matchingNamespaces := matchingNetworkPolicyNamespaces(namespaces, policyNamespace, peer.NamespaceSelector)
 		if peer.PodSelector != nil {
 			for _, pod := range pods.Items {
-				if !matchingNamespaces[pod.Metadata.Namespace] || !selectorMatchesLabels(peer.PodSelector.MatchLabels, pod.Metadata.Labels) {
+				if !matchingNamespaces[pod.Metadata.Namespace] || !labelSelectorMatches(peer.PodSelector, pod.Metadata.Labels) {
 					continue
 				}
 				b.addEdge(edgeType, networkPolicyID, b.nodeID("Pod", pod.Metadata.Namespace, pod.Metadata.Name), sourceField, "inferred")
@@ -1552,6 +1547,40 @@ func selectorMatchesLabels(selector map[string]string, labels map[string]string)
 	return true
 }
 
+func labelSelectorMatches(selector *labelSelector, labels map[string]string) bool {
+	if selector == nil {
+		return true
+	}
+	if !selectorMatchesLabels(selector.MatchLabels, labels) {
+		return false
+	}
+	for _, expression := range selector.MatchExpressions {
+		if !labelSelectorExpressionMatches(expression, labels) {
+			return false
+		}
+	}
+	return true
+}
+
+func labelSelectorExpressionMatches(expression labelSelectorMatchExpression, labels map[string]string) bool {
+	if expression.Key == "" {
+		return false
+	}
+	_, exists := labels[expression.Key]
+	switch expression.Operator {
+	case "In":
+		return len(expression.Values) > 0 && containsString(expression.Values, labels[expression.Key])
+	case "NotIn":
+		return len(expression.Values) > 0 && !containsString(expression.Values, labels[expression.Key])
+	case "Exists":
+		return len(expression.Values) == 0 && exists
+	case "DoesNotExist":
+		return len(expression.Values) == 0 && !exists
+	default:
+		return false
+	}
+}
+
 func namespaceRecords(namespaces namespaceList) []namespaceRecord {
 	records := make([]namespaceRecord, 0, len(namespaces.Items))
 	for _, namespace := range namespaces.Items {
@@ -1570,15 +1599,11 @@ func matchingNetworkPolicyNamespaces(namespaces []namespaceRecord, policyNamespa
 
 	matches := map[string]bool{}
 	for _, namespace := range namespaces {
-		if selectorMatchesLabels(namespaceSelector.MatchLabels, namespace.labels) {
+		if labelSelectorMatches(namespaceSelector, namespace.labels) {
 			matches[namespace.name] = true
 		}
 	}
 	return matches
-}
-
-func labelSelectorHasExpressions(selector *labelSelector) bool {
-	return selector != nil && len(selector.MatchExpressions) > 0
 }
 
 func networkPolicyTypes(policy networkPolicyResource) []string {

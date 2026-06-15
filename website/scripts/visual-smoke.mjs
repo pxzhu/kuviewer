@@ -169,11 +169,15 @@ function getSampleManifest() {
 kind: Namespace
 metadata:
   name: checkout
+  labels:
+    team: commerce
 ---
 apiVersion: v1
 kind: Namespace
 metadata:
   name: observability
+  labels:
+    team: platform
 ---
 apiVersion: v1
 kind: Node
@@ -280,6 +284,7 @@ metadata:
   namespace: checkout
   labels:
     app: checkout-api
+    tier: backend
   ownerReferences:
     - apiVersion: apps/v1
       kind: ReplicaSet
@@ -312,6 +317,7 @@ metadata:
   namespace: checkout
   labels:
     app: checkout-api
+    tier: backend
   ownerReferences:
     - apiVersion: apps/v1
       kind: ReplicaSet
@@ -363,6 +369,11 @@ spec:
   podSelector:
     matchLabels:
       app: checkout-api
+    matchExpressions:
+      - key: tier
+        operator: In
+        values:
+          - backend
   policyTypes:
     - Ingress
     - Egress
@@ -370,15 +381,29 @@ spec:
     - from:
         - podSelector:
             matchLabels:
-              app: kuviewer-api
+              app: checkout-api
+            matchExpressions:
+              - key: legacy
+                operator: DoesNotExist
       ports:
         - protocol: TCP
           port: 80
   egress:
     - to:
-        - podSelector:
-            matchLabels:
-              app: checkout-db
+        - namespaceSelector:
+            matchExpressions:
+              - key: team
+                operator: In
+                values:
+                  - platform
+          podSelector:
+            matchExpressions:
+              - key: app
+                operator: In
+                values:
+                  - node-agent
+              - key: tier
+                operator: Exists
       ports:
         - protocol: TCP
           port: 5432
@@ -520,6 +545,7 @@ metadata:
   namespace: observability
   labels:
     app: node-agent
+    tier: telemetry
 spec:
   nodeName: worker-a
   containers:

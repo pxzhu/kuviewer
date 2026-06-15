@@ -53,7 +53,7 @@ export const mockTopology: TopologySnapshot = {
     node(local, 'Service', 'checkout', 'checkout-db', 'healthy', { app: 'checkout-db' }, { type: 'Headless', port: 5432 }),
     node(local, 'Deployment', 'checkout', 'checkout-api', 'warning', { app: 'checkout', tier: 'backend' }, { replicas: '2/3', image: 'checkout/api:mock' }),
     node(local, 'HorizontalPodAutoscaler', 'checkout', 'checkout-api', 'healthy', { app: 'checkout' }, { target: 'Deployment/checkout-api', replicas: '3/3', range: '2-6' }),
-    node(local, 'NetworkPolicy', 'checkout', 'checkout-api-ingress', 'healthy', { app: 'checkout' }, { policyTypes: 'Ingress,Egress', selector: 'app', ingress: '1 rule: pod:app; TCP:80', egress: '1 rule: pod:app; TCP:5432', ports: 'TCP:80, TCP:5432' }),
+    node(local, 'NetworkPolicy', 'checkout', 'checkout-api-ingress', 'healthy', { app: 'checkout' }, { policyTypes: 'Ingress,Egress', selector: 'app,1 expressions', ingress: '1 rule: pod:app,1 expressions; TCP:80', egress: '1 rule: ns:team,1 expressions, pod:app; TCP:5432', ports: 'TCP:80, TCP:5432' }),
     node(local, 'CronJob', 'checkout', 'checkout-reconcile', 'healthy', { app: 'checkout' }, { schedule: '*/15 * * * *', active: 0 }),
     node(local, 'Job', 'checkout', 'checkout-reconcile-286', 'healthy', { app: 'checkout' }, { completions: 1, succeeded: 1, failed: 0 }),
     node(local, 'ReplicaSet', 'checkout', 'checkout-api-7c8f9', 'warning', { app: 'checkout', hash: '7c8f9' }, { replicas: '2/3' }),

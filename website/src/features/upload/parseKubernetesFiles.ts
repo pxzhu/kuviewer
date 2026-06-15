@@ -345,9 +345,7 @@ function addNetworkPolicyEdges(context: BuildContext, networkPolicies: KubeObjec
     const name = networkPolicy.metadata?.name || '';
     const networkPolicyId = id(context.clusterId, namespace, 'NetworkPolicy', name);
     const podSelector = readAt(networkPolicy, ['spec', 'podSelector']);
-    const matchingPods = selectorHasExpressions(podSelector)
-      ? []
-      : pods.filter((pod) => (pod.metadata?.namespace || '') === namespace && selectorMatchesLabels(selectorMatchLabels(podSelector), labels(pod)));
+    const matchingPods = pods.filter((pod) => (pod.metadata?.namespace || '') === namespace && labelSelectorMatches(podSelector, labels(pod)));
 
     if (matchingPods.length === 0) {
       const namespaceId = id(context.clusterId, '', 'Namespace', namespace);
@@ -393,14 +391,11 @@ function addNetworkPolicyPeerEdges(
     if (!isRecord(podSelector) && !isRecord(namespaceSelector)) {
       return;
     }
-    if (selectorHasExpressions(podSelector) || selectorHasExpressions(namespaceSelector)) {
-      return;
-    }
 
     const matchingNamespaces = matchingNetworkPolicyNamespaces(namespaces, policyNamespace, namespaceSelector);
     if (isRecord(podSelector)) {
       pods
-        .filter((pod) => matchingNamespaces.has(pod.metadata?.namespace || '') && selectorMatchesLabels(selectorMatchLabels(podSelector), labels(pod)))
+        .filter((pod) => matchingNamespaces.has(pod.metadata?.namespace || '') && labelSelectorMatches(podSelector, labels(pod)))
         .forEach((pod) => {
           addEdge(context, edgeType, networkPolicyId, id(context.clusterId, pod.metadata?.namespace || '', 'Pod', pod.metadata?.name || ''), sourceField, 'inferred');
         });
@@ -670,6 +665,40 @@ function selectorMatchesLabels(selector: Record<string, string>, labels: Record<
   return Object.entries(selector).every(([key, value]) => labels[key] === value);
 }
 
+function labelSelectorMatches(selector: unknown, labels: Record<string, string>) {
+  if (!isRecord(selector)) {
+    return true;
+  }
+  if (!selectorMatchesLabels(selectorMatchLabels(selector), labels)) {
+    return false;
+  }
+  return asArray(readAt(selector, ['matchExpressions'])).every((expression) => labelSelectorExpressionMatches(expression, labels));
+}
+
+function labelSelectorExpressionMatches(expression: unknown, labels: Record<string, string>) {
+  if (!isRecord(expression)) {
+    return false;
+  }
+  const key = typeof expression.key === 'string' ? expression.key : '';
+  const operator = typeof expression.operator === 'string' ? expression.operator : '';
+  const values = asStringArray(expression.values);
+  if (!key) {
+    return false;
+  }
+  switch (operator) {
+    case 'In':
+      return values.length > 0 && values.includes(labels[key]);
+    case 'NotIn':
+      return values.length > 0 && !values.includes(labels[key]);
+    case 'Exists':
+      return values.length === 0 && Object.prototype.hasOwnProperty.call(labels, key);
+    case 'DoesNotExist':
+      return values.length === 0 && !Object.prototype.hasOwnProperty.call(labels, key);
+    default:
+      return false;
+  }
+}
+
 function selectorSummary(value: unknown) {
   return isRecord(value) ? Object.keys(value).join(',') || '-' : '-';
 }
@@ -704,8 +733,7 @@ function matchingNetworkPolicyNamespaces(namespaces: NamespaceRecord[], policyNa
   if (!isRecord(namespaceSelector)) {
     return new Set([policyNamespace]);
   }
-  const matchLabels = selectorMatchLabels(namespaceSelector);
-  return new Set(namespaces.filter((namespace) => selectorMatchesLabels(matchLabels, namespace.labels)).map((namespace) => namespace.name));
+  return new Set(namespaces.filter((namespace) => labelSelectorMatches(namespaceSelector, namespace.labels)).map((namespace) => namespace.name));
 }
 
 function networkPolicyTypes(object: KubeObject) {
