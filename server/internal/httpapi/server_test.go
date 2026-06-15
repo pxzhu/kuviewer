@@ -37,9 +37,12 @@ func (p eventStubProvider) ResourceEvents(context.Context, provider.ResourceRef)
 
 type logStubProvider struct {
 	stubProvider
-	logs   topology.ResourceLogs
-	logErr error
-	ref    *provider.ResourceRef
+	logs        topology.ResourceLogs
+	logErr      error
+	ref         *provider.ResourceRef
+	streamLines []string
+	streamErr   error
+	streamRef   *provider.ResourceRef
 }
 
 func (p logStubProvider) ResourceLogs(_ context.Context, ref provider.ResourceRef) (topology.ResourceLogs, error) {
@@ -47,6 +50,21 @@ func (p logStubProvider) ResourceLogs(_ context.Context, ref provider.ResourceRe
 		*p.ref = ref
 	}
 	return p.logs, p.logErr
+}
+
+func (p logStubProvider) StreamLogs(_ context.Context, ref provider.ResourceRef, onLine func(string) error) error {
+	if p.streamRef != nil {
+		*p.streamRef = ref
+	}
+	if p.streamErr != nil {
+		return p.streamErr
+	}
+	for _, line := range p.streamLines {
+		if err := onLine(line); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 type panicProvider struct{}
@@ -443,6 +461,16 @@ func TestResourceLogs(t *testing.T) {
 		}
 	})
 
+	t.Run("stream logs require token", func(t *testing.T) {
+		recorder := httptest.NewRecorder()
+		request := httptest.NewRequest(http.MethodGet, "/api/resources/Pod/checkout/checkout-api/logs/stream", nil)
+		handler.ServeHTTP(recorder, request)
+
+		if recorder.Code != http.StatusUnauthorized {
+			t.Fatalf("status = %d, want %d", recorder.Code, http.StatusUnauthorized)
+		}
+	})
+
 	t.Run("non pod not found", func(t *testing.T) {
 		recorder := httptest.NewRecorder()
 		request := httptest.NewRequest(http.MethodGet, "/api/resources/Secret/checkout/checkout-secret/logs", nil)
@@ -480,7 +508,7 @@ func TestResourceLogs(t *testing.T) {
 			ref:          &gotRef,
 		}, "secret-token", "", "")
 		recorder := httptest.NewRecorder()
-		request := httptest.NewRequest(http.MethodGet, "/api/resources/Pod/checkout/checkout-api/logs?container=api&previous=true", nil)
+		request := httptest.NewRequest(http.MethodGet, "/api/resources/Pod/checkout/checkout-api/logs?container=api&previous=true&tailLines=150", nil)
 		request.Header.Set("Authorization", "Bearer secret-token")
 		logHandler.ServeHTTP(recorder, request)
 
@@ -499,6 +527,9 @@ func TestResourceLogs(t *testing.T) {
 		}
 		if !gotRef.Previous {
 			t.Fatalf("previous = false, want true")
+		}
+		if gotRef.TailLines != 150 {
+			t.Fatalf("tailLines = %d, want 150", gotRef.TailLines)
 		}
 	})
 
@@ -521,6 +552,60 @@ func TestResourceLogs(t *testing.T) {
 		}
 		if logs.Warning != "logs_unavailable" || len(logs.Lines) != 0 {
 			t.Fatalf("logs fallback = %+v, want warning and empty lines", logs)
+		}
+	})
+
+	t.Run("provider stream logs", func(t *testing.T) {
+		var gotRef provider.ResourceRef
+		logHandler := NewServer(logStubProvider{
+			stubProvider: stubProvider{snapshot: resourceTestSnapshot()},
+			streamLines:  []string{"line-1", "line-2"},
+			streamRef:    &gotRef,
+		}, "secret-token", "", "")
+		recorder := httptest.NewRecorder()
+		request := httptest.NewRequest(http.MethodGet, "/api/resources/Pod/checkout/checkout-api/logs/stream?container=api&previous=true&tailLines=25", nil)
+		request.Header.Set("Authorization", "Bearer secret-token")
+		logHandler.ServeHTTP(recorder, request)
+
+		if recorder.Code != http.StatusOK {
+			t.Fatalf("status = %d, want %d", recorder.Code, http.StatusOK)
+		}
+		if got := recorder.Header().Get("Content-Type"); got != "application/x-ndjson" {
+			t.Fatalf("content-type = %q, want ndjson", got)
+		}
+		if gotRef.Container != "api" {
+			t.Fatalf("container = %q, want api", gotRef.Container)
+		}
+		if !gotRef.Previous {
+			t.Fatalf("previous = false, want true")
+		}
+		if !gotRef.Follow {
+			t.Fatalf("follow = false, want true")
+		}
+		if gotRef.TailLines != 25 {
+			t.Fatalf("tailLines = %d, want 25", gotRef.TailLines)
+		}
+		body := recorder.Body.String()
+		if !strings.Contains(body, `"line":"line-1"`) || !strings.Contains(body, `"line":"line-2"`) {
+			t.Fatalf("stream body = %q, want line messages", body)
+		}
+	})
+
+	t.Run("provider stream logs fallback warning", func(t *testing.T) {
+		logHandler := NewServer(logStubProvider{
+			stubProvider: stubProvider{snapshot: resourceTestSnapshot()},
+			streamErr:    errors.New("forbidden"),
+		}, "secret-token", "", "")
+		recorder := httptest.NewRecorder()
+		request := httptest.NewRequest(http.MethodGet, "/api/resources/Pod/checkout/checkout-api/logs/stream", nil)
+		request.Header.Set("Authorization", "Bearer secret-token")
+		logHandler.ServeHTTP(recorder, request)
+
+		if recorder.Code != http.StatusOK {
+			t.Fatalf("status = %d, want %d", recorder.Code, http.StatusOK)
+		}
+		if body := recorder.Body.String(); !strings.Contains(body, `"warning":"logs_unavailable"`) {
+			t.Fatalf("stream body = %q, want warning message", body)
 		}
 	})
 }

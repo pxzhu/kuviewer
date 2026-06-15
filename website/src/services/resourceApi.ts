@@ -3,6 +3,11 @@ import type { ResourceEvents, ResourceExplorerItem, ResourceExplorerList, Resour
 import type { SummaryValue, TopologySnapshot } from '../types/topology';
 import { getTopologyApiBaseUrl } from './topologyApi';
 
+export interface ResourceLogStreamMessage {
+  line?: string;
+  warning?: string;
+}
+
 export async function fetchResources(signal?: AbortSignal): Promise<ResourceExplorerList> {
   const baseUrl = getTopologyApiBaseUrl().replace(/\/$/, '');
   if (!baseUrl) {
@@ -57,6 +62,57 @@ export async function fetchResourceLogs(resource: Pick<ResourceExplorerItem, 'ki
     throw new Error(`resource_logs_request_failed:${response.status}`);
   }
   return response.json() as Promise<ResourceLogs>;
+}
+
+export async function streamResourceLogs(
+  resource: Pick<ResourceExplorerItem, 'kind' | 'namespace' | 'name'>,
+  options: { container?: string; previous?: boolean; signal?: AbortSignal; tailLines?: number } = {},
+  onMessage: (message: ResourceLogStreamMessage) => void,
+): Promise<void> {
+  const baseUrl = getTopologyApiBaseUrl().replace(/\/$/, '');
+  if (!baseUrl) {
+    throw new Error('api_base_url_not_configured');
+  }
+  const query = new URLSearchParams();
+  if (options.container) {
+    query.set('container', options.container);
+  }
+  if (options.previous) {
+    query.set('previous', 'true');
+  }
+  query.set('tailLines', String(options.tailLines ?? 200));
+  const response = await fetch(`${baseUrl}/api/resources/${encodePath(resource.kind)}/${encodePath(resource.namespace || '-')}/${encodePath(resource.name)}/logs/stream?${query.toString()}`, {
+    headers: { Authorization: `Bearer ${getStoredAdminToken()}` },
+    signal: options.signal,
+  });
+  if (!response.ok) {
+    throw new Error(`resource_logs_stream_failed:${response.status}`);
+  }
+  if (!response.body) {
+    throw new Error('resource_logs_stream_unavailable');
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) {
+        break;
+      }
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+      for (const line of lines) {
+        readLogStreamLine(line, onMessage);
+      }
+    }
+    buffer += decoder.decode();
+    readLogStreamLine(buffer, onMessage);
+  } finally {
+    reader.releaseLock();
+  }
 }
 
 export function resourcesFromSnapshot(snapshot: TopologySnapshot): ResourceExplorerList {
@@ -283,4 +339,12 @@ function shortUid(uid?: string) {
 
 function encodePath(value: string) {
   return encodeURIComponent(value);
+}
+
+function readLogStreamLine(line: string, onMessage: (message: ResourceLogStreamMessage) => void) {
+  const trimmed = line.trim();
+  if (!trimmed) {
+    return;
+  }
+  onMessage(JSON.parse(trimmed) as ResourceLogStreamMessage);
 }

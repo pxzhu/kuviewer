@@ -20,6 +20,8 @@ type ResourceRef struct {
 	Name      string
 	Container string
 	Previous  bool
+	Follow    bool
+	TailLines int
 }
 
 type EventProvider interface {
@@ -28,6 +30,7 @@ type EventProvider interface {
 
 type LogProvider interface {
 	ResourceLogs(ctx context.Context, ref ResourceRef) (topology.ResourceLogs, error)
+	StreamLogs(ctx context.Context, ref ResourceRef, onLine func(string) error) error
 }
 
 func New(source string) (TopologyProvider, error) {

@@ -101,11 +101,13 @@ func TestKubernetesProviderResourceLogsReadsPodLog(t *testing.T) {
 	var gotTailLines string
 	var gotContainer string
 	var gotPrevious string
+	var gotFollow string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotPath = r.URL.Path
 		gotTailLines = r.URL.Query().Get("tailLines")
 		gotContainer = r.URL.Query().Get("container")
 		gotPrevious = r.URL.Query().Get("previous")
+		gotFollow = r.URL.Query().Get("follow")
 		if got := r.Header.Get("Authorization"); got != "Bearer test-token" {
 			t.Fatalf("Authorization = %q, want bearer token", got)
 		}
@@ -138,8 +140,71 @@ func TestKubernetesProviderResourceLogsReadsPodLog(t *testing.T) {
 	if gotPrevious != "true" {
 		t.Fatalf("previous = %q, want true", gotPrevious)
 	}
+	if gotFollow != "" {
+		t.Fatalf("follow = %q, want empty for fixed log read", gotFollow)
+	}
 	if logs.Warning != "" || logs.Container != "api" || !logs.Previous || logs.TailLines != 200 || len(logs.Lines) != 2 || logs.Lines[1] != "line-2" {
 		t.Fatalf("logs = %+v, want two lines", logs)
+	}
+}
+
+func TestKubernetesProviderStreamLogs(t *testing.T) {
+	var gotPath string
+	var gotTailLines string
+	var gotContainer string
+	var gotPrevious string
+	var gotFollow string
+	longLine := strings.Repeat("x", podLogMaxLineBytes+20)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		gotTailLines = r.URL.Query().Get("tailLines")
+		gotContainer = r.URL.Query().Get("container")
+		gotPrevious = r.URL.Query().Get("previous")
+		gotFollow = r.URL.Query().Get("follow")
+		if got := r.Header.Get("Authorization"); got != "Bearer test-token" {
+			t.Fatalf("Authorization = %q, want bearer token", got)
+		}
+		w.Header().Set("Content-Type", "text/plain")
+		_, _ = w.Write([]byte("line-1\n" + longLine + "\n"))
+	}))
+	defer server.Close()
+
+	provider := KubernetesProvider{
+		client: &kubeAPIClient{
+			baseURL:    server.URL,
+			bearer:     "test-token",
+			httpClient: server.Client(),
+		},
+	}
+	lines := []string{}
+	err := provider.StreamLogs(context.Background(), ResourceRef{Kind: "Pod", Namespace: "checkout", Name: "checkout-api", Container: "api", Previous: true, TailLines: 3}, func(line string) error {
+		lines = append(lines, line)
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("StreamLogs() error = %v", err)
+	}
+
+	if gotPath != "/api/v1/namespaces/checkout/pods/checkout-api/log" {
+		t.Fatalf("path = %q, want pod log path", gotPath)
+	}
+	if gotTailLines != "3" {
+		t.Fatalf("tailLines = %q, want 3", gotTailLines)
+	}
+	if gotContainer != "api" {
+		t.Fatalf("container = %q, want api", gotContainer)
+	}
+	if gotPrevious != "true" {
+		t.Fatalf("previous = %q, want true", gotPrevious)
+	}
+	if gotFollow != "true" {
+		t.Fatalf("follow = %q, want true", gotFollow)
+	}
+	if len(lines) != 2 || lines[0] != "line-1" {
+		t.Fatalf("lines = %+v, want two stream lines", lines)
+	}
+	if got := lines[1]; len(got) != podLogMaxLineBytes+3 || !strings.HasSuffix(got, "...") {
+		t.Fatalf("truncated line length/suffix = %d/%q, want capped suffix", len(got), got[len(got)-3:])
 	}
 }
 

@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { Activity, AlertTriangle, Boxes, FileText, Link2, Search, Tags } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
-import { fetchResourceEvents, fetchResourceLogs, fetchResources, resourcesFromSnapshot } from '../services/resourceApi';
+import { fetchResourceEvents, fetchResourceLogs, fetchResources, resourcesFromSnapshot, streamResourceLogs } from '../services/resourceApi';
 import type { ResourceEvent, ResourceExplorerItem } from '../types/resourceExplorer';
 import type { TopologySnapshot } from '../types/topology';
 import type { TopologySourceMode } from '../features/topology/useTopology';
@@ -159,6 +159,8 @@ function ResourceExplorerDetail({ liveEnabled, resource, onSelectNode }: { liveE
   const [logsError, setLogsError] = useState('');
   const [logsWarning, setLogsWarning] = useState('');
   const [logsLoading, setLogsLoading] = useState(false);
+  const [logsStreaming, setLogsStreaming] = useState(false);
+  const logsStreamControllerRef = useRef<AbortController | null>(null);
   const [selectedLogContainer, setSelectedLogContainer] = useState('');
   const [previousLogs, setPreviousLogs] = useState(false);
 
@@ -188,13 +190,23 @@ function ResourceExplorerDetail({ liveEnabled, resource, onSelectNode }: { liveE
   }, [liveEnabled, resource]);
 
   useEffect(() => {
+    logsStreamControllerRef.current?.abort();
+    logsStreamControllerRef.current = null;
     setLogLines([]);
     setLogsError('');
     setLogsWarning('');
     setLogsLoading(false);
+    setLogsStreaming(false);
     setSelectedLogContainer('');
     setPreviousLogs(false);
   }, [resource?.id]);
+
+  useEffect(() => {
+    return () => {
+      logsStreamControllerRef.current?.abort();
+      logsStreamControllerRef.current = null;
+    };
+  }, []);
 
   if (!resource) {
     return (
@@ -219,6 +231,7 @@ function ResourceExplorerDetail({ liveEnabled, resource, onSelectNode }: { liveE
     if (!canFetchLogs) {
       return;
     }
+    stopLogStream();
     setLogsLoading(true);
     setLogsError('');
     setLogsWarning('');
@@ -231,6 +244,57 @@ function ResourceExplorerDetail({ liveEnabled, resource, onSelectNode }: { liveE
       setLogsError(requestError instanceof Error ? requestError.message : 'resource_logs_request_failed');
     } finally {
       setLogsLoading(false);
+    }
+  };
+
+  const stopLogStream = () => {
+    logsStreamControllerRef.current?.abort();
+    logsStreamControllerRef.current = null;
+    setLogsStreaming(false);
+  };
+
+  const handleStreamLogs = async () => {
+    if (!canFetchLogs || previousLogs) {
+      return;
+    }
+    if (logsStreaming) {
+      stopLogStream();
+      return;
+    }
+
+    const controller = new AbortController();
+    logsStreamControllerRef.current = controller;
+    setLogLines([]);
+    setLogsError('');
+    setLogsWarning('');
+    setLogsStreaming(true);
+    try {
+      await streamResourceLogs(
+        resource,
+        {
+          container: effectiveLogContainer || undefined,
+          previous: false,
+          signal: controller.signal,
+          tailLines: 200,
+        },
+        (message) => {
+          if (message.warning) {
+            setLogsWarning(message.warning);
+          }
+          if (typeof message.line === 'string') {
+            setLogLines((current) => [...current, message.line || ''].slice(-500));
+          }
+        },
+      );
+    } catch (requestError) {
+      if (!controller.signal.aborted) {
+        setLogsError(requestError instanceof Error ? requestError.message : 'resource_logs_stream_failed');
+      }
+    } finally {
+      if (logsStreamControllerRef.current === controller) {
+        logsStreamControllerRef.current = null;
+        setLogsStreaming(false);
+      }
     }
   };
 
@@ -320,17 +384,19 @@ function ResourceExplorerDetail({ liveEnabled, resource, onSelectNode }: { liveE
           ) : (
             <div className="grid gap-2">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <p className="ku-meta">최근 200줄 · 읽기 전용 · 저장 안 함</p>
+                <p className="ku-meta">최근 200줄 · 따라가기 최대 500줄 · 읽기 전용 · 저장 안 함</p>
                 {logContainerOptions.length > 1 ? (
                   <select
                     className="ku-select min-w-[180px]"
                     value={effectiveLogContainer}
                     onChange={(event) => {
+                      stopLogStream();
                       setSelectedLogContainer(event.target.value);
                       setLogLines([]);
                       setLogsError('');
                       setLogsWarning('');
                     }}
+                    disabled={logsLoading || logsStreaming}
                   >
                     {logContainerOptions.map((option) => (
                       <option key={`${option.init ? 'init' : 'app'}:${option.name}`} value={option.name}>
@@ -345,11 +411,13 @@ function ResourceExplorerDetail({ liveEnabled, resource, onSelectNode }: { liveE
                     type="checkbox"
                     checked={previousLogs}
                     onChange={(event) => {
+                      stopLogStream();
                       setPreviousLogs(event.target.checked);
                       setLogLines([]);
                       setLogsError('');
                       setLogsWarning('');
                     }}
+                    disabled={logsLoading || logsStreaming}
                   />
                   이전 로그
                 </label>
@@ -357,12 +425,21 @@ function ResourceExplorerDetail({ liveEnabled, resource, onSelectNode }: { liveE
                   className="rounded-[9px] border border-[rgba(0,122,255,0.22)] bg-[rgba(0,122,255,0.08)] px-2.5 py-1.5 text-xs font-semibold text-[#0057b8] transition hover:bg-[rgba(0,122,255,0.13)] disabled:cursor-not-allowed disabled:opacity-55"
                   type="button"
                   onClick={handleFetchLogs}
-                  disabled={logsLoading}
+                  disabled={logsLoading || logsStreaming}
                 >
                   {logsLoading ? '불러오는 중' : '로그 불러오기'}
                 </button>
+                <button
+                  className="rounded-[9px] border border-[rgba(52,199,89,0.28)] bg-[rgba(52,199,89,0.10)] px-2.5 py-1.5 text-xs font-semibold text-[#19783b] transition hover:bg-[rgba(52,199,89,0.16)] disabled:cursor-not-allowed disabled:opacity-55"
+                  type="button"
+                  onClick={handleStreamLogs}
+                  disabled={logsLoading || previousLogs}
+                  title={previousLogs ? '이전 로그는 고정 조회만 지원합니다.' : undefined}
+                >
+                  {logsStreaming ? '중지' : '따라가기'}
+                </button>
               </div>
-              {effectiveLogContainer ? <p className="ku-meta">컨테이너: {effectiveLogContainer}{previousLogs ? ' · 이전 종료 인스턴스' : ''}</p> : null}
+              {effectiveLogContainer ? <p className="ku-meta">컨테이너: {effectiveLogContainer}{previousLogs ? ' · 이전 종료 인스턴스' : logsStreaming ? ' · 실시간 따라가기' : ''}</p> : null}
               {logsWarning ? <InlineWarning message="로그 조회 권한이 없거나 API가 없어 빈 목록으로 표시합니다." /> : null}
               {logsError ? <InlineWarning message={`로그 조회 실패: ${logsError}`} /> : null}
               {logLines.length === 0 ? (
