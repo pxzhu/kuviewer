@@ -1,6 +1,6 @@
 import { getStoredAdminToken } from '../features/auth/adminToken';
 import type { ResourceEvents, ResourceExplorerItem, ResourceExplorerList, ResourceLogs } from '../types/resourceExplorer';
-import type { TopologySnapshot } from '../types/topology';
+import type { SummaryValue, TopologySnapshot } from '../types/topology';
 import { getTopologyApiBaseUrl } from './topologyApi';
 
 export async function fetchResources(signal?: AbortSignal): Promise<ResourceExplorerList> {
@@ -35,13 +35,14 @@ export async function fetchResourceEvents(resource: Pick<ResourceExplorerItem, '
   return response.json() as Promise<ResourceEvents>;
 }
 
-export async function fetchResourceLogs(resource: Pick<ResourceExplorerItem, 'kind' | 'namespace' | 'name'>, signal?: AbortSignal): Promise<ResourceLogs> {
+export async function fetchResourceLogs(resource: Pick<ResourceExplorerItem, 'kind' | 'namespace' | 'name'>, container?: string, signal?: AbortSignal): Promise<ResourceLogs> {
   const baseUrl = getTopologyApiBaseUrl().replace(/\/$/, '');
   if (!baseUrl) {
     throw new Error('api_base_url_not_configured');
   }
+  const query = container ? `?container=${encodeURIComponent(container)}` : '';
 
-  const response = await fetch(`${baseUrl}/api/resources/${encodePath(resource.kind)}/${encodePath(resource.namespace || '-')}/${encodePath(resource.name)}/logs`, {
+  const response = await fetch(`${baseUrl}/api/resources/${encodePath(resource.kind)}/${encodePath(resource.namespace || '-')}/${encodePath(resource.name)}/logs${query}`, {
     headers: { Authorization: `Bearer ${getStoredAdminToken()}` },
     signal,
   });
@@ -118,7 +119,7 @@ function safePreview(node: TopologySnapshot['nodes'][number]) {
   return preview;
 }
 
-function safeSummary(kind: string, summary: Record<string, string | number | boolean>) {
+function safeSummary(kind: string, summary: Record<string, SummaryValue>) {
   if (kind !== 'Secret') {
     return summary;
   }

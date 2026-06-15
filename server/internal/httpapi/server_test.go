@@ -39,9 +39,13 @@ type logStubProvider struct {
 	stubProvider
 	logs   topology.ResourceLogs
 	logErr error
+	ref    *provider.ResourceRef
 }
 
-func (p logStubProvider) ResourceLogs(context.Context, provider.ResourceRef) (topology.ResourceLogs, error) {
+func (p logStubProvider) ResourceLogs(_ context.Context, ref provider.ResourceRef) (topology.ResourceLogs, error) {
+	if p.ref != nil {
+		*p.ref = ref
+	}
 	return p.logs, p.logErr
 }
 
@@ -277,6 +281,14 @@ func TestResourcesReturnSafeResourceList(t *testing.T) {
 	if !ok || len(owners) != 1 || owners[0] != "ReplicaSet/checkout-api-abc" {
 		t.Fatalf("pod preview owners = %#v, want ReplicaSet owner", metadata["owners"])
 	}
+	podSummary, ok := pod.Preview["summary"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("pod summary preview missing: %+v", pod.Preview)
+	}
+	containers, ok := podSummary["containerNames"].([]interface{})
+	if !ok || len(containers) != 2 || containers[0] != "app" || containers[1] != "sidecar" {
+		t.Fatalf("pod containerNames = %#v, want app and sidecar", podSummary["containerNames"])
+	}
 	if secret.Name != "checkout-secret" {
 		t.Fatalf("secret resource not found: %+v", resources.Items)
 	}
@@ -450,12 +462,14 @@ func TestResourceLogs(t *testing.T) {
 	})
 
 	t.Run("provider logs", func(t *testing.T) {
+		var gotRef provider.ResourceRef
 		logHandler := NewServer(logStubProvider{
 			stubProvider: stubProvider{snapshot: resourceTestSnapshot()},
 			logs:         topology.ResourceLogs{Lines: []string{"started", "ready"}, TailLines: 200},
+			ref:          &gotRef,
 		}, "secret-token", "", "")
 		recorder := httptest.NewRecorder()
-		request := httptest.NewRequest(http.MethodGet, "/api/resources/Pod/checkout/checkout-api/logs", nil)
+		request := httptest.NewRequest(http.MethodGet, "/api/resources/Pod/checkout/checkout-api/logs?container=api", nil)
 		request.Header.Set("Authorization", "Bearer secret-token")
 		logHandler.ServeHTTP(recorder, request)
 
@@ -468,6 +482,9 @@ func TestResourceLogs(t *testing.T) {
 		}
 		if len(logs.Lines) != 2 || logs.Lines[1] != "ready" {
 			t.Fatalf("logs = %+v, want provider lines", logs)
+		}
+		if gotRef.Container != "api" {
+			t.Fatalf("container = %q, want api", gotRef.Container)
 		}
 	})
 
@@ -655,7 +672,7 @@ func resourceTestSnapshot() topology.Snapshot {
 			UID:     "12345678-abcd-ef00-9876-abcdefghijkl",
 			Age:     "2h0m0s",
 			Owners:  []string{"ReplicaSet/checkout-api-abc"},
-			Summary: map[string]interface{}{"phase": "Running", "ready": "1/1", "conditions": "Ready=True"},
+			Summary: map[string]interface{}{"phase": "Running", "ready": "1/1", "conditions": "Ready=True", "containerNames": []string{"app", "sidecar"}, "initContainers": []string{"migrate"}},
 		},
 		{
 			ID:        "test:checkout:Secret:checkout-secret",

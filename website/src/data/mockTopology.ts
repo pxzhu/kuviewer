@@ -1,4 +1,4 @@
-import type { EdgeType, ResourceKind, ResourceStatus, TopologyEdge, TopologyNode, TopologySnapshot } from '../types/topology';
+import type { EdgeType, ResourceKind, ResourceStatus, SummaryValue, TopologyEdge, TopologyNode, TopologySnapshot } from '../types/topology';
 
 const local = 'local-native';
 const aks = 'aks-prod';
@@ -44,8 +44,8 @@ export const mockTopology: TopologySnapshot = {
     node(local, 'Secret', 'platform', 'kuviewer-admin-token', 'unknown', { app: 'kuviewer' }, { type: 'Opaque', values: 'hidden' }),
     node(local, 'Deployment', 'platform', 'kuviewer-api', 'healthy', { app: 'kuviewer', tier: 'api' }, { replicas: '2/2', image: 'kuviewer/api:mock' }),
     node(local, 'ReplicaSet', 'platform', 'kuviewer-api-6d9c4', 'healthy', { app: 'kuviewer', hash: '6d9c4' }, { replicas: '2/2' }),
-    node(local, 'Pod', 'platform', 'kuviewer-api-6d9c4-a', 'healthy', { app: 'kuviewer' }, { ready: true, restarts: 0, node: 'worker-a' }),
-    node(local, 'Pod', 'platform', 'kuviewer-api-6d9c4-b', 'healthy', { app: 'kuviewer' }, { ready: true, restarts: 0, node: 'worker-b' }),
+    node(local, 'Pod', 'platform', 'kuviewer-api-6d9c4-a', 'healthy', { app: 'kuviewer' }, { ready: true, restarts: 0, node: 'worker-a', containerNames: ['api'], initContainers: ['migrate'] }),
+    node(local, 'Pod', 'platform', 'kuviewer-api-6d9c4-b', 'healthy', { app: 'kuviewer' }, { ready: true, restarts: 0, node: 'worker-b', containerNames: ['api'] }),
     node(local, 'Service', 'platform', 'kuviewer-api', 'healthy', { app: 'kuviewer' }, { type: 'ClusterIP', port: 8080 }),
 
     node(local, 'Namespace', '', 'checkout', 'warning', { team: 'commerce' }, { workloads: 5, services: 4 }),
@@ -59,8 +59,8 @@ export const mockTopology: TopologySnapshot = {
     node(local, 'CronJob', 'checkout', 'checkout-reconcile', 'healthy', { app: 'checkout' }, { schedule: '*/15 * * * *', active: 0 }),
     node(local, 'Job', 'checkout', 'checkout-reconcile-286', 'healthy', { app: 'checkout' }, { completions: 1, succeeded: 1, failed: 0 }),
     node(local, 'ReplicaSet', 'checkout', 'checkout-api-7c8f9', 'warning', { app: 'checkout', hash: '7c8f9' }, { replicas: '2/3' }),
-    node(local, 'Pod', 'checkout', 'checkout-api-7c8f9-a', 'healthy', { app: 'checkout' }, { ready: true, restarts: 0, node: 'worker-b' }),
-    node(local, 'Pod', 'checkout', 'checkout-api-7c8f9-b', 'warning', { app: 'checkout' }, { ready: false, restarts: 4, node: 'worker-c' }),
+    node(local, 'Pod', 'checkout', 'checkout-api-7c8f9-a', 'healthy', { app: 'checkout' }, { ready: true, restarts: 0, node: 'worker-b', containerNames: ['api', 'sidecar'] }),
+    node(local, 'Pod', 'checkout', 'checkout-api-7c8f9-b', 'warning', { app: 'checkout' }, { ready: false, restarts: 4, node: 'worker-c', containerNames: ['api', 'sidecar'] }),
     node(local, 'StatefulSet', 'checkout', 'checkout-db', 'healthy', { app: 'checkout-db' }, { replicas: '1/1', storage: '20Gi' }),
     node(local, 'Pod', 'checkout', 'checkout-db-0', 'healthy', { app: 'checkout-db' }, { ready: true, restarts: 0, node: 'worker-c' }),
     node(local, 'PersistentVolumeClaim', 'checkout', 'checkout-db-data', 'healthy', { app: 'checkout-db' }, { capacity: '20Gi', mode: 'ReadWriteOnce' }),
@@ -212,7 +212,7 @@ function node(
   name: string,
   status: ResourceStatus,
   labels: Record<string, string>,
-  summary: Record<string, string | number | boolean>,
+  summary: Record<string, SummaryValue>,
 ): TopologyNode {
   return {
     id: id(clusterId, namespace, kind, name),

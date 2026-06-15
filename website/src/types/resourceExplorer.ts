@@ -1,4 +1,4 @@
-import type { ResourceKind, ResourceStatus } from './topology';
+import type { ResourceKind, ResourceStatus, SummaryValue } from './topology';
 
 export interface ResourceExplorerList {
   items: ResourceExplorerItem[];
@@ -13,7 +13,7 @@ export interface ResourceExplorerItem {
   status: ResourceStatus;
   labels: Record<string, string>;
   annotations: Record<string, string>;
-  summary: Record<string, string | number | boolean>;
+  summary: Record<string, SummaryValue>;
   preview: Record<string, unknown>;
   related: RelatedResource[];
 }

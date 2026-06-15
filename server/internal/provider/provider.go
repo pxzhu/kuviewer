@@ -18,6 +18,7 @@ type ResourceRef struct {
 	Kind      string
 	Namespace string
 	Name      string
+	Container string
 }
 
 type EventProvider interface {
