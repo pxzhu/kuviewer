@@ -160,6 +160,7 @@ function ResourceExplorerDetail({ liveEnabled, resource, onSelectNode }: { liveE
   const [logsWarning, setLogsWarning] = useState('');
   const [logsLoading, setLogsLoading] = useState(false);
   const [selectedLogContainer, setSelectedLogContainer] = useState('');
+  const [previousLogs, setPreviousLogs] = useState(false);
 
   useEffect(() => {
     if (!resource || !liveEnabled) {
@@ -192,6 +193,7 @@ function ResourceExplorerDetail({ liveEnabled, resource, onSelectNode }: { liveE
     setLogsWarning('');
     setLogsLoading(false);
     setSelectedLogContainer('');
+    setPreviousLogs(false);
   }, [resource?.id]);
 
   if (!resource) {
@@ -221,7 +223,7 @@ function ResourceExplorerDetail({ liveEnabled, resource, onSelectNode }: { liveE
     setLogsError('');
     setLogsWarning('');
     try {
-      const response = await fetchResourceLogs(resource, effectiveLogContainer || undefined);
+      const response = await fetchResourceLogs(resource, { container: effectiveLogContainer || undefined, previous: previousLogs });
       setLogLines(response.lines);
       setLogsWarning(response.warning || '');
     } catch (requestError) {
@@ -337,6 +339,20 @@ function ResourceExplorerDetail({ liveEnabled, resource, onSelectNode }: { liveE
                     ))}
                   </select>
                 ) : null}
+                <label className="flex items-center gap-2 rounded-[9px] border border-[rgba(60,60,67,0.12)] bg-white/70 px-2.5 py-1.5 text-xs font-semibold text-[rgba(60,60,67,0.72)]">
+                  <input
+                    className="h-3.5 w-3.5 accent-[#007aff]"
+                    type="checkbox"
+                    checked={previousLogs}
+                    onChange={(event) => {
+                      setPreviousLogs(event.target.checked);
+                      setLogLines([]);
+                      setLogsError('');
+                      setLogsWarning('');
+                    }}
+                  />
+                  이전 로그
+                </label>
                 <button
                   className="rounded-[9px] border border-[rgba(0,122,255,0.22)] bg-[rgba(0,122,255,0.08)] px-2.5 py-1.5 text-xs font-semibold text-[#0057b8] transition hover:bg-[rgba(0,122,255,0.13)] disabled:cursor-not-allowed disabled:opacity-55"
                   type="button"
@@ -346,7 +362,7 @@ function ResourceExplorerDetail({ liveEnabled, resource, onSelectNode }: { liveE
                   {logsLoading ? '불러오는 중' : '로그 불러오기'}
                 </button>
               </div>
-              {effectiveLogContainer ? <p className="ku-meta">컨테이너: {effectiveLogContainer}</p> : null}
+              {effectiveLogContainer ? <p className="ku-meta">컨테이너: {effectiveLogContainer}{previousLogs ? ' · 이전 종료 인스턴스' : ''}</p> : null}
               {logsWarning ? <InlineWarning message="로그 조회 권한이 없거나 API가 없어 빈 목록으로 표시합니다." /> : null}
               {logsError ? <InlineWarning message={`로그 조회 실패: ${logsError}`} /> : null}
               {logLines.length === 0 ? (

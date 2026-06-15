@@ -19,6 +19,7 @@ type ResourceRef struct {
 	Namespace string
 	Name      string
 	Container string
+	Previous  bool
 }
 
 type EventProvider interface {

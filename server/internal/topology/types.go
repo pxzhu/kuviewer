@@ -90,5 +90,6 @@ type ResourceLogs struct {
 	Lines     []string `json:"lines"`
 	Warning   string   `json:"warning,omitempty"`
 	Container string   `json:"container,omitempty"`
+	Previous  bool     `json:"previous,omitempty"`
 	TailLines int      `json:"tailLines"`
 }

@@ -536,13 +536,16 @@ func (p KubernetesProvider) ResourceLogs(ctx context.Context, ref ResourceRef) (
 	if ref.Container != "" {
 		query.Set("container", ref.Container)
 	}
+	if ref.Previous {
+		query.Set("previous", "true")
+	}
 	path := "/api/v1/namespaces/" + url.PathEscape(ref.Namespace) + "/pods/" + url.PathEscape(ref.Name) + "/log?" + query.Encode()
 	found, body, err := p.client.getTextStatus(ctx, path, true, podLogMaxBytes)
 	if err != nil || !found {
 		return topology.ResourceLogs{Lines: []string{}, Warning: "logs_unavailable", TailLines: podLogTailLines}, nil
 	}
 
-	return topology.ResourceLogs{Lines: cappedLogLines(body), Container: ref.Container, TailLines: podLogTailLines}, nil
+	return topology.ResourceLogs{Lines: cappedLogLines(body), Container: ref.Container, Previous: ref.Previous, TailLines: podLogTailLines}, nil
 }
 
 func (p KubernetesProvider) customResourceInstances(ctx context.Context, crds customResourceDefinitionList) []customResourceInstance {

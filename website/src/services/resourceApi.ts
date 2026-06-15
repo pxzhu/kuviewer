@@ -35,16 +35,23 @@ export async function fetchResourceEvents(resource: Pick<ResourceExplorerItem, '
   return response.json() as Promise<ResourceEvents>;
 }
 
-export async function fetchResourceLogs(resource: Pick<ResourceExplorerItem, 'kind' | 'namespace' | 'name'>, container?: string, signal?: AbortSignal): Promise<ResourceLogs> {
+export async function fetchResourceLogs(resource: Pick<ResourceExplorerItem, 'kind' | 'namespace' | 'name'>, options: { container?: string; previous?: boolean; signal?: AbortSignal } = {}): Promise<ResourceLogs> {
   const baseUrl = getTopologyApiBaseUrl().replace(/\/$/, '');
   if (!baseUrl) {
     throw new Error('api_base_url_not_configured');
   }
-  const query = container ? `?container=${encodeURIComponent(container)}` : '';
+  const query = new URLSearchParams();
+  if (options.container) {
+    query.set('container', options.container);
+  }
+  if (options.previous) {
+    query.set('previous', 'true');
+  }
+  const queryString = query.toString() ? `?${query.toString()}` : '';
 
-  const response = await fetch(`${baseUrl}/api/resources/${encodePath(resource.kind)}/${encodePath(resource.namespace || '-')}/${encodePath(resource.name)}/logs${query}`, {
+  const response = await fetch(`${baseUrl}/api/resources/${encodePath(resource.kind)}/${encodePath(resource.namespace || '-')}/${encodePath(resource.name)}/logs${queryString}`, {
     headers: { Authorization: `Bearer ${getStoredAdminToken()}` },
-    signal,
+    signal: options.signal,
   });
   if (!response.ok) {
     throw new Error(`resource_logs_request_failed:${response.status}`);
