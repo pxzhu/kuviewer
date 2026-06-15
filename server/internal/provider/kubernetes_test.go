@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -92,6 +93,77 @@ func TestKubernetesProviderResourceEventsForbiddenFallsBack(t *testing.T) {
 	}
 	if events.Warning != "events_unavailable" || len(events.Items) != 0 {
 		t.Fatalf("events = %+v, want unavailable warning and empty list", events)
+	}
+}
+
+func TestKubernetesProviderResourceLogsReadsPodLog(t *testing.T) {
+	var gotPath string
+	var gotTailLines string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		gotTailLines = r.URL.Query().Get("tailLines")
+		if got := r.Header.Get("Authorization"); got != "Bearer test-token" {
+			t.Fatalf("Authorization = %q, want bearer token", got)
+		}
+		w.Header().Set("Content-Type", "text/plain")
+		_, _ = w.Write([]byte("line-1\nline-2\n"))
+	}))
+	defer server.Close()
+
+	provider := KubernetesProvider{
+		client: &kubeAPIClient{
+			baseURL:    server.URL,
+			bearer:     "test-token",
+			httpClient: server.Client(),
+		},
+	}
+	logs, err := provider.ResourceLogs(context.Background(), ResourceRef{Kind: "Pod", Namespace: "checkout", Name: "checkout-api"})
+	if err != nil {
+		t.Fatalf("ResourceLogs() error = %v", err)
+	}
+
+	if gotPath != "/api/v1/namespaces/checkout/pods/checkout-api/log" {
+		t.Fatalf("path = %q, want pod log path", gotPath)
+	}
+	if gotTailLines != "200" {
+		t.Fatalf("tailLines = %q, want 200", gotTailLines)
+	}
+	if logs.Warning != "" || logs.TailLines != 200 || len(logs.Lines) != 2 || logs.Lines[1] != "line-2" {
+		t.Fatalf("logs = %+v, want two lines", logs)
+	}
+}
+
+func TestKubernetesProviderResourceLogsForbiddenFallsBack(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "forbidden", http.StatusForbidden)
+	}))
+	defer server.Close()
+
+	provider := KubernetesProvider{
+		client: &kubeAPIClient{
+			baseURL:    server.URL,
+			bearer:     "test-token",
+			httpClient: server.Client(),
+		},
+	}
+	logs, err := provider.ResourceLogs(context.Background(), ResourceRef{Kind: "Pod", Namespace: "checkout", Name: "checkout-api"})
+	if err != nil {
+		t.Fatalf("ResourceLogs() error = %v", err)
+	}
+	if logs.Warning != "logs_unavailable" || len(logs.Lines) != 0 || logs.TailLines != 200 {
+		t.Fatalf("logs = %+v, want unavailable warning and empty list", logs)
+	}
+}
+
+func TestCappedLogLinesLimitsLinesAndLineLength(t *testing.T) {
+	longLine := strings.Repeat("x", podLogMaxLineBytes+20)
+	lines := cappedLogLines(strings.Repeat("old\n", 5) + strings.Repeat("line\n", podLogTailLines) + longLine + "\n")
+
+	if len(lines) != podLogTailLines {
+		t.Fatalf("len(lines) = %d, want %d", len(lines), podLogTailLines)
+	}
+	if got := lines[len(lines)-1]; len(got) != podLogMaxLineBytes+3 || !strings.HasSuffix(got, "...") {
+		t.Fatalf("last line length/suffix = %d/%q, want truncated suffix", len(got), got[len(got)-3:])
 	}
 }
 

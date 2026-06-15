@@ -35,6 +35,10 @@ rules:
       - persistentvolumes
       - persistentvolumeclaims
     verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources:
+      - pods/log
+    verbs: ["get"]
   - apiGroups: ["discovery.k8s.io"]
     resources:
       - endpointslices

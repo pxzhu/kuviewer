@@ -157,7 +157,7 @@ func (s *Server) handleResourceRoute(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	kind, namespace, name, events, ok := parseResourceRoute(strings.TrimPrefix(r.URL.Path, "/api/resources/"))
+	kind, namespace, name, action, ok := parseResourceRoute(strings.TrimPrefix(r.URL.Path, "/api/resources/"))
 	if !ok {
 		writeError(w, http.StatusNotFound, "resource_not_found")
 		return
@@ -169,7 +169,7 @@ func (s *Server) handleResourceRoute(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if events {
+	if action == "events" {
 		if !resourceExists(snapshot, kind, namespace, name) {
 			writeError(w, http.StatusNotFound, "resource_not_found")
 			return
@@ -188,6 +188,27 @@ func (s *Server) handleResourceRoute(w http.ResponseWriter, r *http.Request) {
 			resourceEvents.Items = []topology.ResourceEvent{}
 		}
 		writeJSON(w, http.StatusOK, resourceEvents)
+		return
+	}
+	if action == "logs" {
+		if kind != "Pod" || namespace == "" || !resourceExists(snapshot, kind, namespace, name) {
+			writeError(w, http.StatusNotFound, "resource_not_found")
+			return
+		}
+		logProvider, ok := s.provider.(provider.LogProvider)
+		if !ok {
+			writeJSON(w, http.StatusOK, topology.ResourceLogs{Lines: []string{}, Warning: "logs_unavailable", TailLines: 200})
+			return
+		}
+		resourceLogs, err := logProvider.ResourceLogs(r.Context(), provider.ResourceRef{Kind: kind, Namespace: namespace, Name: name})
+		if err != nil {
+			writeJSON(w, http.StatusOK, topology.ResourceLogs{Lines: []string{}, Warning: "logs_unavailable", TailLines: 200})
+			return
+		}
+		if resourceLogs.Lines == nil {
+			resourceLogs.Lines = []string{}
+		}
+		writeJSON(w, http.StatusOK, resourceLogs)
 		return
 	}
 
@@ -314,22 +335,26 @@ func writeProviderError(w http.ResponseWriter, err error) {
 	writeError(w, http.StatusInternalServerError, "topology_snapshot_failed")
 }
 
-func parseResourceRoute(path string) (string, string, string, bool, bool) {
+func parseResourceRoute(path string) (string, string, string, string, bool) {
 	parts := strings.Split(strings.Trim(path, "/"), "/")
 	if len(parts) != 3 && len(parts) != 4 {
-		return "", "", "", false, false
+		return "", "", "", "", false
 	}
-	if len(parts) == 4 && parts[3] != "events" {
-		return "", "", "", false, false
+	action := ""
+	if len(parts) == 4 {
+		action = parts[3]
+	}
+	if action != "" && action != "events" && action != "logs" {
+		return "", "", "", "", false
 	}
 	kind, namespace, name := parts[0], parts[1], parts[2]
 	if namespace == "-" {
 		namespace = ""
 	}
 	if kind == "" || name == "" {
-		return "", "", "", false, false
+		return "", "", "", "", false
 	}
-	return kind, namespace, name, len(parts) == 4, true
+	return kind, namespace, name, action, true
 }
 
 func resourceExists(snapshot topology.Snapshot, kind string, namespace string, name string) bool {
