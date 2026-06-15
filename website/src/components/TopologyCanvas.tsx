@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { TouchEvent, WheelEvent } from 'react';
 import {
   Background,
   Controls,
@@ -17,7 +18,7 @@ import {
   type NodeProps,
   type NodeTypes,
 } from '@xyflow/react';
-import { Eye, EyeOff, Focus, Route, RotateCcw } from 'lucide-react';
+import { Eye, EyeOff, Focus, Minus, Plus, Route, RotateCcw } from 'lucide-react';
 import type { CSSProperties } from 'react';
 import type { ColorMode } from '../features/topology/useTopology';
 import { getEdgeColor, getNodeColor } from '../features/topology/useTopology';
@@ -89,6 +90,8 @@ const groupPadding = 30;
 const namespaceGap = 58;
 const clusterGap = 96;
 const maxRowsPerLane = 4;
+const minMobileZoom = 0.25;
+const maxMobileZoom = 2.5;
 const columnOrder: LayoutColumn[] = ['scope', 'ingress', 'service', 'workload', 'pod', 'policy', 'config', 'storage', 'node'];
 
 const statusLegend = [
@@ -224,8 +227,11 @@ function TopologyCanvasInner({ nodes, edges, selectedNodeId, colorMode, sourceKe
             nodes={flowNodes}
             nodeTypes={nodeTypes}
             onlyRenderVisibleElements
-            panOnScroll
+            panOnScroll={false}
             proOptions={{ hideAttribution: true }}
+            zoomOnDoubleClick
+            zoomOnPinch
+            zoomOnScroll
             onEdgesChange={onEdgesChange}
             onNodeClick={(_, node) => {
               if (node.type === 'resource') {
@@ -249,6 +255,12 @@ function TopologyCanvasInner({ nodes, edges, selectedNodeId, colorMode, sourceKe
                 <button className="ku-flow-button" type="button" onClick={() => reactFlow.fitView({ padding: 0.18, duration: 260 })}>
                   <Focus size={14} aria-hidden="true" />
                   맞춤
+                </button>
+                <button className="ku-flow-button" data-testid="zoom-in-topology" type="button" onClick={() => reactFlow.zoomIn({ duration: 180 })}>
+                  <Plus size={14} aria-hidden="true" />
+                </button>
+                <button className="ku-flow-button" data-testid="zoom-out-topology" type="button" onClick={() => reactFlow.zoomOut({ duration: 180 })}>
+                  <Minus size={14} aria-hidden="true" />
                 </button>
                 <button className="ku-flow-button" data-testid="reset-topology-layout" type="button" onClick={resetLayout}>
                   <RotateCcw size={14} aria-hidden="true" />
@@ -284,6 +296,8 @@ function TopologyCanvasInner({ nodes, edges, selectedNodeId, colorMode, sourceKe
 }
 
 function MobileTopologyCanvas({ nodes, edges, selectedNodeId, colorMode, onSelectNode }: TopologyCanvasProps) {
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const gestureRef = useRef<{ mode: 'pan' | 'pinch'; x: number; y: number; distance: number; scale: number } | null>(null);
   const displayGraph = useMemo(() => buildDisplayGraph(nodes, edges, true, false), [edges, nodes]);
   const selectedNode = displayGraph.nodes.find((node) => node.id === selectedNodeId) || displayGraph.nodes[0] || nodes[0];
   const layout = useMemo(
@@ -291,10 +305,103 @@ function MobileTopologyCanvas({ nodes, edges, selectedNodeId, colorMode, onSelec
     [colorMode, displayGraph.edges, displayGraph.nodes, selectedNode?.id],
   );
   const svgBounds = useMemo(() => boundsForFlowNodes(layout.flowNodes), [layout.flowNodes]);
+  const [viewport, setViewport] = useState({ width: 390, height: 420 });
+  const [camera, setCamera] = useState({ scale: 1, x: 0, y: 0 });
   const resourceFlowNodes = useMemo(() => layout.flowNodes.filter((node) => node.type === 'resource') as Array<Node<ResourceNodeData>>, [layout.flowNodes]);
   const groupFlowNodes = useMemo(() => layout.flowNodes.filter((node) => node.type === 'group') as Array<Node<GroupNodeData>>, [layout.flowNodes]);
   const resourceNodeById = useMemo(() => new Map(resourceFlowNodes.map((node) => [node.id, node])), [resourceFlowNodes]);
   const relatedEdgeCount = selectedNode ? displayGraph.edges.filter((edge) => edge.source === selectedNode.id || edge.target === selectedNode.id).length : 0;
+  const fitCamera = useCallback(() => setCamera(fitMobileCamera(svgBounds, viewport)), [svgBounds, viewport]);
+  const resetCamera = useCallback(() => setCamera({ scale: 1, x: 0, y: 0 }), []);
+  const zoomAt = useCallback(
+    (nextScale: number, centerX = viewport.width / 2, centerY = viewport.height / 2) => {
+      setCamera((currentCamera) => {
+        const scale = clamp(nextScale, minMobileZoom, maxMobileZoom);
+        const graphX = (centerX - currentCamera.x) / currentCamera.scale;
+        const graphY = (centerY - currentCamera.y) / currentCamera.scale;
+        return { scale, x: centerX - graphX * scale, y: centerY - graphY * scale };
+      });
+    },
+    [viewport.height, viewport.width],
+  );
+
+  useEffect(() => {
+    const element = containerRef.current;
+    if (!element) {
+      return;
+    }
+
+    const updateViewport = () => {
+      const rect = element.getBoundingClientRect();
+      setViewport({ width: Math.max(320, rect.width), height: Math.max(320, rect.height) });
+    };
+    updateViewport();
+    const observer = new ResizeObserver(updateViewport);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    fitCamera();
+  }, [fitCamera]);
+
+  const handleWheel = useCallback(
+    (event: WheelEvent<HTMLDivElement>) => {
+      event.preventDefault();
+      const rect = event.currentTarget.getBoundingClientRect();
+      zoomAt(camera.scale * (event.deltaY < 0 ? 1.12 : 0.88), event.clientX - rect.left, event.clientY - rect.top);
+    },
+    [camera.scale, zoomAt],
+  );
+
+  const handleTouchStart = useCallback(
+    (event: TouchEvent<HTMLDivElement>) => {
+      if (event.touches.length === 1) {
+        gestureRef.current = { mode: 'pan', x: event.touches[0].clientX, y: event.touches[0].clientY, distance: 0, scale: camera.scale };
+        return;
+      }
+      if (event.touches.length === 2) {
+        gestureRef.current = {
+          mode: 'pinch',
+          x: touchMidpointX(event.touches[0], event.touches[1]),
+          y: touchMidpointY(event.touches[0], event.touches[1]),
+          distance: touchDistance(event.touches[0], event.touches[1]),
+          scale: camera.scale,
+        };
+      }
+    },
+    [camera.scale],
+  );
+
+  const handleTouchMove = useCallback(
+    (event: TouchEvent<HTMLDivElement>) => {
+      const gesture = gestureRef.current;
+      if (!gesture) {
+        return;
+      }
+
+      event.preventDefault();
+      if (gesture.mode === 'pan' && event.touches.length === 1) {
+        const touch = event.touches[0];
+        const deltaX = touch.clientX - gesture.x;
+        const deltaY = touch.clientY - gesture.y;
+        gestureRef.current = { ...gesture, x: touch.clientX, y: touch.clientY };
+        setCamera((currentCamera) => ({ ...currentCamera, x: currentCamera.x + deltaX, y: currentCamera.y + deltaY }));
+        return;
+      }
+
+      if (gesture.mode === 'pinch' && event.touches.length === 2) {
+        const rect = event.currentTarget.getBoundingClientRect();
+        const distance = touchDistance(event.touches[0], event.touches[1]);
+        zoomAt(gesture.scale * (distance / Math.max(1, gesture.distance)), gesture.x - rect.left, gesture.y - rect.top);
+      }
+    },
+    [zoomAt],
+  );
+
+  const handleTouchEnd = useCallback(() => {
+    gestureRef.current = null;
+  }, []);
 
   return (
     <section className="ku-panel overflow-hidden" data-testid="mobile-topology-list">
@@ -303,23 +410,43 @@ function MobileTopologyCanvas({ nodes, edges, selectedNodeId, colorMode, onSelec
         <div className="mt-2 flex flex-wrap gap-2">
           <span className="ku-chip">{layout.resourceCount} 노드 · {layout.edgeCount} 엣지</span>
           <span className="ku-chip">SVG 토폴로지</span>
+          <span className="ku-chip">{Math.round(camera.scale * 100)}%</span>
         </div>
       </div>
 
       <div className="grid gap-3 p-3">
         {layout.resourceCount > 0 ? (
           <div
-            className="max-h-[64vh] max-w-full overflow-auto overscroll-contain rounded-[14px] border border-[rgba(60,60,67,0.12)] bg-[linear-gradient(rgba(60,60,67,.055)_1px,transparent_1px),linear-gradient(90deg,rgba(60,60,67,.055)_1px,transparent_1px)] bg-[size:28px_28px]"
+            ref={containerRef}
+            className="relative h-[64vh] min-h-[360px] max-w-full overflow-hidden overscroll-contain rounded-[14px] border border-[rgba(60,60,67,0.12)] bg-[linear-gradient(rgba(60,60,67,.055)_1px,transparent_1px),linear-gradient(90deg,rgba(60,60,67,.055)_1px,transparent_1px)] bg-[size:28px_28px]"
             data-testid="mobile-topology-map"
-            style={{ touchAction: 'pan-x pan-y' }}
+            style={{ touchAction: 'none' }}
+            onTouchEnd={handleTouchEnd}
+            onTouchMove={handleTouchMove}
+            onTouchStart={handleTouchStart}
+            onWheel={handleWheel}
           >
+            <div className="absolute left-2 top-2 z-10 flex flex-wrap gap-1.5 rounded-[12px] border border-[rgba(60,60,67,0.14)] bg-white/85 p-1.5 shadow-[0_10px_24px_rgba(0,0,0,0.08)] backdrop-blur-xl">
+              <button className="ku-flow-button" data-testid="mobile-zoom-in" type="button" onClick={() => zoomAt(camera.scale * 1.18)}>
+                <Plus size={14} aria-hidden="true" />
+              </button>
+              <button className="ku-flow-button" data-testid="mobile-zoom-out" type="button" onClick={() => zoomAt(camera.scale / 1.18)}>
+                <Minus size={14} aria-hidden="true" />
+              </button>
+              <button className="ku-flow-button" data-testid="mobile-zoom-fit" type="button" onClick={fitCamera}>
+                <Focus size={14} aria-hidden="true" />
+                맞춤
+              </button>
+              <button className="ku-flow-button" data-testid="mobile-zoom-reset" type="button" onClick={resetCamera}>
+                <RotateCcw size={14} aria-hidden="true" />
+              </button>
+            </div>
             <svg
-              className="block"
+              className="block h-full w-full"
               data-testid="mobile-topology-svg"
               role="img"
               aria-label="SVG 토폴로지 맵"
-              style={{ width: svgBounds.width, height: svgBounds.height, minWidth: svgBounds.width }}
-              viewBox={`0 0 ${svgBounds.width} ${svgBounds.height}`}
+              viewBox={`0 0 ${viewport.width} ${viewport.height}`}
             >
               <defs>
                 <marker id="mobile-arrow" markerHeight="7" markerWidth="7" orient="auto" refX="6" refY="3.5">
@@ -327,6 +454,7 @@ function MobileTopologyCanvas({ nodes, edges, selectedNodeId, colorMode, onSelec
                 </marker>
               </defs>
 
+              <g data-testid="mobile-topology-viewport" transform={`translate(${camera.x} ${camera.y}) scale(${camera.scale})`}>
               {groupFlowNodes.map((groupNode) => {
                 const data = groupNode.data;
                 const width = numericStyleValue(groupNode.style?.width, 320);
@@ -455,6 +583,7 @@ function MobileTopologyCanvas({ nodes, edges, selectedNodeId, colorMode, onSelec
                   </g>
                 );
               })}
+              </g>
             </svg>
           </div>
         ) : null}
@@ -846,6 +975,15 @@ function boundsForFlowNodes(nodes: FlowNode[]) {
   };
 }
 
+function fitMobileCamera(bounds: { width: number; height: number }, viewport: { width: number; height: number }) {
+  const scale = clamp(Math.min((viewport.width - 32) / bounds.width, (viewport.height - 32) / bounds.height), minMobileZoom, maxMobileZoom);
+  return {
+    scale,
+    x: Math.round((viewport.width - bounds.width * scale) / 2),
+    y: Math.round((viewport.height - bounds.height * scale) / 2),
+  };
+}
+
 function mobileFlowEdgePath(source: FlowNode, target: FlowNode) {
   const sourceX = source.position.x + flowNodeWidth;
   const sourceY = source.position.y + flowNodeHeight / 2;
@@ -860,6 +998,22 @@ function mobileFlowEdgeLabelPoint(source: FlowNode, target: FlowNode) {
     x: (source.position.x + flowNodeWidth + target.position.x) / 2,
     y: (source.position.y + target.position.y) / 2 + flowNodeHeight / 2 - 8,
   };
+}
+
+function clamp(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function touchDistance(firstTouch: { clientX: number; clientY: number }, secondTouch: { clientX: number; clientY: number }) {
+  return Math.hypot(firstTouch.clientX - secondTouch.clientX, firstTouch.clientY - secondTouch.clientY);
+}
+
+function touchMidpointX(firstTouch: { clientX: number }, secondTouch: { clientX: number }) {
+  return (firstTouch.clientX + secondTouch.clientX) / 2;
+}
+
+function touchMidpointY(firstTouch: { clientY: number }, secondTouch: { clientY: number }) {
+  return (firstTouch.clientY + secondTouch.clientY) / 2;
 }
 
 function numericStyleValue(value: unknown, fallback: number) {

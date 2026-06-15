@@ -16,6 +16,7 @@ Kuviewer is a Kubernetes topology viewer focused on visualizing clusters, namesp
 - Source modes: `Upload YAML`, `Live Cluster`, and `Mock Demo`
 - `Topology`: draggable React Flow resource relationship map with cluster and namespace zones
 - `Flow`: YAML-derived traffic flow view
+- `Resource Explorer`: OpenLens-style read-only resource list and safe detail preview
 - Manual refresh, optional 30 second auto refresh, and last sync status for live mode
 - Backend provider/status line for source, read-only mode, Secret handling, and static UI mode
 - Connector diagnostics panel for backend source, API errors, sync time, and visible/total graph counts
@@ -25,6 +26,7 @@ Kuviewer is a Kubernetes topology viewer focused on visualizing clusters, namesp
 - Flow filtering keeps the full path context while matching flows by the currently visible resources
 - Empty filter results clear the detail panel instead of showing a stale resource
 - Responsive graph stage keeps zoom/pan/drag inside the topology canvas and stores manual node positions per source
+- Touch devices use an SVG topology renderer with pinch, wheel/trackpad, drag pan, zoom buttons, fit, and reset while keeping React Flow unmounted for mobile stability
 
 The Flow view is intended to feel closer to real request movement than a generic resource graph. It derives paths such as:
 
@@ -108,8 +110,13 @@ API endpoints:
 GET /healthz
 GET /api/status
 GET /api/topology
+GET /api/resources
+GET /api/resources/{kind}/{namespace-or--}/{name}
+GET /api/resources/{kind}/{namespace-or--}/{name}/events
 Authorization: Bearer <admin-token>
 ```
+
+The resource explorer endpoints are read-only. They expose metadata, labels, status, safe summary/preview data, and topology relations derived from the current snapshot. Secret values, `data`, and `stringData` are not returned.
 
 To make the frontend read from the API server, create `website/.env.local`:
 

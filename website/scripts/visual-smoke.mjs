@@ -57,6 +57,7 @@ async function runViewport({ name, viewport, isMobile, hasTouch }) {
     }
 
     await page.screenshot({ path: path.join(outputDir, `${name}-topology.png`), fullPage: true });
+    await verifyResourceExplorer(page);
     await page.getByRole('button', { name: /트래픽 흐름/ }).click();
     await expect(page.getByRole('heading', { name: '트래픽 흐름' })).toBeVisible({ timeout: 10_000 });
     await expect(page.getByText(/현재 필터에 맞는 트래픽 흐름이 없습니다/)).toHaveCount(0);
@@ -96,6 +97,14 @@ async function verifyNodeDrag(page, viewportName) {
     await mobileMap.scrollIntoViewIfNeeded();
     await expect(page.locator('.ku-react-flow')).toHaveCount(0);
     await page.locator('[data-testid^="mobile-topology-edge-"]').first().waitFor({ state: 'attached', timeout: 10_000 });
+    const beforeTransform = await page.getByTestId('mobile-topology-viewport').getAttribute('transform');
+    await page.getByTestId('mobile-zoom-in').click();
+    const zoomedTransform = await page.getByTestId('mobile-topology-viewport').getAttribute('transform');
+    if (beforeTransform === zoomedTransform) {
+      throw new Error(`mobile zoom-in did not change transform for ${viewportName}`);
+    }
+    await page.getByTestId('mobile-zoom-fit').click();
+    await page.getByTestId('mobile-zoom-reset').click();
     const firstNode = page.locator('[data-testid^="mobile-topology-node-"]').first();
     await firstNode.waitFor({ state: 'visible', timeout: 10_000 });
     await firstNode.click();
@@ -141,6 +150,13 @@ async function verifyNodeDrag(page, viewportName) {
   if (beforeTransform === afterTransform && !movedOnScreen) {
     throw new Error(`node drag did not move enough for ${viewportName}`);
   }
+}
+
+async function verifyResourceExplorer(page) {
+  await page.getByRole('button', { name: /리소스 탐색/ }).click();
+  await expect(page.getByRole('heading', { name: '리소스 탐색' })).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByText('Safe Preview')).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByText(/Secret value 숨김/)).toBeVisible({ timeout: 10_000 });
 }
 
 async function findClickableResourceNode(page) {

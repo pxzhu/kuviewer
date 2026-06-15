@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Boxes, GitBranch, LockKeyhole, Pause, Play, RefreshCw, SlidersHorizontal, Workflow } from 'lucide-react';
+import { Boxes, GitBranch, LockKeyhole, Pause, Play, RefreshCw, SearchCode, SlidersHorizontal, Workflow } from 'lucide-react';
 import { clearAdminToken, getStoredAdminToken, isValidAdminToken } from '../features/auth/adminToken';
 import { useConnectorStatus } from '../features/status/useConnectorStatus';
 import { type ColorMode, type TopologyFilters, type TopologySourceMode, useTopology } from '../features/topology/useTopology';
@@ -8,6 +8,7 @@ import { ConnectorDiagnostics } from '../components/ConnectorDiagnostics';
 import { DetailPanel } from '../components/DetailPanel';
 import { FilterBar } from '../components/FilterBar';
 import { ResourceList } from '../components/ResourceList';
+import { ResourceExplorer } from '../components/ResourceExplorer';
 import { SourceModeBar } from '../components/SourceModeBar';
 import { StatTiles } from '../components/StatTiles';
 import { TopologyCanvas } from '../components/TopologyCanvas';
@@ -33,7 +34,7 @@ function Dashboard() {
 
   const [filters, setFilters] = useState(initialFilters);
   const [colorMode, setColorMode] = useState<ColorMode>('status');
-  const [viewMode, setViewMode] = useState<'topology' | 'traffic'>('topology');
+  const [viewMode, setViewMode] = useState<'topology' | 'traffic' | 'resources'>('topology');
   const [sourceMode, setSourceMode] = useState<TopologySourceMode>(() => initialSourceMode());
   const [liveUnlocked, setLiveUnlocked] = useState(() => isValidAdminToken(getStoredAdminToken()));
   const [uploadedState, setUploadedState] = useState<UploadedTopologyState | null>(null);
@@ -193,7 +194,7 @@ function Dashboard() {
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            <div className="grid grid-cols-2 rounded-[11px] border border-[rgba(60,60,67,0.16)] bg-white/70 p-1 shadow-[0_2px_10px_rgba(0,0,0,0.04)] backdrop-blur-xl">
+            <div className="grid grid-cols-3 rounded-[11px] border border-[rgba(60,60,67,0.16)] bg-white/70 p-1 shadow-[0_2px_10px_rgba(0,0,0,0.04)] backdrop-blur-xl">
               <button
                 className={`inline-flex h-8 items-center justify-center gap-2 rounded-[8px] px-3 text-sm font-semibold transition ${
                   viewMode === 'topology' ? 'bg-[#1d1d1f] text-white shadow-sm' : 'text-[rgba(60,60,67,0.72)] hover:bg-white/80'
@@ -213,6 +214,16 @@ function Dashboard() {
               >
                 <Workflow size={15} aria-hidden="true" />
                 트래픽 흐름
+              </button>
+              <button
+                className={`inline-flex h-8 items-center justify-center gap-2 rounded-[8px] px-3 text-sm font-semibold transition ${
+                  viewMode === 'resources' ? 'bg-[#1d1d1f] text-white shadow-sm' : 'text-[rgba(60,60,67,0.72)] hover:bg-white/80'
+                }`}
+                type="button"
+                onClick={() => setViewMode('resources')}
+              >
+                <SearchCode size={15} aria-hidden="true" />
+                리소스 탐색
               </button>
             </div>
             <button
@@ -301,8 +312,17 @@ function Dashboard() {
           }}
         />
 
-        <div className="grid gap-3 lg:gap-4 xl:grid-cols-[minmax(0,1fr)_390px] 2xl:grid-cols-[minmax(0,1fr)_420px]">
-          {viewMode === 'topology' ? (
+        {viewMode === 'resources' ? (
+          <ResourceExplorer
+            liveEnabled={liveActive}
+            selectedNodeId={selectedNode?.id || ''}
+            snapshot={snapshot}
+            sourceMode={sourceMode}
+            onSelectNode={setSelectedNodeId}
+          />
+        ) : (
+          <div className="grid gap-3 lg:gap-4 xl:grid-cols-[minmax(0,1fr)_390px] 2xl:grid-cols-[minmax(0,1fr)_420px]">
+            {viewMode === 'topology' ? (
             <TopologyCanvas
               colorMode={colorMode}
               edges={edges}
@@ -311,7 +331,7 @@ function Dashboard() {
               sourceKey={topologySourceKey}
               onSelectNode={setSelectedNodeId}
             />
-          ) : (
+            ) : (
             <TrafficFlowView
               edges={snapshot.edges}
               nodes={snapshot.nodes}
@@ -319,9 +339,9 @@ function Dashboard() {
               visibleNodeIds={visibleNodeIds}
               onSelectNode={setSelectedNodeId}
             />
-          )}
+            )}
 
-          <aside className="grid content-start gap-3 lg:gap-4 xl:sticky xl:top-[116px] xl:max-h-[calc(100vh-132px)] xl:overflow-auto xl:pr-1">
+            <aside className="grid content-start gap-3 lg:gap-4 xl:sticky xl:top-[116px] xl:max-h-[calc(100vh-132px)] xl:overflow-auto xl:pr-1">
             <ConnectorDiagnostics
               lastUpdatedAt={lastUpdatedAt}
               source={source}
@@ -337,8 +357,9 @@ function Dashboard() {
             />
             <ResourceList nodes={nodes} selectedNodeId={selectedNode?.id || ''} onSelectNode={setSelectedNodeId} />
             <DetailPanel edges={snapshot.edges} node={selectedNode} nodeMap={snapshotNodeMap} />
-          </aside>
-        </div>
+            </aside>
+          </div>
+        )}
       </div>
     </main>
   );
