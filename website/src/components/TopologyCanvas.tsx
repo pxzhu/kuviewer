@@ -78,40 +78,6 @@ interface LayoutResult {
   edgeCount: number;
 }
 
-interface MobilePositionedNode {
-  node: TopologyNode;
-  x: number;
-  y: number;
-  color: string;
-  isSelected: boolean;
-  related: boolean;
-}
-
-interface MobilePositionedEdge {
-  edge: TopologyEdge;
-  source: MobilePositionedNode;
-  target: MobilePositionedNode;
-  color: string;
-  selected: boolean;
-  traffic: boolean;
-}
-
-interface MobileLane {
-  id: LayoutColumn;
-  label: string;
-  x: number;
-  width: number;
-  count: number;
-}
-
-interface MobileLayoutResult {
-  nodes: MobilePositionedNode[];
-  edges: MobilePositionedEdge[];
-  lanes: MobileLane[];
-  width: number;
-  height: number;
-}
-
 type LayoutColumn = 'scope' | 'ingress' | 'service' | 'workload' | 'pod' | 'policy' | 'config' | 'storage' | 'node';
 
 const flowNodeWidth = 220;
@@ -123,12 +89,6 @@ const groupPadding = 30;
 const namespaceGap = 58;
 const clusterGap = 96;
 const maxRowsPerLane = 4;
-const mobileNodeWidth = 106;
-const mobileNodeHeight = 42;
-const mobileRowStep = 58;
-const mobileLaneGap = 26;
-const mobileWrappedLaneGap = 14;
-const mobileMaxRowsPerLane = 8;
 const columnOrder: LayoutColumn[] = ['scope', 'ingress', 'service', 'workload', 'pod', 'policy', 'config', 'storage', 'node'];
 
 const statusLegend = [
@@ -327,10 +287,13 @@ function MobileTopologyCanvas({ nodes, edges, selectedNodeId, colorMode, onSelec
   const displayGraph = useMemo(() => buildDisplayGraph(nodes, edges, true, false), [edges, nodes]);
   const selectedNode = displayGraph.nodes.find((node) => node.id === selectedNodeId) || displayGraph.nodes[0] || nodes[0];
   const layout = useMemo(
-    () => buildMobileTopologyLayout(displayGraph.nodes, displayGraph.edges, colorMode, selectedNode?.id || ''),
+    () => buildFlowLayout(displayGraph.nodes, displayGraph.edges, {}, colorMode, selectedNode?.id || ''),
     [colorMode, displayGraph.edges, displayGraph.nodes, selectedNode?.id],
   );
-  const selectedLayoutNode = selectedNode ? layout.nodes.find((node) => node.node.id === selectedNode.id) : undefined;
+  const svgBounds = useMemo(() => boundsForFlowNodes(layout.flowNodes), [layout.flowNodes]);
+  const resourceFlowNodes = useMemo(() => layout.flowNodes.filter((node) => node.type === 'resource') as Array<Node<ResourceNodeData>>, [layout.flowNodes]);
+  const groupFlowNodes = useMemo(() => layout.flowNodes.filter((node) => node.type === 'group') as Array<Node<GroupNodeData>>, [layout.flowNodes]);
+  const resourceNodeById = useMemo(() => new Map(resourceFlowNodes.map((node) => [node.id, node])), [resourceFlowNodes]);
   const relatedEdgeCount = selectedNode ? displayGraph.edges.filter((edge) => edge.source === selectedNode.id || edge.target === selectedNode.id).length : 0;
 
   return (
@@ -338,15 +301,15 @@ function MobileTopologyCanvas({ nodes, edges, selectedNodeId, colorMode, onSelec
       <div className="border-b border-[rgba(60,60,67,0.12)] px-4 py-3">
         <h2 className="text-sm font-semibold text-[#1d1d1f]">토폴로지 맵</h2>
         <div className="mt-2 flex flex-wrap gap-2">
-          <span className="ku-chip">{layout.nodes.length} 노드 · {layout.edges.length} 엣지</span>
-          <span className="ku-chip">모바일 SVG 맵</span>
+          <span className="ku-chip">{layout.resourceCount} 노드 · {layout.edgeCount} 엣지</span>
+          <span className="ku-chip">SVG 토폴로지</span>
         </div>
       </div>
 
       <div className="grid gap-3 p-3">
-        {layout.nodes.length > 0 ? (
+        {layout.resourceCount > 0 ? (
           <div
-            className="max-w-full overflow-x-auto overscroll-contain rounded-[14px] border border-[rgba(60,60,67,0.12)] bg-[linear-gradient(rgba(60,60,67,.055)_1px,transparent_1px),linear-gradient(90deg,rgba(60,60,67,.055)_1px,transparent_1px)] bg-[size:24px_24px]"
+            className="max-h-[64vh] max-w-full overflow-auto overscroll-contain rounded-[14px] border border-[rgba(60,60,67,0.12)] bg-[linear-gradient(rgba(60,60,67,.055)_1px,transparent_1px),linear-gradient(90deg,rgba(60,60,67,.055)_1px,transparent_1px)] bg-[size:28px_28px]"
             data-testid="mobile-topology-map"
             style={{ touchAction: 'pan-x pan-y' }}
           >
@@ -354,9 +317,9 @@ function MobileTopologyCanvas({ nodes, edges, selectedNodeId, colorMode, onSelec
               className="block"
               data-testid="mobile-topology-svg"
               role="img"
-              aria-label="모바일 토폴로지 맵"
-              style={{ width: layout.width, height: layout.height, minWidth: layout.width }}
-              viewBox={`0 0 ${layout.width} ${layout.height}`}
+              aria-label="SVG 토폴로지 맵"
+              style={{ width: svgBounds.width, height: svgBounds.height, minWidth: svgBounds.width }}
+              viewBox={`0 0 ${svgBounds.width} ${svgBounds.height}`}
             >
               <defs>
                 <marker id="mobile-arrow" markerHeight="7" markerWidth="7" orient="auto" refX="6" refY="3.5">
@@ -364,83 +327,134 @@ function MobileTopologyCanvas({ nodes, edges, selectedNodeId, colorMode, onSelec
                 </marker>
               </defs>
 
-              {layout.lanes.map((lane) => (
-                <g key={lane.id}>
-                  <rect
-                    fill="rgba(255,255,255,0.62)"
-                    height={layout.height - 24}
-                    rx="14"
-                    stroke="rgba(60,60,67,0.1)"
-                    strokeDasharray="5 5"
-                    width={lane.width}
-                    x={lane.x - 10}
-                    y="12"
-                  />
-                  <text fill="rgba(60,60,67,0.62)" fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace" fontSize="10" fontWeight="800" x={lane.x} y="32">
-                    {lane.label} · {lane.count}
-                  </text>
-                </g>
-              ))}
+              {groupFlowNodes.map((groupNode) => {
+                const data = groupNode.data;
+                const width = numericStyleValue(groupNode.style?.width, 320);
+                const height = numericStyleValue(groupNode.style?.height, 180);
+                return (
+                  <g key={groupNode.id} transform={`translate(${groupNode.position.x}, ${groupNode.position.y})`}>
+                    <rect
+                      fill={String(data.tint)}
+                      height={height}
+                      rx="18"
+                      stroke={`${String(data.color)}80`}
+                      strokeDasharray="7 6"
+                      width={width}
+                    />
+                    <text fill={String(data.color)} fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace" fontSize="11" fontWeight="800" x="16" y="28">
+                      {data.label}
+                    </text>
+                    <text fill="rgba(60,60,67,0.58)" fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace" fontSize="10" fontWeight="700" x="16" y="47">
+                      {data.caption}
+                    </text>
+                  </g>
+                );
+              })}
 
-              {layout.edges.map((positionedEdge) => (
-                <path
-                  key={positionedEdge.edge.id}
-                  d={mobileEdgePath(positionedEdge.source, positionedEdge.target)}
-                  data-testid={`mobile-topology-edge-${positionedEdge.edge.id}`}
-                  fill="none"
-                  markerEnd="url(#mobile-arrow)"
-                  opacity={positionedEdge.selected ? 0.92 : 0.38}
-                  stroke={positionedEdge.color}
-                  strokeDasharray={positionedEdge.edge.confidence === 'inferred' ? '5 5' : undefined}
-                  strokeLinecap="round"
-                  strokeWidth={positionedEdge.selected ? (positionedEdge.traffic ? 2.4 : 1.8) : 1.2}
-                  vectorEffect="non-scaling-stroke"
-                />
-              ))}
+              {layout.flowEdges.map((flowEdge) => {
+                const source = resourceNodeById.get(flowEdge.source);
+                const target = resourceNodeById.get(flowEdge.target);
+                if (!source || !target) {
+                  return null;
+                }
+                const stroke = String(flowEdge.style?.stroke || '#8e8e93');
+                const strokeWidth = numericStyleValue(flowEdge.style?.strokeWidth, 1.3);
+                const labelPoint = mobileFlowEdgeLabelPoint(source, target);
+                return (
+                  <g key={flowEdge.id} data-testid={`mobile-topology-edge-${flowEdge.id}`}>
+                    <path
+                      d={mobileFlowEdgePath(source, target)}
+                      fill="none"
+                      markerEnd="url(#mobile-arrow)"
+                      opacity={flowEdge.zIndex === 20 ? 0.92 : 0.62}
+                      stroke={stroke}
+                      strokeDasharray={String(flowEdge.style?.strokeDasharray || '') || undefined}
+                      strokeLinecap="round"
+                      strokeWidth={strokeWidth}
+                      vectorEffect="non-scaling-stroke"
+                    />
+                    {flowEdge.label ? (
+                      <text
+                        fill={stroke}
+                        fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace"
+                        fontSize="10"
+                        fontWeight="800"
+                        paintOrder="stroke"
+                        stroke="rgba(255,255,255,0.86)"
+                        strokeWidth="5"
+                        x={labelPoint.x}
+                        y={labelPoint.y}
+                      >
+                        {String(flowEdge.label)}
+                      </text>
+                    ) : null}
+                  </g>
+                );
+              })}
 
-              {layout.nodes.map((positionedNode) => (
-                <g
-                  key={positionedNode.node.id}
-                  data-testid={`mobile-topology-node-${positionedNode.node.id}`}
-                  role="button"
-                  tabIndex={0}
-                  transform={`translate(${positionedNode.x}, ${positionedNode.y})`}
-                  onClick={() => onSelectNode(positionedNode.node.id)}
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter' || event.key === ' ') {
-                      event.preventDefault();
-                      onSelectNode(positionedNode.node.id);
-                    }
-                  }}
-                >
-                  <rect
-                    fill={positionedNode.isSelected ? 'rgba(0,122,255,0.12)' : 'rgba(255,255,255,0.92)'}
-                    height={mobileNodeHeight}
-                    rx="10"
-                    stroke={positionedNode.isSelected ? '#007aff' : `${positionedNode.color}88`}
-                    strokeWidth={positionedNode.isSelected ? 2 : positionedNode.related ? 1.6 : 1}
-                    width={mobileNodeWidth}
-                  />
-                  <rect fill={positionedNode.color} height="4" rx="2" width={mobileNodeWidth - 14} x="7" y="6" />
-                  <text fill="#1d1d1f" fontFamily="Inter, ui-sans-serif, system-ui, sans-serif" fontSize="10.5" fontWeight="800" x="8" y="23">
-                    {truncateMiddle(positionedNode.node.name, 14)}
-                  </text>
-                  <text fill="rgba(60,60,67,0.62)" fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace" fontSize="8.5" fontWeight="800" x="8" y="35">
-                    {positionedNode.node.kind}
-                  </text>
-                </g>
-              ))}
-
-              {selectedLayoutNode ? (
-                <circle
-                  cx={selectedLayoutNode.x + mobileNodeWidth - 9}
-                  cy={selectedLayoutNode.y + 14}
-                  fill="#007aff"
-                  r="4.5"
-                  stroke="#ffffff"
-                  strokeWidth="2"
-                />
-              ) : null}
+              {resourceFlowNodes.map((flowNode) => {
+                const data = flowNode.data;
+                const resource = data.resource;
+                const selected = data.isSelected;
+                return (
+                  <g
+                    key={flowNode.id}
+                    data-testid={`mobile-topology-node-${resource.id}`}
+                    role="button"
+                    tabIndex={0}
+                    transform={`translate(${flowNode.position.x}, ${flowNode.position.y})`}
+                    onClick={() => onSelectNode(resource.id)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault();
+                        onSelectNode(resource.id);
+                      }
+                    }}
+                  >
+                    <rect
+                      fill="rgba(255,255,255,0.94)"
+                      height={flowNodeHeight}
+                      rx="13"
+                      stroke={selected ? String(data.color) : `${String(data.color)}66`}
+                      strokeWidth={selected ? 2 : 1}
+                      width={flowNodeWidth}
+                    />
+                    {selected || data.related ? (
+                      <rect
+                        fill="none"
+                        height={flowNodeHeight + (selected ? 8 : 4)}
+                        rx="16"
+                        stroke={selected ? 'rgba(0,122,255,0.28)' : 'rgba(60,60,67,0.18)'}
+                        strokeWidth={selected ? 5 : 3}
+                        width={flowNodeWidth + (selected ? 8 : 4)}
+                        x={selected ? -4 : -2}
+                        y={selected ? -4 : -2}
+                      />
+                    ) : null}
+                    <rect fill={String(data.color)} height="4" rx="2" width={flowNodeWidth} />
+                    <circle cx="0" cy={flowNodeHeight / 2} fill={String(data.color)} r="5" stroke="#ffffff" strokeWidth="2" />
+                    <circle cx={flowNodeWidth} cy={flowNodeHeight / 2} fill={String(data.color)} r="5" stroke="#ffffff" strokeWidth="2" />
+                    <text fill="#1d1d1f" fontFamily="Inter, ui-sans-serif, system-ui, sans-serif" fontSize="13" fontWeight="800" x="12" y="28">
+                      {truncateMiddle(resource.name, 25)}
+                    </text>
+                    <text fill="rgba(60,60,67,0.58)" fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace" fontSize="10" fontWeight="800" x="12" y="46">
+                      {truncateMiddle(`${resource.namespace ? `${resource.namespace} / ` : ''}${resource.kind}`, 30)}
+                    </text>
+                    <rect fill={statusFill(resource.status)} height="18" rx="9" width="66" x={flowNodeWidth - 76} y="18" />
+                    <text fill={statusTextColor(resource.status)} fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace" fontSize="9" fontWeight="800" textAnchor="middle" x={flowNodeWidth - 43} y="30">
+                      {resource.status}
+                    </text>
+                    {summaryPreview(resource).map((item, index) => (
+                      <g key={item} transform={`translate(${12 + index * 94}, 64)`}>
+                        <rect fill="rgba(242,242,247,0.78)" height="20" rx="10" stroke="rgba(60,60,67,0.1)" width="86" />
+                        <text fill="rgba(60,60,67,0.72)" fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace" fontSize="9" fontWeight="700" x="7" y="13">
+                          {truncateMiddle(item, 13)}
+                        </text>
+                      </g>
+                    ))}
+                  </g>
+                );
+              })}
             </svg>
           </div>
         ) : null}
@@ -819,100 +833,70 @@ function toFlowEdge(edge: TopologyEdge, selectedNodeId: string): FlowEdge {
   };
 }
 
-function buildMobileTopologyLayout(nodes: TopologyNode[], edges: TopologyEdge[], colorMode: ColorMode, selectedNodeId: string): MobileLayoutResult {
-  const selectedEdges = edges.filter((edge) => edge.source === selectedNodeId || edge.target === selectedNodeId);
-  const selectedNeighborIds = new Set(selectedEdges.flatMap((edge) => [edge.source, edge.target]));
-  const positionedNodes: MobilePositionedNode[] = [];
-  const lanes: MobileLane[] = [];
+function boundsForFlowNodes(nodes: FlowNode[]) {
+  if (nodes.length === 0) {
+    return { width: 360, height: 240 };
+  }
 
-  let cursorX = 22;
-  let maxRows = 1;
-  columnOrder.forEach((column) => {
-    const columnNodes = sortResources(nodes.filter((node) => columnForKind(node.kind) === column));
-    if (columnNodes.length === 0) {
-      return;
-    }
-
-    const wraps = Math.max(1, Math.ceil(columnNodes.length / mobileMaxRowsPerLane));
-    const laneWidth = wraps * mobileNodeWidth + (wraps - 1) * mobileWrappedLaneGap;
-    lanes.push({
-      id: column,
-      label: mobileColumnLabel(column),
-      x: cursorX,
-      width: laneWidth + 20,
-      count: columnNodes.length,
-    });
-
-    columnNodes.forEach((node, index) => {
-      const wrapIndex = Math.floor(index / mobileMaxRowsPerLane);
-      const rowIndex = index % mobileMaxRowsPerLane;
-      maxRows = Math.max(maxRows, rowIndex + 1);
-      positionedNodes.push({
-        node,
-        x: cursorX + wrapIndex * (mobileNodeWidth + mobileWrappedLaneGap),
-        y: 52 + rowIndex * mobileRowStep,
-        color: getNodeColor(node, colorMode),
-        isSelected: node.id === selectedNodeId,
-        related: selectedNeighborIds.has(node.id),
-      });
-    });
-
-    cursorX += laneWidth + mobileLaneGap;
-  });
-
-  const nodeById = new Map(positionedNodes.map((positionedNode) => [positionedNode.node.id, positionedNode]));
-  const positionedEdges = edges.flatMap((edge) => {
-    const source = nodeById.get(edge.source);
-    const target = nodeById.get(edge.target);
-    if (!source || !target) {
-      return [];
-    }
-
-    const traffic = isTrafficEdge(edge.type);
-    const selected = !selectedNodeId || edge.source === selectedNodeId || edge.target === selectedNodeId;
-    return [
-      {
-        edge,
-        source,
-        target,
-        color: selected ? (traffic ? '#007aff' : getEdgeColor(edge)) : 'rgba(142,142,147,0.58)',
-        selected,
-        traffic,
-      },
-    ];
-  });
-
+  const right = Math.max(...nodes.map((node) => node.position.x + numericStyleValue(node.style?.width, node.type === 'resource' ? flowNodeWidth : 320)));
+  const bottom = Math.max(...nodes.map((node) => node.position.y + numericStyleValue(node.style?.height, node.type === 'resource' ? flowNodeHeight : 180)));
   return {
-    nodes: positionedNodes,
-    edges: positionedEdges,
-    lanes,
-    width: Math.max(360, cursorX + 14),
-    height: Math.max(240, 52 + maxRows * mobileRowStep + 26),
+    width: Math.max(720, Math.ceil(right + 48)),
+    height: Math.max(360, Math.ceil(bottom + 48)),
   };
 }
 
-function mobileEdgePath(source: MobilePositionedNode, target: MobilePositionedNode) {
-  const sourceX = source.x + mobileNodeWidth;
-  const sourceY = source.y + mobileNodeHeight / 2;
-  const targetX = target.x;
-  const targetY = target.y + mobileNodeHeight / 2;
+function mobileFlowEdgePath(source: FlowNode, target: FlowNode) {
+  const sourceX = source.position.x + flowNodeWidth;
+  const sourceY = source.position.y + flowNodeHeight / 2;
+  const targetX = target.position.x;
+  const targetY = target.position.y + flowNodeHeight / 2;
   const controlOffset = Math.max(28, Math.abs(targetX - sourceX) * 0.46);
   return `M ${sourceX} ${sourceY} C ${sourceX + controlOffset} ${sourceY}, ${targetX - controlOffset} ${targetY}, ${targetX} ${targetY}`;
 }
 
-function mobileColumnLabel(column: LayoutColumn) {
-  const labels: Record<LayoutColumn, string> = {
-    scope: 'Scope',
-    ingress: 'Ingress',
-    service: 'Service',
-    workload: 'Workload',
-    pod: 'Pod',
-    policy: 'Policy',
-    config: 'Config',
-    storage: 'Storage',
-    node: 'Node',
+function mobileFlowEdgeLabelPoint(source: FlowNode, target: FlowNode) {
+  return {
+    x: (source.position.x + flowNodeWidth + target.position.x) / 2,
+    y: (source.position.y + target.position.y) / 2 + flowNodeHeight / 2 - 8,
   };
-  return labels[column];
+}
+
+function numericStyleValue(value: unknown, fallback: number) {
+  if (typeof value === 'number') {
+    return value;
+  }
+  if (typeof value === 'string') {
+    const parsedValue = Number.parseFloat(value);
+    return Number.isFinite(parsedValue) ? parsedValue : fallback;
+  }
+  return fallback;
+}
+
+function statusFill(status: TopologyNode['status']) {
+  if (status === 'healthy') {
+    return 'rgba(52,199,89,0.1)';
+  }
+  if (status === 'warning') {
+    return 'rgba(255,149,0,0.1)';
+  }
+  if (status === 'error') {
+    return 'rgba(255,59,48,0.1)';
+  }
+  return 'rgba(142,142,147,0.1)';
+}
+
+function statusTextColor(status: TopologyNode['status']) {
+  if (status === 'healthy') {
+    return '#248a3d';
+  }
+  if (status === 'warning') {
+    return '#a05a00';
+  }
+  if (status === 'error') {
+    return '#c01f17';
+  }
+  return '#636366';
 }
 
 function truncateMiddle(value: string, maxLength: number) {
