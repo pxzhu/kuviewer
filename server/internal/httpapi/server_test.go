@@ -198,6 +198,107 @@ func TestTopologyProviderErrors(t *testing.T) {
 	}
 }
 
+func TestResourcesRequireAdminBearerToken(t *testing.T) {
+	handler := NewServer(stubProvider{snapshot: resourceTestSnapshot()}, "secret-token", "", "")
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/api/resources", nil)
+	handler.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusUnauthorized)
+	}
+}
+
+func TestResourcesReturnSafeResourceList(t *testing.T) {
+	handler := NewServer(stubProvider{snapshot: resourceTestSnapshot()}, "secret-token", "", "")
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/api/resources", nil)
+	request.Header.Set("Authorization", "Bearer secret-token")
+
+	handler.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusOK)
+	}
+
+	var resources topology.ResourceList
+	if err := json.NewDecoder(recorder.Body).Decode(&resources); err != nil {
+		t.Fatalf("decode resources: %v", err)
+	}
+	if len(resources.Items) != 3 {
+		t.Fatalf("resources = %d, want 3", len(resources.Items))
+	}
+
+	var secret topology.Resource
+	for _, resource := range resources.Items {
+		if resource.Kind == "Secret" {
+			secret = resource
+			break
+		}
+	}
+	if secret.Name != "checkout-secret" {
+		t.Fatalf("secret resource not found: %+v", resources.Items)
+	}
+	if _, ok := secret.Summary["token"]; ok {
+		t.Fatalf("secret token leaked in summary: %+v", secret.Summary)
+	}
+	if got := secret.Preview["secretValues"]; got != "hidden" {
+		t.Fatalf("secretValues = %v, want hidden", got)
+	}
+}
+
+func TestResourceDetailAndEvents(t *testing.T) {
+	handler := NewServer(stubProvider{snapshot: resourceTestSnapshot()}, "secret-token", "", "")
+
+	t.Run("detail", func(t *testing.T) {
+		recorder := httptest.NewRecorder()
+		request := httptest.NewRequest(http.MethodGet, "/api/resources/Pod/checkout/checkout-api", nil)
+		request.Header.Set("Authorization", "Bearer secret-token")
+		handler.ServeHTTP(recorder, request)
+
+		if recorder.Code != http.StatusOK {
+			t.Fatalf("status = %d, want %d", recorder.Code, http.StatusOK)
+		}
+		var resource topology.Resource
+		if err := json.NewDecoder(recorder.Body).Decode(&resource); err != nil {
+			t.Fatalf("decode detail: %v", err)
+		}
+		if resource.Kind != "Pod" || resource.Name != "checkout-api" || len(resource.Related) == 0 {
+			t.Fatalf("unexpected resource detail: %+v", resource)
+		}
+	})
+
+	t.Run("events", func(t *testing.T) {
+		recorder := httptest.NewRecorder()
+		request := httptest.NewRequest(http.MethodGet, "/api/resources/Pod/checkout/checkout-api/events", nil)
+		request.Header.Set("Authorization", "Bearer secret-token")
+		handler.ServeHTTP(recorder, request)
+
+		if recorder.Code != http.StatusOK {
+			t.Fatalf("status = %d, want %d", recorder.Code, http.StatusOK)
+		}
+		var events topology.ResourceEvents
+		if err := json.NewDecoder(recorder.Body).Decode(&events); err != nil {
+			t.Fatalf("decode events: %v", err)
+		}
+		if len(events.Items) != 0 {
+			t.Fatalf("events = %d, want 0", len(events.Items))
+		}
+	})
+
+	t.Run("not found", func(t *testing.T) {
+		recorder := httptest.NewRecorder()
+		request := httptest.NewRequest(http.MethodGet, "/api/resources/Pod/checkout/missing/events", nil)
+		request.Header.Set("Authorization", "Bearer secret-token")
+		handler.ServeHTTP(recorder, request)
+
+		if recorder.Code != http.StatusNotFound {
+			t.Fatalf("status = %d, want %d", recorder.Code, http.StatusNotFound)
+		}
+	})
+}
+
 func TestCORSPreflight(t *testing.T) {
 	handler := NewServer(stubProvider{snapshot: testSnapshot()}, "secret-token", "http://127.0.0.1:5174", "")
 	recorder := httptest.NewRecorder()
@@ -320,4 +421,51 @@ func testSnapshot() topology.Snapshot {
 			},
 		},
 	}
+}
+
+func resourceTestSnapshot() topology.Snapshot {
+	snapshot := testSnapshot()
+	snapshot.Nodes = []topology.Node{
+		{
+			ID:        "test:Namespace:checkout",
+			ClusterID: "test",
+			Kind:      "Namespace",
+			Name:      "checkout",
+			Status:    "healthy",
+			Labels:    map[string]string{"team": "commerce"},
+			Summary:   map[string]interface{}{"workloads": 1},
+		},
+		{
+			ID:        "test:checkout:Pod:checkout-api",
+			ClusterID: "test",
+			Kind:      "Pod",
+			Namespace: "checkout",
+			Name:      "checkout-api",
+			Status:    "healthy",
+			Labels:    map[string]string{"app": "checkout-api"},
+			Summary:   map[string]interface{}{"phase": "Running"},
+		},
+		{
+			ID:        "test:checkout:Secret:checkout-secret",
+			ClusterID: "test",
+			Kind:      "Secret",
+			Namespace: "checkout",
+			Name:      "checkout-secret",
+			Status:    "healthy",
+			Labels:    map[string]string{"app": "checkout-api"},
+			Summary:   map[string]interface{}{"type": "Opaque", "token": "super-secret"},
+		},
+	}
+	snapshot.Edges = []topology.Edge{
+		{
+			ID:          "pod-secret",
+			ClusterID:   "test",
+			Source:      "test:checkout:Pod:checkout-api",
+			Target:      "test:checkout:Secret:checkout-secret",
+			Type:        "env-from",
+			Confidence:  "observed",
+			SourceField: "Pod.spec.containers.envFrom.secretRef",
+		},
+	}
+	return snapshot
 }

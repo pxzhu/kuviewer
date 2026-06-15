@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"kuviewer/server/internal/provider"
+	"kuviewer/server/internal/topology"
 )
 
 type Server struct {
@@ -88,6 +89,8 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/healthz", s.handleHealth)
 	s.mux.HandleFunc("/api/status", s.requireAdmin(s.handleStatus))
 	s.mux.HandleFunc("/api/topology", s.requireAdmin(s.handleTopology))
+	s.mux.HandleFunc("/api/resources", s.requireAdmin(s.handleResources))
+	s.mux.HandleFunc("/api/resources/", s.requireAdmin(s.handleResourceRoute))
 	if s.staticDir != "" {
 		s.mux.HandleFunc("/", s.handleStatic)
 	}
@@ -131,6 +134,58 @@ func (s *Server) handleTopology(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, snapshot)
+}
+
+func (s *Server) handleResources(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "method_not_allowed")
+		return
+	}
+
+	snapshot, err := s.provider.Snapshot(r.Context())
+	if err != nil {
+		writeProviderError(w, err)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, topology.ResourceList{Items: resourcesFromSnapshot(snapshot)})
+}
+
+func (s *Server) handleResourceRoute(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "method_not_allowed")
+		return
+	}
+
+	kind, namespace, name, events, ok := parseResourceRoute(strings.TrimPrefix(r.URL.Path, "/api/resources/"))
+	if !ok {
+		writeError(w, http.StatusNotFound, "resource_not_found")
+		return
+	}
+
+	snapshot, err := s.provider.Snapshot(r.Context())
+	if err != nil {
+		writeProviderError(w, err)
+		return
+	}
+
+	if events {
+		if !resourceExists(snapshot, kind, namespace, name) {
+			writeError(w, http.StatusNotFound, "resource_not_found")
+			return
+		}
+		writeJSON(w, http.StatusOK, topology.ResourceEvents{Items: []topology.ResourceEvent{}})
+		return
+	}
+
+	for _, resource := range resourcesFromSnapshot(snapshot) {
+		if resource.Kind == kind && resource.Namespace == namespace && resource.Name == name {
+			writeJSON(w, http.StatusOK, resource)
+			return
+		}
+	}
+
+	writeError(w, http.StatusNotFound, "resource_not_found")
 }
 
 func (s *Server) handleStatic(w http.ResponseWriter, r *http.Request) {
@@ -236,4 +291,150 @@ func writeJSON(w http.ResponseWriter, status int, value interface{}) {
 
 func writeError(w http.ResponseWriter, status int, code string) {
 	writeJSON(w, status, map[string]string{"error": code})
+}
+
+func writeProviderError(w http.ResponseWriter, err error) {
+	if errors.Is(err, provider.ErrProviderNotImplemented) {
+		writeError(w, http.StatusNotImplemented, "provider_not_implemented")
+		return
+	}
+	writeError(w, http.StatusInternalServerError, "topology_snapshot_failed")
+}
+
+func parseResourceRoute(path string) (string, string, string, bool, bool) {
+	parts := strings.Split(strings.Trim(path, "/"), "/")
+	if len(parts) != 3 && len(parts) != 4 {
+		return "", "", "", false, false
+	}
+	if len(parts) == 4 && parts[3] != "events" {
+		return "", "", "", false, false
+	}
+	kind, namespace, name := parts[0], parts[1], parts[2]
+	if namespace == "-" {
+		namespace = ""
+	}
+	if kind == "" || name == "" {
+		return "", "", "", false, false
+	}
+	return kind, namespace, name, len(parts) == 4, true
+}
+
+func resourceExists(snapshot topology.Snapshot, kind string, namespace string, name string) bool {
+	for _, node := range snapshot.Nodes {
+		if node.Kind == kind && node.Namespace == namespace && node.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
+func resourcesFromSnapshot(snapshot topology.Snapshot) []topology.Resource {
+	nodeByID := make(map[string]topology.Node, len(snapshot.Nodes))
+	for _, node := range snapshot.Nodes {
+		nodeByID[node.ID] = node
+	}
+
+	resources := make([]topology.Resource, 0, len(snapshot.Nodes))
+	for _, node := range snapshot.Nodes {
+		resources = append(resources, topology.Resource{
+			ID:          node.ID,
+			ClusterID:   node.ClusterID,
+			Kind:        node.Kind,
+			Namespace:   node.Namespace,
+			Name:        node.Name,
+			Status:      node.Status,
+			Labels:      cloneStringMap(node.Labels),
+			Annotations: map[string]string{},
+			Summary:     safeSummary(node),
+			Preview:     safePreview(node),
+			Related:     relatedResources(node.ID, snapshot.Edges, nodeByID),
+		})
+	}
+	return resources
+}
+
+func relatedResources(nodeID string, edges []topology.Edge, nodeByID map[string]topology.Node) []topology.RelatedResource {
+	related := []topology.RelatedResource{}
+	for _, edge := range edges {
+		direction := ""
+		relatedID := ""
+		if edge.Source == nodeID {
+			direction = "outgoing"
+			relatedID = edge.Target
+		}
+		if edge.Target == nodeID {
+			direction = "incoming"
+			relatedID = edge.Source
+		}
+		if relatedID == "" {
+			continue
+		}
+		node, ok := nodeByID[relatedID]
+		if !ok {
+			continue
+		}
+		related = append(related, topology.RelatedResource{
+			NodeID:      relatedID,
+			Kind:        node.Kind,
+			Namespace:   node.Namespace,
+			Name:        node.Name,
+			EdgeType:    edge.Type,
+			Direction:   direction,
+			SourceField: edge.SourceField,
+		})
+	}
+	return related
+}
+
+func safeSummary(node topology.Node) map[string]interface{} {
+	if node.Kind != "Secret" {
+		return cloneInterfaceMap(node.Summary)
+	}
+
+	summary := cloneInterfaceMap(node.Summary)
+	for key := range summary {
+		lowerKey := strings.ToLower(key)
+		if lowerKey == "data" || lowerKey == "stringdata" || strings.Contains(lowerKey, "token") || strings.Contains(lowerKey, "password") || strings.Contains(lowerKey, "key") {
+			delete(summary, key)
+		}
+	}
+	summary["values"] = "hidden"
+	return summary
+}
+
+func safePreview(node topology.Node) map[string]interface{} {
+	preview := map[string]interface{}{
+		"kind":      node.Kind,
+		"name":      node.Name,
+		"namespace": node.Namespace,
+		"status":    node.Status,
+		"labels":    cloneStringMap(node.Labels),
+		"summary":   safeSummary(node),
+	}
+	if node.Kind == "Secret" {
+		preview["secretValues"] = "hidden"
+	}
+	return preview
+}
+
+func cloneStringMap(values map[string]string) map[string]string {
+	if values == nil {
+		return map[string]string{}
+	}
+	cloned := make(map[string]string, len(values))
+	for key, value := range values {
+		cloned[key] = value
+	}
+	return cloned
+}
+
+func cloneInterfaceMap(values map[string]interface{}) map[string]interface{} {
+	if values == nil {
+		return map[string]interface{}{}
+	}
+	cloned := make(map[string]interface{}, len(values))
+	for key, value := range values {
+		cloned[key] = value
+	}
+	return cloned
 }
