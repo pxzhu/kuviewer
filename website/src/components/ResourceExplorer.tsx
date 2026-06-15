@@ -163,6 +163,7 @@ function ResourceExplorerDetail({ liveEnabled, resource, onSelectNode }: { liveE
   const logsStreamControllerRef = useRef<AbortController | null>(null);
   const [selectedLogContainer, setSelectedLogContainer] = useState('');
   const [previousLogs, setPreviousLogs] = useState(false);
+  const [logFilter, setLogFilter] = useState('');
 
   useEffect(() => {
     if (!resource || !liveEnabled) {
@@ -199,6 +200,7 @@ function ResourceExplorerDetail({ liveEnabled, resource, onSelectNode }: { liveE
     setLogsStreaming(false);
     setSelectedLogContainer('');
     setPreviousLogs(false);
+    setLogFilter('');
   }, [resource?.id]);
 
   useEffect(() => {
@@ -207,6 +209,9 @@ function ResourceExplorerDetail({ liveEnabled, resource, onSelectNode }: { liveE
       logsStreamControllerRef.current = null;
     };
   }, []);
+
+  const filteredLogLines = useMemo(() => filterLogLines(logLines, logFilter), [logFilter, logLines]);
+  const normalizedLogFilter = logFilter.trim();
 
   if (!resource) {
     return (
@@ -395,6 +400,7 @@ function ResourceExplorerDetail({ liveEnabled, resource, onSelectNode }: { liveE
                       setLogLines([]);
                       setLogsError('');
                       setLogsWarning('');
+                      setLogFilter('');
                     }}
                     disabled={logsLoading || logsStreaming}
                   >
@@ -416,6 +422,7 @@ function ResourceExplorerDetail({ liveEnabled, resource, onSelectNode }: { liveE
                       setLogLines([]);
                       setLogsError('');
                       setLogsWarning('');
+                      setLogFilter('');
                     }}
                     disabled={logsLoading || logsStreaming}
                   />
@@ -440,19 +447,43 @@ function ResourceExplorerDetail({ liveEnabled, resource, onSelectNode }: { liveE
                 </button>
               </div>
               {effectiveLogContainer ? <p className="ku-meta">컨테이너: {effectiveLogContainer}{previousLogs ? ' · 이전 종료 인스턴스' : logsStreaming ? ' · 실시간 따라가기' : ''}</p> : null}
+              {logLines.length > 0 ? (
+                <div className="grid gap-2 rounded-[10px] border border-[rgba(60,60,67,0.12)] bg-white/70 p-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+                  <label className="relative block">
+                    <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[rgba(60,60,67,0.45)]" size={15} />
+                    <input className="ku-input w-full pl-9" placeholder="로그 필터" value={logFilter} onChange={(event) => setLogFilter(event.target.value)} />
+                  </label>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="ku-chip">
+                      {filteredLogLines.length} / {logLines.length}
+                    </span>
+                    {logFilter ? (
+                      <button
+                        className="rounded-[9px] border border-[rgba(60,60,67,0.12)] bg-white px-2.5 py-1.5 text-xs font-semibold text-[rgba(60,60,67,0.72)] transition hover:bg-[rgba(242,242,247,0.9)]"
+                        type="button"
+                        onClick={() => setLogFilter('')}
+                      >
+                        초기화
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
+              ) : null}
               {logsWarning ? <InlineWarning message="로그 조회 권한이 없거나 API가 없어 빈 목록으로 표시합니다." /> : null}
               {logsError ? <InlineWarning message={`로그 조회 실패: ${logsError}`} /> : null}
               {logLines.length === 0 ? (
                 <p className="ku-meta">표시할 로그가 없습니다.</p>
+              ) : filteredLogLines.length === 0 ? (
+                <p className="ku-meta">필터와 일치하는 로그가 없습니다.</p>
               ) : (
-                <pre className="max-h-[320px] overflow-auto rounded-[10px] border border-[rgba(60,60,67,0.12)] bg-[#111827] p-3 font-mono text-[11px] leading-5 text-[#d1d5db]">
-                  {logLines.map((line, index) => (
-                    <span key={`${index}:${line.slice(0, 16)}`}>
-                      {line}
-                      {'\n'}
-                    </span>
+                <div className="max-h-[320px] overflow-auto rounded-[10px] border border-[rgba(60,60,67,0.12)] bg-[#111827] p-2 font-mono text-[11px] leading-5 text-[#d1d5db]">
+                  {filteredLogLines.map(({ line, index }) => (
+                    <div key={`${index}:${line.slice(0, 16)}`} className="grid grid-cols-[44px_minmax(0,1fr)] gap-2 rounded-[6px] px-1 py-0.5">
+                      <span className="select-none text-right text-[rgba(209,213,219,0.42)]">{index + 1}</span>
+                      <span className="min-w-0 whitespace-pre-wrap break-words">{renderLogLine(line, normalizedLogFilter)}</span>
+                    </div>
                   ))}
-                </pre>
+                </div>
               )}
             </div>
           )}
@@ -469,6 +500,45 @@ function InlineWarning({ message }: { message: string }) {
       <span>{message}</span>
     </p>
   );
+}
+
+function filterLogLines(lines: string[], filter: string) {
+  const normalizedFilter = filter.trim().toLowerCase();
+  return lines.flatMap((line, index) => {
+    if (!normalizedFilter || line.toLowerCase().includes(normalizedFilter)) {
+      return [{ line, index }];
+    }
+    return [];
+  });
+}
+
+function renderLogLine(line: string, filter: string): ReactNode {
+  const normalizedFilter = filter.trim().toLowerCase();
+  if (!normalizedFilter) {
+    return line || ' ';
+  }
+
+  const lowerLine = line.toLowerCase();
+  const fragments: ReactNode[] = [];
+  let cursor = 0;
+  let matchIndex = lowerLine.indexOf(normalizedFilter, cursor);
+  while (matchIndex >= 0) {
+    if (matchIndex > cursor) {
+      fragments.push(line.slice(cursor, matchIndex));
+    }
+    const matchEnd = matchIndex + normalizedFilter.length;
+    fragments.push(
+      <mark key={`${matchIndex}:${matchEnd}`} className="rounded-[3px] bg-[#ffd60a] px-0.5 text-[#1d1d1f]">
+        {line.slice(matchIndex, matchEnd)}
+      </mark>,
+    );
+    cursor = matchEnd;
+    matchIndex = lowerLine.indexOf(normalizedFilter, cursor);
+  }
+  if (cursor < line.length) {
+    fragments.push(line.slice(cursor));
+  }
+  return fragments.length > 0 ? fragments : ' ';
 }
 
 function ResourceSelect({ label, value, values, onChange }: { label: string; value: string; values: string[]; onChange: (value: string) => void }) {
