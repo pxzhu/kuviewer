@@ -480,7 +480,7 @@ func TestResourceLogs(t *testing.T) {
 			ref:          &gotRef,
 		}, "secret-token", "", "")
 		recorder := httptest.NewRecorder()
-		request := httptest.NewRequest(http.MethodGet, "/api/resources/Pod/checkout/checkout-api/logs?container=api", nil)
+		request := httptest.NewRequest(http.MethodGet, "/api/resources/Pod/checkout/checkout-api/logs?container=api&previous=true", nil)
 		request.Header.Set("Authorization", "Bearer secret-token")
 		logHandler.ServeHTTP(recorder, request)
 
@@ -496,6 +496,9 @@ func TestResourceLogs(t *testing.T) {
 		}
 		if gotRef.Container != "api" {
 			t.Fatalf("container = %q, want api", gotRef.Container)
+		}
+		if !gotRef.Previous {
+			t.Fatalf("previous = false, want true")
 		}
 	})
 

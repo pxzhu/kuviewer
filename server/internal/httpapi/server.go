@@ -202,7 +202,8 @@ func (s *Server) handleResourceRoute(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusOK, topology.ResourceLogs{Lines: []string{}, Warning: "logs_unavailable", TailLines: 200})
 			return
 		}
-		resourceLogs, err := logProvider.ResourceLogs(r.Context(), provider.ResourceRef{Kind: kind, Namespace: namespace, Name: name, Container: r.URL.Query().Get("container")})
+		previous := strings.EqualFold(r.URL.Query().Get("previous"), "true")
+		resourceLogs, err := logProvider.ResourceLogs(r.Context(), provider.ResourceRef{Kind: kind, Namespace: namespace, Name: name, Container: r.URL.Query().Get("container"), Previous: previous})
 		if err != nil {
 			writeJSON(w, http.StatusOK, topology.ResourceLogs{Lines: []string{}, Warning: "logs_unavailable", TailLines: 200})
 			return

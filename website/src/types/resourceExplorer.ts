@@ -45,5 +45,6 @@ export interface ResourceLogs {
   lines: string[];
   warning?: string;
   container?: string;
+  previous?: boolean;
   tailLines: number;
 }

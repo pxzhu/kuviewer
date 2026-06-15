@@ -100,10 +100,12 @@ func TestKubernetesProviderResourceLogsReadsPodLog(t *testing.T) {
 	var gotPath string
 	var gotTailLines string
 	var gotContainer string
+	var gotPrevious string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotPath = r.URL.Path
 		gotTailLines = r.URL.Query().Get("tailLines")
 		gotContainer = r.URL.Query().Get("container")
+		gotPrevious = r.URL.Query().Get("previous")
 		if got := r.Header.Get("Authorization"); got != "Bearer test-token" {
 			t.Fatalf("Authorization = %q, want bearer token", got)
 		}
@@ -119,7 +121,7 @@ func TestKubernetesProviderResourceLogsReadsPodLog(t *testing.T) {
 			httpClient: server.Client(),
 		},
 	}
-	logs, err := provider.ResourceLogs(context.Background(), ResourceRef{Kind: "Pod", Namespace: "checkout", Name: "checkout-api", Container: "api"})
+	logs, err := provider.ResourceLogs(context.Background(), ResourceRef{Kind: "Pod", Namespace: "checkout", Name: "checkout-api", Container: "api", Previous: true})
 	if err != nil {
 		t.Fatalf("ResourceLogs() error = %v", err)
 	}
@@ -133,7 +135,10 @@ func TestKubernetesProviderResourceLogsReadsPodLog(t *testing.T) {
 	if gotContainer != "api" {
 		t.Fatalf("container = %q, want api", gotContainer)
 	}
-	if logs.Warning != "" || logs.Container != "api" || logs.TailLines != 200 || len(logs.Lines) != 2 || logs.Lines[1] != "line-2" {
+	if gotPrevious != "true" {
+		t.Fatalf("previous = %q, want true", gotPrevious)
+	}
+	if logs.Warning != "" || logs.Container != "api" || !logs.Previous || logs.TailLines != 200 || len(logs.Lines) != 2 || logs.Lines[1] != "line-2" {
 		t.Fatalf("logs = %+v, want two lines", logs)
 	}
 }
