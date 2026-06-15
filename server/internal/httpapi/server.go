@@ -144,6 +144,7 @@ func (s *Server) handleStatic(w http.ResponseWriter, r *http.Request) {
 		path = "index.html"
 	}
 
+	responsePath := path
 	requested := filepath.Join(s.staticDir, path)
 	if !safePath(s.staticDir, requested) {
 		writeError(w, http.StatusBadRequest, "invalid_static_path")
@@ -153,8 +154,10 @@ func (s *Server) handleStatic(w http.ResponseWriter, r *http.Request) {
 	info, err := os.Stat(requested)
 	if err != nil || info.IsDir() {
 		requested = filepath.Join(s.staticDir, "index.html")
+		responsePath = "index.html"
 	}
 
+	setStaticCacheHeaders(w, responsePath)
 	http.ServeFile(w, r, requested)
 }
 
@@ -211,6 +214,18 @@ func safePath(root string, requested string) bool {
 		return false
 	}
 	return requestAbs == rootAbs || strings.HasPrefix(requestAbs, rootAbs+string(os.PathSeparator))
+}
+
+func setStaticCacheHeaders(w http.ResponseWriter, path string) {
+	if path == "index.html" || strings.HasSuffix(path, ".html") {
+		w.Header().Set("Cache-Control", "no-store")
+		return
+	}
+	if strings.HasPrefix(path, "assets/") {
+		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+		return
+	}
+	w.Header().Set("Cache-Control", "no-cache")
 }
 
 func writeJSON(w http.ResponseWriter, status int, value interface{}) {

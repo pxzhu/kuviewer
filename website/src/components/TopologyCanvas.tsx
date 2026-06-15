@@ -130,6 +130,8 @@ function TopologyCanvasInner({ nodes, edges, selectedNodeId, colorMode, sourceKe
   const [hideSystemNamespaces, setHideSystemNamespaces] = useState(true);
   const [trafficOnly, setTrafficOnly] = useState(false);
   const [layoutVersion, setLayoutVersion] = useState(0);
+  const coarsePointer = useCoarsePointer();
+  const graphGesturesEnabled = !coarsePointer;
   const positionStorageKey = useMemo(() => `kuviewer-node-positions:${sourceKey}:${hashString(nodes.map((node) => node.id).sort().join('|'))}`, [nodes, sourceKey]);
   const [savedPositions, setSavedPositions] = useState<SavedPositions>(() => loadSavedPositions(positionStorageKey));
   const reactFlow = useReactFlow<FlowNode, FlowEdge>();
@@ -218,9 +220,15 @@ function TopologyCanvasInner({ nodes, edges, selectedNodeId, colorMode, sourceKe
             minZoom={0.12}
             nodes={flowNodes}
             nodeTypes={nodeTypes}
+            nodesDraggable={graphGesturesEnabled}
             onlyRenderVisibleElements
-            panOnScroll
+            panOnDrag={graphGesturesEnabled}
+            panOnScroll={graphGesturesEnabled}
+            preventScrolling={graphGesturesEnabled}
             proOptions={{ hideAttribution: true }}
+            zoomOnDoubleClick={graphGesturesEnabled}
+            zoomOnPinch={graphGesturesEnabled}
+            zoomOnScroll={graphGesturesEnabled}
             onEdgesChange={onEdgesChange}
             onNodeClick={(_, node) => {
               if (node.type === 'resource') {
@@ -276,6 +284,20 @@ function TopologyCanvasInner({ nodes, edges, selectedNodeId, colorMode, sourceKe
       </div>
     </section>
   );
+}
+
+function useCoarsePointer() {
+  const [coarsePointer, setCoarsePointer] = useState(false);
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia('(pointer: coarse)');
+    const handleChange = () => setCoarsePointer(mediaQuery.matches);
+    handleChange();
+    mediaQuery.addEventListener('change', handleChange);
+    return () => mediaQuery.removeEventListener('change', handleChange);
+  }, []);
+
+  return coarsePointer;
 }
 
 function ResourceNode({ data }: NodeProps<Node<ResourceNodeData>>) {

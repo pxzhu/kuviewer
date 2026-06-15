@@ -245,18 +245,24 @@ func TestSecurityHeaders(t *testing.T) {
 
 func TestStaticSPAFallback(t *testing.T) {
 	staticDir := t.TempDir()
+	if err := os.Mkdir(filepath.Join(staticDir, "assets"), 0o755); err != nil {
+		t.Fatalf("mkdir assets: %v", err)
+	}
 	writeFile(t, filepath.Join(staticDir, "index.html"), "kuviewer index")
 	writeFile(t, filepath.Join(staticDir, "asset.txt"), "asset")
+	writeFile(t, filepath.Join(staticDir, "assets", "index-abc.js"), "asset js")
 
 	handler := NewServer(stubProvider{snapshot: testSnapshot()}, "secret-token", "", staticDir)
 
 	tests := []struct {
-		path     string
-		wantBody string
+		path             string
+		wantBody         string
+		wantCacheControl string
 	}{
-		{path: "/", wantBody: "kuviewer index"},
-		{path: "/asset.txt", wantBody: "asset"},
-		{path: "/topology/deep-link", wantBody: "kuviewer index"},
+		{path: "/", wantBody: "kuviewer index", wantCacheControl: "no-store"},
+		{path: "/asset.txt", wantBody: "asset", wantCacheControl: "no-cache"},
+		{path: "/assets/index-abc.js", wantBody: "asset js", wantCacheControl: "public, max-age=31536000, immutable"},
+		{path: "/topology/deep-link", wantBody: "kuviewer index", wantCacheControl: "no-store"},
 	}
 
 	for _, tt := range tests {
@@ -271,6 +277,9 @@ func TestStaticSPAFallback(t *testing.T) {
 			}
 			if strings.TrimSpace(recorder.Body.String()) != tt.wantBody {
 				t.Fatalf("body = %q, want %q", recorder.Body.String(), tt.wantBody)
+			}
+			if got := recorder.Header().Get("Cache-Control"); got != tt.wantCacheControl {
+				t.Fatalf("Cache-Control = %q, want %q", got, tt.wantCacheControl)
 			}
 		})
 	}

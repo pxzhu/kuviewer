@@ -245,6 +245,12 @@ select:focus-visible,
   -webkit-backdrop-filter: blur(18px);
 }
 
+.ku-react-flow,
+.ku-react-flow .react-flow__pane,
+.ku-react-flow .react-flow__viewport {
+  touch-action: pan-y;
+}
+
 .ku-react-flow .react-flow__controls-button {
   border-bottom-color: rgba(60, 60, 67, 0.12);
   background: transparent;
