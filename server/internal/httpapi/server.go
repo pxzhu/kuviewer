@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -171,6 +172,11 @@ func (s *Server) handleResourceRoute(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if action == "logs/stream" {
+		s.handleResourceLogStream(w, r, snapshot, kind, namespace, name)
+		return
+	}
+
 	if action == "events" {
 		if !resourceExists(snapshot, kind, namespace, name) {
 			writeError(w, http.StatusNotFound, "resource_not_found")
@@ -202,8 +208,8 @@ func (s *Server) handleResourceRoute(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusOK, topology.ResourceLogs{Lines: []string{}, Warning: "logs_unavailable", TailLines: 200})
 			return
 		}
-		previous := strings.EqualFold(r.URL.Query().Get("previous"), "true")
-		resourceLogs, err := logProvider.ResourceLogs(r.Context(), provider.ResourceRef{Kind: kind, Namespace: namespace, Name: name, Container: r.URL.Query().Get("container"), Previous: previous})
+		ref := logResourceRefFromRequest(kind, namespace, name, r)
+		resourceLogs, err := logProvider.ResourceLogs(r.Context(), ref)
 		if err != nil {
 			writeJSON(w, http.StatusOK, topology.ResourceLogs{Lines: []string{}, Warning: "logs_unavailable", TailLines: 200})
 			return
@@ -223,6 +229,37 @@ func (s *Server) handleResourceRoute(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeError(w, http.StatusNotFound, "resource_not_found")
+}
+
+func (s *Server) handleResourceLogStream(w http.ResponseWriter, r *http.Request, snapshot topology.Snapshot, kind string, namespace string, name string) {
+	if kind != "Pod" || namespace == "" || !resourceExists(snapshot, kind, namespace, name) {
+		writeError(w, http.StatusNotFound, "resource_not_found")
+		return
+	}
+
+	logProvider, ok := s.provider.(provider.LogProvider)
+	if !ok {
+		writeJSON(w, http.StatusOK, topology.ResourceLogs{Lines: []string{}, Warning: "logs_unavailable", TailLines: 200})
+		return
+	}
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		writeError(w, http.StatusInternalServerError, "streaming_unsupported")
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/x-ndjson")
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+
+	ref := logResourceRefFromRequest(kind, namespace, name, r)
+	ref.Follow = true
+	if err := logProvider.StreamLogs(r.Context(), ref, func(line string) error {
+		return writeLogStreamMessage(w, flusher, logStreamMessage{Line: line})
+	}); err != nil {
+		_ = writeLogStreamMessage(w, flusher, logStreamMessage{Warning: "logs_unavailable"})
+	}
 }
 
 func (s *Server) handleStatic(w http.ResponseWriter, r *http.Request) {
@@ -340,14 +377,20 @@ func writeProviderError(w http.ResponseWriter, err error) {
 
 func parseResourceRoute(path string) (string, string, string, string, bool) {
 	parts := strings.Split(strings.Trim(path, "/"), "/")
-	if len(parts) != 3 && len(parts) != 4 {
+	if len(parts) != 3 && len(parts) != 4 && len(parts) != 5 {
 		return "", "", "", "", false
 	}
 	action := ""
 	if len(parts) == 4 {
 		action = parts[3]
 	}
-	if action != "" && action != "events" && action != "logs" {
+	if len(parts) == 5 {
+		if parts[3] != "logs" || parts[4] != "stream" {
+			return "", "", "", "", false
+		}
+		action = "logs/stream"
+	}
+	if action != "" && action != "events" && action != "logs" && action != "logs/stream" {
 		return "", "", "", "", false
 	}
 	kind, namespace, name := parts[0], parts[1], parts[2]
@@ -358,6 +401,41 @@ func parseResourceRoute(path string) (string, string, string, string, bool) {
 		return "", "", "", "", false
 	}
 	return kind, namespace, name, action, true
+}
+
+type logStreamMessage struct {
+	Line    string `json:"line,omitempty"`
+	Warning string `json:"warning,omitempty"`
+}
+
+func writeLogStreamMessage(w http.ResponseWriter, flusher http.Flusher, message logStreamMessage) error {
+	payload, err := json.Marshal(message)
+	if err != nil {
+		return err
+	}
+	payload = append(payload, '\n')
+	if _, err := w.Write(payload); err != nil {
+		return err
+	}
+	flusher.Flush()
+	return nil
+}
+
+func logResourceRefFromRequest(kind string, namespace string, name string, r *http.Request) provider.ResourceRef {
+	tailLines := 200
+	if rawTailLines := r.URL.Query().Get("tailLines"); rawTailLines != "" {
+		if parsedTailLines, err := strconv.Atoi(rawTailLines); err == nil && parsedTailLines > 0 && parsedTailLines <= 200 {
+			tailLines = parsedTailLines
+		}
+	}
+	return provider.ResourceRef{
+		Kind:      kind,
+		Namespace: namespace,
+		Name:      name,
+		Container: r.URL.Query().Get("container"),
+		Previous:  strings.EqualFold(r.URL.Query().Get("previous"), "true"),
+		TailLines: tailLines,
+	}
 }
 
 func resourceExists(snapshot topology.Snapshot, kind string, namespace string, name string) bool {

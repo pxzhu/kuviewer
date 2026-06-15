@@ -1,6 +1,7 @@
 package provider
 
 import (
+	"bufio"
 	"context"
 	"crypto/tls"
 	"crypto/x509"
@@ -531,21 +532,56 @@ func (p KubernetesProvider) ResourceLogs(ctx context.Context, ref ResourceRef) (
 		return topology.ResourceLogs{Lines: []string{}, Warning: "logs_unavailable", TailLines: podLogTailLines}, nil
 	}
 
+	found, body, err := p.client.getTextStatus(ctx, podLogPath(ref), true, podLogMaxBytes)
+	if err != nil || !found {
+		return topology.ResourceLogs{Lines: []string{}, Warning: "logs_unavailable", TailLines: effectivePodLogTailLines(ref)}, nil
+	}
+
+	return topology.ResourceLogs{Lines: cappedLogLines(body), Container: ref.Container, Previous: ref.Previous, TailLines: effectivePodLogTailLines(ref)}, nil
+}
+
+func (p KubernetesProvider) StreamLogs(ctx context.Context, ref ResourceRef, onLine func(string) error) error {
+	if ref.Kind != "Pod" || ref.Namespace == "" || ref.Name == "" {
+		return fmt.Errorf("logs stream unavailable")
+	}
+
+	ref.Follow = true
+	found, err := p.client.streamText(ctx, podLogPath(ref), true, podLogMaxBytes, func(line string) error {
+		return onLine(capLogLine(line))
+	})
+	if err != nil {
+		return err
+	}
+	if !found {
+		return fmt.Errorf("logs stream unavailable")
+	}
+	return nil
+}
+
+func podLogPath(ref ResourceRef) string {
+	return "/api/v1/namespaces/" + url.PathEscape(ref.Namespace) + "/pods/" + url.PathEscape(ref.Name) + "/log?" + podLogQuery(ref).Encode()
+}
+
+func podLogQuery(ref ResourceRef) url.Values {
 	query := url.Values{}
-	query.Set("tailLines", strconv.Itoa(podLogTailLines))
+	query.Set("tailLines", strconv.Itoa(effectivePodLogTailLines(ref)))
 	if ref.Container != "" {
 		query.Set("container", ref.Container)
 	}
 	if ref.Previous {
 		query.Set("previous", "true")
 	}
-	path := "/api/v1/namespaces/" + url.PathEscape(ref.Namespace) + "/pods/" + url.PathEscape(ref.Name) + "/log?" + query.Encode()
-	found, body, err := p.client.getTextStatus(ctx, path, true, podLogMaxBytes)
-	if err != nil || !found {
-		return topology.ResourceLogs{Lines: []string{}, Warning: "logs_unavailable", TailLines: podLogTailLines}, nil
+	if ref.Follow {
+		query.Set("follow", "true")
 	}
+	return query
+}
 
-	return topology.ResourceLogs{Lines: cappedLogLines(body), Container: ref.Container, Previous: ref.Previous, TailLines: podLogTailLines}, nil
+func effectivePodLogTailLines(ref ResourceRef) int {
+	if ref.TailLines > 0 && ref.TailLines <= podLogTailLines {
+		return ref.TailLines
+	}
+	return podLogTailLines
 }
 
 func (p KubernetesProvider) customResourceInstances(ctx context.Context, crds customResourceDefinitionList) []customResourceInstance {
@@ -740,6 +776,41 @@ func (c *kubeAPIClient) getTextStatus(ctx context.Context, path string, optional
 		body = body[:maxBytes]
 	}
 	return true, string(body), nil
+}
+
+func (c *kubeAPIClient) streamText(ctx context.Context, path string, optional bool, maxBytes int64, onLine func(string) error) (bool, error) {
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+path, nil)
+	if err != nil {
+		return false, err
+	}
+	request.Header.Set("Authorization", "Bearer "+c.bearer)
+	request.Header.Set("Accept", "text/plain")
+
+	response, err := c.httpClient.Do(request)
+	if err != nil {
+		return false, err
+	}
+	defer response.Body.Close()
+
+	if optional && (response.StatusCode == http.StatusNotFound || response.StatusCode == http.StatusForbidden || response.StatusCode == http.StatusBadRequest) {
+		return false, nil
+	}
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		body, _ := io.ReadAll(io.LimitReader(response.Body, 512))
+		return false, fmt.Errorf("kubernetes api %s returned %s: %s", path, response.Status, strings.TrimSpace(string(body)))
+	}
+
+	scanner := bufio.NewScanner(io.LimitReader(response.Body, maxBytes+1))
+	scanner.Buffer(make([]byte, 0, 64*1024), int(maxBytes)+1)
+	for scanner.Scan() {
+		if err := onLine(scanner.Text()); err != nil {
+			return true, err
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return true, err
+	}
+	return true, nil
 }
 
 func (c *kubeAPIClient) getGatewayRouteJSON(ctx context.Context, resource string, out interface{}) error {
@@ -1877,11 +1948,16 @@ func cappedLogLines(body string) []string {
 		lines = lines[len(lines)-podLogTailLines:]
 	}
 	for index, line := range lines {
-		if len(line) > podLogMaxLineBytes {
-			lines[index] = line[:podLogMaxLineBytes] + "..."
-		}
+		lines[index] = capLogLine(line)
 	}
 	return lines
+}
+
+func capLogLine(line string) string {
+	if len(line) > podLogMaxLineBytes {
+		return line[:podLogMaxLineBytes] + "..."
+	}
+	return line
 }
 
 func deploymentStatus(deployment deploymentResource) string {
