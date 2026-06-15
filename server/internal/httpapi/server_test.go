@@ -289,6 +289,10 @@ func TestResourcesReturnSafeResourceList(t *testing.T) {
 	if !ok || len(containers) != 2 || containers[0] != "app" || containers[1] != "sidecar" {
 		t.Fatalf("pod containerNames = %#v, want app and sidecar", podSummary["containerNames"])
 	}
+	podYAML, ok := pod.Preview["safeYaml"].(string)
+	if !ok || !strings.Contains(podYAML, "kind: Pod") || !strings.Contains(podYAML, "containerNames:") || !strings.Contains(podYAML, "- app") {
+		t.Fatalf("pod safeYaml = %q, want pod YAML preview with containers", pod.Preview["safeYaml"])
+	}
 	if secret.Name != "checkout-secret" {
 		t.Fatalf("secret resource not found: %+v", resources.Items)
 	}
@@ -297,6 +301,13 @@ func TestResourcesReturnSafeResourceList(t *testing.T) {
 	}
 	if got := secret.Preview["secretValues"]; got != "hidden" {
 		t.Fatalf("secretValues = %v, want hidden", got)
+	}
+	secretYAML, ok := secret.Preview["safeYaml"].(string)
+	if !ok || !strings.Contains(secretYAML, "kind: Secret") || !strings.Contains(secretYAML, "secretValues: hidden") {
+		t.Fatalf("secret safeYaml = %q, want hidden Secret YAML preview", secret.Preview["safeYaml"])
+	}
+	if strings.Contains(secretYAML, "\n  data:") || strings.Contains(secretYAML, "\n  stringData:") || strings.Contains(secretYAML, "redaction-fixture") {
+		t.Fatalf("secret safeYaml leaked sensitive fields: %q", secretYAML)
 	}
 	if got := secret.Annotations["token"]; got != "redacted" {
 		t.Fatalf("secret token annotation = %q, want redacted", got)
@@ -686,7 +697,7 @@ func resourceTestSnapshot() topology.Snapshot {
 				"token": "redaction-fixture",
 				"owner": "checkout",
 			},
-			Summary: map[string]interface{}{"type": "Opaque", "token": "redaction-fixture"},
+			Summary: map[string]interface{}{"type": "Opaque", "token": "redaction-fixture", "data": "redaction-fixture", "stringData": "redaction-fixture"},
 		},
 	}
 	snapshot.Edges = []topology.Edge{

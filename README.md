@@ -16,7 +16,7 @@ Kuviewer is a Kubernetes topology viewer focused on visualizing clusters, namesp
 - Source modes: `Upload YAML`, `Live Cluster`, and `Mock Demo`
 - `Topology`: draggable React Flow resource relationship map with cluster and namespace zones
 - `Flow`: YAML-derived traffic flow view
-- `Resource Explorer`: read-only Kubernetes resource list, safe detail preview, topology relations, and live Events
+- `Resource Explorer`: read-only Kubernetes resource list, safe YAML/detail preview, topology relations, and live Events
 - Manual refresh, optional 30 second auto refresh, and last sync status for live mode
 - Backend provider/status line for source, read-only mode, Secret handling, and static UI mode
 - Connector diagnostics panel for backend source, API errors, sync time, and visible/total graph counts
@@ -117,7 +117,7 @@ GET /api/resources/{kind}/{namespace-or--}/{name}/logs
 Authorization: Bearer <admin-token>
 ```
 
-The resource explorer endpoints are read-only. They expose metadata, labels, redacted annotations, age/owner/uid summary, status, safe summary/preview data, and topology relations derived from the current snapshot. Secret values, `data`, and `stringData` are not returned.
+The resource explorer endpoints are read-only. They expose metadata, labels, redacted annotations, age/owner/uid summary, status, safe summary/preview data, safe YAML preview, and topology relations derived from the current snapshot. The YAML preview is generated from Kuviewer safe metadata and summaries, not from raw Kubernetes manifests. Secret values, `data`, and `stringData` are not returned.
 
 In live Kubernetes mode, `/api/resources/{kind}/{namespace-or--}/{name}/events` reads core v1 Events with an `involvedObject` field selector and returns newest events first. If Events are unavailable because of RBAC or API differences, Kuviewer returns an empty event list with a safe warning instead of failing the whole resource detail panel. Upload and mock modes keep returning an empty event list.
 

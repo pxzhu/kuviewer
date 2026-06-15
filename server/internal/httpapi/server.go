@@ -4,10 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -457,6 +459,7 @@ func safePreview(node topology.Node) map[string]interface{} {
 		"status":  statusPreview(node),
 		"summary": safeSummary(node),
 	}
+	preview["safeYaml"] = safeYAMLPreview(node)
 	if node.Kind == "Secret" {
 		preview["secretValues"] = "hidden"
 	}
@@ -506,6 +509,168 @@ func sensitiveField(value string) bool {
 		strings.Contains(lowerValue, "access-key") ||
 		strings.Contains(lowerValue, "private-key") ||
 		strings.Contains(lowerValue, "client-key")
+}
+
+func safeYAMLPreview(node topology.Node) string {
+	lines := []string{
+		"apiVersion: kuviewer.io/v1",
+		"kind: " + yamlScalar(node.Kind),
+		"metadata:",
+		"  name: " + yamlScalar(node.Name),
+	}
+	if node.Namespace != "" {
+		lines = append(lines, "  namespace: "+yamlScalar(node.Namespace))
+	}
+	lines = append(lines, "  cluster: "+yamlScalar(node.ClusterID))
+	if node.UID != "" {
+		lines = append(lines, "  uid: "+yamlScalar(shortUID(node.UID)))
+	}
+	if node.Age != "" {
+		lines = append(lines, "  age: "+yamlScalar(node.Age))
+	}
+	appendStringMapYAML(&lines, "  labels", node.Labels)
+	appendStringMapYAML(&lines, "  annotations", safeAnnotations(node.Annotations))
+	appendStringSliceYAML(&lines, "  owners", node.Owners)
+	lines = append(lines, "status:")
+	lines = append(lines, "  state: "+yamlScalar(node.Status))
+	appendInterfaceMapYAML(&lines, "summary", safeSummary(node))
+	if node.Kind == "Secret" {
+		lines = append(lines, "secretValues: hidden")
+	}
+	return strings.Join(lines, "\n")
+}
+
+func appendStringMapYAML(lines *[]string, key string, values map[string]string) {
+	if len(values) == 0 {
+		*lines = append(*lines, key+": {}")
+		return
+	}
+	*lines = append(*lines, key+":")
+	for _, itemKey := range sortedStringKeys(values) {
+		value := values[itemKey]
+		if sensitiveField(itemKey) || sensitiveField(value) {
+			value = "redacted"
+		}
+		*lines = append(*lines, fmt.Sprintf("    %s: %s", yamlKey(itemKey), yamlScalar(value)))
+	}
+}
+
+func appendStringSliceYAML(lines *[]string, key string, values []string) {
+	if len(values) == 0 {
+		*lines = append(*lines, key+": []")
+		return
+	}
+	*lines = append(*lines, key+":")
+	for _, value := range values {
+		*lines = append(*lines, "    - "+yamlScalar(value))
+	}
+}
+
+func appendInterfaceMapYAML(lines *[]string, key string, values map[string]interface{}) {
+	if len(values) == 0 {
+		*lines = append(*lines, key+": {}")
+		return
+	}
+	*lines = append(*lines, key+":")
+	for _, itemKey := range sortedInterfaceKeys(values) {
+		appendYAMLValue(lines, "  ", itemKey, values[itemKey])
+	}
+}
+
+func appendYAMLValue(lines *[]string, indent string, key string, value interface{}) {
+	if sensitiveField(key) {
+		*lines = append(*lines, fmt.Sprintf("%s%s: redacted", indent, yamlKey(key)))
+		return
+	}
+	switch typed := value.(type) {
+	case []string:
+		if len(typed) == 0 {
+			*lines = append(*lines, fmt.Sprintf("%s%s: []", indent, yamlKey(key)))
+			return
+		}
+		*lines = append(*lines, fmt.Sprintf("%s%s:", indent, yamlKey(key)))
+		for _, item := range typed {
+			*lines = append(*lines, indent+"  - "+safeYAMLScalar(item))
+		}
+	case []interface{}:
+		if len(typed) == 0 {
+			*lines = append(*lines, fmt.Sprintf("%s%s: []", indent, yamlKey(key)))
+			return
+		}
+		*lines = append(*lines, fmt.Sprintf("%s%s:", indent, yamlKey(key)))
+		for _, item := range typed {
+			*lines = append(*lines, indent+"  - "+safeYAMLScalar(item))
+		}
+	default:
+		*lines = append(*lines, fmt.Sprintf("%s%s: %s", indent, yamlKey(key), safeYAMLScalar(typed)))
+	}
+}
+
+func safeYAMLScalar(value interface{}) string {
+	if text, ok := value.(string); ok && sensitiveField(text) {
+		return "redacted"
+	}
+	return yamlScalar(value)
+}
+
+func yamlScalar(value interface{}) string {
+	switch typed := value.(type) {
+	case nil:
+		return "''"
+	case bool:
+		if typed {
+			return "true"
+		}
+		return "false"
+	case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64, float32, float64:
+		return fmt.Sprint(typed)
+	default:
+		text := fmt.Sprint(typed)
+		if text == "" {
+			return "''"
+		}
+		if yamlBareScalar(text) {
+			return text
+		}
+		return "'" + strings.ReplaceAll(text, "'", "''") + "'"
+	}
+}
+
+func yamlBareScalar(value string) bool {
+	if value == "true" || value == "false" || value == "null" {
+		return false
+	}
+	for _, character := range value {
+		if !(character == '-' || character == '_' || character == '.' || character == '/' || character == ':' || (character >= 'a' && character <= 'z') || (character >= 'A' && character <= 'Z') || (character >= '0' && character <= '9')) {
+			return false
+		}
+	}
+	return true
+}
+
+func yamlKey(value string) string {
+	if yamlBareScalar(value) {
+		return value
+	}
+	return yamlScalar(value)
+}
+
+func sortedStringKeys(values map[string]string) []string {
+	keys := make([]string, 0, len(values))
+	for key := range values {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+func sortedInterfaceKeys(values map[string]interface{}) []string {
+	keys := make([]string, 0, len(values))
+	for key := range values {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return keys
 }
 
 func shortUID(uid string) string {
