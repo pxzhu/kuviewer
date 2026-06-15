@@ -166,7 +166,7 @@ function Dashboard() {
   }, [setAutoRefresh, sourceMode]);
 
   return (
-    <main className="min-h-screen text-[#1d1d1f]">
+    <main className="ku-app-shell text-[#1d1d1f]">
       <header className="sticky top-0 z-50 border-b border-[rgba(60,60,67,0.14)] bg-[#f5f5f7]/80 backdrop-blur-2xl">
         <div className="mx-auto flex max-w-[1760px] flex-col gap-3 px-3 py-3 sm:px-4 lg:flex-row lg:items-center lg:justify-between lg:px-6">
           <div className="min-w-0">
@@ -346,13 +346,13 @@ function Dashboard() {
 
 function usePreventDocumentPullToRefresh() {
   useEffect(() => {
-    let touchStartY = 0;
+    let lastTouchY = 0;
 
     const handleTouchStart = (event: TouchEvent) => {
       if (event.touches.length !== 1) {
         return;
       }
-      touchStartY = event.touches[0].clientY;
+      lastTouchY = event.touches[0].clientY;
     };
 
     const handleTouchMove = (event: TouchEvent) => {
@@ -360,8 +360,11 @@ function usePreventDocumentPullToRefresh() {
         return;
       }
 
-      const isPullingDown = event.touches[0].clientY > touchStartY;
-      if (!isPullingDown || window.scrollY > 0 || targetCanScrollUp(event.target)) {
+      const currentTouchY = event.touches[0].clientY;
+      const deltaY = currentTouchY - lastTouchY;
+      lastTouchY = currentTouchY;
+
+      if (deltaY === 0 || targetCanScroll(event.target, deltaY)) {
         return;
       }
 
@@ -378,17 +381,30 @@ function usePreventDocumentPullToRefresh() {
   }, []);
 }
 
-function targetCanScrollUp(target: EventTarget | null) {
+function targetCanScroll(target: EventTarget | null, deltaY: number) {
   let element = target instanceof Element ? target : null;
-  while (element && element !== document.body && element !== document.documentElement) {
-    const style = window.getComputedStyle(element);
-    const scrollableY = ['auto', 'scroll', 'overlay'].includes(style.overflowY) && element.scrollHeight > element.clientHeight + 1;
-    if (scrollableY && element.scrollTop > 0) {
+  while (element) {
+    if (elementCanScroll(element, deltaY)) {
       return true;
     }
     element = element.parentElement;
   }
+  const appShell = document.querySelector('.ku-app-shell');
+  if (appShell && elementCanScroll(appShell, deltaY)) {
+    return true;
+  }
   return false;
+}
+
+function elementCanScroll(element: Element, deltaY: number) {
+  const style = window.getComputedStyle(element);
+  const scrollableY = ['auto', 'scroll', 'overlay'].includes(style.overflowY) && element.scrollHeight > element.clientHeight + 1;
+  if (!scrollableY) {
+    return false;
+  }
+  const canScrollUp = element.scrollTop > 0;
+  const canScrollDown = element.scrollTop + element.clientHeight < element.scrollHeight - 1;
+  return (deltaY > 0 && canScrollUp) || (deltaY < 0 && canScrollDown);
 }
 
 function formatLastSync(lastUpdatedAt: number | null) {
