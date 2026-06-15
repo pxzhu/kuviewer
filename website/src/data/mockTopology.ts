@@ -36,6 +36,7 @@ export const mockTopology: TopologySnapshot = {
     node(local, 'StorageClass', '', 'local-path', 'healthy', { provisioner: 'rancher.io/local-path' }, { provisioner: 'local-path', mode: 'WaitForFirstConsumer' }),
     node(local, 'PersistentVolume', '', 'pv-checkout-db', 'healthy', { storage: 'local' }, { capacity: '20Gi', reclaim: 'Delete' }),
     node(local, 'CustomResourceDefinition', '', 'widgets.platform.example.com', 'healthy', { group: 'platform.example.com' }, { group: 'platform.example.com', kind: 'Widget', plural: 'widgets', scope: 'Namespaced', servedVersions: 'v1', storageVersion: 'v1' }),
+    node(local, 'CustomResource', 'platform', 'Widget:checkout-dashboard', 'healthy', { app: 'checkout' }, { apiVersion: 'platform.example.com/v1', kind: 'Widget', name: 'checkout-dashboard', crd: 'widgets.platform.example.com', group: 'platform.example.com', scope: 'Namespaced', version: 'v1', specFields: 2, statusFields: 1, conditions: 'Ready=True' }),
 
     node(local, 'Namespace', '', 'platform', 'healthy', { team: 'platform' }, { workloads: 3, services: 2 }),
     node(local, 'ServiceAccount', 'platform', 'kuviewer-api', 'healthy', { app: 'kuviewer' }, { tokens: 'bound' }),
@@ -78,6 +79,7 @@ export const mockTopology: TopologySnapshot = {
     node(aks, 'Node', '', 'aks-node-b', 'healthy', { zone: '2', pool: 'user' }, { cpu: '69%', memory: '64%', pods: 5 }),
     node(aks, 'StorageClass', '', 'managed-csi', 'healthy', { provisioner: 'disk.csi.azure.com' }, { sku: 'Premium_LRS', mode: 'WaitForFirstConsumer' }),
     node(aks, 'CustomResourceDefinition', '', 'rollouts.argoproj.io', 'healthy', { group: 'argoproj.io' }, { group: 'argoproj.io', kind: 'Rollout', plural: 'rollouts', scope: 'Namespaced', servedVersions: 'v1alpha1', storageVersion: 'v1alpha1' }),
+    node(aks, 'CustomResource', 'edge', 'Rollout:edge-gateway', 'healthy', { app: 'edge-gateway' }, { apiVersion: 'argoproj.io/v1alpha1', kind: 'Rollout', name: 'edge-gateway', crd: 'rollouts.argoproj.io', group: 'argoproj.io', scope: 'Namespaced', version: 'v1alpha1', specFields: 2, statusFields: 1, conditions: 'Reconciled=True' }),
 
     node(aks, 'Namespace', '', 'edge', 'healthy', { team: 'edge' }, { workloads: 2, services: 2 }),
     node(aks, 'Ingress', 'edge', 'public-edge', 'healthy', { app: 'edge-gateway' }, { host: 'api.example.com', tls: true }),
@@ -118,6 +120,8 @@ export const mockTopology: TopologySnapshot = {
     owns(aks, '', 'Cluster', 'aks-prod-east', '', 'Namespace', 'edge'),
     owns(aks, '', 'Cluster', 'aks-prod-east', '', 'Namespace', 'payments'),
     owns(aks, '', 'Cluster', 'aks-prod-east', '', 'Namespace', 'data'),
+    ref(local, '', 'CustomResourceDefinition', 'widgets.platform.example.com', 'platform', 'CustomResource', 'Widget:checkout-dashboard', 'owns', 'CustomResourceDefinition.spec.names.kind'),
+    ref(aks, '', 'CustomResourceDefinition', 'rollouts.argoproj.io', 'edge', 'CustomResource', 'Rollout:edge-gateway', 'owns', 'CustomResourceDefinition.spec.names.kind'),
 
     owns(local, 'platform', 'Deployment', 'kuviewer-api', 'platform', 'ReplicaSet', 'kuviewer-api-6d9c4'),
     owns(local, 'platform', 'ReplicaSet', 'kuviewer-api-6d9c4', 'platform', 'Pod', 'kuviewer-api-6d9c4-a'),

@@ -1094,7 +1094,7 @@ function columnForKind(kind: ResourceKind): LayoutColumn {
   if (kind === 'NetworkPolicy') {
     return 'policy';
   }
-  if (kind === 'ConfigMap' || kind === 'Secret' || kind === 'ServiceAccount' || kind === 'CustomResourceDefinition') {
+  if (kind === 'ConfigMap' || kind === 'Secret' || kind === 'ServiceAccount' || kind === 'CustomResourceDefinition' || kind === 'CustomResource') {
     return 'config';
   }
   if (kind === 'PersistentVolume' || kind === 'PersistentVolumeClaim' || kind === 'StorageClass') {

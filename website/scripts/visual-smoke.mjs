@@ -463,6 +463,45 @@ spec:
 status:
   succeeded: 1
 ---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: widgets.platform.example.com
+spec:
+  group: platform.example.com
+  scope: Namespaced
+  names:
+    plural: widgets
+    singular: widget
+    kind: Widget
+  versions:
+    - name: v1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          x-kubernetes-preserve-unknown-fields: true
+status:
+  conditions:
+    - type: Established
+      status: "True"
+---
+apiVersion: platform.example.com/v1
+kind: Widget
+metadata:
+  name: checkout-dashboard
+  namespace: checkout
+  labels:
+    app: checkout-api
+spec:
+  owner: checkout
+  replicas: 2
+status:
+  conditions:
+    - type: Ready
+      status: "True"
+---
 apiVersion: example.com/v1
 kind: UnsupportedWidget
 metadata:

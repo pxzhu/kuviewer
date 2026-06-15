@@ -120,7 +120,7 @@ The resource explorer endpoints are read-only. They expose metadata, labels, red
 
 In live Kubernetes mode, `/api/resources/{kind}/{namespace-or--}/{name}/events` reads core v1 Events with an `involvedObject` field selector and returns newest events first. If Events are unavailable because of RBAC or API differences, Kuviewer returns an empty event list with a safe warning instead of failing the whole resource detail panel. Upload and mock modes keep returning an empty event list.
 
-Live and upload modes also surface `CustomResourceDefinition` objects as read-only inventory nodes. Kuviewer shows the CRD group, kind, plural name, scope, served versions, and storage version. Custom resource instance discovery and custom relationship inference are intentionally left for a later step.
+Live and upload modes also surface `CustomResourceDefinition` objects as read-only inventory nodes. Kuviewer shows the CRD group, kind, plural name, scope, served versions, and storage version. When a CRD definition is available, Kuviewer can also show matching custom resource instances as `CustomResource` nodes with safe metadata, CRD context, spec/status field counts, and condition summaries. It does not expose raw custom resource spec or status values. Custom relationship inference beyond the CRD-to-instance link is intentionally left for a later step.
 
 To make the frontend read from the API server, create `website/.env.local`:
 
@@ -190,10 +190,11 @@ Supported snapshot resources in the first provider:
 - PersistentVolumeClaim
 - StorageClass
 - CustomResourceDefinition
+- CustomResource instances when the API group/resource is readable
 - referenced Secret metadata only
 - live core v1 Events for the selected resource detail
 
-Secret list/read RBAC is intentionally not granted. Secret nodes are created from Pod references such as `envFrom`, `env.valueFrom`, `volumes.secret`, and `imagePullSecrets`, and values are never displayed. Events and CustomResourceDefinition read RBAC are granted for read-only resource detail and CRD inventory context.
+Secret list/read RBAC is intentionally not granted. Secret nodes are created from Pod references such as `envFrom`, `env.valueFrom`, `volumes.secret`, and `imagePullSecrets`, and values are never displayed. Events and CustomResourceDefinition read RBAC are granted for read-only resource detail and CRD inventory context. Custom resource instance discovery uses the CRD storage version, falling back to the first served version, and stays optional: RBAC/API failures for a custom resource list do not break the topology. The default Kubernetes manifest does not grant wildcard custom-resource read access; grant only the specific API groups/resources you want Kuviewer to inventory.
 
 ### Real sample infrastructure
 
@@ -451,4 +452,4 @@ Open:
 http://127.0.0.1:8080
 ```
 
-The draft RBAC intentionally does not grant `secrets` read access. Secret nodes are inferred from Pod references only. It grants read-only `events` access so Resource Explorer can show selected-resource Events when the cluster allows it.
+The draft RBAC intentionally does not grant `secrets` read access. Secret nodes are inferred from Pod references only. It grants read-only `events` access so Resource Explorer can show selected-resource Events when the cluster allows it. It also grants CRD definition read access, but it does not grant wildcard custom-resource instance access. Add narrow read rules for specific custom API groups/resources only when you want those instances to appear.

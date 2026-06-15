@@ -107,6 +107,7 @@ func (p KubernetesProvider) Snapshot(ctx context.Context) (topology.Snapshot, er
 	_ = p.client.getJSON(ctx, "/api/v1/persistentvolumes", &pvs, true)
 	_ = p.client.getJSON(ctx, "/apis/storage.k8s.io/v1/storageclasses", &storageClasses, true)
 	_ = p.client.getJSON(ctx, "/apis/apiextensions.k8s.io/v1/customresourcedefinitions", &crds, true)
+	customResources := p.customResourceInstances(ctx, crds)
 
 	builder := newKubeGraphBuilder(p.clusterID)
 	readyNodes := 0
@@ -245,6 +246,28 @@ func (p KubernetesProvider) Snapshot(ctx context.Context) (topology.Snapshot, er
 			"storageVersion": crdStorageVersion(crd),
 			"categories":     strings.Join(crd.Spec.Names.Categories, ","),
 		})
+	}
+
+	for _, resource := range customResources {
+		displayName := customResourceDisplayName(resource)
+		meta := resource.Metadata
+		meta.Name = displayName
+		builder.addResourceNode("CustomResource", meta, customResourceStatus(resource), map[string]interface{}{
+			"apiVersion":   resource.APIVersion,
+			"kind":         resource.Kind,
+			"name":         resource.Metadata.Name,
+			"crd":          resource.CRDName,
+			"group":        resource.CRDGroup,
+			"scope":        resource.CRDScope,
+			"version":      resource.CRDVersion,
+			"specFields":   len(resource.Spec),
+			"statusFields": len(resource.Status),
+			"conditions":   genericConditionSummary(resource.Status),
+		})
+		if resource.Metadata.Namespace != "" {
+			builder.addEdge("owns", builder.nodeID("Namespace", "", resource.Metadata.Namespace), builder.nodeID("CustomResource", resource.Metadata.Namespace, displayName), "metadata.namespace", "observed")
+		}
+		builder.addEdge("owns", builder.nodeID("CustomResourceDefinition", "", resource.CRDName), builder.nodeID("CustomResource", resource.Metadata.Namespace, displayName), "CustomResourceDefinition.spec.names.kind", "observed")
 	}
 
 	for _, pv := range pvs.Items {
@@ -492,6 +515,45 @@ func (p KubernetesProvider) ResourceEvents(ctx context.Context, ref ResourceRef)
 		return items[i].Timestamp > items[j].Timestamp
 	})
 	return topology.ResourceEvents{Items: items}, nil
+}
+
+func (p KubernetesProvider) customResourceInstances(ctx context.Context, crds customResourceDefinitionList) []customResourceInstance {
+	resources := []customResourceInstance{}
+	for _, crd := range crds.Items {
+		version := crdPreferredVersion(crd)
+		if crd.Spec.Group == "" || version == "" || crd.Spec.Names.Plural == "" || crd.Spec.Names.Kind == "" {
+			continue
+		}
+
+		list := customResourceInstanceList{}
+		found, err := p.client.getJSONStatus(ctx, customResourceListPath(crd, version), &list, true)
+		if err != nil || !found {
+			continue
+		}
+		for _, item := range list.Items {
+			if item.Metadata.Name == "" {
+				continue
+			}
+			if item.Kind == "" {
+				item.Kind = crd.Spec.Names.Kind
+			}
+			if item.APIVersion == "" {
+				item.APIVersion = crd.Spec.Group + "/" + version
+			}
+			resources = append(resources, customResourceInstance{
+				customResourceInstanceResource: item,
+				CRDName:                        crd.Metadata.Name,
+				CRDGroup:                       crd.Spec.Group,
+				CRDVersion:                     version,
+				CRDScope:                       crd.Spec.Scope,
+			})
+		}
+	}
+	return resources
+}
+
+func customResourceListPath(crd customResourceDefinitionResource, version string) string {
+	return "/apis/" + url.PathEscape(crd.Spec.Group) + "/" + url.PathEscape(version) + "/" + url.PathEscape(crd.Spec.Names.Plural)
 }
 
 type kubeProviderConfig struct {
@@ -806,6 +868,7 @@ func (b *graphBuilder) nextPosition(kind string) (int, int) {
 		"PersistentVolume":         1380,
 		"StorageClass":             1380,
 		"CustomResourceDefinition": 1540,
+		"CustomResource":           1540,
 	}
 	x := xByKind[kind]
 	if x == 0 {
@@ -1261,6 +1324,26 @@ type customResourceDefinitionResource struct {
 	} `json:"status"`
 }
 
+type customResourceInstanceList struct {
+	Items []customResourceInstanceResource `json:"items"`
+}
+
+type customResourceInstanceResource struct {
+	APIVersion string                 `json:"apiVersion"`
+	Kind       string                 `json:"kind"`
+	Metadata   metadata               `json:"metadata"`
+	Spec       map[string]interface{} `json:"spec"`
+	Status     map[string]interface{} `json:"status"`
+}
+
+type customResourceInstance struct {
+	customResourceInstanceResource
+	CRDName    string
+	CRDGroup   string
+	CRDVersion string
+	CRDScope   string
+}
+
 type networkPolicyList struct {
 	Items []networkPolicyResource `json:"items"`
 }
@@ -1457,6 +1540,80 @@ func crdStorageVersion(crd customResourceDefinitionResource) string {
 		}
 	}
 	return ""
+}
+
+func crdPreferredVersion(crd customResourceDefinitionResource) string {
+	if version := crdStorageVersion(crd); version != "" {
+		return version
+	}
+	served := crdServedVersions(crd)
+	if len(served) > 0 {
+		return served[0]
+	}
+	return ""
+}
+
+func customResourceDisplayName(resource customResourceInstance) string {
+	kind := resource.Kind
+	if kind == "" {
+		kind = "CustomResource"
+	}
+	return kind + ":" + resource.Metadata.Name
+}
+
+func customResourceStatus(resource customResourceInstance) string {
+	conditions := genericConditions(resource.Status)
+	if len(conditions) == 0 {
+		return "unknown"
+	}
+	for _, condition := range conditions {
+		if (condition.Type == "Ready" || condition.Type == "Synced" || condition.Type == "Reconciled") && condition.Status == "True" {
+			return "healthy"
+		}
+	}
+	for _, condition := range conditions {
+		if (condition.Type == "Ready" || condition.Type == "Synced" || condition.Type == "Reconciled") && condition.Status == "False" {
+			return "warning"
+		}
+	}
+	return "unknown"
+}
+
+func genericConditionSummary(status map[string]interface{}) string {
+	conditions := genericConditions(status)
+	if len(conditions) == 0 {
+		return ""
+	}
+	values := make([]string, 0, len(conditions))
+	for _, condition := range conditions {
+		if condition.Type == "" {
+			continue
+		}
+		values = append(values, condition.Type+"="+condition.Status)
+	}
+	sort.Strings(values)
+	return strings.Join(values, ", ")
+}
+
+func genericConditions(status map[string]interface{}) []condition {
+	rawConditions, ok := status["conditions"].([]interface{})
+	if !ok {
+		return nil
+	}
+	conditions := []condition{}
+	for _, rawCondition := range rawConditions {
+		conditionMap, ok := rawCondition.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		conditionType, _ := conditionMap["type"].(string)
+		conditionStatus, _ := conditionMap["status"].(string)
+		if conditionType == "" {
+			continue
+		}
+		conditions = append(conditions, condition{Type: conditionType, Status: conditionStatus})
+	}
+	return conditions
 }
 
 func deploymentStatus(deployment deploymentResource) string {
