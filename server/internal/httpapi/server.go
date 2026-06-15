@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -66,6 +67,13 @@ func NewServerWithConfig(snapshotProvider provider.TopologyProvider, config Serv
 }
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			log.Printf("recovered http panic: %v", recovered)
+			writeError(w, http.StatusInternalServerError, "internal_server_error")
+		}
+	}()
+
 	s.setSecurityHeaders(w)
 	s.setCORS(w)
 	if r.Method == http.MethodOptions {

@@ -28,12 +28,24 @@
   box-sizing: border-box;
 }
 
+html {
+  min-height: 100%;
+  background: var(--ku-bg);
+  overscroll-behavior-y: none;
+}
+
 body {
   margin: 0;
   min-width: 320px;
+  min-height: 100%;
   background: var(--ku-bg);
+  overscroll-behavior-y: none;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
+}
+
+#root {
+  min-height: 100%;
 }
 
 button,

@@ -22,6 +22,7 @@ const initialFilters: TopologyFilters = {
   kind: 'all',
   status: 'all',
 };
+const sourceModeStorageKey = 'kuviewer_source_mode';
 
 export function App() {
   return <Dashboard />;
@@ -97,6 +98,7 @@ function Dashboard() {
   const handleSourceModeChange = useCallback(
     (nextMode: TopologySourceMode) => {
       setSourceMode(nextMode);
+      storeSourceMode(nextMode);
       setSelectedNodeId('');
       if (nextMode !== 'live') {
         setAutoRefresh(false);
@@ -112,6 +114,7 @@ function Dashboard() {
       const nextUploadedState = await parseKubernetesFiles(files, { clusterId: uploadClusterId, clusterName: uploadClusterName });
       setUploadedState(nextUploadedState);
       setSourceMode('upload');
+      storeSourceMode('upload');
       setFilters(initialFilters);
       setSelectedNodeId('');
     } catch (requestError) {
@@ -130,6 +133,7 @@ function Dashboard() {
         loadedAt: Date.now(),
       });
       setSourceMode('upload');
+      storeSourceMode('upload');
       setFilters(initialFilters);
       setSelectedNodeId('');
     } catch (requestError) {
@@ -155,6 +159,7 @@ function Dashboard() {
     setAutoRefresh(false);
     if (sourceMode === 'live') {
       setSourceMode('upload');
+      storeSourceMode('upload');
     }
   }, [setAutoRefresh, sourceMode]);
 
@@ -351,7 +356,29 @@ function formatLastSync(lastUpdatedAt: number | null) {
 
 function initialSourceMode(): TopologySourceMode {
   const source = new URLSearchParams(window.location.search).get('source');
-  return source === 'live' || source === 'mock' || source === 'upload' ? source : 'upload';
+  if (source === 'live' || source === 'mock' || source === 'upload') {
+    storeSourceMode(source);
+    return source;
+  }
+  const storedSource = readStoredSourceMode();
+  return storedSource || 'upload';
+}
+
+function readStoredSourceMode(): TopologySourceMode | null {
+  try {
+    const source = window.sessionStorage.getItem(sourceModeStorageKey);
+    return source === 'live' || source === 'mock' || source === 'upload' ? source : null;
+  } catch {
+    return null;
+  }
+}
+
+function storeSourceMode(sourceMode: TopologySourceMode) {
+  try {
+    window.sessionStorage.setItem(sourceModeStorageKey, sourceMode);
+  } catch {
+    // Session storage can be unavailable in hardened browser modes.
+  }
 }
 
 function sourceModeLabel(sourceMode: TopologySourceMode) {

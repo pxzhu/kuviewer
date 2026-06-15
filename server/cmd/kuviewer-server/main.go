@@ -5,6 +5,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"time"
 
 	"kuviewer/server/internal/httpapi"
 	"kuviewer/server/internal/provider"
@@ -30,7 +31,15 @@ func main() {
 
 	log.Printf("kuviewer server listening on %s source=%s", addr, source)
 
-	if err := http.ListenAndServe(addr, server); err != nil {
+	httpServer := &http.Server{
+		Addr:              addr,
+		Handler:           server,
+		ReadHeaderTimeout: 5 * time.Second,
+		WriteTimeout:      30 * time.Second,
+		IdleTimeout:       120 * time.Second,
+	}
+
+	if err := httpServer.ListenAndServe(); err != nil {
 		log.Fatal(err)
 	}
 }
