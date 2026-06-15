@@ -24,7 +24,8 @@ export type ResourceKind =
   | 'Secret'
   | 'PersistentVolumeClaim'
   | 'PersistentVolume'
-  | 'StorageClass';
+  | 'StorageClass'
+  | 'CustomResourceDefinition';
 
 export type ResourceStatus = 'healthy' | 'warning' | 'error' | 'unknown';
 

@@ -116,6 +116,34 @@ func TestGraphBuilderRedactsSensitiveAnnotations(t *testing.T) {
 	}
 }
 
+func TestCustomResourceDefinitionSummaryHelpers(t *testing.T) {
+	crd := customResourceDefinitionResource{}
+	crd.Spec.Versions = append(crd.Spec.Versions,
+		struct {
+			Name    string `json:"name"`
+			Served  bool   `json:"served"`
+			Storage bool   `json:"storage"`
+		}{Name: "v1beta1", Served: false},
+		struct {
+			Name    string `json:"name"`
+			Served  bool   `json:"served"`
+			Storage bool   `json:"storage"`
+		}{Name: "v1", Served: true, Storage: true},
+	)
+	crd.Status.Conditions = []condition{{Type: "Established", Status: "True"}}
+
+	if got := crdStatus(crd); got != "healthy" {
+		t.Fatalf("crdStatus() = %q, want healthy", got)
+	}
+	if got := crdStorageVersion(crd); got != "v1" {
+		t.Fatalf("crdStorageVersion() = %q, want v1", got)
+	}
+	served := crdServedVersions(crd)
+	if len(served) != 1 || served[0] != "v1" {
+		t.Fatalf("crdServedVersions() = %#v, want v1", served)
+	}
+}
+
 func TestNetworkPolicyTypesDefaultEgressWhenRulesExist(t *testing.T) {
 	policy := networkPolicyResource{}
 	if got := networkPolicyTypes(policy); len(got) != 1 || got[0] != "Ingress" {

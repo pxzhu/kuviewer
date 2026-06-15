@@ -35,6 +35,7 @@ export const mockTopology: TopologySnapshot = {
     node(local, 'Node', '', 'worker-c', 'warning', { zone: 'c', role: 'app' }, { cpu: '82%', memory: '86%', pods: 5 }),
     node(local, 'StorageClass', '', 'local-path', 'healthy', { provisioner: 'rancher.io/local-path' }, { provisioner: 'local-path', mode: 'WaitForFirstConsumer' }),
     node(local, 'PersistentVolume', '', 'pv-checkout-db', 'healthy', { storage: 'local' }, { capacity: '20Gi', reclaim: 'Delete' }),
+    node(local, 'CustomResourceDefinition', '', 'widgets.platform.example.com', 'healthy', { group: 'platform.example.com' }, { group: 'platform.example.com', kind: 'Widget', plural: 'widgets', scope: 'Namespaced', servedVersions: 'v1', storageVersion: 'v1' }),
 
     node(local, 'Namespace', '', 'platform', 'healthy', { team: 'platform' }, { workloads: 3, services: 2 }),
     node(local, 'ServiceAccount', 'platform', 'kuviewer-api', 'healthy', { app: 'kuviewer' }, { tokens: 'bound' }),
@@ -76,6 +77,7 @@ export const mockTopology: TopologySnapshot = {
     node(aks, 'Node', '', 'aks-node-a', 'healthy', { zone: '1', pool: 'system' }, { cpu: '44%', memory: '52%', pods: 6 }),
     node(aks, 'Node', '', 'aks-node-b', 'healthy', { zone: '2', pool: 'user' }, { cpu: '69%', memory: '64%', pods: 5 }),
     node(aks, 'StorageClass', '', 'managed-csi', 'healthy', { provisioner: 'disk.csi.azure.com' }, { sku: 'Premium_LRS', mode: 'WaitForFirstConsumer' }),
+    node(aks, 'CustomResourceDefinition', '', 'rollouts.argoproj.io', 'healthy', { group: 'argoproj.io' }, { group: 'argoproj.io', kind: 'Rollout', plural: 'rollouts', scope: 'Namespaced', servedVersions: 'v1alpha1', storageVersion: 'v1alpha1' }),
 
     node(aks, 'Namespace', '', 'edge', 'healthy', { team: 'edge' }, { workloads: 2, services: 2 }),
     node(aks, 'Ingress', 'edge', 'public-edge', 'healthy', { app: 'edge-gateway' }, { host: 'api.example.com', tls: true }),

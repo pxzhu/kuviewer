@@ -71,6 +71,7 @@ func (p KubernetesProvider) Snapshot(ctx context.Context) (topology.Snapshot, er
 	pvcs := pvcList{}
 	pvs := pvList{}
 	storageClasses := storageClassList{}
+	crds := customResourceDefinitionList{}
 
 	if err := p.client.getJSON(ctx, "/api/v1/namespaces", &namespaces, false); err != nil {
 		return topology.Snapshot{}, err
@@ -105,6 +106,7 @@ func (p KubernetesProvider) Snapshot(ctx context.Context) (topology.Snapshot, er
 	_ = p.client.getJSON(ctx, "/api/v1/persistentvolumeclaims", &pvcs, true)
 	_ = p.client.getJSON(ctx, "/api/v1/persistentvolumes", &pvs, true)
 	_ = p.client.getJSON(ctx, "/apis/storage.k8s.io/v1/storageclasses", &storageClasses, true)
+	_ = p.client.getJSON(ctx, "/apis/apiextensions.k8s.io/v1/customresourcedefinitions", &crds, true)
 
 	builder := newKubeGraphBuilder(p.clusterID)
 	readyNodes := 0
@@ -230,6 +232,18 @@ func (p KubernetesProvider) Snapshot(ctx context.Context) (topology.Snapshot, er
 			"provisioner":          storageClass.Provisioner,
 			"volumeBindingMode":    storageClass.VolumeBindingMode,
 			"allowVolumeExpansion": boolSummary(storageClass.AllowVolumeExpansion),
+		})
+	}
+
+	for _, crd := range crds.Items {
+		builder.addResourceNode("CustomResourceDefinition", crd.Metadata, crdStatus(crd), map[string]interface{}{
+			"group":          crd.Spec.Group,
+			"kind":           crd.Spec.Names.Kind,
+			"plural":         crd.Spec.Names.Plural,
+			"scope":          crd.Spec.Scope,
+			"servedVersions": strings.Join(crdServedVersions(crd), ","),
+			"storageVersion": crdStorageVersion(crd),
+			"categories":     strings.Join(crd.Spec.Names.Categories, ","),
 		})
 	}
 
@@ -766,31 +780,32 @@ func (b *graphBuilder) nodeID(kind string, namespace string, name string) string
 
 func (b *graphBuilder) nextPosition(kind string) (int, int) {
 	xByKind := map[string]int{
-		"Cluster":                 90,
-		"Namespace":               280,
-		"Node":                    520,
-		"Ingress":                 720,
-		"Gateway":                 720,
-		"HTTPRoute":               840,
-		"GRPCRoute":               840,
-		"TLSRoute":                840,
-		"TCPRoute":                840,
-		"Deployment":              760,
-		"ReplicaSet":              900,
-		"StatefulSet":             760,
-		"DaemonSet":               760,
-		"Job":                     900,
-		"CronJob":                 760,
-		"HorizontalPodAutoscaler": 720,
-		"Service":                 980,
-		"Pod":                     1080,
-		"NetworkPolicy":           1180,
-		"ServiceAccount":          1220,
-		"ConfigMap":               1220,
-		"Secret":                  1220,
-		"PersistentVolumeClaim":   1220,
-		"PersistentVolume":        1380,
-		"StorageClass":            1380,
+		"Cluster":                  90,
+		"Namespace":                280,
+		"Node":                     520,
+		"Ingress":                  720,
+		"Gateway":                  720,
+		"HTTPRoute":                840,
+		"GRPCRoute":                840,
+		"TLSRoute":                 840,
+		"TCPRoute":                 840,
+		"Deployment":               760,
+		"ReplicaSet":               900,
+		"StatefulSet":              760,
+		"DaemonSet":                760,
+		"Job":                      900,
+		"CronJob":                  760,
+		"HorizontalPodAutoscaler":  720,
+		"Service":                  980,
+		"Pod":                      1080,
+		"NetworkPolicy":            1180,
+		"ServiceAccount":           1220,
+		"ConfigMap":                1220,
+		"Secret":                   1220,
+		"PersistentVolumeClaim":    1220,
+		"PersistentVolume":         1380,
+		"StorageClass":             1380,
+		"CustomResourceDefinition": 1540,
 	}
 	x := xByKind[kind]
 	if x == 0 {
@@ -1219,6 +1234,33 @@ type storageClassResource struct {
 	AllowVolumeExpansion *bool    `json:"allowVolumeExpansion"`
 }
 
+type customResourceDefinitionList struct {
+	Items []customResourceDefinitionResource `json:"items"`
+}
+
+type customResourceDefinitionResource struct {
+	Metadata metadata `json:"metadata"`
+	Spec     struct {
+		Group string `json:"group"`
+		Names struct {
+			Kind       string   `json:"kind"`
+			Plural     string   `json:"plural"`
+			Singular   string   `json:"singular"`
+			Categories []string `json:"categories"`
+			ShortNames []string `json:"shortNames"`
+		} `json:"names"`
+		Scope    string `json:"scope"`
+		Versions []struct {
+			Name    string `json:"name"`
+			Served  bool   `json:"served"`
+			Storage bool   `json:"storage"`
+		} `json:"versions"`
+	} `json:"spec"`
+	Status struct {
+		Conditions []condition `json:"conditions"`
+	} `json:"status"`
+}
+
 type networkPolicyList struct {
 	Items []networkPolicyResource `json:"items"`
 }
@@ -1379,6 +1421,42 @@ func conditionSummary(conditions []condition) string {
 	}
 	sort.Strings(values)
 	return strings.Join(values, ", ")
+}
+
+func crdStatus(crd customResourceDefinitionResource) string {
+	if len(crd.Status.Conditions) == 0 {
+		return "unknown"
+	}
+	for _, condition := range crd.Status.Conditions {
+		if condition.Type != "Established" {
+			continue
+		}
+		if condition.Status == "True" {
+			return "healthy"
+		}
+		return "warning"
+	}
+	return "unknown"
+}
+
+func crdServedVersions(crd customResourceDefinitionResource) []string {
+	versions := []string{}
+	for _, version := range crd.Spec.Versions {
+		if version.Served {
+			versions = append(versions, version.Name)
+		}
+	}
+	sort.Strings(versions)
+	return versions
+}
+
+func crdStorageVersion(crd customResourceDefinitionResource) string {
+	for _, version := range crd.Spec.Versions {
+		if version.Storage {
+			return version.Name
+		}
+	}
+	return ""
 }
 
 func deploymentStatus(deployment deploymentResource) string {
