@@ -91,6 +91,16 @@ async function selectVisualMode(page, mode) {
 }
 
 async function verifyNodeDrag(page, viewportName) {
+  const mobileList = page.getByTestId('mobile-topology-list');
+  if (await mobileList.isVisible().catch(() => false)) {
+    await mobileList.scrollIntoViewIfNeeded();
+    const firstNode = page.locator('[data-testid^="topology-node-"]').first();
+    await firstNode.waitFor({ state: 'visible', timeout: 10_000 });
+    await firstNode.click();
+    await expect(mobileList).toContainText(/edges|엣지/, { timeout: 10_000 });
+    return;
+  }
+
   await page.locator('.ku-react-flow').scrollIntoViewIfNeeded();
   await page.waitForTimeout(100);
   await page.locator('[data-testid^="topology-node-"]').first().waitFor({ state: 'visible', timeout: 10_000 });

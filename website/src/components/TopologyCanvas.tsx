@@ -119,6 +119,11 @@ const nodeTypes = {
 } as NodeTypes;
 
 export function TopologyCanvas(props: TopologyCanvasProps) {
+  const coarsePointer = useCoarsePointer();
+  if (coarsePointer) {
+    return <MobileTopologyCanvas {...props} />;
+  }
+
   return (
     <ReactFlowProvider>
       <TopologyCanvasInner {...props} />
@@ -130,8 +135,6 @@ function TopologyCanvasInner({ nodes, edges, selectedNodeId, colorMode, sourceKe
   const [hideSystemNamespaces, setHideSystemNamespaces] = useState(true);
   const [trafficOnly, setTrafficOnly] = useState(false);
   const [layoutVersion, setLayoutVersion] = useState(0);
-  const coarsePointer = useCoarsePointer();
-  const graphGesturesEnabled = !coarsePointer;
   const positionStorageKey = useMemo(() => `kuviewer-node-positions:${sourceKey}:${hashString(nodes.map((node) => node.id).sort().join('|'))}`, [nodes, sourceKey]);
   const [savedPositions, setSavedPositions] = useState<SavedPositions>(() => loadSavedPositions(positionStorageKey));
   const reactFlow = useReactFlow<FlowNode, FlowEdge>();
@@ -220,15 +223,9 @@ function TopologyCanvasInner({ nodes, edges, selectedNodeId, colorMode, sourceKe
             minZoom={0.12}
             nodes={flowNodes}
             nodeTypes={nodeTypes}
-            nodesDraggable={graphGesturesEnabled}
             onlyRenderVisibleElements
-            panOnDrag={graphGesturesEnabled}
-            panOnScroll={graphGesturesEnabled}
-            preventScrolling={graphGesturesEnabled}
+            panOnScroll
             proOptions={{ hideAttribution: true }}
-            zoomOnDoubleClick={graphGesturesEnabled}
-            zoomOnPinch={graphGesturesEnabled}
-            zoomOnScroll={graphGesturesEnabled}
             onEdgesChange={onEdgesChange}
             onNodeClick={(_, node) => {
               if (node.type === 'resource') {
@@ -286,18 +283,114 @@ function TopologyCanvasInner({ nodes, edges, selectedNodeId, colorMode, sourceKe
   );
 }
 
+function MobileTopologyCanvas({ nodes, edges, selectedNodeId, colorMode, onSelectNode }: TopologyCanvasProps) {
+  const selectedNode = nodes.find((node) => node.id === selectedNodeId) || nodes[0];
+  const relatedEdgeCount = selectedNode ? edges.filter((edge) => edge.source === selectedNode.id || edge.target === selectedNode.id).length : 0;
+
+  return (
+    <section className="ku-panel overflow-hidden" data-testid="mobile-topology-list">
+      <div className="border-b border-[rgba(60,60,67,0.12)] px-4 py-3">
+        <h2 className="text-sm font-semibold text-[#1d1d1f]">토폴로지 맵</h2>
+        <div className="mt-2 flex flex-wrap gap-2">
+          <span className="ku-chip">{nodes.length} 노드 · {edges.length} 엣지</span>
+          <span className="ku-chip">모바일 경량 보기</span>
+        </div>
+      </div>
+
+      <div className="grid gap-3 p-3">
+        {selectedNode ? (
+          <div className="rounded-[12px] border border-[rgba(0,122,255,0.18)] bg-[rgba(0,122,255,0.07)] p-3">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="truncate text-sm font-semibold text-[#1d1d1f]">{selectedNode.name}</p>
+                <p className="mt-0.5 truncate font-mono text-[11px] font-semibold uppercase tracking-[0.03em] text-[rgba(60,60,67,0.62)]">
+                  {selectedNode.namespace ? `${selectedNode.namespace} / ` : ''}
+                  {selectedNode.kind}
+                </p>
+              </div>
+              <span className={statusPillClassName(selectedNode.status)}>{selectedNode.status}</span>
+            </div>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {summaryPreview(selectedNode).map((item) => (
+                <span key={item} className="rounded-full border border-[rgba(60,60,67,0.1)] bg-white/75 px-2 py-1 font-mono text-[10px] font-semibold text-[rgba(60,60,67,0.72)]">
+                  {item}
+                </span>
+              ))}
+              <span className="rounded-full border border-[rgba(0,122,255,0.16)] bg-white/75 px-2 py-1 font-mono text-[10px] font-semibold text-[#0066cc]">
+                관련 {relatedEdgeCount} edges
+              </span>
+            </div>
+          </div>
+        ) : (
+          <div className="rounded-[12px] border border-dashed border-[rgba(60,60,67,0.18)] bg-white/80 p-4 text-center">
+            <p className="text-sm font-semibold text-[#1d1d1f]">현재 소스 또는 필터에 맞는 토폴로지 노드가 없습니다.</p>
+          </div>
+        )}
+
+        <div className="grid gap-2">
+          {nodes.slice(0, 120).map((node) => {
+            const selected = node.id === selectedNode?.id;
+            const color = getNodeColor(node, colorMode);
+            const edgeCount = edges.filter((edge) => edge.source === node.id || edge.target === node.id).length;
+            return (
+              <button
+                key={node.id}
+                className={`min-w-0 rounded-[12px] border bg-white/86 p-3 text-left shadow-[0_4px_16px_rgba(0,0,0,0.04)] ${selected ? 'ring-[3px] ring-[rgba(0,122,255,0.22)]' : ''}`}
+                data-testid={`topology-node-${node.id}`}
+                style={{ borderColor: selected ? color : 'rgba(60,60,67,0.13)' }}
+                type="button"
+                onClick={() => onSelectNode(node.id)}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold text-[#1d1d1f]">{node.name}</p>
+                    <p className="mt-0.5 truncate font-mono text-[10px] font-semibold uppercase tracking-[0.03em] text-[rgba(60,60,67,0.58)]">
+                      {node.namespace ? `${node.namespace} / ` : ''}
+                      {node.kind}
+                    </p>
+                  </div>
+                  <span className={statusPillClassName(node.status)}>{node.status}</span>
+                </div>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {summaryPreview(node).slice(0, 3).map((item) => (
+                    <span key={item} className="rounded-full border border-[rgba(60,60,67,0.1)] bg-[rgba(242,242,247,0.78)] px-2 py-0.5 font-mono text-[10px] font-semibold text-[rgba(60,60,67,0.72)]">
+                      {item}
+                    </span>
+                  ))}
+                  <span className="rounded-full bg-[rgba(0,122,255,0.08)] px-2 py-0.5 font-mono text-[10px] font-semibold text-[#0066cc]">
+                    {edgeCount} edges
+                  </span>
+                </div>
+              </button>
+            );
+          })}
+          {nodes.length > 120 ? (
+            <div className="rounded-[12px] border border-[rgba(60,60,67,0.12)] bg-white/70 p-3 text-center text-xs font-semibold text-[rgba(60,60,67,0.62)]">
+              +{nodes.length - 120} more
+            </div>
+          ) : null}
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function useCoarsePointer() {
-  const [coarsePointer, setCoarsePointer] = useState(false);
+  const [coarsePointer, setCoarsePointer] = useState(() => isCoarsePointer());
 
   useEffect(() => {
-    const mediaQuery = window.matchMedia('(pointer: coarse)');
-    const handleChange = () => setCoarsePointer(mediaQuery.matches);
+    const mediaQuery = window.matchMedia?.('(pointer: coarse)');
+    const handleChange = () => setCoarsePointer(isCoarsePointer());
     handleChange();
-    mediaQuery.addEventListener('change', handleChange);
-    return () => mediaQuery.removeEventListener('change', handleChange);
+    mediaQuery?.addEventListener('change', handleChange);
+    return () => mediaQuery?.removeEventListener('change', handleChange);
   }, []);
 
   return coarsePointer;
+}
+
+function isCoarsePointer() {
+  return window.matchMedia?.('(pointer: coarse)').matches || navigator.maxTouchPoints > 0;
 }
 
 function ResourceNode({ data }: NodeProps<Node<ResourceNodeData>>) {
