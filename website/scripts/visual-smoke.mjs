@@ -9,20 +9,20 @@ const outputDir = process.env.KUVIEWER_VISUAL_OUTPUT || path.join(process.cwd(),
 const uploadManifestPath = path.join(outputDir, 'visual-upload.yaml');
 
 const viewports = [
-  { name: 'desktop', viewport: { width: 1440, height: 980 } },
-  { name: 'mobile', viewport: { width: 390, height: 844 } },
+  { name: 'desktop', viewport: { width: 1440, height: 980 }, isMobile: false, hasTouch: false },
+  { name: 'mobile', viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true },
 ];
 
 await mkdir(outputDir, { recursive: true });
 await writeFile(uploadManifestPath, getSampleManifest(), 'utf8');
 
 for (const target of viewports) {
-  await runViewport(target.name, target.viewport);
+  await runViewport(target);
 }
 
-async function runViewport(name, viewport) {
+async function runViewport({ name, viewport, isMobile, hasTouch }) {
   const browser = await chromium.launch();
-  const context = await browser.newContext({ viewport });
+  const context = await browser.newContext({ viewport, isMobile, hasTouch });
   await context.addInitScript((token) => {
     window.localStorage.removeItem('kuviewer_admin_token');
     window.sessionStorage.setItem('kuviewer_admin_token', token);
@@ -91,13 +91,15 @@ async function selectVisualMode(page, mode) {
 }
 
 async function verifyNodeDrag(page, viewportName) {
-  const mobileList = page.getByTestId('mobile-topology-list');
-  if (await mobileList.isVisible().catch(() => false)) {
-    await mobileList.scrollIntoViewIfNeeded();
-    const firstNode = page.locator('[data-testid^="topology-node-"]').first();
+  const mobileMap = page.getByTestId('mobile-topology-map');
+  if (await mobileMap.isVisible().catch(() => false)) {
+    await mobileMap.scrollIntoViewIfNeeded();
+    await expect(page.locator('.ku-react-flow')).toHaveCount(0);
+    await page.locator('[data-testid^="mobile-topology-edge-"]').first().waitFor({ state: 'attached', timeout: 10_000 });
+    const firstNode = page.locator('[data-testid^="mobile-topology-node-"]').first();
     await firstNode.waitFor({ state: 'visible', timeout: 10_000 });
     await firstNode.click();
-    await expect(mobileList).toContainText(/edges|엣지/, { timeout: 10_000 });
+    await expect(page.getByTestId('mobile-topology-list')).toContainText(/edges|엣지/, { timeout: 10_000 });
     return;
   }
 
