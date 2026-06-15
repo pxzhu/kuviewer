@@ -78,6 +78,40 @@ interface LayoutResult {
   edgeCount: number;
 }
 
+interface MobilePositionedNode {
+  node: TopologyNode;
+  x: number;
+  y: number;
+  color: string;
+  isSelected: boolean;
+  related: boolean;
+}
+
+interface MobilePositionedEdge {
+  edge: TopologyEdge;
+  source: MobilePositionedNode;
+  target: MobilePositionedNode;
+  color: string;
+  selected: boolean;
+  traffic: boolean;
+}
+
+interface MobileLane {
+  id: LayoutColumn;
+  label: string;
+  x: number;
+  width: number;
+  count: number;
+}
+
+interface MobileLayoutResult {
+  nodes: MobilePositionedNode[];
+  edges: MobilePositionedEdge[];
+  lanes: MobileLane[];
+  width: number;
+  height: number;
+}
+
 type LayoutColumn = 'scope' | 'ingress' | 'service' | 'workload' | 'pod' | 'policy' | 'config' | 'storage' | 'node';
 
 const flowNodeWidth = 220;
@@ -89,6 +123,12 @@ const groupPadding = 30;
 const namespaceGap = 58;
 const clusterGap = 96;
 const maxRowsPerLane = 4;
+const mobileNodeWidth = 106;
+const mobileNodeHeight = 42;
+const mobileRowStep = 58;
+const mobileLaneGap = 26;
+const mobileWrappedLaneGap = 14;
+const mobileMaxRowsPerLane = 8;
 const columnOrder: LayoutColumn[] = ['scope', 'ingress', 'service', 'workload', 'pod', 'policy', 'config', 'storage', 'node'];
 
 const statusLegend = [
@@ -284,20 +324,127 @@ function TopologyCanvasInner({ nodes, edges, selectedNodeId, colorMode, sourceKe
 }
 
 function MobileTopologyCanvas({ nodes, edges, selectedNodeId, colorMode, onSelectNode }: TopologyCanvasProps) {
-  const selectedNode = nodes.find((node) => node.id === selectedNodeId) || nodes[0];
-  const relatedEdgeCount = selectedNode ? edges.filter((edge) => edge.source === selectedNode.id || edge.target === selectedNode.id).length : 0;
+  const displayGraph = useMemo(() => buildDisplayGraph(nodes, edges, true, false), [edges, nodes]);
+  const selectedNode = displayGraph.nodes.find((node) => node.id === selectedNodeId) || displayGraph.nodes[0] || nodes[0];
+  const layout = useMemo(
+    () => buildMobileTopologyLayout(displayGraph.nodes, displayGraph.edges, colorMode, selectedNode?.id || ''),
+    [colorMode, displayGraph.edges, displayGraph.nodes, selectedNode?.id],
+  );
+  const selectedLayoutNode = selectedNode ? layout.nodes.find((node) => node.node.id === selectedNode.id) : undefined;
+  const relatedEdgeCount = selectedNode ? displayGraph.edges.filter((edge) => edge.source === selectedNode.id || edge.target === selectedNode.id).length : 0;
 
   return (
     <section className="ku-panel overflow-hidden" data-testid="mobile-topology-list">
       <div className="border-b border-[rgba(60,60,67,0.12)] px-4 py-3">
         <h2 className="text-sm font-semibold text-[#1d1d1f]">토폴로지 맵</h2>
         <div className="mt-2 flex flex-wrap gap-2">
-          <span className="ku-chip">{nodes.length} 노드 · {edges.length} 엣지</span>
-          <span className="ku-chip">모바일 경량 보기</span>
+          <span className="ku-chip">{layout.nodes.length} 노드 · {layout.edges.length} 엣지</span>
+          <span className="ku-chip">모바일 SVG 맵</span>
         </div>
       </div>
 
       <div className="grid gap-3 p-3">
+        {layout.nodes.length > 0 ? (
+          <div
+            className="max-w-full overflow-x-auto overscroll-contain rounded-[14px] border border-[rgba(60,60,67,0.12)] bg-[linear-gradient(rgba(60,60,67,.055)_1px,transparent_1px),linear-gradient(90deg,rgba(60,60,67,.055)_1px,transparent_1px)] bg-[size:24px_24px]"
+            data-testid="mobile-topology-map"
+            style={{ touchAction: 'pan-x pan-y' }}
+          >
+            <svg
+              className="block"
+              data-testid="mobile-topology-svg"
+              role="img"
+              aria-label="모바일 토폴로지 맵"
+              style={{ width: layout.width, height: layout.height, minWidth: layout.width }}
+              viewBox={`0 0 ${layout.width} ${layout.height}`}
+            >
+              <defs>
+                <marker id="mobile-arrow" markerHeight="7" markerWidth="7" orient="auto" refX="6" refY="3.5">
+                  <path d="M0,0 L7,3.5 L0,7 Z" fill="#6e6e73" />
+                </marker>
+              </defs>
+
+              {layout.lanes.map((lane) => (
+                <g key={lane.id}>
+                  <rect
+                    fill="rgba(255,255,255,0.62)"
+                    height={layout.height - 24}
+                    rx="14"
+                    stroke="rgba(60,60,67,0.1)"
+                    strokeDasharray="5 5"
+                    width={lane.width}
+                    x={lane.x - 10}
+                    y="12"
+                  />
+                  <text fill="rgba(60,60,67,0.62)" fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace" fontSize="10" fontWeight="800" x={lane.x} y="32">
+                    {lane.label} · {lane.count}
+                  </text>
+                </g>
+              ))}
+
+              {layout.edges.map((positionedEdge) => (
+                <path
+                  key={positionedEdge.edge.id}
+                  d={mobileEdgePath(positionedEdge.source, positionedEdge.target)}
+                  data-testid={`mobile-topology-edge-${positionedEdge.edge.id}`}
+                  fill="none"
+                  markerEnd="url(#mobile-arrow)"
+                  opacity={positionedEdge.selected ? 0.92 : 0.38}
+                  stroke={positionedEdge.color}
+                  strokeDasharray={positionedEdge.edge.confidence === 'inferred' ? '5 5' : undefined}
+                  strokeLinecap="round"
+                  strokeWidth={positionedEdge.selected ? (positionedEdge.traffic ? 2.4 : 1.8) : 1.2}
+                  vectorEffect="non-scaling-stroke"
+                />
+              ))}
+
+              {layout.nodes.map((positionedNode) => (
+                <g
+                  key={positionedNode.node.id}
+                  data-testid={`mobile-topology-node-${positionedNode.node.id}`}
+                  role="button"
+                  tabIndex={0}
+                  transform={`translate(${positionedNode.x}, ${positionedNode.y})`}
+                  onClick={() => onSelectNode(positionedNode.node.id)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault();
+                      onSelectNode(positionedNode.node.id);
+                    }
+                  }}
+                >
+                  <rect
+                    fill={positionedNode.isSelected ? 'rgba(0,122,255,0.12)' : 'rgba(255,255,255,0.92)'}
+                    height={mobileNodeHeight}
+                    rx="10"
+                    stroke={positionedNode.isSelected ? '#007aff' : `${positionedNode.color}88`}
+                    strokeWidth={positionedNode.isSelected ? 2 : positionedNode.related ? 1.6 : 1}
+                    width={mobileNodeWidth}
+                  />
+                  <rect fill={positionedNode.color} height="4" rx="2" width={mobileNodeWidth - 14} x="7" y="6" />
+                  <text fill="#1d1d1f" fontFamily="Inter, ui-sans-serif, system-ui, sans-serif" fontSize="10.5" fontWeight="800" x="8" y="23">
+                    {truncateMiddle(positionedNode.node.name, 14)}
+                  </text>
+                  <text fill="rgba(60,60,67,0.62)" fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace" fontSize="8.5" fontWeight="800" x="8" y="35">
+                    {positionedNode.node.kind}
+                  </text>
+                </g>
+              ))}
+
+              {selectedLayoutNode ? (
+                <circle
+                  cx={selectedLayoutNode.x + mobileNodeWidth - 9}
+                  cy={selectedLayoutNode.y + 14}
+                  fill="#007aff"
+                  r="4.5"
+                  stroke="#ffffff"
+                  strokeWidth="2"
+                />
+              ) : null}
+            </svg>
+          </div>
+        ) : null}
+
         {selectedNode ? (
           <div className="rounded-[12px] border border-[rgba(0,122,255,0.18)] bg-[rgba(0,122,255,0.07)] p-3">
             <div className="flex items-start justify-between gap-3">
@@ -328,10 +475,10 @@ function MobileTopologyCanvas({ nodes, edges, selectedNodeId, colorMode, onSelec
         )}
 
         <div className="grid gap-2">
-          {nodes.slice(0, 120).map((node) => {
+          {displayGraph.nodes.slice(0, 120).map((node) => {
             const selected = node.id === selectedNode?.id;
             const color = getNodeColor(node, colorMode);
-            const edgeCount = edges.filter((edge) => edge.source === node.id || edge.target === node.id).length;
+            const edgeCount = displayGraph.edges.filter((edge) => edge.source === node.id || edge.target === node.id).length;
             return (
               <button
                 key={node.id}
@@ -364,9 +511,9 @@ function MobileTopologyCanvas({ nodes, edges, selectedNodeId, colorMode, onSelec
               </button>
             );
           })}
-          {nodes.length > 120 ? (
+          {displayGraph.nodes.length > 120 ? (
             <div className="rounded-[12px] border border-[rgba(60,60,67,0.12)] bg-white/70 p-3 text-center text-xs font-semibold text-[rgba(60,60,67,0.62)]">
-              +{nodes.length - 120} more
+              +{displayGraph.nodes.length - 120} more
             </div>
           ) : null}
         </div>
@@ -670,6 +817,111 @@ function toFlowEdge(edge: TopologyEdge, selectedNodeId: string): FlowEdge {
     interactionWidth: 18,
     zIndex: traffic ? 20 : 5,
   };
+}
+
+function buildMobileTopologyLayout(nodes: TopologyNode[], edges: TopologyEdge[], colorMode: ColorMode, selectedNodeId: string): MobileLayoutResult {
+  const selectedEdges = edges.filter((edge) => edge.source === selectedNodeId || edge.target === selectedNodeId);
+  const selectedNeighborIds = new Set(selectedEdges.flatMap((edge) => [edge.source, edge.target]));
+  const positionedNodes: MobilePositionedNode[] = [];
+  const lanes: MobileLane[] = [];
+
+  let cursorX = 22;
+  let maxRows = 1;
+  columnOrder.forEach((column) => {
+    const columnNodes = sortResources(nodes.filter((node) => columnForKind(node.kind) === column));
+    if (columnNodes.length === 0) {
+      return;
+    }
+
+    const wraps = Math.max(1, Math.ceil(columnNodes.length / mobileMaxRowsPerLane));
+    const laneWidth = wraps * mobileNodeWidth + (wraps - 1) * mobileWrappedLaneGap;
+    lanes.push({
+      id: column,
+      label: mobileColumnLabel(column),
+      x: cursorX,
+      width: laneWidth + 20,
+      count: columnNodes.length,
+    });
+
+    columnNodes.forEach((node, index) => {
+      const wrapIndex = Math.floor(index / mobileMaxRowsPerLane);
+      const rowIndex = index % mobileMaxRowsPerLane;
+      maxRows = Math.max(maxRows, rowIndex + 1);
+      positionedNodes.push({
+        node,
+        x: cursorX + wrapIndex * (mobileNodeWidth + mobileWrappedLaneGap),
+        y: 52 + rowIndex * mobileRowStep,
+        color: getNodeColor(node, colorMode),
+        isSelected: node.id === selectedNodeId,
+        related: selectedNeighborIds.has(node.id),
+      });
+    });
+
+    cursorX += laneWidth + mobileLaneGap;
+  });
+
+  const nodeById = new Map(positionedNodes.map((positionedNode) => [positionedNode.node.id, positionedNode]));
+  const positionedEdges = edges.flatMap((edge) => {
+    const source = nodeById.get(edge.source);
+    const target = nodeById.get(edge.target);
+    if (!source || !target) {
+      return [];
+    }
+
+    const traffic = isTrafficEdge(edge.type);
+    const selected = !selectedNodeId || edge.source === selectedNodeId || edge.target === selectedNodeId;
+    return [
+      {
+        edge,
+        source,
+        target,
+        color: selected ? (traffic ? '#007aff' : getEdgeColor(edge)) : 'rgba(142,142,147,0.58)',
+        selected,
+        traffic,
+      },
+    ];
+  });
+
+  return {
+    nodes: positionedNodes,
+    edges: positionedEdges,
+    lanes,
+    width: Math.max(360, cursorX + 14),
+    height: Math.max(240, 52 + maxRows * mobileRowStep + 26),
+  };
+}
+
+function mobileEdgePath(source: MobilePositionedNode, target: MobilePositionedNode) {
+  const sourceX = source.x + mobileNodeWidth;
+  const sourceY = source.y + mobileNodeHeight / 2;
+  const targetX = target.x;
+  const targetY = target.y + mobileNodeHeight / 2;
+  const controlOffset = Math.max(28, Math.abs(targetX - sourceX) * 0.46);
+  return `M ${sourceX} ${sourceY} C ${sourceX + controlOffset} ${sourceY}, ${targetX - controlOffset} ${targetY}, ${targetX} ${targetY}`;
+}
+
+function mobileColumnLabel(column: LayoutColumn) {
+  const labels: Record<LayoutColumn, string> = {
+    scope: 'Scope',
+    ingress: 'Ingress',
+    service: 'Service',
+    workload: 'Workload',
+    pod: 'Pod',
+    policy: 'Policy',
+    config: 'Config',
+    storage: 'Storage',
+    node: 'Node',
+  };
+  return labels[column];
+}
+
+function truncateMiddle(value: string, maxLength: number) {
+  if (value.length <= maxLength) {
+    return value;
+  }
+  const headLength = Math.max(3, Math.floor((maxLength - 1) * 0.58));
+  const tailLength = Math.max(2, maxLength - headLength - 1);
+  return `${value.slice(0, headLength)}…${value.slice(-tailLength)}`;
 }
 
 function boundsForResources(resources: PositionedResource[], padding: number) {
