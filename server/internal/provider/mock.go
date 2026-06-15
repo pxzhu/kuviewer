@@ -57,6 +57,8 @@ func (MockProvider) Snapshot(_ context.Context) (topology.Snapshot, error) {
 			edge("cluster-platform", nodeID("Cluster", "", "native-dev"), nodeID("Namespace", "", "platform"), "owns", "metadata.namespace"),
 			edge("cluster-checkout", nodeID("Cluster", "", "native-dev"), nodeID("Namespace", "", "checkout"), "owns", "metadata.namespace"),
 			edge("crd-widget", nodeID("CustomResourceDefinition", "", "widgets.platform.example.com"), nodeID("CustomResource", "platform", "Widget:checkout-dashboard"), "owns", "CustomResourceDefinition.spec.names.kind"),
+			edgeWithConfidence("widget-secret", nodeID("CustomResource", "platform", "Widget:checkout-dashboard"), nodeID("Secret", "platform", "kuviewer-admin-token"), "references", "spec.secretRef", "inferred"),
+			edgeWithConfidence("widget-service", nodeID("CustomResource", "platform", "Widget:checkout-dashboard"), nodeID("Service", "platform", "kuviewer-api"), "references", "spec.serviceRef", "inferred"),
 			edge("platform-worker-a", nodeID("Pod", "platform", "kuviewer-api-6d9c4"), nodeID("Node", "", "worker-a"), "scheduled-on", "Pod.spec.nodeName"),
 			edge("checkout-worker-c", nodeID("Pod", "checkout", "checkout-api-7c8f9"), nodeID("Node", "", "worker-c"), "scheduled-on", "Pod.spec.nodeName"),
 			edge("deploy-pod", nodeID("Deployment", "platform", "kuviewer-api"), nodeID("Pod", "platform", "kuviewer-api-6d9c4"), "owns", "metadata.ownerReferences"),

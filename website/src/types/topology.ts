@@ -46,7 +46,8 @@ export type EdgeType =
   | 'applies-to'
   | 'attaches-to'
   | 'allows-ingress'
-  | 'allows-egress';
+  | 'allows-egress'
+  | 'references';
 
 export interface TopologyNode {
   id: string;

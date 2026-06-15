@@ -121,7 +121,10 @@ export const mockTopology: TopologySnapshot = {
     owns(aks, '', 'Cluster', 'aks-prod-east', '', 'Namespace', 'payments'),
     owns(aks, '', 'Cluster', 'aks-prod-east', '', 'Namespace', 'data'),
     ref(local, '', 'CustomResourceDefinition', 'widgets.platform.example.com', 'platform', 'CustomResource', 'Widget:checkout-dashboard', 'owns', 'CustomResourceDefinition.spec.names.kind'),
+    ref(local, 'platform', 'CustomResource', 'Widget:checkout-dashboard', 'platform', 'Secret', 'kuviewer-admin-token', 'references', 'spec.secretRef', 'inferred'),
+    ref(local, 'platform', 'CustomResource', 'Widget:checkout-dashboard', 'platform', 'Service', 'kuviewer-api', 'references', 'spec.serviceRef', 'inferred'),
     ref(aks, '', 'CustomResourceDefinition', 'rollouts.argoproj.io', 'edge', 'CustomResource', 'Rollout:edge-gateway', 'owns', 'CustomResourceDefinition.spec.names.kind'),
+    ref(aks, 'edge', 'CustomResource', 'Rollout:edge-gateway', 'edge', 'Service', 'edge-gateway', 'references', 'spec.serviceName', 'inferred'),
 
     owns(local, 'platform', 'Deployment', 'kuviewer-api', 'platform', 'ReplicaSet', 'kuviewer-api-6d9c4'),
     owns(local, 'platform', 'ReplicaSet', 'kuviewer-api-6d9c4', 'platform', 'Pod', 'kuviewer-api-6d9c4-a'),

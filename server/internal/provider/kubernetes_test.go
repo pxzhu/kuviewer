@@ -302,6 +302,75 @@ func TestKubernetesProviderCustomResourceInstancesForbiddenFallsBack(t *testing.
 	}
 }
 
+func TestCustomResourceReferenceEdgesInferSafeExistingTargets(t *testing.T) {
+	builder := newKubeGraphBuilder("test")
+	builder.addNode("CustomResourceDefinition", "", "widgets.platform.example.com", "healthy", nil, nil)
+	builder.addNode("CustomResourceDefinition", "", "backends.platform.example.com", "healthy", nil, nil)
+	builder.addNode("CustomResource", "checkout", "Widget:checkout-dashboard", "healthy", nil, nil)
+	builder.addNode("Secret", "checkout", "checkout-api-secret", "unknown", nil, nil)
+	builder.addNode("ConfigMap", "checkout", "checkout-config", "healthy", nil, nil)
+	builder.addNode("Service", "checkout", "checkout-api", "healthy", nil, nil)
+	builder.addNode("CustomResource", "checkout", "Backend:checkout-backend", "healthy", nil, nil)
+
+	resource := customResourceInstance{
+		customResourceInstanceResource: customResourceInstanceResource{
+			APIVersion: "platform.example.com/v1",
+			Kind:       "Widget",
+			Metadata:   metadata{Name: "checkout-dashboard", Namespace: "checkout"},
+			Spec: map[string]interface{}{
+				"secretRef": map[string]interface{}{
+					"name": "checkout-api-secret",
+				},
+				"configMapRefs": []interface{}{
+					map[string]interface{}{"name": "checkout-config"},
+					map[string]interface{}{"name": "missing-config"},
+				},
+				"backendRef": map[string]interface{}{
+					"apiVersion": "v1",
+					"kind":       "Service",
+					"name":       "checkout-api",
+				},
+				"widgetBackendRef": map[string]interface{}{
+					"apiVersion": "platform.example.com/v1",
+					"kind":       "Backend",
+					"name":       "checkout-backend",
+				},
+				"serviceAccountName": "missing-service-account",
+			},
+			Status: map[string]interface{}{"raw": "not-used-for-relations"},
+		},
+		CRDName:    "widgets.platform.example.com",
+		CRDGroup:   "platform.example.com",
+		CRDVersion: "v1",
+		CRDScope:   "Namespaced",
+	}
+
+	builder.addCustomResourceReferenceEdges(resource, testCustomResourceRelationCRDs(t))
+
+	assertEdge := func(target string, sourceField string) {
+		t.Helper()
+		for _, edge := range builder.edges {
+			if edge.Type == "references" && edge.Target == target && edge.SourceField == sourceField && edge.Confidence == "inferred" {
+				return
+			}
+		}
+		t.Fatalf("references edge to %s via %s not found: %+v", target, sourceField, builder.edges)
+	}
+	assertEdge(builder.nodeID("Secret", "checkout", "checkout-api-secret"), "spec.secretRef")
+	assertEdge(builder.nodeID("ConfigMap", "checkout", "checkout-config"), "spec.configMapRefs[0]")
+	assertEdge(builder.nodeID("Service", "checkout", "checkout-api"), "spec.backendRef")
+	assertEdge(builder.nodeID("CustomResource", "checkout", "Backend:checkout-backend"), "spec.widgetBackendRef")
+
+	for _, edge := range builder.edges {
+		if strings.Contains(edge.Target, "missing") {
+			t.Fatalf("unexpected phantom target edge: %+v", edge)
+		}
+		if strings.Contains(edge.SourceField, "status") {
+			t.Fatalf("unexpected status-based relation: %+v", edge)
+		}
+	}
+}
+
 func TestNetworkPolicyTypesDefaultEgressWhenRulesExist(t *testing.T) {
 	policy := networkPolicyResource{}
 	if got := networkPolicyTypes(policy); len(got) != 1 || got[0] != "Ingress" {
@@ -334,6 +403,36 @@ func testCustomResourceDefinitionList(t *testing.T) customResourceDefinitionList
 		]
 	}`), &crds); err != nil {
 		t.Fatalf("decode test CRD: %v", err)
+	}
+	return crds
+}
+
+func testCustomResourceRelationCRDs(t *testing.T) customResourceDefinitionList {
+	t.Helper()
+	var crds customResourceDefinitionList
+	if err := json.Unmarshal([]byte(`{
+		"items": [
+			{
+				"metadata": {"name": "widgets.platform.example.com"},
+				"spec": {
+					"group": "platform.example.com",
+					"scope": "Namespaced",
+					"names": {"kind": "Widget", "plural": "widgets"},
+					"versions": [{"name": "v1", "served": true, "storage": true}]
+				}
+			},
+			{
+				"metadata": {"name": "backends.platform.example.com"},
+				"spec": {
+					"group": "platform.example.com",
+					"scope": "Namespaced",
+					"names": {"kind": "Backend", "plural": "backends"},
+					"versions": [{"name": "v1", "served": true, "storage": true}]
+				}
+			}
+		]
+	}`), &crds); err != nil {
+		t.Fatalf("decode test CRDs: %v", err)
 	}
 	return crds
 }

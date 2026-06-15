@@ -16,7 +16,7 @@ Kuviewer is a Kubernetes topology viewer focused on visualizing clusters, namesp
 - Source modes: `Upload YAML`, `Live Cluster`, and `Mock Demo`
 - `Topology`: draggable React Flow resource relationship map with cluster and namespace zones
 - `Flow`: YAML-derived traffic flow view
-- `Resource Explorer`: OpenLens-style read-only resource list, safe detail preview, topology relations, and live Events
+- `Resource Explorer`: read-only Kubernetes resource list, safe detail preview, topology relations, and live Events
 - Manual refresh, optional 30 second auto refresh, and last sync status for live mode
 - Backend provider/status line for source, read-only mode, Secret handling, and static UI mode
 - Connector diagnostics panel for backend source, API errors, sync time, and visible/total graph counts
@@ -78,7 +78,7 @@ The default UI source is `Upload YAML`. It accepts:
 - `.zip` archives containing YAML or JSON manifests
 - exported Kuviewer topology JSON from the `Export` button
 
-The parser builds the same topology contract as the live connector. It infers relationships from Kubernetes fields commonly visible in `kubectl get ... -o yaml`, including owner references, Ingress and HTTPRoute backends, HTTPRoute parent Gateways, Service selectors, Pod node scheduling, ServiceAccount use, ConfigMap/Secret env references, mounted volumes, PVC/PV bindings, and StorageClass references. Secret values are never decoded or displayed; uploaded Secret summaries show type/key count only.
+The parser builds the same topology contract as the live connector. It infers relationships from Kubernetes fields commonly visible in `kubectl get ... -o yaml`, including owner references, Ingress and Gateway route backends, Gateway route parent Gateways, Service selectors, Pod node scheduling, ServiceAccount use, ConfigMap/Secret env references, mounted volumes, PVC/PV bindings, StorageClass references, and safe CustomResource spec references. Secret values are never decoded or displayed; uploaded Secret summaries show type/key count only.
 
 Before uploading, the UI lets you set a browser-local cluster name and cluster id for the bundle. Empty values fall back to `uploaded-bundle`, and the chosen cluster id is used in generated topology JSON exports. Upload diagnostics show skipped files, YAML/JSON parse errors, unsupported Kubernetes kinds, and import validation errors without displaying manifest body content.
 
@@ -123,7 +123,7 @@ In live Kubernetes mode, `/api/resources/{kind}/{namespace-or--}/{name}/events` 
 
 In live Kubernetes mode, `/api/resources/Pod/{namespace}/{name}/logs` reads the selected Pod's recent logs with `tailLines=200`. Add `?container=name` to read a specific container or initContainer. Logs are read-only, fetched only when the user clicks the logs button, and are not stored by Kuviewer. Kubernetes logs can contain application secrets, so grant `pods/log` only to clusters where this exposure is acceptable. Upload and mock modes show a logs empty state.
 
-Live and upload modes also surface `CustomResourceDefinition` objects as read-only inventory nodes. Kuviewer shows the CRD group, kind, plural name, scope, served versions, and storage version. When a CRD definition is available, Kuviewer can also show matching custom resource instances as `CustomResource` nodes with safe metadata, CRD context, spec/status field counts, and condition summaries. It does not expose raw custom resource spec or status values. Custom relationship inference beyond the CRD-to-instance link is intentionally left for a later step.
+Live and upload modes also surface `CustomResourceDefinition` objects as read-only inventory nodes. Kuviewer shows the CRD group, kind, plural name, scope, served versions, and storage version. When a CRD definition is available, Kuviewer can also show matching custom resource instances as `CustomResource` nodes with safe metadata, CRD context, spec/status field counts, condition summaries, and inferred references to existing Services, Secrets, ConfigMaps, ServiceAccounts, or other known CustomResources. It does not expose raw custom resource spec or status values.
 
 To make the frontend read from the API server, create `website/.env.local`:
 
