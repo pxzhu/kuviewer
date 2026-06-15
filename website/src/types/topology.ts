@@ -30,6 +30,8 @@ export type ResourceKind =
 
 export type ResourceStatus = 'healthy' | 'warning' | 'error' | 'unknown';
 
+export type SummaryValue = string | number | boolean | string[] | number[] | boolean[];
+
 export type EdgeType =
   | 'owns'
   | 'selects'
@@ -58,7 +60,7 @@ export interface TopologyNode {
   uid?: string;
   age?: string;
   owners?: string[];
-  summary: Record<string, string | number | boolean>;
+  summary: Record<string, SummaryValue>;
   x: number;
   y: number;
 }

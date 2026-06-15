@@ -335,11 +335,13 @@ func (p KubernetesProvider) Snapshot(ctx context.Context) (topology.Snapshot, er
 
 	for _, pod := range pods.Items {
 		builder.addResourceNode("Pod", pod.Metadata, podStatus(pod), map[string]interface{}{
-			"phase":      pod.Status.Phase,
-			"ready":      formatReplicas(readyContainers(pod.Status.ContainerStatuses), len(pod.Status.ContainerStatuses)),
-			"restarts":   restartCount(pod.Status.ContainerStatuses),
-			"node":       pod.Spec.NodeName,
-			"conditions": conditionSummary(pod.Status.Conditions),
+			"phase":          pod.Status.Phase,
+			"ready":          formatReplicas(readyContainers(pod.Status.ContainerStatuses), len(pod.Status.ContainerStatuses)),
+			"restarts":       restartCount(pod.Status.ContainerStatuses),
+			"node":           pod.Spec.NodeName,
+			"conditions":     conditionSummary(pod.Status.Conditions),
+			"containerNames": containerNames(pod.Spec.Containers),
+			"initContainers": containerNames(pod.Spec.InitContainers),
 		})
 	}
 
@@ -525,13 +527,18 @@ func (p KubernetesProvider) ResourceLogs(ctx context.Context, ref ResourceRef) (
 		return topology.ResourceLogs{Lines: []string{}, Warning: "logs_unavailable", TailLines: podLogTailLines}, nil
 	}
 
-	path := "/api/v1/namespaces/" + url.PathEscape(ref.Namespace) + "/pods/" + url.PathEscape(ref.Name) + "/log?tailLines=" + strconv.Itoa(podLogTailLines)
+	query := url.Values{}
+	query.Set("tailLines", strconv.Itoa(podLogTailLines))
+	if ref.Container != "" {
+		query.Set("container", ref.Container)
+	}
+	path := "/api/v1/namespaces/" + url.PathEscape(ref.Namespace) + "/pods/" + url.PathEscape(ref.Name) + "/log?" + query.Encode()
 	found, body, err := p.client.getTextStatus(ctx, path, true, podLogMaxBytes)
 	if err != nil || !found {
 		return topology.ResourceLogs{Lines: []string{}, Warning: "logs_unavailable", TailLines: podLogTailLines}, nil
 	}
 
-	return topology.ResourceLogs{Lines: cappedLogLines(body), TailLines: podLogTailLines}, nil
+	return topology.ResourceLogs{Lines: cappedLogLines(body), Container: ref.Container, TailLines: podLogTailLines}, nil
 }
 
 func (p KubernetesProvider) customResourceInstances(ctx context.Context, crds customResourceDefinitionList) []customResourceInstance {
@@ -1038,6 +1045,7 @@ type configMapResource struct {
 }
 
 type container struct {
+	Name    string    `json:"name"`
 	Env     []envVar  `json:"env"`
 	EnvFrom []envFrom `json:"envFrom"`
 }
@@ -2140,6 +2148,17 @@ func restartCount(statuses []containerStatus) int {
 		restarts += status.RestartCount
 	}
 	return restarts
+}
+
+func containerNames(containers []container) []string {
+	names := make([]string, 0, len(containers))
+	for _, container := range containers {
+		if container.Name != "" {
+			names = append(names, container.Name)
+		}
+	}
+	sort.Strings(names)
+	return names
 }
 
 func formatReplicas(ready int, desired int) string {

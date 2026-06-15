@@ -159,6 +159,7 @@ function ResourceExplorerDetail({ liveEnabled, resource, onSelectNode }: { liveE
   const [logsError, setLogsError] = useState('');
   const [logsWarning, setLogsWarning] = useState('');
   const [logsLoading, setLogsLoading] = useState(false);
+  const [selectedLogContainer, setSelectedLogContainer] = useState('');
 
   useEffect(() => {
     if (!resource || !liveEnabled) {
@@ -190,6 +191,7 @@ function ResourceExplorerDetail({ liveEnabled, resource, onSelectNode }: { liveE
     setLogsError('');
     setLogsWarning('');
     setLogsLoading(false);
+    setSelectedLogContainer('');
   }, [resource?.id]);
 
   if (!resource) {
@@ -207,6 +209,8 @@ function ResourceExplorerDetail({ liveEnabled, resource, onSelectNode }: { liveE
     ...(resource.preview.secretValues ? { secretValues: resource.preview.secretValues } : {}),
   };
   const canFetchLogs = liveEnabled && resource.kind === 'Pod';
+  const logContainerOptions = podLogContainerOptions(resource);
+  const effectiveLogContainer = selectedLogContainer || logContainerOptions.find((option) => !option.init)?.name || logContainerOptions[0]?.name || '';
 
   const handleFetchLogs = async () => {
     if (!canFetchLogs) {
@@ -216,7 +220,7 @@ function ResourceExplorerDetail({ liveEnabled, resource, onSelectNode }: { liveE
     setLogsError('');
     setLogsWarning('');
     try {
-      const response = await fetchResourceLogs(resource);
+      const response = await fetchResourceLogs(resource, effectiveLogContainer || undefined);
       setLogLines(response.lines);
       setLogsWarning(response.warning || '');
     } catch (requestError) {
@@ -307,6 +311,24 @@ function ResourceExplorerDetail({ liveEnabled, resource, onSelectNode }: { liveE
             <div className="grid gap-2">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <p className="ku-meta">최근 200줄 · 읽기 전용 · 저장 안 함</p>
+                {logContainerOptions.length > 1 ? (
+                  <select
+                    className="ku-select min-w-[180px]"
+                    value={effectiveLogContainer}
+                    onChange={(event) => {
+                      setSelectedLogContainer(event.target.value);
+                      setLogLines([]);
+                      setLogsError('');
+                      setLogsWarning('');
+                    }}
+                  >
+                    {logContainerOptions.map((option) => (
+                      <option key={`${option.init ? 'init' : 'app'}:${option.name}`} value={option.name}>
+                        {option.init ? `init: ${option.name}` : option.name}
+                      </option>
+                    ))}
+                  </select>
+                ) : null}
                 <button
                   className="rounded-[9px] border border-[rgba(0,122,255,0.22)] bg-[rgba(0,122,255,0.08)] px-2.5 py-1.5 text-xs font-semibold text-[#0057b8] transition hover:bg-[rgba(0,122,255,0.13)] disabled:cursor-not-allowed disabled:opacity-55"
                   type="button"
@@ -316,6 +338,7 @@ function ResourceExplorerDetail({ liveEnabled, resource, onSelectNode }: { liveE
                   {logsLoading ? '불러오는 중' : '로그 불러오기'}
                 </button>
               </div>
+              {effectiveLogContainer ? <p className="ku-meta">컨테이너: {effectiveLogContainer}</p> : null}
               {logsWarning ? <InlineWarning message="로그 조회 권한이 없거나 API가 없어 빈 목록으로 표시합니다." /> : null}
               {logsError ? <InlineWarning message={`로그 조회 실패: ${logsError}`} /> : null}
               {logLines.length === 0 ? (
@@ -431,6 +454,20 @@ function recordFromUnknown(value: unknown): Record<string, unknown> {
     return {};
   }
   return value as Record<string, unknown>;
+}
+
+function podLogContainerOptions(resource: ResourceExplorerItem) {
+  const summary = recordFromUnknown(resource.preview.summary);
+  const containers = asStringArray(summary.containerNames);
+  const initContainers = asStringArray(summary.initContainers);
+  return [
+    ...containers.map((name) => ({ name, init: false })),
+    ...initContainers.map((name) => ({ name, init: true })),
+  ];
+}
+
+function asStringArray(value: unknown) {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
 }
 
 function formatEventTimestamp(value: string) {

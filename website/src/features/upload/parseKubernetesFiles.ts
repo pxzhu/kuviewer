@@ -1,6 +1,6 @@
 import { unzipSync, strFromU8 } from 'fflate';
 import { loadAll } from 'js-yaml';
-import type { ClusterSummary, EdgeType, ResourceKind, ResourceStatus, TopologyEdge, TopologyNode, TopologySnapshot } from '../../types/topology';
+import type { ClusterSummary, EdgeType, ResourceKind, ResourceStatus, SummaryValue, TopologyEdge, TopologyNode, TopologySnapshot } from '../../types/topology';
 
 export interface UploadedTopologyState {
   snapshot: TopologySnapshot;
@@ -423,7 +423,7 @@ function addNetworkPolicyPeerEdges(
   });
 }
 
-function addNode(context: BuildContext, kind: ResourceKind, namespace: string, name: string, status: ResourceStatus, labels: Record<string, string>, summary: Record<string, string | number | boolean>) {
+function addNode(context: BuildContext, kind: ResourceKind, namespace: string, name: string, status: ResourceStatus, labels: Record<string, string>, summary: Record<string, SummaryValue>) {
   const nodeId = id(context.clusterId, namespace, kind, name);
   if (!name || context.nodeSet.has(nodeId)) {
     return nodeId;
@@ -434,7 +434,7 @@ function addNode(context: BuildContext, kind: ResourceKind, namespace: string, n
 }
 
 function ensureReferenceNode(context: BuildContext, kind: ResourceKind, namespace: string, name: string) {
-  const summary: Record<string, string | number | boolean> = { referenced: true };
+  const summary: Record<string, SummaryValue> = { referenced: true };
   if (kind === 'Secret') {
     summary.values = 'hidden';
   }
@@ -453,7 +453,7 @@ function addEdge(context: BuildContext, type: EdgeType, source: string, target: 
   context.edgeSet.add(edgeId);
 }
 
-function objectSummary(kind: ResourceKind, object: KubeObject, customResourceDefinition?: CustomResourceDefinitionRecord): Record<string, string | number | boolean> {
+function objectSummary(kind: ResourceKind, object: KubeObject, customResourceDefinition?: CustomResourceDefinitionRecord): Record<string, SummaryValue> {
   if (kind === 'Secret') {
     return { type: stringAt(object, ['type']) || 'Opaque', keys: Object.keys(object.data || {}).length, values: 'hidden' };
   }
@@ -501,7 +501,9 @@ function objectSummary(kind: ResourceKind, object: KubeObject, customResourceDef
     };
   }
   if (kind === 'Pod') {
-    return { phase: stringAt(object, ['status', 'phase']) || 'Pending', node: stringAt(object, ['spec', 'nodeName']) || '-', containers: asArray(readAt(object, ['spec', 'containers'])).length };
+    const containers = containerNames(readAt(object, ['spec', 'containers']));
+    const initContainers = containerNames(readAt(object, ['spec', 'initContainers']));
+    return { phase: stringAt(object, ['status', 'phase']) || 'Pending', node: stringAt(object, ['spec', 'nodeName']) || '-', containers: containers.length, containerNames: containers, initContainers };
   }
   if (kind === 'Service') {
     return { type: stringAt(object, ['spec', 'type']) || 'ClusterIP', ports: asArray(readAt(object, ['spec', 'ports'])).length };
@@ -652,6 +654,13 @@ function grpcRouteMethods(object: KubeObject) {
       }),
     ),
   );
+}
+
+function containerNames(value: unknown) {
+  return asArray(value)
+    .map((container) => stringAt(container, ['name']))
+    .filter(Boolean)
+    .sort();
 }
 
 function isGatewayRouteKind(kind: ResourceKind) {
