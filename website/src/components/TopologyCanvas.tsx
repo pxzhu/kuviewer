@@ -781,7 +781,7 @@ function buildDisplayGraph(nodes: TopologyNode[], edges: TopologyEdge[], hideSys
 
     visibleNodes = visibleNodes.filter((node) => trafficNodeIds.has(node.id));
     visibleNodeIds = new Set(visibleNodes.map((node) => node.id));
-    visibleEdges = visibleEdges.filter((edge) => visibleNodeIds.has(edge.source) && visibleNodeIds.has(edge.target) && (isTrafficEdge(edge.type) || ['owns', 'scheduled-on', 'binds-storage', 'env-from', 'uses-service-account', 'targets-scale', 'applies-to', 'attaches-to'].includes(edge.type)));
+    visibleEdges = visibleEdges.filter((edge) => visibleNodeIds.has(edge.source) && visibleNodeIds.has(edge.target) && (isTrafficEdge(edge.type) || ['owns', 'scheduled-on', 'binds-storage', 'env-from', 'uses-service-account', 'targets-scale', 'applies-to', 'attaches-to', 'references'].includes(edge.type)));
   }
 
   return { nodes: visibleNodes, edges: visibleEdges };

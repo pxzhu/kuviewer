@@ -345,6 +345,10 @@ func (p KubernetesProvider) Snapshot(ctx context.Context) (topology.Snapshot, er
 		})
 	}
 
+	for _, resource := range customResources {
+		builder.addCustomResourceReferenceEdges(resource, crds)
+	}
+
 	for _, deployment := range deployments.Items {
 		builder.addOwnerEdge("Deployment", deployment.Metadata)
 	}
@@ -887,6 +891,193 @@ func (b *graphBuilder) addNetworkPolicyPeerEdges(networkPolicyID string, policyN
 			b.addEdge(edgeType, networkPolicyID, b.nodeID("Namespace", "", namespace), sourceField, "inferred")
 		}
 	}
+}
+
+type customResourceReference struct {
+	kind        string
+	namespace   string
+	name        string
+	sourceField string
+}
+
+func (b *graphBuilder) addCustomResourceReferenceEdges(resource customResourceInstance, crds customResourceDefinitionList) {
+	sourceID := b.nodeID("CustomResource", resource.Metadata.Namespace, customResourceDisplayName(resource))
+	for _, ref := range customResourceReferences(resource.Spec, resource.Metadata.Namespace, resource, crds) {
+		b.addEdge("references", sourceID, b.nodeID(ref.kind, ref.namespace, ref.name), ref.sourceField, "inferred")
+	}
+}
+
+func customResourceReferences(spec map[string]interface{}, defaultNamespace string, source customResourceInstance, crds customResourceDefinitionList) []customResourceReference {
+	references := []customResourceReference{}
+	collectCustomResourceReferences(spec, "spec", defaultNamespace, source, crds, &references)
+	return references
+}
+
+func collectCustomResourceReferences(value interface{}, path string, defaultNamespace string, source customResourceInstance, crds customResourceDefinitionList, references *[]customResourceReference) {
+	if len(*references) >= 80 || value == nil {
+		return
+	}
+	switch typed := value.(type) {
+	case []interface{}:
+		for index, item := range typed {
+			collectCustomResourceReferences(item, fmt.Sprintf("%s[%d]", path, index), defaultNamespace, source, crds, references)
+		}
+	case map[string]interface{}:
+		for key, child := range typed {
+			childPath := path + "." + key
+			fallbackKind := customResourceReferenceKindFromKey(key)
+			if isCustomResourceReferenceField(key) {
+				if childObject, ok := child.(map[string]interface{}); ok {
+					if ref, ok := customResourceReferenceFromObject(childObject, fallbackKind, childPath, defaultNamespace, source, crds); ok {
+						*references = append(*references, ref)
+					}
+				}
+				if childList, ok := child.([]interface{}); ok {
+					for index, item := range childList {
+						if childObject, ok := item.(map[string]interface{}); ok {
+							if ref, ok := customResourceReferenceFromObject(childObject, fallbackKind, fmt.Sprintf("%s[%d]", childPath, index), defaultNamespace, source, crds); ok {
+								*references = append(*references, ref)
+							}
+						}
+					}
+				}
+			}
+			if nameKind := customResourceReferenceKindFromNameKey(key); nameKind != "" {
+				if name, ok := child.(string); ok && strings.TrimSpace(name) != "" {
+					*references = append(*references, customResourceReference{
+						kind:        nameKind,
+						namespace:   targetNamespaceForKind(nameKind, stringValue(typed["namespace"], defaultNamespace), source.CRDScope),
+						name:        strings.TrimSpace(name),
+						sourceField: childPath,
+					})
+				}
+			}
+			collectCustomResourceReferences(child, childPath, defaultNamespace, source, crds, references)
+		}
+	}
+}
+
+func customResourceReferenceFromObject(value map[string]interface{}, fallbackKind string, sourceField string, defaultNamespace string, source customResourceInstance, crds customResourceDefinitionList) (customResourceReference, bool) {
+	name := strings.TrimSpace(stringValue(value["name"], ""))
+	if name == "" {
+		return customResourceReference{}, false
+	}
+	apiVersion := stringValue(value["apiVersion"], "")
+	kindName := stringValue(value["kind"], "")
+	customDefinition, hasCustomDefinition := customResourceDefinitionForReference(apiVersion, kindName, crds)
+	kind := fallbackKind
+	scope := source.CRDScope
+	if hasCustomDefinition {
+		kind = "CustomResource"
+		scope = customDefinition.Spec.Scope
+		name = kindName + ":" + name
+	} else if knownResourceKind(kindName) {
+		kind = kindName
+	}
+	if kind == "" {
+		return customResourceReference{}, false
+	}
+	return customResourceReference{
+		kind:        kind,
+		namespace:   targetNamespaceForKind(kind, stringValue(value["namespace"], defaultNamespace), scope),
+		name:        name,
+		sourceField: sourceField,
+	}, true
+}
+
+func isCustomResourceReferenceField(key string) bool {
+	return strings.HasSuffix(key, "Ref") || strings.HasSuffix(key, "Refs") || strings.HasSuffix(key, "Reference") || strings.HasSuffix(key, "References")
+}
+
+func customResourceReferenceKindFromKey(key string) string {
+	switch strings.ToLower(key) {
+	case "secretref", "secretrefs":
+		return "Secret"
+	case "configmapref", "configmaprefs":
+		return "ConfigMap"
+	case "serviceaccountref", "serviceaccountrefs":
+		return "ServiceAccount"
+	case "serviceref", "servicerefs", "backendref", "backendrefs":
+		return "Service"
+	default:
+		return ""
+	}
+}
+
+func customResourceReferenceKindFromNameKey(key string) string {
+	switch strings.ToLower(key) {
+	case "secretname":
+		return "Secret"
+	case "configmapname":
+		return "ConfigMap"
+	case "serviceaccountname":
+		return "ServiceAccount"
+	case "servicename":
+		return "Service"
+	default:
+		return ""
+	}
+}
+
+func customResourceDefinitionForReference(apiVersion string, kind string, crds customResourceDefinitionList) (customResourceDefinitionResource, bool) {
+	group, version := apiVersionGroupVersion(apiVersion)
+	if group == "" || version == "" || kind == "" {
+		return customResourceDefinitionResource{}, false
+	}
+	for _, crd := range crds.Items {
+		if crd.Spec.Group != group || crd.Spec.Names.Kind != kind {
+			continue
+		}
+		for _, candidate := range crd.Spec.Versions {
+			if candidate.Name == version && candidate.Served {
+				return crd, true
+			}
+		}
+	}
+	return customResourceDefinitionResource{}, false
+}
+
+func apiVersionGroupVersion(apiVersion string) (string, string) {
+	parts := strings.Split(apiVersion, "/")
+	if len(parts) < 2 {
+		return "", apiVersion
+	}
+	return strings.Join(parts[:len(parts)-1], "/"), parts[len(parts)-1]
+}
+
+func targetNamespaceForKind(kind string, namespace string, customResourceScope string) string {
+	if kind == "CustomResource" && customResourceScope == "Cluster" {
+		return ""
+	}
+	if clusterScopedKind(kind) {
+		return ""
+	}
+	return namespace
+}
+
+func clusterScopedKind(kind string) bool {
+	switch kind {
+	case "Cluster", "Namespace", "Node", "PersistentVolume", "StorageClass", "CustomResourceDefinition":
+		return true
+	default:
+		return false
+	}
+}
+
+func knownResourceKind(kind string) bool {
+	switch kind {
+	case "Cluster", "Namespace", "Node", "Deployment", "ReplicaSet", "StatefulSet", "DaemonSet", "Job", "CronJob", "HorizontalPodAutoscaler", "Pod", "ServiceAccount", "Service", "EndpointSlice", "Ingress", "Gateway", "HTTPRoute", "GRPCRoute", "TLSRoute", "TCPRoute", "NetworkPolicy", "ConfigMap", "Secret", "PersistentVolumeClaim", "PersistentVolume", "StorageClass", "CustomResourceDefinition", "CustomResource":
+		return true
+	default:
+		return false
+	}
+}
+
+func stringValue(value interface{}, fallback string) string {
+	if text, ok := value.(string); ok {
+		return strings.TrimSpace(text)
+	}
+	return fallback
 }
 
 func (b *graphBuilder) nodeID(kind string, namespace string, name string) string {

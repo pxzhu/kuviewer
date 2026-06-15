@@ -498,6 +498,14 @@ metadata:
 spec:
   owner: checkout
   replicas: 2
+  secretRef:
+    name: checkout-secret
+  configMapRefs:
+    - name: checkout-config
+  backendRef:
+    apiVersion: v1
+    kind: Service
+    name: checkout-api
 status:
   conditions:
     - type: Ready

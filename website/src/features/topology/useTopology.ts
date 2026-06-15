@@ -336,6 +336,7 @@ const edgeColors: Record<string, string> = {
   'attaches-to': '#ff9f0a',
   'allows-ingress': '#00c7be',
   'allows-egress': '#5ac8fa',
+  references: '#ffcc00',
 };
 
 function colorFromString(value: string) {
