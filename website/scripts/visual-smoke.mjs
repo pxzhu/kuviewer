@@ -158,6 +158,7 @@ async function verifyResourceExplorer(page) {
   await expect(page.getByRole('heading', { name: 'Metadata' })).toBeVisible({ timeout: 10_000 });
   await expect(page.getByRole('heading', { name: 'Status' })).toBeVisible({ timeout: 10_000 });
   await expect(page.getByRole('heading', { name: 'Safe Preview' })).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByRole('heading', { name: 'YAML Preview' })).toBeVisible({ timeout: 10_000 });
   await expect(page.getByRole('heading', { name: 'Relations' })).toBeVisible({ timeout: 10_000 });
   await expect(page.getByRole('heading', { name: 'Events' })).toBeVisible({ timeout: 10_000 });
   await expect(page.getByRole('heading', { name: 'Logs' })).toBeVisible({ timeout: 10_000 });

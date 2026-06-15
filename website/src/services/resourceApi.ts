@@ -94,6 +94,7 @@ export function resourcesFromSnapshot(snapshot: TopologySnapshot): ResourceExplo
 
 function safePreview(node: TopologySnapshot['nodes'][number]) {
   const safeNodeAnnotations = safeAnnotations(node.annotations);
+  const summary = safeSummary(node.kind, node.summary);
   const preview: Record<string, unknown> = {
     metadata: {
       kind: node.kind,
@@ -109,9 +110,10 @@ function safePreview(node: TopologySnapshot['nodes'][number]) {
     },
     status: {
       status: node.status,
-      ...safeSummary(node.kind, node.summary),
+      ...summary,
     },
-    summary: safeSummary(node.kind, node.summary),
+    summary,
+    safeYaml: safeYamlPreview(node, safeNodeAnnotations, summary),
   };
   if (node.kind === 'Secret') {
     preview.secretValues = 'hidden';
@@ -162,6 +164,107 @@ function sensitiveField(value: string) {
     normalized.includes('private-key') ||
     normalized.includes('client-key')
   );
+}
+
+function safeYamlPreview(node: TopologySnapshot['nodes'][number], annotations: Record<string, string>, summary: Record<string, SummaryValue>) {
+  const lines = [
+    'apiVersion: kuviewer.io/v1',
+    `kind: ${yamlScalar(node.kind)}`,
+    'metadata:',
+    `  name: ${yamlScalar(node.name)}`,
+  ];
+  if (node.namespace) {
+    lines.push(`  namespace: ${yamlScalar(node.namespace)}`);
+  }
+  lines.push(`  cluster: ${yamlScalar(node.clusterId)}`);
+  if (node.uid) {
+    lines.push(`  uid: ${yamlScalar(shortUid(node.uid))}`);
+  }
+  if (node.age) {
+    lines.push(`  age: ${yamlScalar(node.age)}`);
+  }
+  appendStringMapYaml(lines, '  labels', node.labels ?? {});
+  appendStringMapYaml(lines, '  annotations', annotations);
+  appendStringArrayYaml(lines, '  owners', node.owners ?? []);
+  lines.push('status:');
+  lines.push(`  state: ${yamlScalar(node.status)}`);
+  appendSummaryYaml(lines, 'summary', summary);
+  if (node.kind === 'Secret') {
+    lines.push('secretValues: hidden');
+  }
+  return lines.join('\n');
+}
+
+function appendStringMapYaml(lines: string[], key: string, values: Record<string, string>) {
+  const entries = Object.entries(values).sort(([left], [right]) => left.localeCompare(right));
+  if (entries.length === 0) {
+    lines.push(`${key}: {}`);
+    return;
+  }
+  lines.push(`${key}:`);
+  entries.forEach(([entryKey, entryValue]) => {
+    lines.push(`    ${yamlKey(entryKey)}: ${sensitiveField(entryKey) || sensitiveField(entryValue) ? 'redacted' : yamlScalar(entryValue)}`);
+  });
+}
+
+function appendStringArrayYaml(lines: string[], key: string, values: string[]) {
+  if (values.length === 0) {
+    lines.push(`${key}: []`);
+    return;
+  }
+  lines.push(`${key}:`);
+  values.forEach((value) => lines.push(`    - ${yamlScalar(value)}`));
+}
+
+function appendSummaryYaml(lines: string[], key: string, values: Record<string, SummaryValue>) {
+  const entries = Object.entries(values).sort(([left], [right]) => left.localeCompare(right));
+  if (entries.length === 0) {
+    lines.push(`${key}: {}`);
+    return;
+  }
+  lines.push(`${key}:`);
+  entries.forEach(([entryKey, entryValue]) => {
+    if (sensitiveField(entryKey)) {
+      lines.push(`  ${yamlKey(entryKey)}: redacted`);
+      return;
+    }
+    if (Array.isArray(entryValue)) {
+      if (entryValue.length === 0) {
+        lines.push(`  ${yamlKey(entryKey)}: []`);
+        return;
+      }
+      lines.push(`  ${yamlKey(entryKey)}:`);
+      entryValue.forEach((item) => lines.push(`    - ${safeYamlScalar(item)}`));
+      return;
+    }
+    lines.push(`  ${yamlKey(entryKey)}: ${safeYamlScalar(entryValue)}`);
+  });
+}
+
+function safeYamlScalar(value: SummaryValue) {
+  return typeof value === 'string' && sensitiveField(value) ? 'redacted' : yamlScalar(value);
+}
+
+function yamlScalar(value: unknown) {
+  if (typeof value === 'boolean' || typeof value === 'number') {
+    return String(value);
+  }
+  const text = String(value ?? '');
+  if (!text) {
+    return "''";
+  }
+  if (yamlBareScalar(text)) {
+    return text;
+  }
+  return `'${text.replace(/'/g, "''")}'`;
+}
+
+function yamlBareScalar(value: string) {
+  return value !== 'true' && value !== 'false' && value !== 'null' && /^[A-Za-z0-9_./:-]+$/.test(value);
+}
+
+function yamlKey(value: string) {
+  return yamlBareScalar(value) ? value : yamlScalar(value);
 }
 
 function shortUid(uid?: string) {

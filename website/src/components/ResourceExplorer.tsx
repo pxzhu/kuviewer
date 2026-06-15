@@ -208,6 +208,7 @@ function ResourceExplorerDetail({ liveEnabled, resource, onSelectNode }: { liveE
     ...recordFromUnknown(resource.preview.summary),
     ...(resource.preview.secretValues ? { secretValues: resource.preview.secretValues } : {}),
   };
+  const yamlPreview = typeof resource.preview.safeYaml === 'string' ? resource.preview.safeYaml : '';
   const canFetchLogs = liveEnabled && resource.kind === 'Pod';
   const logContainerOptions = podLogContainerOptions(resource);
   const effectiveLogContainer = selectedLogContainer || logContainerOptions.find((option) => !option.init)?.name || logContainerOptions[0]?.name || '';
@@ -255,6 +256,13 @@ function ResourceExplorerDetail({ liveEnabled, resource, onSelectNode }: { liveE
         </DetailSection>
         <DetailSection icon={FileText} title="Safe Preview">
           <KeyValueGrid values={summaryPreview} />
+        </DetailSection>
+        <DetailSection icon={FileText} title="YAML Preview">
+          {yamlPreview ? (
+            <pre className="max-h-[360px] overflow-auto rounded-[10px] border border-[rgba(60,60,67,0.12)] bg-[#111827] p-3 font-mono text-[11px] leading-5 text-[#d1d5db]">{yamlPreview}</pre>
+          ) : (
+            <p className="ku-meta">표시할 YAML preview가 없습니다.</p>
+          )}
         </DetailSection>
         <DetailSection icon={Tags} title="Labels">
           <KeyValueGrid values={resource.labels} empty="labels 없음" />
