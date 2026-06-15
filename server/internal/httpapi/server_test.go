@@ -25,6 +25,12 @@ func (p stubProvider) Snapshot(context.Context) (topology.Snapshot, error) {
 	return p.snapshot, p.err
 }
 
+type panicProvider struct{}
+
+func (panicProvider) Snapshot(context.Context) (topology.Snapshot, error) {
+	panic("boom")
+}
+
 func TestTopologyRequiresAdminBearerToken(t *testing.T) {
 	handler := NewServer(stubProvider{snapshot: testSnapshot()}, "secret-token", "", "")
 
@@ -74,6 +80,22 @@ func TestTopologyReturnsSnapshot(t *testing.T) {
 	}
 	if len(snapshot.Clusters) != 1 || snapshot.Clusters[0].Name != "test-cluster" {
 		t.Fatalf("unexpected snapshot: %+v", snapshot)
+	}
+}
+
+func TestTopologyRecoversProviderPanic(t *testing.T) {
+	handler := NewServer(panicProvider{}, "secret-token", "", "")
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/api/topology", nil)
+	request.Header.Set("Authorization", "Bearer secret-token")
+
+	handler.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusInternalServerError)
+	}
+	if !strings.Contains(recorder.Body.String(), "internal_server_error") {
+		t.Fatalf("body = %q, want internal_server_error", recorder.Body.String())
 	}
 }
 
