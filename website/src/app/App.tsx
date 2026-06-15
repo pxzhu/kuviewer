@@ -347,12 +347,15 @@ function Dashboard() {
 function usePreventDocumentPullToRefresh() {
   useEffect(() => {
     let lastTouchY = 0;
+    const touchStartOptions = { passive: true, capture: true } as AddEventListenerOptions;
+    const touchMoveOptions = { passive: false, capture: true } as AddEventListenerOptions;
 
     const handleTouchStart = (event: TouchEvent) => {
       if (event.touches.length !== 1) {
         return;
       }
       lastTouchY = event.touches[0].clientY;
+      nudgeScrollBoundaries(event.target);
     };
 
     const handleTouchMove = (event: TouchEvent) => {
@@ -371,14 +374,50 @@ function usePreventDocumentPullToRefresh() {
       event.preventDefault();
     };
 
-    document.addEventListener('touchstart', handleTouchStart, { passive: true });
-    document.addEventListener('touchmove', handleTouchMove, { passive: false });
+    document.addEventListener('touchstart', handleTouchStart, touchStartOptions);
+    document.addEventListener('touchmove', handleTouchMove, touchMoveOptions);
 
     return () => {
-      document.removeEventListener('touchstart', handleTouchStart);
-      document.removeEventListener('touchmove', handleTouchMove);
+      document.removeEventListener('touchstart', handleTouchStart, touchStartOptions);
+      document.removeEventListener('touchmove', handleTouchMove, touchMoveOptions);
     };
   }, []);
+}
+
+function nudgeScrollBoundaries(target: EventTarget | null) {
+  const scrollableElements = scrollableAncestors(target);
+  const appShell = document.querySelector('.ku-app-shell');
+  if (appShell && !scrollableElements.includes(appShell)) {
+    scrollableElements.push(appShell);
+  }
+
+  scrollableElements.forEach((element) => {
+    const maxScrollTop = element.scrollHeight - element.clientHeight;
+    if (maxScrollTop <= 1) {
+      return;
+    }
+    if (element.scrollTop <= 0) {
+      element.scrollTop = 1;
+      return;
+    }
+    if (element.scrollTop >= maxScrollTop) {
+      element.scrollTop = maxScrollTop - 1;
+    }
+  });
+}
+
+function scrollableAncestors(target: EventTarget | null) {
+  const elements: Element[] = [];
+  let element = target instanceof Element ? target : null;
+  while (element) {
+    const style = window.getComputedStyle(element);
+    const scrollableY = ['auto', 'scroll', 'overlay'].includes(style.overflowY) && element.scrollHeight > element.clientHeight + 1;
+    if (scrollableY) {
+      elements.push(element);
+    }
+    element = element.parentElement;
+  }
+  return elements;
 }
 
 function targetCanScroll(target: EventTarget | null, deltaY: number) {
@@ -402,7 +441,7 @@ function elementCanScroll(element: Element, deltaY: number) {
   if (!scrollableY) {
     return false;
   }
-  const canScrollUp = element.scrollTop > 0;
+  const canScrollUp = element.scrollTop > 1;
   const canScrollDown = element.scrollTop + element.clientHeight < element.scrollHeight - 1;
   return (deltaY > 0 && canScrollUp) || (deltaY < 0 && canScrollDown);
 }
