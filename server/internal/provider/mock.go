@@ -30,6 +30,7 @@ func (MockProvider) Snapshot(_ context.Context) (topology.Snapshot, error) {
 			node("Node", "", "worker-a", "healthy", map[string]string{"zone": "a"}, map[string]interface{}{"cpu": "61%", "memory": "72%", "pods": 8}, 600, 80),
 			node("Node", "", "worker-b", "healthy", map[string]string{"zone": "b"}, map[string]interface{}{"cpu": "48%", "memory": "58%", "pods": 7}, 600, 260),
 			node("Node", "", "worker-c", "warning", map[string]string{"zone": "c"}, map[string]interface{}{"cpu": "82%", "memory": "86%", "pods": 5}, 600, 440),
+			node("CustomResourceDefinition", "", "widgets.platform.example.com", "healthy", map[string]string{"group": "platform.example.com"}, map[string]interface{}{"group": "platform.example.com", "kind": "Widget", "plural": "widgets", "scope": "Namespaced", "servedVersions": "v1", "storageVersion": "v1"}, 1500, 120),
 			node("Deployment", "platform", "kuviewer-api", "healthy", map[string]string{"app": "kuviewer", "tier": "api"}, map[string]interface{}{"replicas": "2/2", "image": "kuviewer/api:mock"}, 900, 120),
 			node("Service", "platform", "kuviewer-api", "healthy", map[string]string{"app": "kuviewer"}, map[string]interface{}{"type": "ClusterIP", "port": 8080}, 1160, 120),
 			node("Pod", "platform", "kuviewer-api-6d9c4", "healthy", map[string]string{"app": "kuviewer"}, map[string]interface{}{"ready": true, "restarts": 0, "node": "worker-a"}, 920, 260),

@@ -72,6 +72,7 @@ const supportedKinds = new Set<ResourceKind>([
   'PersistentVolumeClaim',
   'PersistentVolume',
   'StorageClass',
+  'CustomResourceDefinition',
 ]);
 
 const defaultUploadedCluster = 'uploaded-bundle';
@@ -518,12 +519,25 @@ function objectSummary(kind: ResourceKind, object: KubeObject): Record<string, s
   if (kind === 'StorageClass') {
     return { provisioner: stringAt(object, ['provisioner']) || stringAt(object, ['spec', 'provisioner']) || '-' };
   }
+  if (kind === 'CustomResourceDefinition') {
+    return {
+      group: stringAt(object, ['spec', 'group']) || '-',
+      kind: stringAt(object, ['spec', 'names', 'kind']) || '-',
+      plural: stringAt(object, ['spec', 'names', 'plural']) || '-',
+      scope: stringAt(object, ['spec', 'scope']) || '-',
+      servedVersions: crdServedVersions(object).join(',') || '-',
+      storageVersion: crdStorageVersion(object) || '-',
+    };
+  }
   return { source: 'uploaded' };
 }
 
 function objectStatus(kind: ResourceKind, object: KubeObject): ResourceStatus {
   if (kind === 'Secret') {
     return 'unknown';
+  }
+  if (kind === 'CustomResourceDefinition') {
+    return crdEstablished(object) ? 'healthy' : 'unknown';
   }
   if (kind === 'Pod') {
     const phase = stringAt(object, ['status', 'phase']);
@@ -609,6 +623,24 @@ function grpcRouteMethods(object: KubeObject) {
 
 function isGatewayRouteKind(kind: ResourceKind) {
   return kind === 'HTTPRoute' || kind === 'GRPCRoute' || kind === 'TLSRoute' || kind === 'TCPRoute';
+}
+
+function crdServedVersions(object: KubeObject) {
+  return asArray(readAt(object, ['spec', 'versions']))
+    .filter((version) => isRecord(version) && version.served === true && typeof version.name === 'string')
+    .map((version) => String((version as Record<string, unknown>).name))
+    .sort();
+}
+
+function crdStorageVersion(object: KubeObject) {
+  const version = asArray(readAt(object, ['spec', 'versions']))
+    .filter(isRecord)
+    .find((candidate) => candidate.storage === true && typeof candidate.name === 'string');
+  return version ? String(version.name) : '';
+}
+
+function crdEstablished(object: KubeObject) {
+  return asArray(readAt(object, ['status', 'conditions'])).some((condition) => isRecord(condition) && condition.type === 'Established' && condition.status === 'True');
 }
 
 function gatewayHosts(object: KubeObject) {

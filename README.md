@@ -120,6 +120,8 @@ The resource explorer endpoints are read-only. They expose metadata, labels, red
 
 In live Kubernetes mode, `/api/resources/{kind}/{namespace-or--}/{name}/events` reads core v1 Events with an `involvedObject` field selector and returns newest events first. If Events are unavailable because of RBAC or API differences, Kuviewer returns an empty event list with a safe warning instead of failing the whole resource detail panel. Upload and mock modes keep returning an empty event list.
 
+Live and upload modes also surface `CustomResourceDefinition` objects as read-only inventory nodes. Kuviewer shows the CRD group, kind, plural name, scope, served versions, and storage version. Custom resource instance discovery and custom relationship inference are intentionally left for a later step.
+
 To make the frontend read from the API server, create `website/.env.local`:
 
 ```bash
@@ -187,14 +189,15 @@ Supported snapshot resources in the first provider:
 - PersistentVolume
 - PersistentVolumeClaim
 - StorageClass
+- CustomResourceDefinition
 - referenced Secret metadata only
 - live core v1 Events for the selected resource detail
 
-Secret list/read RBAC is intentionally not granted. Secret nodes are created from Pod references such as `envFrom`, `env.valueFrom`, `volumes.secret`, and `imagePullSecrets`, and values are never displayed. Events read RBAC is granted for read-only resource detail context.
+Secret list/read RBAC is intentionally not granted. Secret nodes are created from Pod references such as `envFrom`, `env.valueFrom`, `volumes.secret`, and `imagePullSecrets`, and values are never displayed. Events and CustomResourceDefinition read RBAC are granted for read-only resource detail and CRD inventory context.
 
 ### Real sample infrastructure
 
-Apply [deploy/sample-infra/kuviewer-demo.yaml](/Users/pxzhu/vscode/kuviewer/deploy/sample-infra/kuviewer-demo.yaml) to create a real Kubernetes topology for UI validation:
+Apply [deploy/sample-infra/kuviewer-demo.yaml](deploy/sample-infra/kuviewer-demo.yaml) to create a real Kubernetes topology for UI validation:
 
 ```bash
 kubectl apply -f deploy/sample-infra/kuviewer-demo.yaml
@@ -210,7 +213,7 @@ It creates sample namespaces with real Kubernetes objects:
 - NetworkPolicy ingress/egress intent examples, including namespaceSelector + podSelector matching
 - ConfigMap, Secret reference, ServiceAccount, PVC, PV, and StorageClass relationships
 
-Gateway API resources are optional because they require Gateway API CRDs. Kuviewer supports Gateway, HTTPRoute, GRPCRoute, and optional TLSRoute/TCPRoute when those CRDs are installed. Apply [deploy/sample-infra/gateway-api-demo.yaml](/Users/pxzhu/vscode/kuviewer/deploy/sample-infra/gateway-api-demo.yaml) only on clusters where Gateway API resources are installed:
+Gateway API resources are optional because they require Gateway API CRDs. Kuviewer supports Gateway, HTTPRoute, GRPCRoute, and optional TLSRoute/TCPRoute when those CRDs are installed. Apply [deploy/sample-infra/gateway-api-demo.yaml](deploy/sample-infra/gateway-api-demo.yaml) only on clusters where Gateway API resources are installed:
 
 ```bash
 kubectl apply -f deploy/sample-infra/gateway-api-demo.yaml
@@ -227,7 +230,7 @@ Do not commit real tokens, kubeconfigs, private keys, Kubernetes Secret values, 
 
 ### Kubernetes smoke test from macOS
 
-Use [scripts/smoke-kubernetes-api.sh](/Users/pxzhu/vscode/kuviewer/scripts/smoke-kubernetes-api.sh) to test the real Kubernetes provider against the current `kubectl` context. The script creates temporary read-only RBAC, starts Kuviewer locally with `KUVIEWER_SOURCE=kubernetes`, verifies `/api/status` and `/api/topology`, then removes the temporary resources.
+Use [scripts/smoke-kubernetes-api.sh](scripts/smoke-kubernetes-api.sh) to test the real Kubernetes provider against the current `kubectl` context. The script creates temporary read-only RBAC, starts Kuviewer locally with `KUVIEWER_SOURCE=kubernetes`, verifies `/api/status` and `/api/topology`, then removes the temporary resources.
 
 Dry-run the temporary manifest first:
 
@@ -304,7 +307,7 @@ scripts/smoke-kubernetes-api.sh
 
 ## Single-container build
 
-The root [Dockerfile](/Users/pxzhu/vscode/kuviewer/Dockerfile) builds the React frontend and Go API server into one image. The Docker image defaults to root-path static assets for standalone subdomain deployment.
+The root [Dockerfile](Dockerfile) builds the React frontend and Go API server into one image. The Docker image defaults to root-path static assets for standalone subdomain deployment.
 
 The final runtime image uses a supported Alpine release and runs as the non-root `kuviewer` user.
 
@@ -337,8 +340,8 @@ For the older `/kuviewer/` subpath preview build, keep using `npm run build` fro
 Kuviewer can run as a separate service while sharing the server's external HTTPS port with the existing website. The host-level gateway routes by the request domain:
 
 ```text
-www.nebbixh.com       -> 127.0.0.1:8080
-kuviewer.nebbixh.com  -> 127.0.0.1:18085
+www.example.com       -> 127.0.0.1:8080
+kuviewer.example.com  -> 127.0.0.1:18085
 ```
 
 The two services share external `443`, but they use different localhost ports behind the gateway.
@@ -365,16 +368,16 @@ The tracked compose file binds Kuviewer only to localhost:
 Gateway example:
 
 ```caddyfile
-www.nebbixh.com {
+www.example.com {
   reverse_proxy 127.0.0.1:8080
 }
 
-kuviewer.nebbixh.com {
+kuviewer.example.com {
   reverse_proxy 127.0.0.1:18085
 }
 ```
 
-The same example is tracked at [deploy/gateway/Caddyfile.kuviewer.example](/Users/pxzhu/vscode/kuviewer/deploy/gateway/Caddyfile.kuviewer.example). DNS for `kuviewer.nebbixh.com` should point to the same server as `www.nebbixh.com`, and TLS stays the responsibility of the host-level gateway.
+The same example is tracked at [deploy/gateway/Caddyfile.kuviewer.example](deploy/gateway/Caddyfile.kuviewer.example). Replace the example domains with your own DNS names; TLS stays the responsibility of the host-level gateway.
 
 Local checks:
 
@@ -404,17 +407,17 @@ SERVER_PORT
 SERVER_SSH_KEY
 ```
 
-Optional repository variables:
+Optional repository variables, shown with example values:
 
 ```text
-DEPLOY_PATH=/home/ubuntu/kuviewer
+DEPLOY_PATH=/opt/kuviewer
 HEALTH_URL=http://127.0.0.1:18085/healthz
 ```
 
-Server prerequisite:
+Server prerequisite for the selected `DEPLOY_PATH`:
 
 ```bash
-cd /home/ubuntu/kuviewer
+cd /opt/kuviewer
 cp deploy/standalone/.env.example deploy/standalone/.env
 # edit KUVIEWER_ADMIN_TOKEN before the first deploy
 ```
@@ -426,7 +429,7 @@ Deployment triggers:
 
 ## Native Kubernetes install draft
 
-The first manifest is available at [deploy/kubernetes/kuviewer.yaml](/Users/pxzhu/vscode/kuviewer/deploy/kubernetes/kuviewer.yaml).
+The first manifest is available at [deploy/kubernetes/kuviewer.yaml](deploy/kubernetes/kuviewer.yaml).
 
 Before applying it, change the placeholder admin token:
 

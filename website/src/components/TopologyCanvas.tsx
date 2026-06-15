@@ -1094,7 +1094,7 @@ function columnForKind(kind: ResourceKind): LayoutColumn {
   if (kind === 'NetworkPolicy') {
     return 'policy';
   }
-  if (kind === 'ConfigMap' || kind === 'Secret' || kind === 'ServiceAccount') {
+  if (kind === 'ConfigMap' || kind === 'Secret' || kind === 'ServiceAccount' || kind === 'CustomResourceDefinition') {
     return 'config';
   }
   if (kind === 'PersistentVolume' || kind === 'PersistentVolumeClaim' || kind === 'StorageClass') {
@@ -1104,7 +1104,7 @@ function columnForKind(kind: ResourceKind): LayoutColumn {
 }
 
 function isSystemNode(node: TopologyNode) {
-  if (node.kind === 'Cluster' || node.kind === 'Node' || node.kind === 'PersistentVolume' || node.kind === 'StorageClass') {
+  if (node.kind === 'Cluster' || node.kind === 'Node' || node.kind === 'PersistentVolume' || node.kind === 'StorageClass' || node.kind === 'CustomResourceDefinition') {
     return false;
   }
 
