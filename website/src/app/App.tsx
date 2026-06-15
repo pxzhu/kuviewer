@@ -29,6 +29,8 @@ export function App() {
 }
 
 function Dashboard() {
+  usePreventDocumentPullToRefresh();
+
   const [filters, setFilters] = useState(initialFilters);
   const [colorMode, setColorMode] = useState<ColorMode>('status');
   const [viewMode, setViewMode] = useState<'topology' | 'traffic'>('topology');
@@ -340,6 +342,53 @@ function Dashboard() {
       </div>
     </main>
   );
+}
+
+function usePreventDocumentPullToRefresh() {
+  useEffect(() => {
+    let touchStartY = 0;
+
+    const handleTouchStart = (event: TouchEvent) => {
+      if (event.touches.length !== 1) {
+        return;
+      }
+      touchStartY = event.touches[0].clientY;
+    };
+
+    const handleTouchMove = (event: TouchEvent) => {
+      if (event.touches.length !== 1) {
+        return;
+      }
+
+      const isPullingDown = event.touches[0].clientY > touchStartY;
+      if (!isPullingDown || window.scrollY > 0 || targetCanScrollUp(event.target)) {
+        return;
+      }
+
+      event.preventDefault();
+    };
+
+    document.addEventListener('touchstart', handleTouchStart, { passive: true });
+    document.addEventListener('touchmove', handleTouchMove, { passive: false });
+
+    return () => {
+      document.removeEventListener('touchstart', handleTouchStart);
+      document.removeEventListener('touchmove', handleTouchMove);
+    };
+  }, []);
+}
+
+function targetCanScrollUp(target: EventTarget | null) {
+  let element = target instanceof Element ? target : null;
+  while (element && element !== document.body && element !== document.documentElement) {
+    const style = window.getComputedStyle(element);
+    const scrollableY = ['auto', 'scroll', 'overlay'].includes(style.overflowY) && element.scrollHeight > element.clientHeight + 1;
+    if (scrollableY && element.scrollTop > 0) {
+      return true;
+    }
+    element = element.parentElement;
+  }
+  return false;
 }
 
 function formatLastSync(lastUpdatedAt: number | null) {
