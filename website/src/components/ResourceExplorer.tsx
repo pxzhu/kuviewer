@@ -25,6 +25,18 @@ const defaultOpenDetailSections: DetailSectionId[] = ['metadata', 'status', 'saf
 
 type DetailSectionId = 'metadata' | 'status' | 'safe' | 'yaml' | 'labels' | 'annotations' | 'relations' | 'events' | 'logs';
 type LogDensity = 'comfortable' | 'compact';
+type EventSeverity = 'warning' | 'normal' | 'other';
+type EventSeverityFilter = 'all' | 'warning' | 'normal';
+
+const detailJumpSections: Array<{ id: DetailSectionId; label: string }> = [
+  { id: 'metadata', label: 'Metadata' },
+  { id: 'status', label: 'Status' },
+  { id: 'safe', label: 'Safe Preview' },
+  { id: 'relations', label: 'Relations' },
+  { id: 'events', label: 'Events' },
+  { id: 'logs', label: 'Logs' },
+];
+const detailKeyboardSections: DetailSectionId[] = ['metadata', 'status', 'safe', 'yaml', 'labels', 'annotations', 'relations', 'events', 'logs'];
 
 interface ResourceViewPreset {
   name: string;
@@ -41,6 +53,13 @@ interface RelationGroup {
   label: string;
   count: number;
   items: ResourceExplorerItem['related'];
+}
+
+interface EventGroup {
+  key: EventSeverity;
+  label: string;
+  count: number;
+  items: Array<{ event: ResourceEvent; index: number }>;
 }
 
 export function ResourceExplorer({ liveEnabled, selectedNodeId, snapshot, sourceMode, onOpenTopologyNode, onSelectNode }: ResourceExplorerProps) {
@@ -265,6 +284,7 @@ function ResourceExplorerDetail({
   const [eventsError, setEventsError] = useState('');
   const [eventsWarning, setEventsWarning] = useState('');
   const [eventFilter, setEventFilter] = useState('');
+  const [eventSeverityFilter, setEventSeverityFilter] = useState<EventSeverityFilter>('all');
   const [logLines, setLogLines] = useState<string[]>([]);
   const [logsError, setLogsError] = useState('');
   const [logsWarning, setLogsWarning] = useState('');
@@ -278,6 +298,10 @@ function ResourceExplorerDetail({
   const [logDensity, setLogDensity] = useState<LogDensity>(() => readLogDensityPreference());
   const [relationFilter, setRelationFilter] = useState('');
   const [relationsExpanded, setRelationsExpanded] = useState(false);
+  const [activeDetailSectionId, setActiveDetailSectionId] = useState<DetailSectionId>('metadata');
+  const detailPanelRef = useRef<HTMLDivElement | null>(null);
+  const detailPanelActiveRef = useRef(false);
+  const detailSectionRefs = useRef<Partial<Record<DetailSectionId, HTMLElement | null>>>({});
   const [openSections, setOpenSections] = useState<Set<DetailSectionId>>(() => new Set(defaultOpenDetailSections));
 
   useEffect(() => {
@@ -320,6 +344,8 @@ function ResourceExplorerDetail({
     setRelationFilter('');
     setRelationsExpanded(false);
     setEventFilter('');
+    setEventSeverityFilter('all');
+    setActiveDetailSectionId('metadata');
     setOpenSections(new Set(defaultOpenDetailSections));
   }, [resource?.id]);
 
@@ -331,7 +357,9 @@ function ResourceExplorerDetail({
   }, []);
 
   const filteredLogLines = useMemo(() => filterLogLines(logLines, logFilter), [logFilter, logLines]);
-  const filteredEvents = useMemo(() => filterEvents(events, eventFilter), [eventFilter, events]);
+  const filteredEvents = useMemo(() => filterEvents(events, eventFilter, eventSeverityFilter), [eventFilter, eventSeverityFilter, events]);
+  const eventGroups = useMemo(() => groupEventsBySeverity(filteredEvents), [filteredEvents]);
+  const eventSeverityCounts = useMemo(() => countEventSeverities(events), [events]);
   const filteredRelations = useMemo(() => filterRelatedResources(resource?.related || [], relationFilter), [relationFilter, resource?.related]);
   const normalizedLogFilter = logFilter.trim();
   const normalizedEventFilter = eventFilter.trim();
@@ -407,6 +435,62 @@ function ResourceExplorerDetail({
       return next;
     });
   };
+  const focusDetailSection = (id: DetailSectionId) => {
+    setActiveDetailSectionId(id);
+    openSection(id);
+    window.requestAnimationFrame(() => {
+      const section = detailSectionRefs.current[id];
+      section?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+      section?.querySelector<HTMLButtonElement>('[data-detail-section-toggle="true"]')?.focus({ preventScroll: true });
+    });
+  };
+  const moveDetailSection = (offset: number) => {
+    const currentIndex = detailKeyboardSections.indexOf(activeDetailSectionId);
+    const nextIndex = currentIndex >= 0 ? (currentIndex + offset + detailKeyboardSections.length) % detailKeyboardSections.length : 0;
+    focusDetailSection(detailKeyboardSections[nextIndex]);
+  };
+  const handleDetailShortcut = (event: globalThis.KeyboardEvent) => {
+    if (event.altKey || event.ctrlKey || event.metaKey || isEditableTarget(event.target)) {
+      return;
+    }
+    if (event.key === 'j') {
+      event.preventDefault();
+      moveDetailSection(1);
+    } else if (event.key === 'k') {
+      event.preventDefault();
+      moveDetailSection(-1);
+    } else if (event.key === 'o') {
+      event.preventDefault();
+      toggleSection(activeDetailSectionId);
+    }
+  };
+  const setDetailSectionRef = (id: DetailSectionId) => (node: HTMLElement | null) => {
+    detailSectionRefs.current[id] = node;
+  };
+
+  useEffect(() => {
+    const handleDocumentPointerDown = (event: MouseEvent | TouchEvent) => {
+      detailPanelActiveRef.current = Boolean(detailPanelRef.current?.contains(event.target as Node));
+    };
+    const handleDocumentFocusIn = (event: FocusEvent) => {
+      detailPanelActiveRef.current = Boolean(detailPanelRef.current?.contains(event.target as Node));
+    };
+    const handleDocumentKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (detailPanelActiveRef.current) {
+        handleDetailShortcut(event);
+      }
+    };
+    document.addEventListener('mousedown', handleDocumentPointerDown, true);
+    document.addEventListener('touchstart', handleDocumentPointerDown, true);
+    document.addEventListener('focusin', handleDocumentFocusIn);
+    document.addEventListener('keydown', handleDocumentKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', handleDocumentPointerDown, true);
+      document.removeEventListener('touchstart', handleDocumentPointerDown, true);
+      document.removeEventListener('focusin', handleDocumentFocusIn);
+      document.removeEventListener('keydown', handleDocumentKeyDown);
+    };
+  }, [activeDetailSectionId]);
 
   const handleFetchLogs = async () => {
     if (!canFetchLogs) {
@@ -501,7 +585,18 @@ function ResourceExplorerDetail({
   };
 
   return (
-    <div className="ku-panel overflow-hidden">
+    <div
+      ref={detailPanelRef}
+      className="ku-panel overflow-hidden"
+      tabIndex={0}
+      onFocusCapture={() => {
+        detailPanelActiveRef.current = true;
+      }}
+      onMouseDownCapture={() => {
+        detailPanelActiveRef.current = true;
+      }}
+      aria-label="리소스 상세 패널"
+    >
       <div className="border-b border-[rgba(60,60,67,0.12)] px-4 py-3">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
@@ -513,32 +608,50 @@ function ResourceExplorerDetail({
           </div>
           <span className={statusPillClassName(resource.status)}>{resource.status}</span>
         </div>
+        <div className="mt-3 flex flex-wrap items-center gap-1.5">
+          {detailJumpSections.map((section) => (
+            <button
+              key={section.id}
+              className={`rounded-[8px] border px-2.5 py-1.5 text-xs font-semibold transition ${
+                activeDetailSectionId === section.id
+                  ? 'border-[rgba(0,122,255,0.24)] bg-[rgba(0,122,255,0.1)] text-[#0057b8]'
+                  : 'border-[rgba(60,60,67,0.12)] bg-white/75 text-[rgba(60,60,67,0.72)] hover:bg-white'
+              }`}
+              type="button"
+              onClick={() => focusDetailSection(section.id)}
+              aria-current={activeDetailSectionId === section.id ? 'true' : undefined}
+              title={`${section.label} 섹션으로 이동`}
+            >
+              {section.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       <div className="grid gap-3 p-3">
-        <DetailSection icon={FileText} title="Metadata" summary={sectionCount(metadataPreview)} open={isSectionOpen('metadata')} onToggle={() => toggleSection('metadata')}>
+        <DetailSection icon={FileText} title="Metadata" summary={sectionCount(metadataPreview)} open={isSectionOpen('metadata')} active={activeDetailSectionId === 'metadata'} sectionRef={setDetailSectionRef('metadata')} onFocusSection={() => setActiveDetailSectionId('metadata')} onToggle={() => toggleSection('metadata')}>
           <KeyValueGrid values={metadataPreview} />
         </DetailSection>
-        <DetailSection icon={Activity} title="Status" summary={sectionCount(statusPreview)} open={isSectionOpen('status')} onToggle={() => toggleSection('status')}>
+        <DetailSection icon={Activity} title="Status" summary={sectionCount(statusPreview)} open={isSectionOpen('status')} active={activeDetailSectionId === 'status'} sectionRef={setDetailSectionRef('status')} onFocusSection={() => setActiveDetailSectionId('status')} onToggle={() => toggleSection('status')}>
           <KeyValueGrid values={statusPreview} />
         </DetailSection>
-        <DetailSection icon={FileText} title="Safe Preview" summary={sectionCount(summaryPreview)} open={isSectionOpen('safe')} onToggle={() => toggleSection('safe')}>
+        <DetailSection icon={FileText} title="Safe Preview" summary={sectionCount(summaryPreview)} open={isSectionOpen('safe')} active={activeDetailSectionId === 'safe'} sectionRef={setDetailSectionRef('safe')} onFocusSection={() => setActiveDetailSectionId('safe')} onToggle={() => toggleSection('safe')}>
           <KeyValueGrid values={summaryPreview} />
         </DetailSection>
-        <DetailSection icon={FileText} title="YAML Preview" summary={yamlPreview ? 'available' : 'empty'} open={isSectionOpen('yaml')} onToggle={() => toggleSection('yaml')}>
+        <DetailSection icon={FileText} title="YAML Preview" summary={yamlPreview ? 'available' : 'empty'} open={isSectionOpen('yaml')} active={activeDetailSectionId === 'yaml'} sectionRef={setDetailSectionRef('yaml')} onFocusSection={() => setActiveDetailSectionId('yaml')} onToggle={() => toggleSection('yaml')}>
           {yamlPreview ? (
             <pre className="max-h-[360px] overflow-auto rounded-[10px] border border-[rgba(60,60,67,0.12)] bg-[#111827] p-3 font-mono text-[11px] leading-5 text-[#d1d5db]">{yamlPreview}</pre>
           ) : (
             <p className="ku-meta">표시할 YAML preview가 없습니다.</p>
           )}
         </DetailSection>
-        <DetailSection icon={Tags} title="Labels" summary={sectionCount(resource.labels)} open={isSectionOpen('labels')} onToggle={() => toggleSection('labels')}>
+        <DetailSection icon={Tags} title="Labels" summary={sectionCount(resource.labels)} open={isSectionOpen('labels')} active={activeDetailSectionId === 'labels'} sectionRef={setDetailSectionRef('labels')} onFocusSection={() => setActiveDetailSectionId('labels')} onToggle={() => toggleSection('labels')}>
           <KeyValueGrid values={resource.labels} empty="labels 없음" />
         </DetailSection>
-        <DetailSection icon={Tags} title="Annotations" summary={sectionCount(resource.annotations)} open={isSectionOpen('annotations')} onToggle={() => toggleSection('annotations')}>
+        <DetailSection icon={Tags} title="Annotations" summary={sectionCount(resource.annotations)} open={isSectionOpen('annotations')} active={activeDetailSectionId === 'annotations'} sectionRef={setDetailSectionRef('annotations')} onFocusSection={() => setActiveDetailSectionId('annotations')} onToggle={() => toggleSection('annotations')}>
           <KeyValueGrid values={resource.annotations} empty="annotations 없음" />
         </DetailSection>
-        <DetailSection icon={Link2} title="Relations" summary={relationSummary} open={isSectionOpen('relations')} onToggle={() => toggleSection('relations')}>
+        <DetailSection icon={Link2} title="Relations" summary={relationSummary} open={isSectionOpen('relations')} active={activeDetailSectionId === 'relations'} sectionRef={setDetailSectionRef('relations')} onFocusSection={() => setActiveDetailSectionId('relations')} onToggle={() => toggleSection('relations')}>
           {resource.related.length === 0 ? (
             <p className="ku-meta">관계 없음</p>
           ) : (
@@ -613,11 +726,31 @@ function ResourceExplorerDetail({
             </div>
           )}
         </DetailSection>
-        <DetailSection icon={Boxes} title="Events" summary={`${filteredEvents.length} / ${events.length}`} open={isSectionOpen('events')} onToggle={() => toggleSection('events')}>
+        <DetailSection icon={Boxes} title="Events" summary={`${filteredEvents.length} / ${events.length}`} open={isSectionOpen('events')} active={activeDetailSectionId === 'events'} sectionRef={setDetailSectionRef('events')} onFocusSection={() => setActiveDetailSectionId('events')} onToggle={() => toggleSection('events')}>
           {eventsWarning ? <InlineWarning message="이벤트 조회 권한이 없거나 API가 없어 빈 목록으로 표시합니다." /> : null}
           {eventsError ? <InlineWarning message={`이벤트 조회 실패: ${eventsError}`} /> : null}
           {events.length > 0 ? (
-            <div className="mb-2 grid gap-2 rounded-[10px] border border-[rgba(60,60,67,0.12)] bg-white/70 p-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+            <div className="mb-2 grid gap-2 rounded-[10px] border border-[rgba(60,60,67,0.12)] bg-white/70 p-2 lg:grid-cols-[auto_minmax(0,1fr)_auto] lg:items-center">
+              <div className="grid grid-cols-3 rounded-[9px] border border-[rgba(60,60,67,0.12)] bg-white/70 p-0.5">
+                {([
+                  { value: 'all', label: '전체', count: events.length },
+                  { value: 'warning', label: 'Warning', count: eventSeverityCounts.warning },
+                  { value: 'normal', label: 'Normal', count: eventSeverityCounts.normal },
+                ] as const).map((option) => (
+                  <button
+                    key={option.value}
+                    className={`rounded-[7px] px-2.5 py-1 text-xs font-semibold transition ${
+                      eventSeverityFilter === option.value ? 'bg-[#1d1d1f] text-white shadow-sm' : 'text-[rgba(60,60,67,0.72)] hover:bg-white'
+                    }`}
+                    type="button"
+                    onClick={() => setEventSeverityFilter(option.value)}
+                    aria-pressed={eventSeverityFilter === option.value}
+                    title={`${option.label} 이벤트만 보기`}
+                  >
+                    {option.label} {option.count}
+                  </button>
+                ))}
+              </div>
               <label className="relative block">
                 <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[rgba(60,60,67,0.45)]" size={15} />
                 <input className="ku-input w-full pl-9" placeholder="이벤트 필터" value={eventFilter} onChange={(event) => setEventFilter(event.target.value)} />
@@ -644,23 +777,33 @@ function ResourceExplorerDetail({
             <p className="ku-meta">필터와 일치하는 이벤트가 없습니다.</p>
           ) : (
             <div className="grid gap-2">
-              {filteredEvents.map(({ event, index }) => (
-                <div key={`${event.timestamp}:${event.reason}:${index}`} className="rounded-[10px] border border-[rgba(60,60,67,0.12)] bg-white/75 p-2">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <p className="text-xs font-semibold text-[#1d1d1f]">{renderHighlightedText(event.reason || event.type || 'Event', normalizedEventFilter)}</p>
-                    <span className="font-mono text-[10px] font-semibold uppercase text-[rgba(60,60,67,0.54)]">{renderHighlightedText(event.type || 'Normal', normalizedEventFilter)}</span>
+              {eventGroups.map((group) => (
+                <div key={group.key} className="grid gap-1.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.03em] text-[rgba(60,60,67,0.58)]">{group.label}</p>
+                    <span className="ku-chip">{group.count}</span>
                   </div>
-                  <p className="mt-1 text-xs text-[rgba(60,60,67,0.72)]">{renderHighlightedText(event.message, normalizedEventFilter)}</p>
-                  <p className="mt-1 font-mono text-[10px] font-semibold text-[rgba(60,60,67,0.54)]">
-                    {renderHighlightedText(formatEventTimestamp(event.timestamp), normalizedEventFilter)}
-                    {event.source ? <> · {renderHighlightedText(event.source, normalizedEventFilter)}</> : ''}
-                  </p>
+                  <div className="grid gap-2">
+                    {group.items.map(({ event, index }) => (
+                      <div key={`${event.timestamp}:${event.reason}:${index}`} className="rounded-[10px] border border-[rgba(60,60,67,0.12)] bg-white/75 p-2">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <p className="text-xs font-semibold text-[#1d1d1f]">{renderHighlightedText(event.reason || event.type || 'Event', normalizedEventFilter)}</p>
+                          <span className={`font-mono text-[10px] font-semibold uppercase ${eventSeverityClassName(eventSeverity(event))}`}>{renderHighlightedText(event.type || 'Normal', normalizedEventFilter)}</span>
+                        </div>
+                        <p className="mt-1 text-xs text-[rgba(60,60,67,0.72)]">{renderHighlightedText(event.message, normalizedEventFilter)}</p>
+                        <p className="mt-1 font-mono text-[10px] font-semibold text-[rgba(60,60,67,0.54)]">
+                          {renderHighlightedText(formatEventTimestamp(event.timestamp), normalizedEventFilter)}
+                          {event.source ? <> · {renderHighlightedText(event.source, normalizedEventFilter)}</> : ''}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               ))}
             </div>
           )}
         </DetailSection>
-        <DetailSection icon={FileText} title="Logs" summary={logLines.length > 0 ? `${filteredLogLines.length} / ${logLines.length}` : canFetchLogs ? 'ready' : 'empty'} open={isSectionOpen('logs')} onToggle={() => toggleSection('logs')}>
+        <DetailSection icon={FileText} title="Logs" summary={logLines.length > 0 ? `${filteredLogLines.length} / ${logLines.length}` : canFetchLogs ? 'ready' : 'empty'} open={isSectionOpen('logs')} active={activeDetailSectionId === 'logs'} sectionRef={setDetailSectionRef('logs')} onFocusSection={() => setActiveDetailSectionId('logs')} onToggle={() => toggleSection('logs')}>
           {!canFetchLogs ? (
             <p className="ku-meta">Pod 로그 없음</p>
           ) : (
@@ -851,14 +994,66 @@ function filterLogLines(lines: string[], filter: string) {
   });
 }
 
-function filterEvents(events: ResourceEvent[], filter: string) {
+function filterEvents(events: ResourceEvent[], filter: string, severityFilter: EventSeverityFilter) {
   const normalizedFilter = filter.trim().toLowerCase();
   return events.flatMap((event, index) => {
-    if (!normalizedFilter || eventText(event).includes(normalizedFilter)) {
+    if ((!normalizedFilter || eventText(event).includes(normalizedFilter)) && eventMatchesSeverityFilter(event, severityFilter)) {
       return [{ event, index }];
     }
     return [];
   });
+}
+
+function eventMatchesSeverityFilter(event: ResourceEvent, severityFilter: EventSeverityFilter) {
+  if (severityFilter === 'all') {
+    return true;
+  }
+  return eventSeverity(event) === severityFilter;
+}
+
+function eventSeverity(event: ResourceEvent): EventSeverity {
+  const normalizedType = event.type.trim().toLowerCase();
+  if (normalizedType === 'warning' || normalizedType === 'error') {
+    return 'warning';
+  }
+  if (normalizedType === 'normal') {
+    return 'normal';
+  }
+  return 'other';
+}
+
+function countEventSeverities(events: ResourceEvent[]) {
+  return events.reduce(
+    (counts, event) => {
+      counts[eventSeverity(event)] += 1;
+      return counts;
+    },
+    { warning: 0, normal: 0, other: 0 } as Record<EventSeverity, number>,
+  );
+}
+
+function groupEventsBySeverity(events: Array<{ event: ResourceEvent; index: number }>): EventGroup[] {
+  const groups: Record<EventSeverity, EventGroup> = {
+    warning: { key: 'warning', label: 'Warning / Error', count: 0, items: [] },
+    normal: { key: 'normal', label: 'Normal', count: 0, items: [] },
+    other: { key: 'other', label: 'Other', count: 0, items: [] },
+  };
+  for (const item of events) {
+    const severity = eventSeverity(item.event);
+    groups[severity].count += 1;
+    groups[severity].items.push(item);
+  }
+  return (['warning', 'normal', 'other'] as const).map((severity) => groups[severity]).filter((group) => group.items.length > 0);
+}
+
+function eventSeverityClassName(severity: EventSeverity) {
+  if (severity === 'warning') {
+    return 'text-[#a05a00]';
+  }
+  if (severity === 'normal') {
+    return 'text-[rgba(60,60,67,0.54)]';
+  }
+  return 'text-[#636366]';
 }
 
 function eventText(event: ResourceEvent) {
@@ -1065,15 +1260,56 @@ function resourceViewPresetSummary(preset: ResourceViewPreset) {
   return parts.length > 0 ? parts.join(' · ') : '전체 필터';
 }
 
-function DetailSection({ icon: Icon, title, summary, open, onToggle, children }: { icon: LucideIcon; title: string; summary: string; open: boolean; onToggle: () => void; children: ReactNode }) {
+function isEditableTarget(target: EventTarget | null) {
+  if (!(target instanceof HTMLElement)) {
+    return false;
+  }
+  const tagName = target.tagName.toLowerCase();
+  return tagName === 'input' || tagName === 'select' || tagName === 'textarea' || tagName === 'button' || target.isContentEditable;
+}
+
+function DetailSection({
+  active = false,
+  children,
+  icon: Icon,
+  onFocusSection,
+  onToggle,
+  open,
+  sectionRef,
+  summary,
+  title,
+}: {
+  active?: boolean;
+  children: ReactNode;
+  icon: LucideIcon;
+  onFocusSection?: () => void;
+  onToggle: () => void;
+  open: boolean;
+  sectionRef?: (node: HTMLElement | null) => void;
+  summary: string;
+  title: string;
+}) {
   return (
-    <section className="rounded-[12px] border border-[rgba(60,60,67,0.12)] bg-white/72">
+    <section
+      ref={sectionRef}
+      className={`rounded-[12px] border bg-white/72 transition ${
+        active ? 'border-[rgba(0,122,255,0.34)] ring-2 ring-[rgba(0,122,255,0.12)]' : 'border-[rgba(60,60,67,0.12)]'
+      }`}
+      onFocusCapture={onFocusSection}
+    >
       <div className="flex items-center justify-between gap-2 px-3 py-2.5">
         <h3 className="flex min-w-0 items-center gap-2 text-xs font-semibold uppercase tracking-[0.03em] text-[rgba(60,60,67,0.62)]">
           <Icon size={14} aria-hidden="true" />
           <span className="truncate">{title}</span>
         </h3>
-        <button className="flex shrink-0 items-center gap-1.5 rounded-[8px] px-1.5 py-1 transition hover:bg-[rgba(242,242,247,0.85)]" type="button" onClick={onToggle} aria-expanded={open} aria-label={`${title} ${open ? '접기' : '펼치기'}`}>
+        <button
+          className="flex shrink-0 items-center gap-1.5 rounded-[8px] px-1.5 py-1 transition hover:bg-[rgba(242,242,247,0.85)]"
+          type="button"
+          onClick={onToggle}
+          aria-expanded={open}
+          aria-label={`${title} ${open ? '접기' : '펼치기'}`}
+          data-detail-section-toggle="true"
+        >
           <span className="ku-chip">{summary}</span>
           <ChevronDown className={`text-[rgba(60,60,67,0.48)] transition ${open ? 'rotate-180' : ''}`} size={15} aria-hidden="true" />
         </button>
