@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
-import { Activity, AlertTriangle, Bookmark, Boxes, ChevronDown, Copy, FileText, Link2, Search, Tags, Trash2 } from 'lucide-react';
+import { Activity, AlertTriangle, Bookmark, Boxes, ChevronDown, Copy, FileText, GitBranch, Link2, Search, Tags, Trash2 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { fetchResourceEvents, fetchResourceLogs, fetchResources, resourcesFromSnapshot, streamResourceLogs } from '../services/resourceApi';
 import type { ResourceEvent, ResourceExplorerItem } from '../types/resourceExplorer';
@@ -12,15 +12,19 @@ interface ResourceExplorerProps {
   selectedNodeId: string;
   snapshot: TopologySnapshot;
   sourceMode: TopologySourceMode;
+  onOpenTopologyNode: (nodeId: string) => void;
   onSelectNode: (nodeId: string) => void;
 }
 
 const allValue = 'all';
 const resourceViewPresetStorageKey = 'kuviewer_resource_view_presets';
+const logDensityStorageKey = 'kuviewer_log_density';
 const maxResourceViewPresets = 8;
+const maxCollapsedRelations = 24;
 const defaultOpenDetailSections: DetailSectionId[] = ['metadata', 'status', 'safe', 'relations', 'events'];
 
 type DetailSectionId = 'metadata' | 'status' | 'safe' | 'yaml' | 'labels' | 'annotations' | 'relations' | 'events' | 'logs';
+type LogDensity = 'comfortable' | 'compact';
 
 interface ResourceViewPreset {
   name: string;
@@ -32,7 +36,14 @@ interface ResourceViewPreset {
   updatedAt: number;
 }
 
-export function ResourceExplorer({ liveEnabled, selectedNodeId, snapshot, sourceMode, onSelectNode }: ResourceExplorerProps) {
+interface RelationGroup {
+  key: string;
+  label: string;
+  count: number;
+  items: ResourceExplorerItem['related'];
+}
+
+export function ResourceExplorer({ liveEnabled, selectedNodeId, snapshot, sourceMode, onOpenTopologyNode, onSelectNode }: ResourceExplorerProps) {
   const [query, setQuery] = useState('');
   const [cluster, setCluster] = useState(allValue);
   const [namespace, setNamespace] = useState(allValue);
@@ -234,12 +245,22 @@ export function ResourceExplorer({ liveEnabled, selectedNodeId, snapshot, source
         </div>
       </div>
 
-      <ResourceExplorerDetail liveEnabled={liveEnabled && sourceMode === 'live'} resource={selectedResource} onSelectNode={onSelectNode} />
+      <ResourceExplorerDetail liveEnabled={liveEnabled && sourceMode === 'live'} resource={selectedResource} onOpenTopologyNode={onOpenTopologyNode} onSelectNode={onSelectNode} />
     </section>
   );
 }
 
-function ResourceExplorerDetail({ liveEnabled, resource, onSelectNode }: { liveEnabled: boolean; resource?: ResourceExplorerItem; onSelectNode: (nodeId: string) => void }) {
+function ResourceExplorerDetail({
+  liveEnabled,
+  resource,
+  onOpenTopologyNode,
+  onSelectNode,
+}: {
+  liveEnabled: boolean;
+  resource?: ResourceExplorerItem;
+  onOpenTopologyNode: (nodeId: string) => void;
+  onSelectNode: (nodeId: string) => void;
+}) {
   const [events, setEvents] = useState<ResourceEvent[]>([]);
   const [eventsError, setEventsError] = useState('');
   const [eventsWarning, setEventsWarning] = useState('');
@@ -254,6 +275,9 @@ function ResourceExplorerDetail({ liveEnabled, resource, onSelectNode }: { liveE
   const [previousLogs, setPreviousLogs] = useState(false);
   const [logFilter, setLogFilter] = useState('');
   const [logCopyStatus, setLogCopyStatus] = useState<{ tone: 'success' | 'warning'; message: string } | null>(null);
+  const [logDensity, setLogDensity] = useState<LogDensity>(() => readLogDensityPreference());
+  const [relationFilter, setRelationFilter] = useState('');
+  const [relationsExpanded, setRelationsExpanded] = useState(false);
   const [openSections, setOpenSections] = useState<Set<DetailSectionId>>(() => new Set(defaultOpenDetailSections));
 
   useEffect(() => {
@@ -293,6 +317,8 @@ function ResourceExplorerDetail({ liveEnabled, resource, onSelectNode }: { liveE
     setPreviousLogs(false);
     setLogFilter('');
     setLogCopyStatus(null);
+    setRelationFilter('');
+    setRelationsExpanded(false);
     setEventFilter('');
     setOpenSections(new Set(defaultOpenDetailSections));
   }, [resource?.id]);
@@ -306,8 +332,20 @@ function ResourceExplorerDetail({ liveEnabled, resource, onSelectNode }: { liveE
 
   const filteredLogLines = useMemo(() => filterLogLines(logLines, logFilter), [logFilter, logLines]);
   const filteredEvents = useMemo(() => filterEvents(events, eventFilter), [eventFilter, events]);
+  const filteredRelations = useMemo(() => filterRelatedResources(resource?.related || [], relationFilter), [relationFilter, resource?.related]);
   const normalizedLogFilter = logFilter.trim();
   const normalizedEventFilter = eventFilter.trim();
+  const normalizedRelationFilter = relationFilter.trim();
+  const relationGroups = useMemo(
+    () => groupRelatedResources(filteredRelations, relationsExpanded ? Number.POSITIVE_INFINITY : maxCollapsedRelations),
+    [filteredRelations, relationsExpanded],
+  );
+  const visibleRelationCount = relationGroups.reduce((total, group) => total + group.items.length, 0);
+  const hiddenRelationCount = Math.max(filteredRelations.length - visibleRelationCount, 0);
+
+  useEffect(() => {
+    writeLogDensityPreference(logDensity);
+  }, [logDensity]);
 
   useEffect(() => {
     if (!logCopyStatus) {
@@ -338,6 +376,15 @@ function ResourceExplorerDetail({ liveEnabled, resource, onSelectNode }: { liveE
   const logFilterActive = normalizedLogFilter.length > 0;
   const canCopyVisibleLogs = filteredLogLines.length > 0;
   const canCopyAllLogs = logFilterActive && logLines.length > 0;
+  const relationSummary = normalizedRelationFilter ? `${filteredRelations.length} / ${resource.related.length}` : `${resource.related.length}`;
+  const logViewportClassName =
+    logDensity === 'compact'
+      ? 'max-h-[420px] overflow-auto rounded-[10px] border border-[rgba(60,60,67,0.12)] bg-[#111827] p-1 font-mono text-[10px] leading-4 text-[#d1d5db]'
+      : 'max-h-[320px] overflow-auto rounded-[10px] border border-[rgba(60,60,67,0.12)] bg-[#111827] p-2 font-mono text-[11px] leading-5 text-[#d1d5db]';
+  const logRowClassName =
+    logDensity === 'compact'
+      ? 'grid grid-cols-[38px_minmax(0,1fr)] gap-1 rounded-[5px] px-0.5 py-0'
+      : 'grid grid-cols-[44px_minmax(0,1fr)] gap-2 rounded-[6px] px-1 py-0.5';
   const isSectionOpen = (id: DetailSectionId) => openSections.has(id);
   const toggleSection = (id: DetailSectionId) => {
     setOpenSections((current) => {
@@ -491,22 +538,78 @@ function ResourceExplorerDetail({ liveEnabled, resource, onSelectNode }: { liveE
         <DetailSection icon={Tags} title="Annotations" summary={sectionCount(resource.annotations)} open={isSectionOpen('annotations')} onToggle={() => toggleSection('annotations')}>
           <KeyValueGrid values={resource.annotations} empty="annotations 없음" />
         </DetailSection>
-        <DetailSection icon={Link2} title="Relations" summary={`${resource.related.length}`} open={isSectionOpen('relations')} onToggle={() => toggleSection('relations')}>
+        <DetailSection icon={Link2} title="Relations" summary={relationSummary} open={isSectionOpen('relations')} onToggle={() => toggleSection('relations')}>
           {resource.related.length === 0 ? (
             <p className="ku-meta">관계 없음</p>
           ) : (
             <div className="grid gap-2">
-              {resource.related.slice(0, 24).map((related) => (
-                <button key={`${related.direction}:${related.edgeType}:${related.nodeId}`} className="rounded-[10px] border border-[rgba(60,60,67,0.12)] bg-white/75 p-2 text-left" type="button" onClick={() => onSelectNode(related.nodeId)}>
-                  <p className="truncate text-xs font-semibold text-[#1d1d1f]">
-                    {related.direction === 'outgoing' ? '→' : '←'} {related.name}
-                  </p>
-                  <p className="mt-0.5 truncate font-mono text-[10px] font-semibold text-[rgba(60,60,67,0.58)]">
-                    {related.edgeType} · {related.namespace ? `${related.namespace} / ` : ''}
-                    {related.kind}
-                  </p>
-                </button>
-              ))}
+              <div className="grid gap-2 rounded-[10px] border border-[rgba(60,60,67,0.12)] bg-white/70 p-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+                <label className="relative block">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[rgba(60,60,67,0.45)]" size={15} />
+                  <input className="ku-input w-full pl-9" placeholder="관계 검색" value={relationFilter} onChange={(event) => setRelationFilter(event.target.value)} />
+                </label>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="ku-chip">
+                    {filteredRelations.length} / {resource.related.length}
+                  </span>
+                  {relationFilter ? (
+                    <button
+                      className="rounded-[9px] border border-[rgba(60,60,67,0.12)] bg-white px-2.5 py-1.5 text-xs font-semibold text-[rgba(60,60,67,0.72)] transition hover:bg-[rgba(242,242,247,0.9)]"
+                      type="button"
+                      onClick={() => setRelationFilter('')}
+                    >
+                      초기화
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+              {filteredRelations.length === 0 ? (
+                <p className="ku-meta">필터와 일치하는 관계가 없습니다.</p>
+              ) : (
+                <div className="grid gap-2">
+                  {relationGroups.map((group) => (
+                    <div key={group.key} className="grid gap-1.5">
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.03em] text-[rgba(60,60,67,0.58)]">
+                          {renderHighlightedText(group.label, normalizedRelationFilter)}
+                        </p>
+                        <span className="ku-chip">{group.count}</span>
+                      </div>
+                      <div className="grid gap-1.5">
+                        {group.items.map((related) => (
+                          <div key={`${related.direction}:${related.edgeType}:${related.nodeId}`} className="grid gap-2 rounded-[10px] border border-[rgba(60,60,67,0.12)] bg-white/75 p-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+                            <button className="min-w-0 text-left" type="button" onClick={() => onSelectNode(related.nodeId)}>
+                              <p className="truncate text-xs font-semibold text-[#1d1d1f]">
+                                {related.direction === 'outgoing' ? '→' : '←'} {renderHighlightedText(related.name, normalizedRelationFilter)}
+                              </p>
+                              <p className="mt-0.5 truncate font-mono text-[10px] font-semibold text-[rgba(60,60,67,0.58)]">
+                                {renderHighlightedText(`${related.edgeType} · ${related.namespace ? `${related.namespace} / ` : ''}${related.kind}`, normalizedRelationFilter)}
+                              </p>
+                            </button>
+                            <button
+                              className="inline-flex items-center justify-center gap-1.5 rounded-[9px] border border-[rgba(0,122,255,0.18)] bg-[rgba(0,122,255,0.06)] px-2.5 py-1.5 text-xs font-semibold text-[#0057b8] transition hover:bg-[rgba(0,122,255,0.1)]"
+                              type="button"
+                              onClick={() => onOpenTopologyNode(related.nodeId)}
+                            >
+                              <GitBranch size={13} aria-hidden="true" />
+                              토폴로지
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                  {hiddenRelationCount > 0 || relationsExpanded ? (
+                    <button
+                      className="rounded-[9px] border border-[rgba(60,60,67,0.12)] bg-white px-2.5 py-1.5 text-xs font-semibold text-[rgba(60,60,67,0.72)] transition hover:bg-[rgba(242,242,247,0.9)]"
+                      type="button"
+                      onClick={() => setRelationsExpanded((current) => !current)}
+                    >
+                      {relationsExpanded ? '접기' : `+${hiddenRelationCount} more`}
+                    </button>
+                  ) : null}
+                </div>
+              )}
             </div>
           )}
         </DetailSection>
@@ -621,6 +724,21 @@ function ResourceExplorerDetail({ liveEnabled, resource, onSelectNode }: { liveE
                 >
                   {logsStreaming ? '중지' : '따라가기'}
                 </button>
+                <div className="grid grid-cols-2 rounded-[9px] border border-[rgba(60,60,67,0.12)] bg-white/70 p-0.5">
+                  {(['comfortable', 'compact'] as const).map((density) => (
+                    <button
+                      key={density}
+                      className={`rounded-[7px] px-2.5 py-1 text-xs font-semibold transition ${
+                        logDensity === density ? 'bg-[#1d1d1f] text-white shadow-sm' : 'text-[rgba(60,60,67,0.72)] hover:bg-white'
+                      }`}
+                      type="button"
+                      onClick={() => setLogDensity(density)}
+                      aria-pressed={logDensity === density}
+                    >
+                      {density === 'comfortable' ? '기본' : '촘촘'}
+                    </button>
+                  ))}
+                </div>
               </div>
               {effectiveLogContainer ? <p className="ku-meta">컨테이너: {effectiveLogContainer}{previousLogs ? ' · 이전 종료 인스턴스' : logsStreaming ? ' · 실시간 따라가기' : ''}</p> : null}
               {logLines.length > 0 ? (
@@ -697,9 +815,9 @@ function ResourceExplorerDetail({ liveEnabled, resource, onSelectNode }: { liveE
               ) : filteredLogLines.length === 0 ? (
                 <p className="ku-meta">필터와 일치하는 로그가 없습니다.</p>
               ) : (
-                <div className="max-h-[320px] overflow-auto rounded-[10px] border border-[rgba(60,60,67,0.12)] bg-[#111827] p-2 font-mono text-[11px] leading-5 text-[#d1d5db]">
+                <div className={logViewportClassName}>
                   {filteredLogLines.map(({ line, index }) => (
-                    <div key={`${index}:${line.slice(0, 16)}`} className="grid grid-cols-[44px_minmax(0,1fr)] gap-2 rounded-[6px] px-1 py-0.5">
+                    <div key={`${index}:${line.slice(0, 16)}`} className={logRowClassName}>
                       <span className="select-none text-right text-[rgba(209,213,219,0.42)]">{index + 1}</span>
                       <span className="min-w-0 whitespace-pre-wrap break-words">{renderHighlightedText(line || ' ', normalizedLogFilter)}</span>
                     </div>
@@ -745,6 +863,53 @@ function filterEvents(events: ResourceEvent[], filter: string) {
 
 function eventText(event: ResourceEvent) {
   return [event.type, event.reason, event.message, event.source, event.timestamp, formatEventTimestamp(event.timestamp)].join(' ').toLowerCase();
+}
+
+function filterRelatedResources(relations: ResourceExplorerItem['related'], filter: string) {
+  const normalizedFilter = filter.trim().toLowerCase();
+  if (!normalizedFilter) {
+    return relations;
+  }
+  return relations.filter((relation) => relationText(relation).includes(normalizedFilter));
+}
+
+function relationText(relation: ResourceExplorerItem['related'][number]) {
+  return [
+    relation.name,
+    relation.kind,
+    relation.namespace || '',
+    relation.edgeType,
+    relation.direction,
+    relation.sourceField,
+    relation.direction === 'outgoing' ? 'outgoing from' : 'incoming to',
+    relation.direction === 'outgoing' ? '나가는 관계' : '들어오는 관계',
+  ]
+    .join(' ')
+    .toLowerCase();
+}
+
+function groupRelatedResources(relations: ResourceExplorerItem['related'], visibleLimit: number): RelationGroup[] {
+  const groups = new Map<string, RelationGroup>();
+  let visibleCount = 0;
+  for (const relation of relations) {
+    const key = `${relation.direction}:${relation.edgeType}`;
+    const existingGroup = groups.get(key);
+    const group =
+      existingGroup ||
+      ({
+        key,
+        label: `${relation.direction === 'outgoing' ? 'Outgoing' : 'Incoming'} · ${relation.edgeType}`,
+        count: 0,
+        items: [],
+      } satisfies RelationGroup);
+    group.count += 1;
+    if (visibleCount < visibleLimit) {
+      group.items.push(relation);
+      visibleCount += 1;
+    }
+    groups.set(key, group);
+  }
+  return Array.from(groups.values()).filter((group) => group.items.length > 0);
 }
 
 function renderHighlightedText(text: string, filter: string): ReactNode {
@@ -795,6 +960,22 @@ function ResourceSelect({ label, value, values, onChange }: { label: string; val
       </select>
     </label>
   );
+}
+
+function readLogDensityPreference(): LogDensity {
+  try {
+    return window.localStorage.getItem(logDensityStorageKey) === 'compact' ? 'compact' : 'comfortable';
+  } catch {
+    return 'comfortable';
+  }
+}
+
+function writeLogDensityPreference(density: LogDensity) {
+  try {
+    window.localStorage.setItem(logDensityStorageKey, density);
+  } catch {
+    // Density is only a UI preference; storage failures should not break logs.
+  }
 }
 
 function readResourceViewPresets(): ResourceViewPreset[] {

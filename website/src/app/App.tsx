@@ -166,6 +166,12 @@ function Dashboard() {
     }
   }, [setAutoRefresh, sourceMode]);
 
+  const handleOpenTopologyNode = useCallback((nodeId: string) => {
+    setFilters(initialFilters);
+    setSelectedNodeId(nodeId);
+    setViewMode('topology');
+  }, []);
+
   return (
     <main className="ku-app-shell text-[#1d1d1f]">
       <header className="sticky top-0 z-50 border-b border-[rgba(60,60,67,0.14)] bg-[#f5f5f7]/80 backdrop-blur-2xl">
@@ -318,6 +324,7 @@ function Dashboard() {
             selectedNodeId={selectedNode?.id || ''}
             snapshot={snapshot}
             sourceMode={sourceMode}
+            onOpenTopologyNode={handleOpenTopologyNode}
             onSelectNode={setSelectedNodeId}
           />
         ) : (
