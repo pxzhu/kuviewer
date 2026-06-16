@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { ReactNode } from 'react';
+import type { KeyboardEvent as ReactKeyboardEvent, ReactNode } from 'react';
 import { Activity, AlertTriangle, Bookmark, Boxes, ChevronDown, Copy, FileText, GitBranch, Link2, Search, Tags, Trash2 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { fetchResourceEvents, fetchResourceLogs, fetchResources, resourcesFromSnapshot, streamResourceLogs } from '../services/resourceApi';
@@ -27,6 +27,7 @@ type DetailSectionId = 'metadata' | 'status' | 'safe' | 'yaml' | 'labels' | 'ann
 type LogDensity = 'comfortable' | 'compact';
 type EventSeverity = 'warning' | 'normal' | 'other';
 type EventSeverityFilter = 'all' | 'warning' | 'normal';
+type EventTimeRangeFilter = 'all' | '1h' | '6h' | '24h' | '7d';
 
 const detailJumpSections: Array<{ id: DetailSectionId; label: string }> = [
   { id: 'metadata', label: 'Metadata' },
@@ -37,6 +38,13 @@ const detailJumpSections: Array<{ id: DetailSectionId; label: string }> = [
   { id: 'logs', label: 'Logs' },
 ];
 const detailKeyboardSections: DetailSectionId[] = ['metadata', 'status', 'safe', 'yaml', 'labels', 'annotations', 'relations', 'events', 'logs'];
+const eventTimeRangeOptions: Array<{ value: EventTimeRangeFilter; label: string; milliseconds?: number }> = [
+  { value: 'all', label: '전체' },
+  { value: '1h', label: '1h', milliseconds: 60 * 60 * 1000 },
+  { value: '6h', label: '6h', milliseconds: 6 * 60 * 60 * 1000 },
+  { value: '24h', label: '24h', milliseconds: 24 * 60 * 60 * 1000 },
+  { value: '7d', label: '7d', milliseconds: 7 * 24 * 60 * 60 * 1000 },
+];
 
 interface ResourceViewPreset {
   name: string;
@@ -73,6 +81,8 @@ export function ResourceExplorer({ liveEnabled, selectedNodeId, snapshot, source
   const [error, setError] = useState('');
   const [viewPresets, setViewPresets] = useState<ResourceViewPreset[]>(() => readResourceViewPresets());
   const [presetName, setPresetName] = useState('');
+  const [detailFocusRequest, setDetailFocusRequest] = useState(0);
+  const resourceRowRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   useEffect(() => {
     if (sourceMode !== 'live' || !liveEnabled) {
@@ -128,6 +138,7 @@ export function ResourceExplorer({ liveEnabled, selectedNodeId, snapshot, source
     });
   }, [cluster, kind, namespace, query, resources, status]);
   const selectedResource = filteredResources.find((resource) => resource.id === selectedNodeId) || resources.find((resource) => resource.id === selectedNodeId) || filteredResources[0] || resources[0];
+  const selectedResourceIndex = selectedResource ? filteredResources.findIndex((resource) => resource.id === selectedResource.id) : -1;
 
   useEffect(() => {
     if (selectedResource && selectedNodeId !== selectedResource.id) {
@@ -164,6 +175,42 @@ export function ResourceExplorer({ liveEnabled, selectedNodeId, snapshot, source
     const nextPresets = viewPresets.filter((preset) => preset.name !== presetNameToDelete);
     setViewPresets(nextPresets);
     writeResourceViewPresets(nextPresets);
+  };
+  const focusResourceRow = (resourceId: string) => {
+    window.requestAnimationFrame(() => {
+      resourceRowRefs.current[resourceId]?.focus({ preventScroll: true });
+    });
+  };
+  const selectResourceAtIndex = (index: number) => {
+    if (filteredResources.length === 0) {
+      return;
+    }
+    const nextIndex = Math.max(0, Math.min(filteredResources.length - 1, index));
+    const nextResource = filteredResources[nextIndex];
+    onSelectNode(nextResource.id);
+    focusResourceRow(nextResource.id);
+  };
+  const handleResourceListKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (event.altKey || event.ctrlKey || event.metaKey || isResourceListShortcutTarget(event.target)) {
+      return;
+    }
+
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      selectResourceAtIndex(selectedResourceIndex >= 0 ? selectedResourceIndex + 1 : 0);
+    } else if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      selectResourceAtIndex(selectedResourceIndex >= 0 ? selectedResourceIndex - 1 : filteredResources.length - 1);
+    } else if (event.key === 'Home') {
+      event.preventDefault();
+      selectResourceAtIndex(0);
+    } else if (event.key === 'End') {
+      event.preventDefault();
+      selectResourceAtIndex(filteredResources.length - 1);
+    } else if (event.key === 'Enter' && selectedResource) {
+      event.preventDefault();
+      setDetailFocusRequest((request) => request + 1);
+    }
   };
 
   return (
@@ -232,14 +279,31 @@ export function ResourceExplorer({ liveEnabled, selectedNodeId, snapshot, source
           </div>
         </div>
 
-        <div className="max-h-[68vh] overflow-auto p-2">
+        <div
+          className="max-h-[68vh] overflow-auto p-2 focus:outline-none focus:ring-2 focus:ring-[rgba(0,122,255,0.22)]"
+          role="listbox"
+          tabIndex={0}
+          aria-label="리소스 목록"
+          aria-activedescendant={selectedResource && selectedResourceIndex >= 0 ? resourceOptionDomId(selectedResource.id) : undefined}
+          onKeyDown={handleResourceListKeyDown}
+        >
+          {filteredResources.length === 0 ? <p className="ku-meta p-2">필터와 일치하는 리소스가 없습니다.</p> : null}
           {filteredResources.map((resource) => (
-            <button
+            <div
               key={resource.id}
-              className={`mb-2 w-full rounded-[12px] border p-3 text-left transition ${
-                resource.id === selectedResource?.id ? 'border-[rgba(0,122,255,0.32)] bg-[rgba(0,122,255,0.08)]' : 'border-[rgba(60,60,67,0.12)] bg-white/78 hover:bg-white'
+              id={resourceOptionDomId(resource.id)}
+              className={`mb-2 w-full cursor-pointer rounded-[12px] border p-3 text-left transition focus:outline-none focus:ring-2 focus:ring-[rgba(0,122,255,0.22)] ${
+                resource.id === selectedResource?.id
+                  ? 'border-[rgba(0,122,255,0.36)] bg-[rgba(0,122,255,0.1)] shadow-[0_0_0_1px_rgba(0,122,255,0.08)]'
+                  : 'border-[rgba(60,60,67,0.12)] bg-white/78 hover:bg-white'
               }`}
-              type="button"
+              ref={(node) => {
+                resourceRowRefs.current[resource.id] = node;
+              }}
+              role="option"
+              aria-selected={resource.id === selectedResource?.id}
+              data-resource-row="true"
+              tabIndex={resource.id === selectedResource?.id ? 0 : -1}
               onClick={() => onSelectNode(resource.id)}
             >
               <div className="flex items-start justify-between gap-3">
@@ -259,12 +323,18 @@ export function ResourceExplorer({ liveEnabled, selectedNodeId, snapshot, source
                   </span>
                 ))}
               </div>
-            </button>
+            </div>
           ))}
         </div>
       </div>
 
-      <ResourceExplorerDetail liveEnabled={liveEnabled && sourceMode === 'live'} resource={selectedResource} onOpenTopologyNode={onOpenTopologyNode} onSelectNode={onSelectNode} />
+      <ResourceExplorerDetail
+        liveEnabled={liveEnabled && sourceMode === 'live'}
+        resource={selectedResource}
+        focusRequest={detailFocusRequest}
+        onOpenTopologyNode={onOpenTopologyNode}
+        onSelectNode={onSelectNode}
+      />
     </section>
   );
 }
@@ -272,11 +342,13 @@ export function ResourceExplorer({ liveEnabled, selectedNodeId, snapshot, source
 function ResourceExplorerDetail({
   liveEnabled,
   resource,
+  focusRequest,
   onOpenTopologyNode,
   onSelectNode,
 }: {
   liveEnabled: boolean;
   resource?: ResourceExplorerItem;
+  focusRequest: number;
   onOpenTopologyNode: (nodeId: string) => void;
   onSelectNode: (nodeId: string) => void;
 }) {
@@ -285,6 +357,7 @@ function ResourceExplorerDetail({
   const [eventsWarning, setEventsWarning] = useState('');
   const [eventFilter, setEventFilter] = useState('');
   const [eventSeverityFilter, setEventSeverityFilter] = useState<EventSeverityFilter>('all');
+  const [eventTimeRangeFilter, setEventTimeRangeFilter] = useState<EventTimeRangeFilter>('all');
   const [logLines, setLogLines] = useState<string[]>([]);
   const [logsError, setLogsError] = useState('');
   const [logsWarning, setLogsWarning] = useState('');
@@ -345,6 +418,7 @@ function ResourceExplorerDetail({
     setRelationsExpanded(false);
     setEventFilter('');
     setEventSeverityFilter('all');
+    setEventTimeRangeFilter('all');
     setActiveDetailSectionId('metadata');
     setOpenSections(new Set(defaultOpenDetailSections));
   }, [resource?.id]);
@@ -357,7 +431,7 @@ function ResourceExplorerDetail({
   }, []);
 
   const filteredLogLines = useMemo(() => filterLogLines(logLines, logFilter), [logFilter, logLines]);
-  const filteredEvents = useMemo(() => filterEvents(events, eventFilter, eventSeverityFilter), [eventFilter, eventSeverityFilter, events]);
+  const filteredEvents = useMemo(() => filterEvents(events, eventFilter, eventSeverityFilter, eventTimeRangeFilter, Date.now()), [eventFilter, eventSeverityFilter, eventTimeRangeFilter, events]);
   const eventGroups = useMemo(() => groupEventsBySeverity(filteredEvents), [filteredEvents]);
   const eventSeverityCounts = useMemo(() => countEventSeverities(events), [events]);
   const filteredRelations = useMemo(() => filterRelatedResources(resource?.related || [], relationFilter), [relationFilter, resource?.related]);
@@ -382,6 +456,16 @@ function ResourceExplorerDetail({
     const timeout = window.setTimeout(() => setLogCopyStatus(null), 2200);
     return () => window.clearTimeout(timeout);
   }, [logCopyStatus]);
+
+  useEffect(() => {
+    if (focusRequest <= 0) {
+      return;
+    }
+    detailPanelActiveRef.current = true;
+    window.requestAnimationFrame(() => {
+      detailPanelRef.current?.focus({ preventScroll: false });
+    });
+  }, [focusRequest]);
 
   if (!resource) {
     return (
@@ -730,26 +814,44 @@ function ResourceExplorerDetail({
           {eventsWarning ? <InlineWarning message="이벤트 조회 권한이 없거나 API가 없어 빈 목록으로 표시합니다." /> : null}
           {eventsError ? <InlineWarning message={`이벤트 조회 실패: ${eventsError}`} /> : null}
           {events.length > 0 ? (
-            <div className="mb-2 grid gap-2 rounded-[10px] border border-[rgba(60,60,67,0.12)] bg-white/70 p-2 lg:grid-cols-[auto_minmax(0,1fr)_auto] lg:items-center">
-              <div className="grid grid-cols-3 rounded-[9px] border border-[rgba(60,60,67,0.12)] bg-white/70 p-0.5">
-                {([
-                  { value: 'all', label: '전체', count: events.length },
-                  { value: 'warning', label: 'Warning', count: eventSeverityCounts.warning },
-                  { value: 'normal', label: 'Normal', count: eventSeverityCounts.normal },
-                ] as const).map((option) => (
-                  <button
-                    key={option.value}
-                    className={`rounded-[7px] px-2.5 py-1 text-xs font-semibold transition ${
-                      eventSeverityFilter === option.value ? 'bg-[#1d1d1f] text-white shadow-sm' : 'text-[rgba(60,60,67,0.72)] hover:bg-white'
-                    }`}
-                    type="button"
-                    onClick={() => setEventSeverityFilter(option.value)}
-                    aria-pressed={eventSeverityFilter === option.value}
-                    title={`${option.label} 이벤트만 보기`}
-                  >
-                    {option.label} {option.count}
-                  </button>
-                ))}
+            <div className="mb-2 grid gap-2 rounded-[10px] border border-[rgba(60,60,67,0.12)] bg-white/70 p-2 lg:grid-cols-[minmax(220px,0.9fr)_minmax(0,1fr)_auto] lg:items-center">
+              <div className="grid gap-1.5">
+                <div className="grid grid-cols-3 rounded-[9px] border border-[rgba(60,60,67,0.12)] bg-white/70 p-0.5">
+                  {([
+                    { value: 'all', label: '전체', count: events.length },
+                    { value: 'warning', label: 'Warning', count: eventSeverityCounts.warning },
+                    { value: 'normal', label: 'Normal', count: eventSeverityCounts.normal },
+                  ] as const).map((option) => (
+                    <button
+                      key={option.value}
+                      className={`rounded-[7px] px-2.5 py-1 text-xs font-semibold transition ${
+                        eventSeverityFilter === option.value ? 'bg-[#1d1d1f] text-white shadow-sm' : 'text-[rgba(60,60,67,0.72)] hover:bg-white'
+                      }`}
+                      type="button"
+                      onClick={() => setEventSeverityFilter(option.value)}
+                      aria-pressed={eventSeverityFilter === option.value}
+                      title={`${option.label} 이벤트만 보기`}
+                    >
+                      {option.label} {option.count}
+                    </button>
+                  ))}
+                </div>
+                <div className="grid grid-cols-5 rounded-[9px] border border-[rgba(60,60,67,0.12)] bg-white/70 p-0.5">
+                  {eventTimeRangeOptions.map((option) => (
+                    <button
+                      key={option.value}
+                      className={`rounded-[7px] px-2 py-1 text-xs font-semibold transition ${
+                        eventTimeRangeFilter === option.value ? 'bg-[#1d1d1f] text-white shadow-sm' : 'text-[rgba(60,60,67,0.72)] hover:bg-white'
+                      }`}
+                      type="button"
+                      onClick={() => setEventTimeRangeFilter(option.value)}
+                      aria-pressed={eventTimeRangeFilter === option.value}
+                      title={option.value === 'all' ? '모든 이벤트 보기' : `최근 ${option.label} 이벤트만 보기`}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
               </div>
               <label className="relative block">
                 <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[rgba(60,60,67,0.45)]" size={15} />
@@ -759,11 +861,15 @@ function ResourceExplorerDetail({
                 <span className="ku-chip">
                   {filteredEvents.length} / {events.length}
                 </span>
-                {eventFilter ? (
+                {eventFilter || eventSeverityFilter !== 'all' || eventTimeRangeFilter !== 'all' ? (
                   <button
                     className="rounded-[9px] border border-[rgba(60,60,67,0.12)] bg-white px-2.5 py-1.5 text-xs font-semibold text-[rgba(60,60,67,0.72)] transition hover:bg-[rgba(242,242,247,0.9)]"
                     type="button"
-                    onClick={() => setEventFilter('')}
+                    onClick={() => {
+                      setEventFilter('');
+                      setEventSeverityFilter('all');
+                      setEventTimeRangeFilter('all');
+                    }}
                   >
                     초기화
                   </button>
@@ -994,10 +1100,10 @@ function filterLogLines(lines: string[], filter: string) {
   });
 }
 
-function filterEvents(events: ResourceEvent[], filter: string, severityFilter: EventSeverityFilter) {
+function filterEvents(events: ResourceEvent[], filter: string, severityFilter: EventSeverityFilter, timeRangeFilter: EventTimeRangeFilter, nowMs: number) {
   const normalizedFilter = filter.trim().toLowerCase();
   return events.flatMap((event, index) => {
-    if ((!normalizedFilter || eventText(event).includes(normalizedFilter)) && eventMatchesSeverityFilter(event, severityFilter)) {
+    if ((!normalizedFilter || eventText(event).includes(normalizedFilter)) && eventMatchesSeverityFilter(event, severityFilter) && eventMatchesTimeRangeFilter(event, timeRangeFilter, nowMs)) {
       return [{ event, index }];
     }
     return [];
@@ -1009,6 +1115,21 @@ function eventMatchesSeverityFilter(event: ResourceEvent, severityFilter: EventS
     return true;
   }
   return eventSeverity(event) === severityFilter;
+}
+
+function eventMatchesTimeRangeFilter(event: ResourceEvent, timeRangeFilter: EventTimeRangeFilter, nowMs: number) {
+  if (timeRangeFilter === 'all') {
+    return true;
+  }
+  const option = eventTimeRangeOptions.find((candidate) => candidate.value === timeRangeFilter);
+  if (!option?.milliseconds) {
+    return true;
+  }
+  const eventMs = Date.parse(event.timestamp);
+  if (Number.isNaN(eventMs)) {
+    return false;
+  }
+  return eventMs >= nowMs - option.milliseconds;
 }
 
 function eventSeverity(event: ResourceEvent): EventSeverity {
@@ -1258,6 +1379,21 @@ function resourceViewPresetSummary(preset: ResourceViewPreset) {
     preset.status !== allValue ? `status:${preset.status}` : '',
   ].filter(Boolean);
   return parts.length > 0 ? parts.join(' · ') : '전체 필터';
+}
+
+function resourceOptionDomId(resourceId: string) {
+  return `kuviewer-resource-${resourceId.replace(/[^a-zA-Z0-9_-]/g, '_')}`;
+}
+
+function isResourceListShortcutTarget(target: EventTarget | null) {
+  if (!(target instanceof HTMLElement)) {
+    return false;
+  }
+  if (target.closest('[data-resource-row="true"]')) {
+    return false;
+  }
+  const tagName = target.tagName.toLowerCase();
+  return tagName === 'input' || tagName === 'select' || tagName === 'textarea' || tagName === 'button' || target.isContentEditable;
 }
 
 function isEditableTarget(target: EventTarget | null) {
