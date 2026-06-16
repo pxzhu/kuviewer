@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
-import { Activity, AlertTriangle, Boxes, ChevronDown, FileText, Link2, Search, Tags } from 'lucide-react';
+import { Activity, AlertTriangle, Bookmark, Boxes, ChevronDown, FileText, Link2, Search, Tags, Trash2 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { fetchResourceEvents, fetchResourceLogs, fetchResources, resourcesFromSnapshot, streamResourceLogs } from '../services/resourceApi';
 import type { ResourceEvent, ResourceExplorerItem } from '../types/resourceExplorer';
@@ -16,9 +16,21 @@ interface ResourceExplorerProps {
 }
 
 const allValue = 'all';
+const resourceViewPresetStorageKey = 'kuviewer_resource_view_presets';
+const maxResourceViewPresets = 8;
 const defaultOpenDetailSections: DetailSectionId[] = ['metadata', 'status', 'safe', 'relations', 'events'];
 
 type DetailSectionId = 'metadata' | 'status' | 'safe' | 'yaml' | 'labels' | 'annotations' | 'relations' | 'events' | 'logs';
+
+interface ResourceViewPreset {
+  name: string;
+  query: string;
+  cluster: string;
+  namespace: string;
+  kind: string;
+  status: string;
+  updatedAt: number;
+}
 
 export function ResourceExplorer({ liveEnabled, selectedNodeId, snapshot, sourceMode, onSelectNode }: ResourceExplorerProps) {
   const [query, setQuery] = useState('');
@@ -29,6 +41,8 @@ export function ResourceExplorer({ liveEnabled, selectedNodeId, snapshot, source
   const [resources, setResources] = useState<ResourceExplorerItem[]>(() => resourcesFromSnapshot(snapshot).items);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [viewPresets, setViewPresets] = useState<ResourceViewPreset[]>(() => readResourceViewPresets());
+  const [presetName, setPresetName] = useState('');
 
   useEffect(() => {
     if (sourceMode !== 'live' || !liveEnabled) {
@@ -62,6 +76,7 @@ export function ResourceExplorer({ liveEnabled, selectedNodeId, snapshot, source
   const namespaces = useMemo(() => unique(resources.map((resource) => resource.namespace).filter(Boolean) as string[]), [resources]);
   const kinds = useMemo(() => unique(resources.map((resource) => resource.kind)), [resources]);
   const statuses = useMemo(() => unique(resources.map((resource) => resource.status)), [resources]);
+  const suggestedPresetName = useMemo(() => suggestedResourceViewPresetName({ query, cluster, namespace, kind, status }), [cluster, kind, namespace, query, status]);
   const filteredResources = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
     return resources.filter((resource) => {
@@ -90,6 +105,37 @@ export function ResourceExplorer({ liveEnabled, selectedNodeId, snapshot, source
     }
   }, [onSelectNode, selectedNodeId, selectedResource]);
 
+  const handleSaveViewPreset = () => {
+    const nextPreset: ResourceViewPreset = {
+      name: (presetName.trim() || suggestedPresetName).slice(0, 80),
+      query: query.slice(0, 160),
+      cluster,
+      namespace,
+      kind,
+      status,
+      updatedAt: Date.now(),
+    };
+    const nextPresets = upsertResourceViewPreset(viewPresets, nextPreset);
+    setViewPresets(nextPresets);
+    writeResourceViewPresets(nextPresets);
+    setPresetName('');
+  };
+
+  const handleApplyViewPreset = (preset: ResourceViewPreset) => {
+    setQuery(preset.query);
+    setCluster(normalizePresetFilterValue(preset.cluster, clusters));
+    setNamespace(normalizePresetFilterValue(preset.namespace, namespaces));
+    setKind(normalizePresetFilterValue(preset.kind, kinds));
+    setStatus(normalizePresetFilterValue(preset.status, statuses));
+    onSelectNode('');
+  };
+
+  const handleDeleteViewPreset = (presetNameToDelete: string) => {
+    const nextPresets = viewPresets.filter((preset) => preset.name !== presetNameToDelete);
+    setViewPresets(nextPresets);
+    writeResourceViewPresets(nextPresets);
+  };
+
   return (
     <section className="grid gap-3 lg:grid-cols-[minmax(320px,0.9fr)_minmax(0,1.1fr)]">
       <div className="ku-panel overflow-hidden">
@@ -114,6 +160,45 @@ export function ResourceExplorer({ liveEnabled, selectedNodeId, snapshot, source
             <ResourceSelect label="Namespace" value={namespace} values={namespaces} onChange={setNamespace} />
             <ResourceSelect label="Kind" value={kind} values={kinds} onChange={setKind} />
             <ResourceSelect label="Status" value={status} values={statuses} onChange={setStatus} />
+          </div>
+          <div className="grid gap-2 rounded-[12px] border border-[rgba(60,60,67,0.12)] bg-white/70 p-2">
+            <div className="flex items-center justify-between gap-2">
+              <p className="ku-meta">저장된 뷰 · 필터만 브라우저에 저장</p>
+              <span className="ku-chip">{viewPresets.length} / {maxResourceViewPresets}</span>
+            </div>
+            <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
+              <input className="ku-input w-full" placeholder={suggestedPresetName} value={presetName} onChange={(event) => setPresetName(event.target.value)} />
+              <button
+                className="inline-flex h-9 items-center justify-center gap-2 rounded-[9px] border border-[rgba(0,122,255,0.22)] bg-[rgba(0,122,255,0.08)] px-3 text-xs font-semibold text-[#0057b8] transition hover:bg-[rgba(0,122,255,0.13)]"
+                type="button"
+                onClick={handleSaveViewPreset}
+              >
+                <Bookmark size={14} aria-hidden="true" />
+                뷰 저장
+              </button>
+            </div>
+            {viewPresets.length === 0 ? (
+              <p className="ku-meta">저장된 뷰 없음</p>
+            ) : (
+              <div className="grid gap-1.5">
+                {viewPresets.map((preset) => (
+                  <div key={preset.name} className="grid gap-2 rounded-[10px] border border-[rgba(60,60,67,0.1)] bg-white/78 p-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+                    <div className="min-w-0">
+                      <p className="truncate text-xs font-semibold text-[#1d1d1f]">{preset.name}</p>
+                      <p className="mt-0.5 truncate font-mono text-[10px] font-semibold text-[rgba(60,60,67,0.54)]">{resourceViewPresetSummary(preset)}</p>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <button className="rounded-[8px] border border-[rgba(60,60,67,0.12)] bg-white px-2.5 py-1.5 text-xs font-semibold text-[rgba(60,60,67,0.72)] transition hover:bg-[rgba(242,242,247,0.9)]" type="button" onClick={() => handleApplyViewPreset(preset)}>
+                        적용
+                      </button>
+                      <button className="rounded-[8px] border border-[rgba(255,59,48,0.18)] bg-[rgba(255,59,48,0.06)] p-1.5 text-[#c01f17] transition hover:bg-[rgba(255,59,48,0.1)]" type="button" onClick={() => handleDeleteViewPreset(preset.name)} aria-label={`${preset.name} 삭제`}>
+                        <Trash2 size={14} aria-hidden="true" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
 
@@ -631,6 +716,93 @@ function ResourceSelect({ label, value, values, onChange }: { label: string; val
       </select>
     </label>
   );
+}
+
+function readResourceViewPresets(): ResourceViewPreset[] {
+  try {
+    const rawValue = window.localStorage.getItem(resourceViewPresetStorageKey);
+    if (!rawValue) {
+      return [];
+    }
+    const parsedValue = JSON.parse(rawValue);
+    if (!Array.isArray(parsedValue)) {
+      return [];
+    }
+    return parsedValue.flatMap(validResourceViewPreset).slice(0, maxResourceViewPresets);
+  } catch {
+    return [];
+  }
+}
+
+function writeResourceViewPresets(presets: ResourceViewPreset[]) {
+  try {
+    window.localStorage.setItem(resourceViewPresetStorageKey, JSON.stringify(presets.slice(0, maxResourceViewPresets)));
+  } catch {
+    // Presets are a convenience feature; quota/private-mode failures should not break the explorer.
+  }
+}
+
+function validResourceViewPreset(value: unknown): ResourceViewPreset[] {
+  if (!value || typeof value !== 'object') {
+    return [];
+  }
+  const candidate = value as Record<string, unknown>;
+  if (
+    typeof candidate.name !== 'string' ||
+    candidate.name.trim() === '' ||
+    typeof candidate.query !== 'string' ||
+    typeof candidate.cluster !== 'string' ||
+    typeof candidate.namespace !== 'string' ||
+    typeof candidate.kind !== 'string' ||
+    typeof candidate.status !== 'string' ||
+    typeof candidate.updatedAt !== 'number'
+  ) {
+    return [];
+  }
+  return [
+    {
+      name: candidate.name.trim().slice(0, 80),
+      query: candidate.query.slice(0, 160),
+      cluster: candidate.cluster || allValue,
+      namespace: candidate.namespace || allValue,
+      kind: candidate.kind || allValue,
+      status: candidate.status || allValue,
+      updatedAt: candidate.updatedAt,
+    },
+  ];
+}
+
+function upsertResourceViewPreset(presets: ResourceViewPreset[], preset: ResourceViewPreset) {
+  return [preset, ...presets.filter((existingPreset) => existingPreset.name !== preset.name)].slice(0, maxResourceViewPresets);
+}
+
+function normalizePresetFilterValue(value: string, availableValues: string[]) {
+  if (value === allValue || availableValues.includes(value)) {
+    return value;
+  }
+  return allValue;
+}
+
+function suggestedResourceViewPresetName(filters: Pick<ResourceViewPreset, 'query' | 'cluster' | 'namespace' | 'kind' | 'status'>) {
+  const parts = [
+    filters.query.trim() ? `검색 ${filters.query.trim()}` : '',
+    filters.cluster !== allValue ? filters.cluster : '',
+    filters.namespace !== allValue ? filters.namespace : '',
+    filters.kind !== allValue ? filters.kind : '',
+    filters.status !== allValue ? filters.status : '',
+  ].filter(Boolean);
+  return parts.length > 0 ? parts.join(' · ').slice(0, 80) : '전체 리소스';
+}
+
+function resourceViewPresetSummary(preset: ResourceViewPreset) {
+  const parts = [
+    preset.query.trim() ? `q:${preset.query.trim()}` : '',
+    preset.cluster !== allValue ? `cluster:${preset.cluster}` : '',
+    preset.namespace !== allValue ? `ns:${preset.namespace}` : '',
+    preset.kind !== allValue ? `kind:${preset.kind}` : '',
+    preset.status !== allValue ? `status:${preset.status}` : '',
+  ].filter(Boolean);
+  return parts.length > 0 ? parts.join(' · ') : '전체 필터';
 }
 
 function DetailSection({ icon: Icon, title, summary, open, onToggle, children }: { icon: LucideIcon; title: string; summary: string; open: boolean; onToggle: () => void; children: ReactNode }) {
