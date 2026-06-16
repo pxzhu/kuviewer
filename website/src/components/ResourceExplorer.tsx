@@ -18,12 +18,14 @@ interface ResourceExplorerProps {
 
 const allValue = 'all';
 const resourceViewPresetStorageKey = 'kuviewer_resource_view_presets';
+const resourceListDensityStorageKey = 'kuviewer_resource_list_density';
 const logDensityStorageKey = 'kuviewer_log_density';
 const maxResourceViewPresets = 8;
 const maxCollapsedRelations = 24;
 const defaultOpenDetailSections: DetailSectionId[] = ['metadata', 'status', 'safe', 'relations', 'events'];
 
 type DetailSectionId = 'metadata' | 'status' | 'safe' | 'yaml' | 'labels' | 'annotations' | 'relations' | 'events' | 'logs';
+type ResourceListDensity = 'comfortable' | 'compact';
 type LogDensity = 'comfortable' | 'compact';
 type EventSeverity = 'warning' | 'normal' | 'other';
 type EventSeverityFilter = 'all' | 'warning' | 'normal';
@@ -90,6 +92,7 @@ export function ResourceExplorer({ liveEnabled, selectedNodeId, snapshot, source
   const [viewPresets, setViewPresets] = useState<ResourceViewPreset[]>(() => readResourceViewPresets());
   const [presetName, setPresetName] = useState('');
   const [detailFocusRequest, setDetailFocusRequest] = useState(0);
+  const [resourceListDensity, setResourceListDensity] = useState<ResourceListDensity>(() => readResourceListDensityPreference());
   const resourceRowRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   useEffect(() => {
@@ -154,6 +157,10 @@ export function ResourceExplorer({ liveEnabled, selectedNodeId, snapshot, source
     }
   }, [onSelectNode, selectedNodeId, selectedResource]);
 
+  useEffect(() => {
+    writeResourceListDensityPreference(resourceListDensity);
+  }, [resourceListDensity]);
+
   const handleSaveViewPreset = () => {
     const nextPreset: ResourceViewPreset = {
       name: (presetName.trim() || suggestedPresetName).slice(0, 80),
@@ -184,6 +191,23 @@ export function ResourceExplorer({ liveEnabled, selectedNodeId, snapshot, source
     setViewPresets(nextPresets);
     writeResourceViewPresets(nextPresets);
   };
+  const resourceSummaryLimit = resourceListDensity === 'compact' ? 2 : 3;
+  const resourceRowClassName = (resource: ResourceExplorerItem) =>
+    `${resourceListDensity === 'compact' ? 'mb-1.5 rounded-[10px] px-2 py-2' : 'mb-2 rounded-[12px] p-3'} w-full cursor-pointer border text-left transition focus:outline-none focus:ring-2 focus:ring-[rgba(0,122,255,0.22)] ${
+      resource.id === selectedResource?.id
+        ? 'border-[rgba(0,122,255,0.36)] bg-[rgba(0,122,255,0.1)] shadow-[0_0_0_1px_rgba(0,122,255,0.08)]'
+        : 'border-[rgba(60,60,67,0.12)] bg-white/78 hover:bg-white'
+    }`;
+  const resourceNameClassName = resourceListDensity === 'compact' ? 'truncate text-xs font-semibold text-[#1d1d1f]' : 'truncate text-sm font-semibold text-[#1d1d1f]';
+  const resourceMetaClassName =
+    resourceListDensity === 'compact'
+      ? 'mt-0.5 truncate font-mono text-[9px] font-semibold uppercase tracking-[0.03em] text-[rgba(60,60,67,0.58)]'
+      : 'mt-0.5 truncate font-mono text-[10px] font-semibold uppercase tracking-[0.03em] text-[rgba(60,60,67,0.58)]';
+  const resourceSummaryContainerClassName = resourceListDensity === 'compact' ? 'mt-1 flex flex-wrap gap-1' : 'mt-2 flex flex-wrap gap-1.5';
+  const resourceSummaryChipClassName =
+    resourceListDensity === 'compact'
+      ? 'rounded-full bg-[rgba(242,242,247,0.78)] px-1.5 py-0 font-mono text-[9px] font-semibold text-[rgba(60,60,67,0.72)]'
+      : 'rounded-full bg-[rgba(242,242,247,0.78)] px-2 py-0.5 font-mono text-[10px] font-semibold text-[rgba(60,60,67,0.72)]';
   const focusResourceRow = (resourceId: string) => {
     window.requestAnimationFrame(() => {
       resourceRowRefs.current[resourceId]?.focus({ preventScroll: true });
@@ -230,7 +254,29 @@ export function ResourceExplorer({ liveEnabled, selectedNodeId, snapshot, source
               <h2 className="text-sm font-semibold text-[#1d1d1f]">리소스 탐색</h2>
               <p className="ku-meta mt-1">읽기 전용 Kubernetes 리소스 목록 · Secret value 숨김</p>
             </div>
-            <span className="ku-chip">{loading ? '로딩 중' : `${filteredResources.length} / ${resources.length}`}</span>
+            <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+              <div className="grid grid-cols-2 rounded-[9px] border border-[rgba(60,60,67,0.12)] bg-white/70 p-0.5" aria-label="리소스 목록 밀도">
+                {([
+                  { value: 'comfortable', label: '기본' },
+                  { value: 'compact', label: '촘촘' },
+                ] as const).map((option) => (
+                  <button
+                    key={option.value}
+                    className={`rounded-[7px] px-2 py-1 text-xs font-semibold transition ${
+                      resourceListDensity === option.value ? 'bg-[#1d1d1f] text-white shadow-sm' : 'text-[rgba(60,60,67,0.72)] hover:bg-white'
+                    }`}
+                    data-testid={`resource-list-density-${option.value}`}
+                    type="button"
+                    onClick={() => setResourceListDensity(option.value)}
+                    aria-pressed={resourceListDensity === option.value}
+                    title={`리소스 목록 ${option.label} 표시`}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+              <span className="ku-chip">{loading ? '로딩 중' : `${filteredResources.length} / ${resources.length}`}</span>
+            </div>
           </div>
           {error ? <p className="mt-2 text-xs font-semibold text-[#b26a00]">API 오류: {error}</p> : null}
         </div>
@@ -300,11 +346,7 @@ export function ResourceExplorer({ liveEnabled, selectedNodeId, snapshot, source
             <div
               key={resource.id}
               id={resourceOptionDomId(resource.id)}
-              className={`mb-2 w-full cursor-pointer rounded-[12px] border p-3 text-left transition focus:outline-none focus:ring-2 focus:ring-[rgba(0,122,255,0.22)] ${
-                resource.id === selectedResource?.id
-                  ? 'border-[rgba(0,122,255,0.36)] bg-[rgba(0,122,255,0.1)] shadow-[0_0_0_1px_rgba(0,122,255,0.08)]'
-                  : 'border-[rgba(60,60,67,0.12)] bg-white/78 hover:bg-white'
-              }`}
+              className={resourceRowClassName(resource)}
               ref={(node) => {
                 resourceRowRefs.current[resource.id] = node;
               }}
@@ -316,17 +358,17 @@ export function ResourceExplorer({ liveEnabled, selectedNodeId, snapshot, source
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <p className="truncate text-sm font-semibold text-[#1d1d1f]">{resource.name}</p>
-                  <p className="mt-0.5 truncate font-mono text-[10px] font-semibold uppercase tracking-[0.03em] text-[rgba(60,60,67,0.58)]">
+                  <p className={resourceNameClassName}>{resource.name}</p>
+                  <p className={resourceMetaClassName}>
                     {resource.namespace ? `${resource.namespace} / ` : ''}
                     {resource.kind}
                   </p>
                 </div>
                 <span className={statusPillClassName(resource.status)}>{resource.status}</span>
               </div>
-              <div className="mt-2 flex flex-wrap gap-1.5">
-                {Object.entries(resource.summary).slice(0, 3).map(([key, value]) => (
-                  <span key={key} className="rounded-full bg-[rgba(242,242,247,0.78)] px-2 py-0.5 font-mono text-[10px] font-semibold text-[rgba(60,60,67,0.72)]">
+              <div className={resourceSummaryContainerClassName}>
+                {Object.entries(resource.summary).slice(0, resourceSummaryLimit).map(([key, value]) => (
+                  <span key={key} className={resourceSummaryChipClassName}>
                     {key}:{String(value)}
                   </span>
                 ))}
@@ -1403,6 +1445,22 @@ function ResourceSelect({ label, value, values, onChange }: { label: string; val
       </select>
     </label>
   );
+}
+
+function readResourceListDensityPreference(): ResourceListDensity {
+  try {
+    return window.localStorage.getItem(resourceListDensityStorageKey) === 'compact' ? 'compact' : 'comfortable';
+  } catch {
+    return 'comfortable';
+  }
+}
+
+function writeResourceListDensityPreference(density: ResourceListDensity) {
+  try {
+    window.localStorage.setItem(resourceListDensityStorageKey, density);
+  } catch {
+    // Density is only a UI preference; storage failures should not break the explorer.
+  }
 }
 
 function readLogDensityPreference(): LogDensity {
