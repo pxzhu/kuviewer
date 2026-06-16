@@ -29,8 +29,8 @@ Kuviewer는 Kubernetes 리소스를 웹에서 시각적으로 보는 도구다. 
 - 기본 visual smoke URL은 `http://127.0.0.1:4174/kuviewer/`다.
 - standalone 배포는 별도 subdomain을 host gateway에서 내부 `127.0.0.1:18085`로 라우팅하는 구성을 기준으로 한다.
 - NetworkPolicy는 `applies-to`와 함께 `allows-ingress` / `allows-egress` 정책 의도 edge를 표시한다. 이는 실제 CNI traffic 관측이 아니라 spec 기반 해석이며, `matchLabels`와 `In`/`NotIn`/`Exists`/`DoesNotExist` `matchExpressions`를 edge 추론에 사용하고 `ipBlock`은 summary-only로 둔다.
-- `리소스 탐색`은 Kubernetes 리소스용 읽기 전용 목록/상세 패널을 제공한다. 상세에는 metadata, labels/annotations, safe status/summary preview, raw manifest가 아닌 safe YAML preview, topology relations, live Events, live Pod logs 영역이 포함된다.
-- live Kubernetes mode에서는 선택 리소스의 core v1 Events를 `involvedObject` field selector로 조회한다. RBAC/클러스터 차이로 Events 조회가 안 되면 전체 상세 실패 대신 빈 Events와 안전한 warning을 표시한다.
+- `리소스 탐색`은 Kubernetes 리소스용 읽기 전용 목록/상세 패널을 제공한다. 상세에는 접기/펼치기 가능한 metadata, labels/annotations, safe status/summary preview, raw manifest가 아닌 safe YAML preview, topology relations, live Events, live Pod logs 영역이 포함된다.
+- live Kubernetes mode에서는 선택 리소스의 core v1 Events를 `involvedObject` field selector로 조회한다. 현재 표시된 Events에는 브라우저 로컬 필터를 적용할 수 있으며 필터 텍스트는 저장하지 않는다. RBAC/클러스터 차이로 Events 조회가 안 되면 전체 상세 실패 대신 빈 Events와 안전한 warning을 표시한다.
 - live Kubernetes mode에서는 선택 Pod의 최근 200줄 logs를 버튼 클릭 시 조회하거나 현재 로그를 따라갈 수 있다. container/initContainer 선택과 previous terminated container 조회를 지원하고, follow 연결은 현재 로그에만 적용된다. logs는 저장하지 않으며, 브라우저는 follow 중 최근 500줄만 표시하고 현재 표시된 로그에 한해 로컬 필터를 적용한다. RBAC/클러스터 차이로 조회가 안 되면 전체 상세 실패 대신 빈 Logs와 안전한 warning을 표시한다.
 - live/upload/mock mode에서 `CustomResourceDefinition` 정의 리소스를 read-only inventory node로 표시한다. group/kind/plural/scope/served versions/storage version summary를 보여준다. CRD 정의가 있으면 matching custom resource instance도 `CustomResource` 노드로 표시하되 raw spec/status 값은 숨기고 field count/condition summary와 안전한 spec reference 관계를 보여준다.
 - Secret value, `data`, `stringData`, kubeconfig, cloud credential, private key는 계속 표시/저장/커밋하지 않는다. annotation은 민감해 보이는 key/value를 redaction한다.
@@ -108,7 +108,8 @@ https://kuviewer.example.com/
    - CRD discovery, custom resource instance discovery, custom relation inference 1차 범위는 완료됐다.
    - 읽기 전용 safe YAML preview는 완료됐다.
    - Pod logs 1차 범위, previous logs 조회, current-log follow, 로컬 로그 필터링은 완료됐다.
-   - 다음 확장 후보는 이벤트 필터링과 리소스 상세 UX 밀도 개선이다.
+   - 이벤트 필터링과 리소스 상세 UX 밀도 개선은 완료됐다.
+   - 다음 확장 후보는 리소스 리스트 saved view/query preset 또는 copy-only 로그 UX다.
 
 4. 실제 Kubernetes 연결 설계
    - 브라우저에 kube credential을 직접 넣지 않는 방향 유지.

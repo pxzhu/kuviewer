@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
-import { Activity, AlertTriangle, Boxes, FileText, Link2, Search, Tags } from 'lucide-react';
+import { Activity, AlertTriangle, Boxes, ChevronDown, FileText, Link2, Search, Tags } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { fetchResourceEvents, fetchResourceLogs, fetchResources, resourcesFromSnapshot, streamResourceLogs } from '../services/resourceApi';
 import type { ResourceEvent, ResourceExplorerItem } from '../types/resourceExplorer';
@@ -16,6 +16,9 @@ interface ResourceExplorerProps {
 }
 
 const allValue = 'all';
+const defaultOpenDetailSections: DetailSectionId[] = ['metadata', 'status', 'safe', 'relations', 'events'];
+
+type DetailSectionId = 'metadata' | 'status' | 'safe' | 'yaml' | 'labels' | 'annotations' | 'relations' | 'events' | 'logs';
 
 export function ResourceExplorer({ liveEnabled, selectedNodeId, snapshot, sourceMode, onSelectNode }: ResourceExplorerProps) {
   const [query, setQuery] = useState('');
@@ -155,6 +158,7 @@ function ResourceExplorerDetail({ liveEnabled, resource, onSelectNode }: { liveE
   const [events, setEvents] = useState<ResourceEvent[]>([]);
   const [eventsError, setEventsError] = useState('');
   const [eventsWarning, setEventsWarning] = useState('');
+  const [eventFilter, setEventFilter] = useState('');
   const [logLines, setLogLines] = useState<string[]>([]);
   const [logsError, setLogsError] = useState('');
   const [logsWarning, setLogsWarning] = useState('');
@@ -164,6 +168,7 @@ function ResourceExplorerDetail({ liveEnabled, resource, onSelectNode }: { liveE
   const [selectedLogContainer, setSelectedLogContainer] = useState('');
   const [previousLogs, setPreviousLogs] = useState(false);
   const [logFilter, setLogFilter] = useState('');
+  const [openSections, setOpenSections] = useState<Set<DetailSectionId>>(() => new Set(defaultOpenDetailSections));
 
   useEffect(() => {
     if (!resource || !liveEnabled) {
@@ -201,6 +206,8 @@ function ResourceExplorerDetail({ liveEnabled, resource, onSelectNode }: { liveE
     setSelectedLogContainer('');
     setPreviousLogs(false);
     setLogFilter('');
+    setEventFilter('');
+    setOpenSections(new Set(defaultOpenDetailSections));
   }, [resource?.id]);
 
   useEffect(() => {
@@ -211,7 +218,9 @@ function ResourceExplorerDetail({ liveEnabled, resource, onSelectNode }: { liveE
   }, []);
 
   const filteredLogLines = useMemo(() => filterLogLines(logLines, logFilter), [logFilter, logLines]);
+  const filteredEvents = useMemo(() => filterEvents(events, eventFilter), [eventFilter, events]);
   const normalizedLogFilter = logFilter.trim();
+  const normalizedEventFilter = eventFilter.trim();
 
   if (!resource) {
     return (
@@ -231,11 +240,34 @@ function ResourceExplorerDetail({ liveEnabled, resource, onSelectNode }: { liveE
   const canFetchLogs = liveEnabled && resource.kind === 'Pod';
   const logContainerOptions = podLogContainerOptions(resource);
   const effectiveLogContainer = selectedLogContainer || logContainerOptions.find((option) => !option.init)?.name || logContainerOptions[0]?.name || '';
+  const isSectionOpen = (id: DetailSectionId) => openSections.has(id);
+  const toggleSection = (id: DetailSectionId) => {
+    setOpenSections((current) => {
+      const next = new Set(current);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+  const openSection = (id: DetailSectionId) => {
+    setOpenSections((current) => {
+      if (current.has(id)) {
+        return current;
+      }
+      const next = new Set(current);
+      next.add(id);
+      return next;
+    });
+  };
 
   const handleFetchLogs = async () => {
     if (!canFetchLogs) {
       return;
     }
+    openSection('logs');
     stopLogStream();
     setLogsLoading(true);
     setLogsError('');
@@ -269,6 +301,7 @@ function ResourceExplorerDetail({ liveEnabled, resource, onSelectNode }: { liveE
 
     const controller = new AbortController();
     logsStreamControllerRef.current = controller;
+    openSection('logs');
     setLogLines([]);
     setLogsError('');
     setLogsWarning('');
@@ -319,29 +352,29 @@ function ResourceExplorerDetail({ liveEnabled, resource, onSelectNode }: { liveE
       </div>
 
       <div className="grid gap-3 p-3">
-        <DetailSection icon={FileText} title="Metadata">
+        <DetailSection icon={FileText} title="Metadata" summary={sectionCount(metadataPreview)} open={isSectionOpen('metadata')} onToggle={() => toggleSection('metadata')}>
           <KeyValueGrid values={metadataPreview} />
         </DetailSection>
-        <DetailSection icon={Activity} title="Status">
+        <DetailSection icon={Activity} title="Status" summary={sectionCount(statusPreview)} open={isSectionOpen('status')} onToggle={() => toggleSection('status')}>
           <KeyValueGrid values={statusPreview} />
         </DetailSection>
-        <DetailSection icon={FileText} title="Safe Preview">
+        <DetailSection icon={FileText} title="Safe Preview" summary={sectionCount(summaryPreview)} open={isSectionOpen('safe')} onToggle={() => toggleSection('safe')}>
           <KeyValueGrid values={summaryPreview} />
         </DetailSection>
-        <DetailSection icon={FileText} title="YAML Preview">
+        <DetailSection icon={FileText} title="YAML Preview" summary={yamlPreview ? 'available' : 'empty'} open={isSectionOpen('yaml')} onToggle={() => toggleSection('yaml')}>
           {yamlPreview ? (
             <pre className="max-h-[360px] overflow-auto rounded-[10px] border border-[rgba(60,60,67,0.12)] bg-[#111827] p-3 font-mono text-[11px] leading-5 text-[#d1d5db]">{yamlPreview}</pre>
           ) : (
             <p className="ku-meta">표시할 YAML preview가 없습니다.</p>
           )}
         </DetailSection>
-        <DetailSection icon={Tags} title="Labels">
+        <DetailSection icon={Tags} title="Labels" summary={sectionCount(resource.labels)} open={isSectionOpen('labels')} onToggle={() => toggleSection('labels')}>
           <KeyValueGrid values={resource.labels} empty="labels 없음" />
         </DetailSection>
-        <DetailSection icon={Tags} title="Annotations">
+        <DetailSection icon={Tags} title="Annotations" summary={sectionCount(resource.annotations)} open={isSectionOpen('annotations')} onToggle={() => toggleSection('annotations')}>
           <KeyValueGrid values={resource.annotations} empty="annotations 없음" />
         </DetailSection>
-        <DetailSection icon={Link2} title="Relations">
+        <DetailSection icon={Link2} title="Relations" summary={`${resource.related.length}`} open={isSectionOpen('relations')} onToggle={() => toggleSection('relations')}>
           {resource.related.length === 0 ? (
             <p className="ku-meta">관계 없음</p>
           ) : (
@@ -360,30 +393,54 @@ function ResourceExplorerDetail({ liveEnabled, resource, onSelectNode }: { liveE
             </div>
           )}
         </DetailSection>
-        <DetailSection icon={Boxes} title="Events">
+        <DetailSection icon={Boxes} title="Events" summary={`${filteredEvents.length} / ${events.length}`} open={isSectionOpen('events')} onToggle={() => toggleSection('events')}>
           {eventsWarning ? <InlineWarning message="이벤트 조회 권한이 없거나 API가 없어 빈 목록으로 표시합니다." /> : null}
           {eventsError ? <InlineWarning message={`이벤트 조회 실패: ${eventsError}`} /> : null}
+          {events.length > 0 ? (
+            <div className="mb-2 grid gap-2 rounded-[10px] border border-[rgba(60,60,67,0.12)] bg-white/70 p-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+              <label className="relative block">
+                <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[rgba(60,60,67,0.45)]" size={15} />
+                <input className="ku-input w-full pl-9" placeholder="이벤트 필터" value={eventFilter} onChange={(event) => setEventFilter(event.target.value)} />
+              </label>
+              <div className="flex items-center justify-between gap-2">
+                <span className="ku-chip">
+                  {filteredEvents.length} / {events.length}
+                </span>
+                {eventFilter ? (
+                  <button
+                    className="rounded-[9px] border border-[rgba(60,60,67,0.12)] bg-white px-2.5 py-1.5 text-xs font-semibold text-[rgba(60,60,67,0.72)] transition hover:bg-[rgba(242,242,247,0.9)]"
+                    type="button"
+                    onClick={() => setEventFilter('')}
+                  >
+                    초기화
+                  </button>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
           {events.length === 0 ? (
             <p className="ku-meta">표시할 이벤트가 없습니다.</p>
+          ) : filteredEvents.length === 0 ? (
+            <p className="ku-meta">필터와 일치하는 이벤트가 없습니다.</p>
           ) : (
             <div className="grid gap-2">
-              {events.map((event, index) => (
+              {filteredEvents.map(({ event, index }) => (
                 <div key={`${event.timestamp}:${event.reason}:${index}`} className="rounded-[10px] border border-[rgba(60,60,67,0.12)] bg-white/75 p-2">
                   <div className="flex flex-wrap items-center justify-between gap-2">
-                    <p className="text-xs font-semibold text-[#1d1d1f]">{event.reason || event.type || 'Event'}</p>
-                    <span className="font-mono text-[10px] font-semibold uppercase text-[rgba(60,60,67,0.54)]">{event.type || 'Normal'}</span>
+                    <p className="text-xs font-semibold text-[#1d1d1f]">{renderHighlightedText(event.reason || event.type || 'Event', normalizedEventFilter)}</p>
+                    <span className="font-mono text-[10px] font-semibold uppercase text-[rgba(60,60,67,0.54)]">{renderHighlightedText(event.type || 'Normal', normalizedEventFilter)}</span>
                   </div>
-                  <p className="mt-1 text-xs text-[rgba(60,60,67,0.72)]">{event.message}</p>
+                  <p className="mt-1 text-xs text-[rgba(60,60,67,0.72)]">{renderHighlightedText(event.message, normalizedEventFilter)}</p>
                   <p className="mt-1 font-mono text-[10px] font-semibold text-[rgba(60,60,67,0.54)]">
-                    {formatEventTimestamp(event.timestamp)}
-                    {event.source ? ` · ${event.source}` : ''}
+                    {renderHighlightedText(formatEventTimestamp(event.timestamp), normalizedEventFilter)}
+                    {event.source ? <> · {renderHighlightedText(event.source, normalizedEventFilter)}</> : ''}
                   </p>
                 </div>
               ))}
             </div>
           )}
         </DetailSection>
-        <DetailSection icon={FileText} title="Logs">
+        <DetailSection icon={FileText} title="Logs" summary={logLines.length > 0 ? `${filteredLogLines.length} / ${logLines.length}` : canFetchLogs ? 'ready' : 'empty'} open={isSectionOpen('logs')} onToggle={() => toggleSection('logs')}>
           {!canFetchLogs ? (
             <p className="ku-meta">Pod 로그 없음</p>
           ) : (
@@ -480,7 +537,7 @@ function ResourceExplorerDetail({ liveEnabled, resource, onSelectNode }: { liveE
                   {filteredLogLines.map(({ line, index }) => (
                     <div key={`${index}:${line.slice(0, 16)}`} className="grid grid-cols-[44px_minmax(0,1fr)] gap-2 rounded-[6px] px-1 py-0.5">
                       <span className="select-none text-right text-[rgba(209,213,219,0.42)]">{index + 1}</span>
-                      <span className="min-w-0 whitespace-pre-wrap break-words">{renderLogLine(line, normalizedLogFilter)}</span>
+                      <span className="min-w-0 whitespace-pre-wrap break-words">{renderHighlightedText(line || ' ', normalizedLogFilter)}</span>
                     </div>
                   ))}
                 </div>
@@ -512,33 +569,52 @@ function filterLogLines(lines: string[], filter: string) {
   });
 }
 
-function renderLogLine(line: string, filter: string): ReactNode {
+function filterEvents(events: ResourceEvent[], filter: string) {
+  const normalizedFilter = filter.trim().toLowerCase();
+  return events.flatMap((event, index) => {
+    if (!normalizedFilter || eventText(event).includes(normalizedFilter)) {
+      return [{ event, index }];
+    }
+    return [];
+  });
+}
+
+function eventText(event: ResourceEvent) {
+  return [event.type, event.reason, event.message, event.source, event.timestamp, formatEventTimestamp(event.timestamp)].join(' ').toLowerCase();
+}
+
+function renderHighlightedText(text: string, filter: string): ReactNode {
   const normalizedFilter = filter.trim().toLowerCase();
   if (!normalizedFilter) {
-    return line || ' ';
+    return text || ' ';
   }
 
-  const lowerLine = line.toLowerCase();
+  const lowerText = text.toLowerCase();
   const fragments: ReactNode[] = [];
   let cursor = 0;
-  let matchIndex = lowerLine.indexOf(normalizedFilter, cursor);
+  let matchIndex = lowerText.indexOf(normalizedFilter, cursor);
   while (matchIndex >= 0) {
     if (matchIndex > cursor) {
-      fragments.push(line.slice(cursor, matchIndex));
+      fragments.push(text.slice(cursor, matchIndex));
     }
     const matchEnd = matchIndex + normalizedFilter.length;
     fragments.push(
       <mark key={`${matchIndex}:${matchEnd}`} className="rounded-[3px] bg-[#ffd60a] px-0.5 text-[#1d1d1f]">
-        {line.slice(matchIndex, matchEnd)}
+        {text.slice(matchIndex, matchEnd)}
       </mark>,
     );
     cursor = matchEnd;
-    matchIndex = lowerLine.indexOf(normalizedFilter, cursor);
+    matchIndex = lowerText.indexOf(normalizedFilter, cursor);
   }
-  if (cursor < line.length) {
-    fragments.push(line.slice(cursor));
+  if (cursor < text.length) {
+    fragments.push(text.slice(cursor));
   }
   return fragments.length > 0 ? fragments : ' ';
+}
+
+function sectionCount(values: Record<string, unknown>) {
+  const count = Object.entries(values).filter(([, value]) => value !== undefined && value !== '' && (!Array.isArray(value) || value.length > 0)).length;
+  return `${count}`;
 }
 
 function ResourceSelect({ label, value, values, onChange }: { label: string; value: string; values: string[]; onChange: (value: string) => void }) {
@@ -557,14 +633,20 @@ function ResourceSelect({ label, value, values, onChange }: { label: string; val
   );
 }
 
-function DetailSection({ icon: Icon, title, children }: { icon: LucideIcon; title: string; children: ReactNode }) {
+function DetailSection({ icon: Icon, title, summary, open, onToggle, children }: { icon: LucideIcon; title: string; summary: string; open: boolean; onToggle: () => void; children: ReactNode }) {
   return (
-    <section className="rounded-[12px] border border-[rgba(60,60,67,0.12)] bg-white/72 p-3">
-      <h3 className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.03em] text-[rgba(60,60,67,0.62)]">
-        <Icon size={14} aria-hidden="true" />
-        {title}
-      </h3>
-      {children}
+    <section className="rounded-[12px] border border-[rgba(60,60,67,0.12)] bg-white/72">
+      <div className="flex items-center justify-between gap-2 px-3 py-2.5">
+        <h3 className="flex min-w-0 items-center gap-2 text-xs font-semibold uppercase tracking-[0.03em] text-[rgba(60,60,67,0.62)]">
+          <Icon size={14} aria-hidden="true" />
+          <span className="truncate">{title}</span>
+        </h3>
+        <button className="flex shrink-0 items-center gap-1.5 rounded-[8px] px-1.5 py-1 transition hover:bg-[rgba(242,242,247,0.85)]" type="button" onClick={onToggle} aria-expanded={open} aria-label={`${title} ${open ? '접기' : '펼치기'}`}>
+          <span className="ku-chip">{summary}</span>
+          <ChevronDown className={`text-[rgba(60,60,67,0.48)] transition ${open ? 'rotate-180' : ''}`} size={15} aria-hidden="true" />
+        </button>
+      </div>
+      {open ? <div className="px-3 pb-3">{children}</div> : null}
     </section>
   );
 }
