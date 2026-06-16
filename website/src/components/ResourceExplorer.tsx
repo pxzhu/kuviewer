@@ -28,6 +28,7 @@ type LogDensity = 'comfortable' | 'compact';
 type EventSeverity = 'warning' | 'normal' | 'other';
 type EventSeverityFilter = 'all' | 'warning' | 'normal';
 type EventTimeRangeFilter = 'all' | '1h' | '6h' | '24h' | '7d';
+type EventSortOrder = 'newest' | 'oldest';
 
 const detailJumpSections: Array<{ id: DetailSectionId; label: string }> = [
   { id: 'metadata', label: 'Metadata' },
@@ -67,7 +68,14 @@ interface EventGroup {
   key: EventSeverity;
   label: string;
   count: number;
-  items: Array<{ event: ResourceEvent; index: number }>;
+  items: EventListItem[];
+}
+
+interface EventListItem {
+  id: string;
+  event: ResourceEvent;
+  index: number;
+  pinned: boolean;
 }
 
 export function ResourceExplorer({ liveEnabled, selectedNodeId, snapshot, sourceMode, onOpenTopologyNode, onSelectNode }: ResourceExplorerProps) {
@@ -358,6 +366,8 @@ function ResourceExplorerDetail({
   const [eventFilter, setEventFilter] = useState('');
   const [eventSeverityFilter, setEventSeverityFilter] = useState<EventSeverityFilter>('all');
   const [eventTimeRangeFilter, setEventTimeRangeFilter] = useState<EventTimeRangeFilter>('all');
+  const [eventSortOrder, setEventSortOrder] = useState<EventSortOrder>('newest');
+  const [pinnedEventKeys, setPinnedEventKeys] = useState<Set<string>>(() => new Set());
   const [logLines, setLogLines] = useState<string[]>([]);
   const [logsError, setLogsError] = useState('');
   const [logsWarning, setLogsWarning] = useState('');
@@ -419,6 +429,8 @@ function ResourceExplorerDetail({
     setEventFilter('');
     setEventSeverityFilter('all');
     setEventTimeRangeFilter('all');
+    setEventSortOrder('newest');
+    setPinnedEventKeys(new Set());
     setActiveDetailSectionId('metadata');
     setOpenSections(new Set(defaultOpenDetailSections));
   }, [resource?.id]);
@@ -431,8 +443,12 @@ function ResourceExplorerDetail({
   }, []);
 
   const filteredLogLines = useMemo(() => filterLogLines(logLines, logFilter), [logFilter, logLines]);
-  const filteredEvents = useMemo(() => filterEvents(events, eventFilter, eventSeverityFilter, eventTimeRangeFilter, Date.now()), [eventFilter, eventSeverityFilter, eventTimeRangeFilter, events]);
-  const eventGroups = useMemo(() => groupEventsBySeverity(filteredEvents), [filteredEvents]);
+  const filteredEvents = useMemo(
+    () => sortEventListItems(filterEvents(events, eventFilter, eventSeverityFilter, eventTimeRangeFilter, Date.now()), eventSortOrder, pinnedEventKeys),
+    [eventFilter, eventSeverityFilter, eventSortOrder, eventTimeRangeFilter, events, pinnedEventKeys],
+  );
+  const pinnedEvents = useMemo(() => filteredEvents.filter((item) => item.pinned), [filteredEvents]);
+  const eventGroups = useMemo(() => groupEventsBySeverity(filteredEvents.filter((item) => !item.pinned)), [filteredEvents]);
   const eventSeverityCounts = useMemo(() => countEventSeverities(events), [events]);
   const filteredRelations = useMemo(() => filterRelatedResources(resource?.related || [], relationFilter), [relationFilter, resource?.related]);
   const normalizedLogFilter = logFilter.trim();
@@ -444,6 +460,7 @@ function ResourceExplorerDetail({
   );
   const visibleRelationCount = relationGroups.reduce((total, group) => total + group.items.length, 0);
   const hiddenRelationCount = Math.max(filteredRelations.length - visibleRelationCount, 0);
+  const eventControlsActive = eventFilter || eventSeverityFilter !== 'all' || eventTimeRangeFilter !== 'all' || eventSortOrder !== 'newest' || pinnedEventKeys.size > 0;
 
   useEffect(() => {
     writeLogDensityPreference(logDensity);
@@ -667,6 +684,54 @@ function ResourceExplorerDetail({
       setLogCopyStatus({ tone: 'warning', message: '복사할 수 없습니다' });
     }
   };
+  const togglePinnedEvent = (eventId: string) => {
+    setPinnedEventKeys((current) => {
+      const next = new Set(current);
+      if (next.has(eventId)) {
+        next.delete(eventId);
+      } else {
+        next.add(eventId);
+      }
+      return next;
+    });
+  };
+  const renderEventCard = (item: EventListItem) => {
+    const { event, id, pinned } = item;
+    return (
+      <div
+        key={id}
+        className={`rounded-[10px] border p-2 ${
+          pinned ? 'border-[rgba(0,122,255,0.26)] bg-[rgba(0,122,255,0.06)]' : 'border-[rgba(60,60,67,0.12)] bg-white/75'
+        }`}
+      >
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <p className="min-w-0 text-xs font-semibold text-[#1d1d1f]">{renderHighlightedText(event.reason || event.type || 'Event', normalizedEventFilter)}</p>
+          <div className="flex shrink-0 items-center gap-1.5">
+            <span className={`font-mono text-[10px] font-semibold uppercase ${eventSeverityClassName(eventSeverity(event))}`}>{renderHighlightedText(event.type || 'Normal', normalizedEventFilter)}</span>
+            <button
+              className={`inline-flex items-center gap-1 rounded-[7px] border px-1.5 py-1 text-[10px] font-semibold transition ${
+                pinned
+                  ? 'border-[rgba(0,122,255,0.24)] bg-[rgba(0,122,255,0.12)] text-[#0057b8]'
+                  : 'border-[rgba(60,60,67,0.12)] bg-white/78 text-[rgba(60,60,67,0.62)] hover:bg-white'
+              }`}
+              type="button"
+              onClick={() => togglePinnedEvent(id)}
+              aria-pressed={pinned}
+              title={pinned ? '이벤트 고정 해제' : '이벤트 고정'}
+            >
+              <Bookmark size={12} aria-hidden="true" />
+              {pinned ? '고정됨' : '고정'}
+            </button>
+          </div>
+        </div>
+        <p className="mt-1 text-xs text-[rgba(60,60,67,0.72)]">{renderHighlightedText(event.message, normalizedEventFilter)}</p>
+        <p className="mt-1 font-mono text-[10px] font-semibold text-[rgba(60,60,67,0.54)]">
+          {renderHighlightedText(formatEventTimestamp(event.timestamp), normalizedEventFilter)}
+          {event.source ? <> · {renderHighlightedText(event.source, normalizedEventFilter)}</> : ''}
+        </p>
+      </div>
+    );
+  };
 
   return (
     <div
@@ -852,6 +917,25 @@ function ResourceExplorerDetail({
                     </button>
                   ))}
                 </div>
+                <div className="grid grid-cols-2 rounded-[9px] border border-[rgba(60,60,67,0.12)] bg-white/70 p-0.5">
+                  {([
+                    { value: 'newest', label: '최신순' },
+                    { value: 'oldest', label: '오래된순' },
+                  ] as const).map((option) => (
+                    <button
+                      key={option.value}
+                      className={`rounded-[7px] px-2 py-1 text-xs font-semibold transition ${
+                        eventSortOrder === option.value ? 'bg-[#1d1d1f] text-white shadow-sm' : 'text-[rgba(60,60,67,0.72)] hover:bg-white'
+                      }`}
+                      type="button"
+                      onClick={() => setEventSortOrder(option.value)}
+                      aria-pressed={eventSortOrder === option.value}
+                      title={`이벤트 ${option.label} 정렬`}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
               </div>
               <label className="relative block">
                 <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[rgba(60,60,67,0.45)]" size={15} />
@@ -861,7 +945,8 @@ function ResourceExplorerDetail({
                 <span className="ku-chip">
                   {filteredEvents.length} / {events.length}
                 </span>
-                {eventFilter || eventSeverityFilter !== 'all' || eventTimeRangeFilter !== 'all' ? (
+                {pinnedEventKeys.size > 0 ? <span className="ku-chip">고정 {pinnedEventKeys.size}</span> : null}
+                {eventControlsActive ? (
                   <button
                     className="rounded-[9px] border border-[rgba(60,60,67,0.12)] bg-white px-2.5 py-1.5 text-xs font-semibold text-[rgba(60,60,67,0.72)] transition hover:bg-[rgba(242,242,247,0.9)]"
                     type="button"
@@ -869,6 +954,8 @@ function ResourceExplorerDetail({
                       setEventFilter('');
                       setEventSeverityFilter('all');
                       setEventTimeRangeFilter('all');
+                      setEventSortOrder('newest');
+                      setPinnedEventKeys(new Set());
                     }}
                   >
                     초기화
@@ -883,6 +970,15 @@ function ResourceExplorerDetail({
             <p className="ku-meta">필터와 일치하는 이벤트가 없습니다.</p>
           ) : (
             <div className="grid gap-2">
+              {pinnedEvents.length > 0 ? (
+                <div className="grid gap-1.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.03em] text-[#0057b8]">Pinned</p>
+                    <span className="ku-chip">{pinnedEvents.length}</span>
+                  </div>
+                  <div className="grid gap-2">{pinnedEvents.map(renderEventCard)}</div>
+                </div>
+              ) : null}
               {eventGroups.map((group) => (
                 <div key={group.key} className="grid gap-1.5">
                   <div className="flex items-center justify-between gap-2">
@@ -890,19 +986,7 @@ function ResourceExplorerDetail({
                     <span className="ku-chip">{group.count}</span>
                   </div>
                   <div className="grid gap-2">
-                    {group.items.map(({ event, index }) => (
-                      <div key={`${event.timestamp}:${event.reason}:${index}`} className="rounded-[10px] border border-[rgba(60,60,67,0.12)] bg-white/75 p-2">
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                          <p className="text-xs font-semibold text-[#1d1d1f]">{renderHighlightedText(event.reason || event.type || 'Event', normalizedEventFilter)}</p>
-                          <span className={`font-mono text-[10px] font-semibold uppercase ${eventSeverityClassName(eventSeverity(event))}`}>{renderHighlightedText(event.type || 'Normal', normalizedEventFilter)}</span>
-                        </div>
-                        <p className="mt-1 text-xs text-[rgba(60,60,67,0.72)]">{renderHighlightedText(event.message, normalizedEventFilter)}</p>
-                        <p className="mt-1 font-mono text-[10px] font-semibold text-[rgba(60,60,67,0.54)]">
-                          {renderHighlightedText(formatEventTimestamp(event.timestamp), normalizedEventFilter)}
-                          {event.source ? <> · {renderHighlightedText(event.source, normalizedEventFilter)}</> : ''}
-                        </p>
-                      </div>
-                    ))}
+                    {group.items.map(renderEventCard)}
                   </div>
                 </div>
               ))}
@@ -1104,10 +1188,53 @@ function filterEvents(events: ResourceEvent[], filter: string, severityFilter: E
   const normalizedFilter = filter.trim().toLowerCase();
   return events.flatMap((event, index) => {
     if ((!normalizedFilter || eventText(event).includes(normalizedFilter)) && eventMatchesSeverityFilter(event, severityFilter) && eventMatchesTimeRangeFilter(event, timeRangeFilter, nowMs)) {
-      return [{ event, index }];
+      return [
+        {
+          event,
+          id: eventListItemId(event, index),
+          index,
+          pinned: false,
+        },
+      ];
     }
     return [];
   });
+}
+
+function sortEventListItems(events: EventListItem[], sortOrder: EventSortOrder, pinnedEventKeys: Set<string>) {
+  return events
+    .map((item) => ({ ...item, pinned: pinnedEventKeys.has(item.id) }))
+    .sort((left, right) => {
+      if (left.pinned !== right.pinned) {
+        return left.pinned ? -1 : 1;
+      }
+      const leftTime = sortableEventTimestamp(left.event);
+      const rightTime = sortableEventTimestamp(right.event);
+      if (leftTime === null && rightTime !== null) {
+        return 1;
+      }
+      if (leftTime !== null && rightTime === null) {
+        return -1;
+      }
+      if (leftTime === null && rightTime === null) {
+        return left.index - right.index;
+      }
+      if (leftTime !== null && rightTime !== null && leftTime !== rightTime) {
+        return sortOrder === 'newest' ? rightTime - leftTime : leftTime - rightTime;
+      }
+      return left.index - right.index;
+    });
+}
+
+function sortableEventTimestamp(event: ResourceEvent) {
+  const value = Date.parse(event.timestamp);
+  return Number.isNaN(value) ? null : value;
+}
+
+function eventListItemId(event: ResourceEvent, index: number) {
+  return [event.timestamp, event.type, event.reason, event.source, event.message, String(index)]
+    .map((part) => part.trim())
+    .join('\u001f');
 }
 
 function eventMatchesSeverityFilter(event: ResourceEvent, severityFilter: EventSeverityFilter) {
@@ -1153,7 +1280,7 @@ function countEventSeverities(events: ResourceEvent[]) {
   );
 }
 
-function groupEventsBySeverity(events: Array<{ event: ResourceEvent; index: number }>): EventGroup[] {
+function groupEventsBySeverity(events: EventListItem[]): EventGroup[] {
   const groups: Record<EventSeverity, EventGroup> = {
     warning: { key: 'warning', label: 'Warning / Error', count: 0, items: [] },
     normal: { key: 'normal', label: 'Normal', count: 0, items: [] },
