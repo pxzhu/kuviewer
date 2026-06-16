@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
-import { Activity, AlertTriangle, Bookmark, Boxes, ChevronDown, FileText, Link2, Search, Tags, Trash2 } from 'lucide-react';
+import { Activity, AlertTriangle, Bookmark, Boxes, ChevronDown, Copy, FileText, Link2, Search, Tags, Trash2 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { fetchResourceEvents, fetchResourceLogs, fetchResources, resourcesFromSnapshot, streamResourceLogs } from '../services/resourceApi';
 import type { ResourceEvent, ResourceExplorerItem } from '../types/resourceExplorer';
@@ -253,6 +253,7 @@ function ResourceExplorerDetail({ liveEnabled, resource, onSelectNode }: { liveE
   const [selectedLogContainer, setSelectedLogContainer] = useState('');
   const [previousLogs, setPreviousLogs] = useState(false);
   const [logFilter, setLogFilter] = useState('');
+  const [logCopyStatus, setLogCopyStatus] = useState<{ tone: 'success' | 'warning'; message: string } | null>(null);
   const [openSections, setOpenSections] = useState<Set<DetailSectionId>>(() => new Set(defaultOpenDetailSections));
 
   useEffect(() => {
@@ -291,6 +292,7 @@ function ResourceExplorerDetail({ liveEnabled, resource, onSelectNode }: { liveE
     setSelectedLogContainer('');
     setPreviousLogs(false);
     setLogFilter('');
+    setLogCopyStatus(null);
     setEventFilter('');
     setOpenSections(new Set(defaultOpenDetailSections));
   }, [resource?.id]);
@@ -306,6 +308,14 @@ function ResourceExplorerDetail({ liveEnabled, resource, onSelectNode }: { liveE
   const filteredEvents = useMemo(() => filterEvents(events, eventFilter), [eventFilter, events]);
   const normalizedLogFilter = logFilter.trim();
   const normalizedEventFilter = eventFilter.trim();
+
+  useEffect(() => {
+    if (!logCopyStatus) {
+      return undefined;
+    }
+    const timeout = window.setTimeout(() => setLogCopyStatus(null), 2200);
+    return () => window.clearTimeout(timeout);
+  }, [logCopyStatus]);
 
   if (!resource) {
     return (
@@ -325,6 +335,9 @@ function ResourceExplorerDetail({ liveEnabled, resource, onSelectNode }: { liveE
   const canFetchLogs = liveEnabled && resource.kind === 'Pod';
   const logContainerOptions = podLogContainerOptions(resource);
   const effectiveLogContainer = selectedLogContainer || logContainerOptions.find((option) => !option.init)?.name || logContainerOptions[0]?.name || '';
+  const logFilterActive = normalizedLogFilter.length > 0;
+  const canCopyVisibleLogs = filteredLogLines.length > 0;
+  const canCopyAllLogs = logFilterActive && logLines.length > 0;
   const isSectionOpen = (id: DetailSectionId) => openSections.has(id);
   const toggleSection = (id: DetailSectionId) => {
     setOpenSections((current) => {
@@ -357,6 +370,7 @@ function ResourceExplorerDetail({ liveEnabled, resource, onSelectNode }: { liveE
     setLogsLoading(true);
     setLogsError('');
     setLogsWarning('');
+    setLogCopyStatus(null);
     try {
       const response = await fetchResourceLogs(resource, { container: effectiveLogContainer || undefined, previous: previousLogs });
       setLogLines(response.lines);
@@ -390,6 +404,7 @@ function ResourceExplorerDetail({ liveEnabled, resource, onSelectNode }: { liveE
     setLogLines([]);
     setLogsError('');
     setLogsWarning('');
+    setLogCopyStatus(null);
     setLogsStreaming(true);
     try {
       await streamResourceLogs(
@@ -418,6 +433,23 @@ function ResourceExplorerDetail({ liveEnabled, resource, onSelectNode }: { liveE
         logsStreamControllerRef.current = null;
         setLogsStreaming(false);
       }
+    }
+  };
+
+  const handleCopyLogs = async (mode: 'visible' | 'all') => {
+    const lines = mode === 'all' ? logLines : filteredLogLines.map(({ line }) => line);
+    if (lines.length === 0) {
+      return;
+    }
+    if (!navigator.clipboard?.writeText) {
+      setLogCopyStatus({ tone: 'warning', message: '복사할 수 없습니다' });
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(lines.join('\n'));
+      setLogCopyStatus({ tone: 'success', message: `${lines.length}줄 복사됨` });
+    } catch {
+      setLogCopyStatus({ tone: 'warning', message: '복사할 수 없습니다' });
     }
   };
 
@@ -543,6 +575,7 @@ function ResourceExplorerDetail({ liveEnabled, resource, onSelectNode }: { liveE
                       setLogsError('');
                       setLogsWarning('');
                       setLogFilter('');
+                      setLogCopyStatus(null);
                     }}
                     disabled={logsLoading || logsStreaming}
                   >
@@ -565,6 +598,7 @@ function ResourceExplorerDetail({ liveEnabled, resource, onSelectNode }: { liveE
                       setLogsError('');
                       setLogsWarning('');
                       setLogFilter('');
+                      setLogCopyStatus(null);
                     }}
                     disabled={logsLoading || logsStreaming}
                   />
@@ -593,7 +627,15 @@ function ResourceExplorerDetail({ liveEnabled, resource, onSelectNode }: { liveE
                 <div className="grid gap-2 rounded-[10px] border border-[rgba(60,60,67,0.12)] bg-white/70 p-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
                   <label className="relative block">
                     <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[rgba(60,60,67,0.45)]" size={15} />
-                    <input className="ku-input w-full pl-9" placeholder="로그 필터" value={logFilter} onChange={(event) => setLogFilter(event.target.value)} />
+                    <input
+                      className="ku-input w-full pl-9"
+                      placeholder="로그 필터"
+                      value={logFilter}
+                      onChange={(event) => {
+                        setLogFilter(event.target.value);
+                        setLogCopyStatus(null);
+                      }}
+                    />
                   </label>
                   <div className="flex items-center justify-between gap-2">
                     <span className="ku-chip">
@@ -603,12 +645,49 @@ function ResourceExplorerDetail({ liveEnabled, resource, onSelectNode }: { liveE
                       <button
                         className="rounded-[9px] border border-[rgba(60,60,67,0.12)] bg-white px-2.5 py-1.5 text-xs font-semibold text-[rgba(60,60,67,0.72)] transition hover:bg-[rgba(242,242,247,0.9)]"
                         type="button"
-                        onClick={() => setLogFilter('')}
+                        onClick={() => {
+                          setLogFilter('');
+                          setLogCopyStatus(null);
+                        }}
                       >
                         초기화
                       </button>
                     ) : null}
                   </div>
+                </div>
+              ) : null}
+              {logLines.length > 0 ? (
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    className="inline-flex items-center gap-1.5 rounded-[9px] border border-[rgba(60,60,67,0.12)] bg-white px-2.5 py-1.5 text-xs font-semibold text-[rgba(60,60,67,0.72)] transition hover:bg-[rgba(242,242,247,0.9)] disabled:cursor-not-allowed disabled:opacity-55"
+                    type="button"
+                    onClick={() => void handleCopyLogs('visible')}
+                    disabled={!canCopyVisibleLogs}
+                  >
+                    <Copy size={13} aria-hidden="true" />
+                    표시 로그 복사
+                  </button>
+                  {canCopyAllLogs ? (
+                    <button
+                      className="inline-flex items-center gap-1.5 rounded-[9px] border border-[rgba(60,60,67,0.12)] bg-white px-2.5 py-1.5 text-xs font-semibold text-[rgba(60,60,67,0.72)] transition hover:bg-[rgba(242,242,247,0.9)]"
+                      type="button"
+                      onClick={() => void handleCopyLogs('all')}
+                    >
+                      <Copy size={13} aria-hidden="true" />
+                      전체 로그 복사
+                    </button>
+                  ) : null}
+                  {logCopyStatus ? (
+                    <span
+                      className={`rounded-[9px] border px-2.5 py-1.5 text-xs font-semibold ${
+                        logCopyStatus.tone === 'success'
+                          ? 'border-[rgba(52,199,89,0.24)] bg-[rgba(52,199,89,0.1)] text-[#19783b]'
+                          : 'border-[rgba(255,149,0,0.22)] bg-[rgba(255,149,0,0.08)] text-[#8a4d00]'
+                      }`}
+                    >
+                      {logCopyStatus.message}
+                    </span>
+                  ) : null}
                 </div>
               ) : null}
               {logsWarning ? <InlineWarning message="로그 조회 권한이 없거나 API가 없어 빈 목록으로 표시합니다." /> : null}
