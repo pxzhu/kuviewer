@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { KeyboardEvent as ReactKeyboardEvent, ReactNode } from 'react';
-import { Activity, AlertTriangle, Bookmark, Boxes, ChevronDown, Copy, FileText, GitBranch, Link2, Search, Tags, Trash2 } from 'lucide-react';
+import { Activity, AlertTriangle, Bookmark, Boxes, ChevronDown, Copy, Download, FileText, GitBranch, Link2, Search, Tags, Trash2 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { fetchResourceEvents, fetchResourceLogs, fetchResources, resourcesFromSnapshot, streamResourceLogs } from '../services/resourceApi';
 import type { ResourceEvent, ResourceExplorerItem } from '../types/resourceExplorer';
@@ -32,6 +32,7 @@ type EventSeverityFilter = 'all' | 'warning' | 'normal';
 type EventTimeRangeFilter = 'all' | '1h' | '6h' | '24h' | '7d';
 type LogTimeRangeFilter = EventTimeRangeFilter;
 type EventSortOrder = 'newest' | 'oldest';
+type LogSortOrder = 'received' | 'newest' | 'oldest';
 
 const detailJumpSections: Array<{ id: DetailSectionId; label: string }> = [
   { id: 'metadata', label: 'Metadata' },
@@ -48,6 +49,11 @@ const eventTimeRangeOptions: Array<{ value: EventTimeRangeFilter; label: string;
   { value: '6h', label: '6h', milliseconds: 6 * 60 * 60 * 1000 },
   { value: '24h', label: '24h', milliseconds: 24 * 60 * 60 * 1000 },
   { value: '7d', label: '7d', milliseconds: 7 * 24 * 60 * 60 * 1000 },
+];
+const logSortOptions: Array<{ value: LogSortOrder; label: string }> = [
+  { value: 'received', label: '수신순' },
+  { value: 'newest', label: '최신순' },
+  { value: 'oldest', label: '오래된순' },
 ];
 
 interface ResourceViewPreset {
@@ -429,6 +435,7 @@ function ResourceExplorerDetail({
   const [previousLogs, setPreviousLogs] = useState(false);
   const [logFilter, setLogFilter] = useState('');
   const [logTimeRangeFilter, setLogTimeRangeFilter] = useState<LogTimeRangeFilter>('all');
+  const [logSortOrder, setLogSortOrder] = useState<LogSortOrder>('received');
   const [logCopyStatus, setLogCopyStatus] = useState<{ tone: 'success' | 'warning'; message: string } | null>(null);
   const [logDensity, setLogDensity] = useState<LogDensity>(() => readLogDensityPreference());
   const [relationFilter, setRelationFilter] = useState('');
@@ -476,6 +483,7 @@ function ResourceExplorerDetail({
     setPreviousLogs(false);
     setLogFilter('');
     setLogTimeRangeFilter('all');
+    setLogSortOrder('received');
     setLogCopyStatus(null);
     setRelationFilter('');
     setRelationsExpanded(false);
@@ -496,7 +504,7 @@ function ResourceExplorerDetail({
   }, []);
 
   const parsedLogLines = useMemo(() => parseLogLines(logLines), [logLines]);
-  const filteredLogLines = useMemo(() => filterLogLines(parsedLogLines, logFilter, logTimeRangeFilter, Date.now()), [logFilter, logTimeRangeFilter, parsedLogLines]);
+  const filteredLogLines = useMemo(() => sortLogLines(filterLogLines(parsedLogLines, logFilter, logTimeRangeFilter, Date.now()), logSortOrder), [logFilter, logSortOrder, logTimeRangeFilter, parsedLogLines]);
   const filteredEvents = useMemo(
     () => sortEventListItems(filterEvents(events, eventFilter, eventSeverityFilter, eventTimeRangeFilter, Date.now()), eventSortOrder, pinnedEventKeys),
     [eventFilter, eventSeverityFilter, eventSortOrder, eventTimeRangeFilter, events, pinnedEventKeys],
@@ -558,8 +566,10 @@ function ResourceExplorerDetail({
   const effectiveLogContainer = selectedLogContainer || logContainerOptions.find((option) => !option.init)?.name || logContainerOptions[0]?.name || '';
   const logFilterActive = normalizedLogFilter.length > 0;
   const canCopyVisibleLogs = filteredLogLines.length > 0;
-  const logControlsActive = logFilterActive || logTimeRangeFilter !== 'all';
+  const canDownloadVisibleLogs = filteredLogLines.length > 0;
+  const logControlsActive = logFilterActive || logTimeRangeFilter !== 'all' || logSortOrder !== 'received';
   const canCopyAllLogs = logControlsActive && logLines.length > 0;
+  const canDownloadAllLogs = logControlsActive && logLines.length > 0;
   const relationSummary = normalizedRelationFilter ? `${filteredRelations.length} / ${resource.related.length}` : `${resource.related.length}`;
   const logViewportClassName =
     logDensity === 'compact'
@@ -738,6 +748,22 @@ function ResourceExplorerDetail({
     } catch {
       setLogCopyStatus({ tone: 'warning', message: '복사할 수 없습니다' });
     }
+  };
+  const handleDownloadLogs = (mode: 'visible' | 'all') => {
+    const lines = mode === 'all' ? logLines : filteredLogLines.map(({ line }) => line);
+    if (lines.length === 0) {
+      return;
+    }
+    const blob = new Blob([`${lines.join('\n')}\n`], { type: 'text/plain;charset=utf-8' });
+    const url = window.URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = logDownloadFileName(resource, effectiveLogContainer, previousLogs);
+    document.body.append(anchor);
+    anchor.click();
+    anchor.remove();
+    window.setTimeout(() => window.URL.revokeObjectURL(url), 0);
+    setLogCopyStatus({ tone: 'success', message: `${lines.length}줄 다운로드 준비됨` });
   };
   const togglePinnedEvent = (eventId: string) => {
     setPinnedEventKeys((current) => {
@@ -1067,6 +1093,7 @@ function ResourceExplorerDetail({
                       setLogsWarning('');
                       setLogFilter('');
                       setLogTimeRangeFilter('all');
+                      setLogSortOrder('received');
                       setLogCopyStatus(null);
                     }}
                     disabled={logsLoading || logsStreaming}
@@ -1091,6 +1118,7 @@ function ResourceExplorerDetail({
                       setLogsWarning('');
                       setLogFilter('');
                       setLogTimeRangeFilter('all');
+                      setLogSortOrder('received');
                       setLogCopyStatus(null);
                     }}
                     disabled={logsLoading || logsStreaming}
@@ -1132,7 +1160,7 @@ function ResourceExplorerDetail({
               </div>
               {effectiveLogContainer ? <p className="ku-meta">컨테이너: {effectiveLogContainer}{previousLogs ? ' · 이전 종료 인스턴스' : logsStreaming ? ' · 실시간 따라가기' : ''}</p> : null}
               {logLines.length > 0 ? (
-                <div className="grid gap-2 rounded-[10px] border border-[rgba(60,60,67,0.12)] bg-white/70 p-2 lg:grid-cols-[minmax(0,1fr)_auto_auto] lg:items-center">
+                <div className="grid gap-2 rounded-[10px] border border-[rgba(60,60,67,0.12)] bg-white/70 p-2 xl:grid-cols-[minmax(0,1fr)_auto_auto_auto] xl:items-center">
                   <label className="relative block">
                     <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[rgba(60,60,67,0.45)]" size={15} />
                     <input
@@ -1165,6 +1193,26 @@ function ResourceExplorerDetail({
                       </button>
                     ))}
                   </div>
+                  <div className="grid grid-cols-3 rounded-[9px] border border-[rgba(60,60,67,0.12)] bg-white/70 p-0.5" aria-label="로그 정렬">
+                    {logSortOptions.map((option) => (
+                      <button
+                        key={option.value}
+                        className={`rounded-[7px] px-2 py-1 text-xs font-semibold transition ${
+                          logSortOrder === option.value ? 'bg-[#1d1d1f] text-white shadow-sm' : 'text-[rgba(60,60,67,0.72)] hover:bg-white'
+                        }`}
+                        type="button"
+                        onClick={() => {
+                          setLogSortOrder(option.value);
+                          setLogCopyStatus(null);
+                        }}
+                        aria-pressed={logSortOrder === option.value}
+                        data-testid={`log-sort-${option.value}`}
+                        title={`로그 ${option.label} 보기`}
+                      >
+                        {option.label}
+                      </button>
+                    ))}
+                  </div>
                   <div className="flex items-center justify-between gap-2">
                     <span className="ku-chip">
                       {filteredLogLines.length} / {logLines.length}
@@ -1176,6 +1224,7 @@ function ResourceExplorerDetail({
                         onClick={() => {
                           setLogFilter('');
                           setLogTimeRangeFilter('all');
+                          setLogSortOrder('received');
                           setLogCopyStatus(null);
                         }}
                       >
@@ -1204,6 +1253,25 @@ function ResourceExplorerDetail({
                     >
                       <Copy size={13} aria-hidden="true" />
                       전체 로그 복사
+                    </button>
+                  ) : null}
+                  <button
+                    className="inline-flex items-center gap-1.5 rounded-[9px] border border-[rgba(60,60,67,0.12)] bg-white px-2.5 py-1.5 text-xs font-semibold text-[rgba(60,60,67,0.72)] transition hover:bg-[rgba(242,242,247,0.9)] disabled:cursor-not-allowed disabled:opacity-55"
+                    type="button"
+                    onClick={() => handleDownloadLogs('visible')}
+                    disabled={!canDownloadVisibleLogs}
+                  >
+                    <Download size={13} aria-hidden="true" />
+                    표시 로그 다운로드
+                  </button>
+                  {canDownloadAllLogs ? (
+                    <button
+                      className="inline-flex items-center gap-1.5 rounded-[9px] border border-[rgba(60,60,67,0.12)] bg-white px-2.5 py-1.5 text-xs font-semibold text-[rgba(60,60,67,0.72)] transition hover:bg-[rgba(242,242,247,0.9)]"
+                      type="button"
+                      onClick={() => handleDownloadLogs('all')}
+                    >
+                      <Download size={13} aria-hidden="true" />
+                      전체 로그 다운로드
                     </button>
                   ) : null}
                   {logCopyStatus ? (
@@ -1307,6 +1375,27 @@ function filterLogLines(lines: ParsedLogLine[], filter: string, timeRangeFilter:
   });
 }
 
+function sortLogLines(lines: ParsedLogLine[], sortOrder: LogSortOrder) {
+  if (sortOrder === 'received') {
+    return lines;
+  }
+  return [...lines].sort((left, right) => {
+    if (left.timestampMs === null && right.timestampMs !== null) {
+      return 1;
+    }
+    if (left.timestampMs !== null && right.timestampMs === null) {
+      return -1;
+    }
+    if (left.timestampMs === null && right.timestampMs === null) {
+      return left.index - right.index;
+    }
+    if (left.timestampMs !== null && right.timestampMs !== null && left.timestampMs !== right.timestampMs) {
+      return sortOrder === 'newest' ? right.timestampMs - left.timestampMs : left.timestampMs - right.timestampMs;
+    }
+    return left.index - right.index;
+  });
+}
+
 function logMatchesTimeRangeFilter(line: ParsedLogLine, timeRangeFilter: LogTimeRangeFilter, nowMs: number) {
   if (timeRangeFilter === 'all') {
     return true;
@@ -1320,6 +1409,25 @@ function logMatchesTimeRangeFilter(line: ParsedLogLine, timeRangeFilter: LogTime
 
 function logLineText(line: ParsedLogLine) {
   return [line.line, line.message, line.timestamp, line.timestamp ? formatLogTimestamp(line.timestamp) : ''].join(' ').toLowerCase();
+}
+
+function logDownloadFileName(resource: ResourceExplorerItem, container: string, previousLogs: boolean) {
+  const namespace = safeFileSlug(resource.namespace || 'cluster', 'cluster');
+  const pod = safeFileSlug(resource.name, 'pod');
+  const containerName = safeFileSlug(container || 'default', 'default');
+  const mode = previousLogs ? 'previous' : 'current';
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+  return `kuviewer-logs-${namespace}-${pod}-${containerName}-${mode}-${timestamp}.log`;
+}
+
+function safeFileSlug(value: string, fallback: string) {
+  const slug = value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 80);
+  return slug || fallback;
 }
 
 function filterEvents(events: ResourceEvent[], filter: string, severityFilter: EventSeverityFilter, timeRangeFilter: EventTimeRangeFilter, nowMs: number) {
