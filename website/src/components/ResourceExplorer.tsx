@@ -30,6 +30,7 @@ type LogDensity = 'comfortable' | 'compact';
 type EventSeverity = 'warning' | 'normal' | 'other';
 type EventSeverityFilter = 'all' | 'warning' | 'normal';
 type EventTimeRangeFilter = 'all' | '1h' | '6h' | '24h' | '7d';
+type LogTimeRangeFilter = EventTimeRangeFilter;
 type EventSortOrder = 'newest' | 'oldest';
 
 const detailJumpSections: Array<{ id: DetailSectionId; label: string }> = [
@@ -78,6 +79,14 @@ interface EventListItem {
   event: ResourceEvent;
   index: number;
   pinned: boolean;
+}
+
+interface ParsedLogLine {
+  line: string;
+  message: string;
+  index: number;
+  timestamp: string;
+  timestampMs: number | null;
 }
 
 export function ResourceExplorer({ liveEnabled, selectedNodeId, snapshot, sourceMode, onOpenTopologyNode, onSelectNode }: ResourceExplorerProps) {
@@ -419,6 +428,7 @@ function ResourceExplorerDetail({
   const [selectedLogContainer, setSelectedLogContainer] = useState('');
   const [previousLogs, setPreviousLogs] = useState(false);
   const [logFilter, setLogFilter] = useState('');
+  const [logTimeRangeFilter, setLogTimeRangeFilter] = useState<LogTimeRangeFilter>('all');
   const [logCopyStatus, setLogCopyStatus] = useState<{ tone: 'success' | 'warning'; message: string } | null>(null);
   const [logDensity, setLogDensity] = useState<LogDensity>(() => readLogDensityPreference());
   const [relationFilter, setRelationFilter] = useState('');
@@ -465,6 +475,7 @@ function ResourceExplorerDetail({
     setSelectedLogContainer('');
     setPreviousLogs(false);
     setLogFilter('');
+    setLogTimeRangeFilter('all');
     setLogCopyStatus(null);
     setRelationFilter('');
     setRelationsExpanded(false);
@@ -484,7 +495,8 @@ function ResourceExplorerDetail({
     };
   }, []);
 
-  const filteredLogLines = useMemo(() => filterLogLines(logLines, logFilter), [logFilter, logLines]);
+  const parsedLogLines = useMemo(() => parseLogLines(logLines), [logLines]);
+  const filteredLogLines = useMemo(() => filterLogLines(parsedLogLines, logFilter, logTimeRangeFilter, Date.now()), [logFilter, logTimeRangeFilter, parsedLogLines]);
   const filteredEvents = useMemo(
     () => sortEventListItems(filterEvents(events, eventFilter, eventSeverityFilter, eventTimeRangeFilter, Date.now()), eventSortOrder, pinnedEventKeys),
     [eventFilter, eventSeverityFilter, eventSortOrder, eventTimeRangeFilter, events, pinnedEventKeys],
@@ -546,7 +558,8 @@ function ResourceExplorerDetail({
   const effectiveLogContainer = selectedLogContainer || logContainerOptions.find((option) => !option.init)?.name || logContainerOptions[0]?.name || '';
   const logFilterActive = normalizedLogFilter.length > 0;
   const canCopyVisibleLogs = filteredLogLines.length > 0;
-  const canCopyAllLogs = logFilterActive && logLines.length > 0;
+  const logControlsActive = logFilterActive || logTimeRangeFilter !== 'all';
+  const canCopyAllLogs = logControlsActive && logLines.length > 0;
   const relationSummary = normalizedRelationFilter ? `${filteredRelations.length} / ${resource.related.length}` : `${resource.related.length}`;
   const logViewportClassName =
     logDensity === 'compact'
@@ -1053,6 +1066,7 @@ function ResourceExplorerDetail({
                       setLogsError('');
                       setLogsWarning('');
                       setLogFilter('');
+                      setLogTimeRangeFilter('all');
                       setLogCopyStatus(null);
                     }}
                     disabled={logsLoading || logsStreaming}
@@ -1076,6 +1090,7 @@ function ResourceExplorerDetail({
                       setLogsError('');
                       setLogsWarning('');
                       setLogFilter('');
+                      setLogTimeRangeFilter('all');
                       setLogCopyStatus(null);
                     }}
                     disabled={logsLoading || logsStreaming}
@@ -1117,7 +1132,7 @@ function ResourceExplorerDetail({
               </div>
               {effectiveLogContainer ? <p className="ku-meta">컨테이너: {effectiveLogContainer}{previousLogs ? ' · 이전 종료 인스턴스' : logsStreaming ? ' · 실시간 따라가기' : ''}</p> : null}
               {logLines.length > 0 ? (
-                <div className="grid gap-2 rounded-[10px] border border-[rgba(60,60,67,0.12)] bg-white/70 p-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+                <div className="grid gap-2 rounded-[10px] border border-[rgba(60,60,67,0.12)] bg-white/70 p-2 lg:grid-cols-[minmax(0,1fr)_auto_auto] lg:items-center">
                   <label className="relative block">
                     <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[rgba(60,60,67,0.45)]" size={15} />
                     <input
@@ -1130,16 +1145,37 @@ function ResourceExplorerDetail({
                       }}
                     />
                   </label>
+                  <div className="grid grid-cols-5 rounded-[9px] border border-[rgba(60,60,67,0.12)] bg-white/70 p-0.5" aria-label="로그 시간 범위">
+                    {eventTimeRangeOptions.map((option) => (
+                      <button
+                        key={option.value}
+                        className={`rounded-[7px] px-2 py-1 text-xs font-semibold transition ${
+                          logTimeRangeFilter === option.value ? 'bg-[#1d1d1f] text-white shadow-sm' : 'text-[rgba(60,60,67,0.72)] hover:bg-white'
+                        }`}
+                        type="button"
+                        onClick={() => {
+                          setLogTimeRangeFilter(option.value);
+                          setLogCopyStatus(null);
+                        }}
+                        aria-pressed={logTimeRangeFilter === option.value}
+                        data-testid={`log-time-range-${option.value}`}
+                        title={option.value === 'all' ? '모든 로그 보기' : `최근 ${option.label} 로그만 보기`}
+                      >
+                        {option.label}
+                      </button>
+                    ))}
+                  </div>
                   <div className="flex items-center justify-between gap-2">
                     <span className="ku-chip">
                       {filteredLogLines.length} / {logLines.length}
                     </span>
-                    {logFilter ? (
+                    {logControlsActive ? (
                       <button
                         className="rounded-[9px] border border-[rgba(60,60,67,0.12)] bg-white px-2.5 py-1.5 text-xs font-semibold text-[rgba(60,60,67,0.72)] transition hover:bg-[rgba(242,242,247,0.9)]"
                         type="button"
                         onClick={() => {
                           setLogFilter('');
+                          setLogTimeRangeFilter('all');
                           setLogCopyStatus(null);
                         }}
                       >
@@ -1191,10 +1227,17 @@ function ResourceExplorerDetail({
                 <p className="ku-meta">필터와 일치하는 로그가 없습니다.</p>
               ) : (
                 <div className={logViewportClassName}>
-                  {filteredLogLines.map(({ line, index }) => (
+                  {filteredLogLines.map(({ line, message, index, timestamp }) => (
                     <div key={`${index}:${line.slice(0, 16)}`} className={logRowClassName}>
                       <span className="select-none text-right text-[rgba(209,213,219,0.42)]">{index + 1}</span>
-                      <span className="min-w-0 whitespace-pre-wrap break-words">{renderHighlightedText(line || ' ', normalizedLogFilter)}</span>
+                      <span className="min-w-0 whitespace-pre-wrap break-words">
+                        {timestamp ? (
+                          <span className="mr-2 inline-flex rounded-[5px] bg-[rgba(96,165,250,0.16)] px-1.5 py-0.5 text-[rgba(191,219,254,0.9)]">
+                            {renderHighlightedText(formatLogTimestamp(timestamp), normalizedLogFilter)}
+                          </span>
+                        ) : null}
+                        {renderHighlightedText(message || line || ' ', normalizedLogFilter)}
+                      </span>
                     </div>
                   ))}
                 </div>
@@ -1216,14 +1259,67 @@ function InlineWarning({ message }: { message: string }) {
   );
 }
 
-function filterLogLines(lines: string[], filter: string) {
+function parseLogLines(lines: string[]): ParsedLogLine[] {
+  return lines.map((line, index) => parseLogLine(line, index));
+}
+
+function parseLogLine(line: string, index: number): ParsedLogLine {
+  const parsed = parseLogTimestampPrefix(line);
+  if (!parsed) {
+    return { line, message: line, index, timestamp: '', timestampMs: null };
+  }
+  return {
+    line,
+    message: parsed.message,
+    index,
+    timestamp: parsed.timestamp,
+    timestampMs: parsed.timestampMs,
+  };
+}
+
+function parseLogTimestampPrefix(line: string) {
+  const leadingWhitespaceLength = line.length - line.trimStart().length;
+  const trimmedLine = line.trimStart();
+  const match = trimmedLine.match(/^\[?(\d{4}-\d{2}-\d{2}(?:T|\s+)\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:?\d{2})?)\]?/);
+  if (!match) {
+    return null;
+  }
+  const timestamp = match[1];
+  const timestampMs = Date.parse(timestamp);
+  if (Number.isNaN(timestampMs)) {
+    return null;
+  }
+  const messageStart = leadingWhitespaceLength + match[0].length;
+  return {
+    timestamp,
+    timestampMs,
+    message: line.slice(messageStart).replace(/^\s*(?:[-|:])?\s*/, ''),
+  };
+}
+
+function filterLogLines(lines: ParsedLogLine[], filter: string, timeRangeFilter: LogTimeRangeFilter, nowMs: number) {
   const normalizedFilter = filter.trim().toLowerCase();
-  return lines.flatMap((line, index) => {
-    if (!normalizedFilter || line.toLowerCase().includes(normalizedFilter)) {
-      return [{ line, index }];
+  return lines.filter((line) => {
+    if (!logMatchesTimeRangeFilter(line, timeRangeFilter, nowMs)) {
+      return false;
     }
-    return [];
+    return !normalizedFilter || logLineText(line).includes(normalizedFilter);
   });
+}
+
+function logMatchesTimeRangeFilter(line: ParsedLogLine, timeRangeFilter: LogTimeRangeFilter, nowMs: number) {
+  if (timeRangeFilter === 'all') {
+    return true;
+  }
+  const option = eventTimeRangeOptions.find((candidate) => candidate.value === timeRangeFilter);
+  if (!option?.milliseconds) {
+    return true;
+  }
+  return line.timestampMs !== null && line.timestampMs >= nowMs - option.milliseconds;
+}
+
+function logLineText(line: ParsedLogLine) {
+  return [line.line, line.message, line.timestamp, line.timestamp ? formatLogTimestamp(line.timestamp) : ''].join(' ').toLowerCase();
 }
 
 function filterEvents(events: ResourceEvent[], filter: string, severityFilter: EventSeverityFilter, timeRangeFilter: EventTimeRangeFilter, nowMs: number) {
@@ -1721,4 +1817,8 @@ function formatEventTimestamp(value: string) {
     return value;
   }
   return date.toLocaleString();
+}
+
+function formatLogTimestamp(value: string) {
+  return formatEventTimestamp(value);
 }
