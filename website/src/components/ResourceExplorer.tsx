@@ -431,6 +431,10 @@ function ResourceExplorerDetail({
   const [logsLoading, setLogsLoading] = useState(false);
   const [logsStreaming, setLogsStreaming] = useState(false);
   const logsStreamControllerRef = useRef<AbortController | null>(null);
+  const logsPausedRef = useRef(false);
+  const pendingLogLinesRef = useRef<string[]>([]);
+  const [logsPaused, setLogsPaused] = useState(false);
+  const [pendingLogLines, setPendingLogLines] = useState<string[]>([]);
   const [selectedLogContainer, setSelectedLogContainer] = useState('');
   const [previousLogs, setPreviousLogs] = useState(false);
   const [logFilter, setLogFilter] = useState('');
@@ -479,6 +483,7 @@ function ResourceExplorerDetail({
     setLogsWarning('');
     setLogsLoading(false);
     setLogsStreaming(false);
+    resetLogPauseState();
     setSelectedLogContainer('');
     setPreviousLogs(false);
     setLogFilter('');
@@ -500,6 +505,8 @@ function ResourceExplorerDetail({
     return () => {
       logsStreamControllerRef.current?.abort();
       logsStreamControllerRef.current = null;
+      logsPausedRef.current = false;
+      pendingLogLinesRef.current = [];
     };
   }, []);
 
@@ -565,6 +572,7 @@ function ResourceExplorerDetail({
   const logContainerOptions = podLogContainerOptions(resource);
   const effectiveLogContainer = selectedLogContainer || logContainerOptions.find((option) => !option.init)?.name || logContainerOptions[0]?.name || '';
   const logFilterActive = normalizedLogFilter.length > 0;
+  const pendingLogCount = pendingLogLines.length;
   const canCopyVisibleLogs = filteredLogLines.length > 0;
   const canDownloadVisibleLogs = filteredLogLines.length > 0;
   const logControlsActive = logFilterActive || logTimeRangeFilter !== 'all' || logSortOrder !== 'received';
@@ -664,6 +672,7 @@ function ResourceExplorerDetail({
     }
     openSection('logs');
     stopLogStream();
+    resetLogPauseState();
     setLogsLoading(true);
     setLogsError('');
     setLogsWarning('');
@@ -684,6 +693,44 @@ function ResourceExplorerDetail({
     logsStreamControllerRef.current?.abort();
     logsStreamControllerRef.current = null;
     setLogsStreaming(false);
+    resetLogPauseState();
+  };
+
+  const resetLogPauseState = () => {
+    logsPausedRef.current = false;
+    pendingLogLinesRef.current = [];
+    setLogsPaused(false);
+    setPendingLogLines([]);
+  };
+
+  const appendVisibleLogLine = (line: string) => {
+    setLogLines((current) => [...current, line].slice(-500));
+  };
+
+  const appendPendingLogLine = (line: string) => {
+    pendingLogLinesRef.current = [...pendingLogLinesRef.current, line].slice(-500);
+    setPendingLogLines(pendingLogLinesRef.current);
+  };
+
+  const handlePauseLogStream = () => {
+    if (!logsStreaming) {
+      return;
+    }
+    logsPausedRef.current = true;
+    setLogsPaused(true);
+    setLogCopyStatus(null);
+  };
+
+  const handleResumeLogStream = () => {
+    const pendingLines = pendingLogLinesRef.current;
+    logsPausedRef.current = false;
+    pendingLogLinesRef.current = [];
+    setLogsPaused(false);
+    setPendingLogLines([]);
+    if (pendingLines.length > 0) {
+      setLogLines((current) => [...current, ...pendingLines].slice(-500));
+    }
+    setLogCopyStatus(null);
   };
 
   const handleStreamLogs = async () => {
@@ -702,6 +749,7 @@ function ResourceExplorerDetail({
     setLogsError('');
     setLogsWarning('');
     setLogCopyStatus(null);
+    resetLogPauseState();
     setLogsStreaming(true);
     try {
       await streamResourceLogs(
@@ -717,7 +765,12 @@ function ResourceExplorerDetail({
             setLogsWarning(message.warning);
           }
           if (typeof message.line === 'string') {
-            setLogLines((current) => [...current, message.line || ''].slice(-500));
+            const nextLine = message.line || '';
+            if (logsPausedRef.current) {
+              appendPendingLogLine(nextLine);
+            } else {
+              appendVisibleLogLine(nextLine);
+            }
           }
         },
       );
@@ -729,6 +782,7 @@ function ResourceExplorerDetail({
       if (logsStreamControllerRef.current === controller) {
         logsStreamControllerRef.current = null;
         setLogsStreaming(false);
+        resetLogPauseState();
       }
     }
   };
@@ -1142,6 +1196,16 @@ function ResourceExplorerDetail({
                 >
                   {logsStreaming ? '중지' : '따라가기'}
                 </button>
+                {logsStreaming ? (
+                  <button
+                    className="rounded-[9px] border border-[rgba(255,149,0,0.22)] bg-[rgba(255,149,0,0.08)] px-2.5 py-1.5 text-xs font-semibold text-[#8a4d00] transition hover:bg-[rgba(255,149,0,0.13)]"
+                    type="button"
+                    onClick={logsPaused ? handleResumeLogStream : handlePauseLogStream}
+                    data-testid="log-stream-pause-toggle"
+                  >
+                    {logsPaused ? '재개' : '일시정지'}
+                  </button>
+                ) : null}
                 <div className="grid grid-cols-2 rounded-[9px] border border-[rgba(60,60,67,0.12)] bg-white/70 p-0.5">
                   {(['comfortable', 'compact'] as const).map((density) => (
                     <button
@@ -1158,7 +1222,12 @@ function ResourceExplorerDetail({
                   ))}
                 </div>
               </div>
-              {effectiveLogContainer ? <p className="ku-meta">컨테이너: {effectiveLogContainer}{previousLogs ? ' · 이전 종료 인스턴스' : logsStreaming ? ' · 실시간 따라가기' : ''}</p> : null}
+              {effectiveLogContainer ? (
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="ku-meta">컨테이너: {effectiveLogContainer}{previousLogs ? ' · 이전 종료 인스턴스' : logsStreaming ? ' · 실시간 따라가기' : ''}</p>
+                  {logsPaused ? <span className="ku-chip">일시정지 · {pendingLogCount}줄 대기</span> : null}
+                </div>
+              ) : null}
               {logLines.length > 0 ? (
                 <div className="grid gap-2 rounded-[10px] border border-[rgba(60,60,67,0.12)] bg-white/70 p-2 xl:grid-cols-[minmax(0,1fr)_auto_auto_auto] xl:items-center">
                   <label className="relative block">
