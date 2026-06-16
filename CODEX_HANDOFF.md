@@ -29,9 +29,9 @@ Kuviewer는 Kubernetes 리소스를 웹에서 시각적으로 보는 도구다. 
 - 기본 visual smoke URL은 `http://127.0.0.1:4174/kuviewer/`다.
 - standalone 배포는 별도 subdomain을 host gateway에서 내부 `127.0.0.1:18085`로 라우팅하는 구성을 기준으로 한다.
 - NetworkPolicy는 `applies-to`와 함께 `allows-ingress` / `allows-egress` 정책 의도 edge를 표시한다. 이는 실제 CNI traffic 관측이 아니라 spec 기반 해석이며, `matchLabels`와 `In`/`NotIn`/`Exists`/`DoesNotExist` `matchExpressions`를 edge 추론에 사용하고 `ipBlock`은 summary-only로 둔다.
-- `리소스 탐색`은 Kubernetes 리소스용 읽기 전용 목록/상세 패널을 제공한다. 상세에는 접기/펼치기 가능한 metadata, labels/annotations, safe status/summary preview, raw manifest가 아닌 safe YAML preview, topology relations, live Events, live Pod logs 영역이 포함된다. 상세 패널은 섹션 점프 버튼과 로컬 키보드 탐색을 제공하지만 리소스 데이터는 저장하지 않는다.
+- `리소스 탐색`은 Kubernetes 리소스용 읽기 전용 목록/상세 패널을 제공한다. 목록은 ArrowUp/ArrowDown, Home/End, Enter-to-detail focus 키보드 탐색을 지원한다. 상세에는 접기/펼치기 가능한 metadata, labels/annotations, safe status/summary preview, raw manifest가 아닌 safe YAML preview, topology relations, live Events, live Pod logs 영역이 포함된다. 상세 패널은 섹션 점프 버튼과 로컬 키보드 탐색을 제공하지만 리소스 데이터는 저장하지 않는다.
 - `리소스 탐색` saved view는 사용자가 명시 저장한 목록 필터만 `localStorage`에 보관한다. 저장 대상은 검색어, cluster, namespace, kind, status이며 리소스 데이터/Events/Logs/Secret value/admin token은 저장하지 않는다. 로그 표시 밀도는 `kuviewer_log_density`에 `comfortable | compact` UI preference만 저장한다.
-- live Kubernetes mode에서는 선택 리소스의 core v1 Events를 `involvedObject` field selector로 조회한다. 현재 표시된 Events에는 브라우저 로컬 필터와 severity/type 필터를 적용할 수 있으며 필터 텍스트와 severity 선택값은 저장하지 않는다. Warning/Error 성격 Events를 Normal보다 먼저 그룹화한다. RBAC/클러스터 차이로 Events 조회가 안 되면 전체 상세 실패 대신 빈 Events와 안전한 warning을 표시한다.
+- live Kubernetes mode에서는 선택 리소스의 core v1 Events를 `involvedObject` field selector로 조회한다. 현재 표시된 Events에는 브라우저 로컬 텍스트 필터, severity/type 필터, `all`/`1h`/`6h`/`24h`/`7d` 시간 범위 필터를 적용할 수 있으며 필터 텍스트와 선택값은 저장하지 않는다. timestamp가 없거나 파싱 불가능한 Event는 `all` 시간 범위에서만 표시한다. Warning/Error 성격 Events를 Normal보다 먼저 그룹화한다. RBAC/클러스터 차이로 Events 조회가 안 되면 전체 상세 실패 대신 빈 Events와 안전한 warning을 표시한다.
 - live Kubernetes mode에서는 선택 Pod의 최근 200줄 logs를 버튼 클릭 시 조회하거나 현재 로그를 따라갈 수 있다. container/initContainer 선택과 previous terminated container 조회를 지원하고, follow 연결은 현재 로그에만 적용된다. logs는 저장하지 않으며, 브라우저는 follow 중 최근 500줄만 표시하고 현재 표시된 로그에 한해 로컬 필터, 표시 밀도 전환, 사용자 클릭 기반 clipboard 복사를 제공한다. RBAC/클러스터 차이로 조회가 안 되면 전체 상세 실패 대신 빈 Logs와 안전한 warning을 표시한다.
 - live/upload/mock mode에서 `CustomResourceDefinition` 정의 리소스를 read-only inventory node로 표시한다. group/kind/plural/scope/served versions/storage version summary를 보여준다. CRD 정의가 있으면 matching custom resource instance도 `CustomResource` 노드로 표시하되 raw spec/status 값은 숨기고 field count/condition summary와 안전한 spec reference 관계를 보여준다.
 - Secret value, `data`, `stringData`, kubeconfig, cloud credential, private key는 계속 표시/저장/커밋하지 않는다. annotation은 민감해 보이는 key/value를 redaction한다.
@@ -113,7 +113,8 @@ https://kuviewer.example.com/
    - 리소스 리스트 saved view/query preset은 완료됐다.
    - 리소스 관계 검색/그룹화와 토폴로지 이동 UX는 완료됐다.
    - 리소스 상세 섹션 점프/키보드 탐색과 Event severity grouping은 완료됐다.
-   - 다음 확장 후보는 resource list keyboard navigation과 event time range filter다.
+   - 리소스 리스트 키보드 탐색과 Event 시간 범위 필터는 완료됐다.
+   - 다음 확장 후보는 Event sorting/pinning, resource table density presets, Pod log timestamp parsing이다.
 
 4. 실제 Kubernetes 연결 설계
    - 브라우저에 kube credential을 직접 넣지 않는 방향 유지.
