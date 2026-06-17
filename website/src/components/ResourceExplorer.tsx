@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { KeyboardEvent as ReactKeyboardEvent, ReactNode } from 'react';
-import { Activity, AlertTriangle, ArrowDown, ArrowUp, Bookmark, Boxes, ChevronDown, Copy, Download, FileText, GitBranch, Link2, Search, Tags, Trash2 } from 'lucide-react';
+import { Activity, AlertTriangle, ArrowDown, ArrowUp, Bookmark, Boxes, CheckCircle2, ChevronDown, Copy, Download, FileText, GitBranch, Link2, RotateCcw, Search, Tags, Trash2 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { fetchResourceEvents, fetchResourceLogs, fetchResources, resourcesFromSnapshot, streamResourceLogs } from '../services/resourceApi';
 import type { ResourceEvent, ResourceExplorerItem } from '../types/resourceExplorer';
@@ -158,6 +158,23 @@ export function ResourceExplorer({ liveEnabled, selectedNodeId, snapshot, source
   const kinds = useMemo(() => unique(resources.map((resource) => resource.kind)), [resources]);
   const statuses = useMemo(() => unique(resources.map((resource) => resource.status)), [resources]);
   const suggestedPresetName = useMemo(() => suggestedResourceViewPresetName({ query, cluster, namespace, kind, status }), [cluster, kind, namespace, query, status]);
+  const currentPresetFilters = useMemo(() => ({ query, cluster, namespace, kind, status }), [cluster, kind, namespace, query, status]);
+  const matchingViewPreset = useMemo(() => viewPresets.find((preset) => resourceViewPresetMatchesFilters(preset, currentPresetFilters)), [currentPresetFilters, viewPresets]);
+  const nextPresetName = resourceViewPresetTargetName(presetName, matchingViewPreset?.name || suggestedPresetName);
+  const presetNameExists = viewPresets.some((preset) => preset.name === nextPresetName);
+  const filtersAreDefault = resourceViewPresetMatchesFilters(
+    {
+      name: 'default',
+      query: '',
+      cluster: allValue,
+      namespace: allValue,
+      kind: allValue,
+      status: allValue,
+      updatedAt: 0,
+    },
+    currentPresetFilters,
+  );
+  const savePresetLabel = matchingViewPreset || presetNameExists ? '뷰 업데이트' : '뷰 저장';
   const filteredResources = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
     return resources.filter((resource) => {
@@ -193,7 +210,7 @@ export function ResourceExplorer({ liveEnabled, selectedNodeId, snapshot, source
 
   const handleSaveViewPreset = () => {
     const nextPreset: ResourceViewPreset = {
-      name: (presetName.trim() || suggestedPresetName).slice(0, 80),
+      name: nextPresetName,
       query: query.slice(0, 160),
       cluster,
       namespace,
@@ -204,7 +221,7 @@ export function ResourceExplorer({ liveEnabled, selectedNodeId, snapshot, source
     const nextPresets = upsertResourceViewPreset(viewPresets, nextPreset);
     setViewPresets(nextPresets);
     writeResourceViewPresets(nextPresets);
-    setPresetName('');
+    setPresetName(nextPreset.name);
   };
 
   const handleApplyViewPreset = (preset: ResourceViewPreset) => {
@@ -213,6 +230,7 @@ export function ResourceExplorer({ liveEnabled, selectedNodeId, snapshot, source
     setNamespace(normalizePresetFilterValue(preset.namespace, namespaces));
     setKind(normalizePresetFilterValue(preset.kind, kinds));
     setStatus(normalizePresetFilterValue(preset.status, statuses));
+    setPresetName(preset.name);
     onSelectNode('');
   };
 
@@ -220,6 +238,18 @@ export function ResourceExplorer({ liveEnabled, selectedNodeId, snapshot, source
     const nextPresets = viewPresets.filter((preset) => preset.name !== presetNameToDelete);
     setViewPresets(nextPresets);
     writeResourceViewPresets(nextPresets);
+    if (presetName.trim() === presetNameToDelete) {
+      setPresetName('');
+    }
+  };
+  const handleResetResourceFilters = () => {
+    setQuery('');
+    setCluster(allValue);
+    setNamespace(allValue);
+    setKind(allValue);
+    setStatus(allValue);
+    setPresetName('');
+    onSelectNode('');
   };
   const resourceSummaryLimit = resourceListDensity === 'compact' ? 2 : 3;
   const resourceRowClassName = (resource: ResourceExplorerItem) =>
@@ -323,10 +353,58 @@ export function ResourceExplorer({ liveEnabled, selectedNodeId, snapshot, source
             <ResourceSelect label="Status" value={status} values={statuses} onChange={setStatus} />
           </div>
           <div className="grid gap-2 rounded-[12px] border border-[rgba(60,60,67,0.12)] bg-white/70 p-2">
-            <div className="flex items-center justify-between gap-2">
-              <p className="ku-meta">저장된 뷰 · 필터만 브라우저에 저장</p>
-              <span className="ku-chip">{viewPresets.length} / {maxResourceViewPresets}</span>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex flex-wrap items-center gap-1.5">
+                <p className="ku-meta">저장된 뷰 · 필터만 브라우저에 저장</p>
+                {matchingViewPreset ? (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-[rgba(52,199,89,0.12)] px-2 py-1 text-[10px] font-semibold text-[#14863d]">
+                    <CheckCircle2 size={12} aria-hidden="true" />
+                    현재 적용됨 · {matchingViewPreset.name}
+                  </span>
+                ) : (
+                  <span className={`rounded-full px-2 py-1 text-[10px] font-semibold ${filtersAreDefault ? 'bg-[rgba(60,60,67,0.08)] text-[rgba(60,60,67,0.62)]' : 'bg-[rgba(255,149,0,0.12)] text-[#a45f00]'}`}>
+                    {filtersAreDefault ? '기본 필터' : '저장 안 됨'}
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center gap-1.5">
+                <button
+                  className="inline-flex items-center gap-1.5 rounded-[8px] border border-[rgba(60,60,67,0.12)] bg-white px-2.5 py-1.5 text-xs font-semibold text-[rgba(60,60,67,0.72)] transition hover:bg-[rgba(242,242,247,0.9)] disabled:cursor-not-allowed disabled:opacity-50"
+                  type="button"
+                  onClick={handleResetResourceFilters}
+                  disabled={filtersAreDefault}
+                >
+                  <RotateCcw size={13} aria-hidden="true" />
+                  필터 초기화
+                </button>
+                <span className="ku-chip">{viewPresets.length} / {maxResourceViewPresets}</span>
+              </div>
             </div>
+            {viewPresets.length > 0 ? (
+              <div className="flex gap-1.5 overflow-x-auto pb-0.5" aria-label="저장된 뷰 빠른 적용">
+                {viewPresets.map((preset) => {
+                  const active = resourceViewPresetMatchesFilters(preset, currentPresetFilters);
+                  return (
+                    <button
+                      key={preset.name}
+                      className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1.5 text-xs font-semibold transition ${
+                        active
+                          ? 'border-[rgba(0,122,255,0.24)] bg-[rgba(0,122,255,0.1)] text-[#0057b8]'
+                          : 'border-[rgba(60,60,67,0.12)] bg-white/82 text-[rgba(60,60,67,0.72)] hover:bg-white'
+                      }`}
+                      type="button"
+                      onClick={() => handleApplyViewPreset(preset)}
+                      aria-pressed={active}
+                      title={`${preset.name} · ${resourceViewPresetSummary(preset)}`}
+                    >
+                      {active ? <CheckCircle2 size={13} aria-hidden="true" /> : <Bookmark size={13} aria-hidden="true" />}
+                      <span>{preset.name}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            ) : null}
+            {presetNameExists ? <p className="ku-meta">같은 이름으로 저장하면 기존 뷰를 업데이트합니다.</p> : null}
             <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
               <input className="ku-input w-full" placeholder={suggestedPresetName} value={presetName} onChange={(event) => setPresetName(event.target.value)} />
               <button
@@ -335,7 +413,7 @@ export function ResourceExplorer({ liveEnabled, selectedNodeId, snapshot, source
                 onClick={handleSaveViewPreset}
               >
                 <Bookmark size={14} aria-hidden="true" />
-                뷰 저장
+                {savePresetLabel}
               </button>
             </div>
             {viewPresets.length === 0 ? (
@@ -343,9 +421,13 @@ export function ResourceExplorer({ liveEnabled, selectedNodeId, snapshot, source
             ) : (
               <div className="grid gap-1.5">
                 {viewPresets.map((preset) => (
-                  <div key={preset.name} className="grid gap-2 rounded-[10px] border border-[rgba(60,60,67,0.1)] bg-white/78 p-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+                  <div key={preset.name} className={`grid gap-2 rounded-[10px] border p-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center ${resourceViewPresetMatchesFilters(preset, currentPresetFilters) ? 'border-[rgba(0,122,255,0.22)] bg-[rgba(0,122,255,0.06)]' : 'border-[rgba(60,60,67,0.1)] bg-white/78'}`}>
                     <div className="min-w-0">
-                      <p className="truncate text-xs font-semibold text-[#1d1d1f]">{preset.name}</p>
+                      <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+                        <p className="truncate text-xs font-semibold text-[#1d1d1f]">{preset.name}</p>
+                        {resourceViewPresetMatchesFilters(preset, currentPresetFilters) ? <span className="rounded-full bg-[rgba(0,122,255,0.1)] px-1.5 py-0.5 text-[9px] font-semibold text-[#0057b8]">적용됨</span> : null}
+                        <span className="rounded-full bg-[rgba(60,60,67,0.06)] px-1.5 py-0.5 font-mono text-[9px] font-semibold text-[rgba(60,60,67,0.54)]">{formatPresetUpdatedAt(preset.updatedAt)}</span>
+                      </div>
                       <p className="mt-0.5 truncate font-mono text-[10px] font-semibold text-[rgba(60,60,67,0.54)]">{resourceViewPresetSummary(preset)}</p>
                     </div>
                     <div className="flex items-center gap-1.5">
@@ -2101,6 +2183,20 @@ function upsertResourceViewPreset(presets: ResourceViewPreset[], preset: Resourc
   return [preset, ...presets.filter((existingPreset) => existingPreset.name !== preset.name)].slice(0, maxResourceViewPresets);
 }
 
+function resourceViewPresetTargetName(inputName: string, suggestedName: string) {
+  return (inputName.trim() || suggestedName || '전체 리소스').slice(0, 80);
+}
+
+function resourceViewPresetMatchesFilters(preset: ResourceViewPreset, filters: Pick<ResourceViewPreset, 'query' | 'cluster' | 'namespace' | 'kind' | 'status'>) {
+  return (
+    preset.query === filters.query.slice(0, 160) &&
+    preset.cluster === filters.cluster &&
+    preset.namespace === filters.namespace &&
+    preset.kind === filters.kind &&
+    preset.status === filters.status
+  );
+}
+
 function normalizePresetFilterValue(value: string, availableValues: string[]) {
   if (value === allValue || availableValues.includes(value)) {
     return value;
@@ -2128,6 +2224,29 @@ function resourceViewPresetSummary(preset: ResourceViewPreset) {
     preset.status !== allValue ? `status:${preset.status}` : '',
   ].filter(Boolean);
   return parts.length > 0 ? parts.join(' · ') : '전체 필터';
+}
+
+function formatPresetUpdatedAt(updatedAt: number) {
+  if (!Number.isFinite(updatedAt) || updatedAt <= 0) {
+    return '시각 없음';
+  }
+  const elapsedMs = Math.max(0, Date.now() - updatedAt);
+  const elapsedMinutes = Math.floor(elapsedMs / 60_000);
+  if (elapsedMinutes < 1) {
+    return '방금';
+  }
+  if (elapsedMinutes < 60) {
+    return `${elapsedMinutes}분 전`;
+  }
+  const elapsedHours = Math.floor(elapsedMinutes / 60);
+  if (elapsedHours < 24) {
+    return `${elapsedHours}시간 전`;
+  }
+  const elapsedDays = Math.floor(elapsedHours / 24);
+  if (elapsedDays < 7) {
+    return `${elapsedDays}일 전`;
+  }
+  return new Date(updatedAt).toISOString().slice(0, 10);
 }
 
 function resourceOptionDomId(resourceId: string) {
