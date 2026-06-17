@@ -95,6 +95,13 @@ interface ParsedLogLine {
   timestampMs: number | null;
 }
 
+interface DetailOverviewItem {
+  label: string;
+  value: string;
+  helper: string;
+  tone?: 'default' | 'accent' | 'warning';
+}
+
 export function ResourceExplorer({ liveEnabled, selectedNodeId, snapshot, sourceMode, onOpenTopologyNode, onSelectNode }: ResourceExplorerProps) {
   const [query, setQuery] = useState('');
   const [cluster, setCluster] = useState(allValue);
@@ -579,6 +586,28 @@ function ResourceExplorerDetail({
   const canCopyAllLogs = logControlsActive && logLines.length > 0;
   const canDownloadAllLogs = logControlsActive && logLines.length > 0;
   const relationSummary = normalizedRelationFilter ? `${filteredRelations.length} / ${resource.related.length}` : `${resource.related.length}`;
+  const detailSectionSummaries: Record<DetailSectionId, string> = {
+    metadata: sectionCount(metadataPreview),
+    status: sectionCount(statusPreview),
+    safe: sectionCount(summaryPreview),
+    yaml: yamlPreview ? 'available' : 'empty',
+    labels: sectionCount(resource.labels),
+    annotations: sectionCount(resource.annotations),
+    relations: relationSummary,
+    events: `${filteredEvents.length} / ${events.length}`,
+    logs: logLines.length > 0 ? `${filteredLogLines.length} / ${logLines.length}` : canFetchLogs ? 'ready' : 'empty',
+  };
+  const overviewItems = resourceDetailOverviewItems({
+    canFetchLogs,
+    effectiveLogContainer,
+    eventSummary: detailSectionSummaries.events,
+    logSummary: detailSectionSummaries.logs,
+    labels: resource.labels,
+    annotations: resource.annotations,
+    metadataPreview,
+    relationCount: resource.related.length,
+    resource,
+  });
   const logViewportClassName =
     logDensity === 'compact'
       ? 'max-h-[420px] overflow-auto rounded-[10px] border border-[rgba(60,60,67,0.12)] bg-[#111827] p-1 font-mono text-[10px] leading-4 text-[#d1d5db]'
@@ -896,7 +925,7 @@ function ResourceExplorerDetail({
           {detailJumpSections.map((section) => (
             <button
               key={section.id}
-              className={`rounded-[8px] border px-2.5 py-1.5 text-xs font-semibold transition ${
+              className={`inline-flex items-center gap-1.5 rounded-[8px] border px-2.5 py-1.5 text-xs font-semibold transition ${
                 activeDetailSectionId === section.id
                   ? 'border-[rgba(0,122,255,0.24)] bg-[rgba(0,122,255,0.1)] text-[#0057b8]'
                   : 'border-[rgba(60,60,67,0.12)] bg-white/75 text-[rgba(60,60,67,0.72)] hover:bg-white'
@@ -904,38 +933,42 @@ function ResourceExplorerDetail({
               type="button"
               onClick={() => focusDetailSection(section.id)}
               aria-current={activeDetailSectionId === section.id ? 'true' : undefined}
+              aria-label={`${section.label} ${detailSectionSummaries[section.id]} 섹션으로 이동`}
               title={`${section.label} 섹션으로 이동`}
             >
-              {section.label}
+              <span>{section.label}</span>
+              {' '}
+              <span className="rounded-full bg-white/70 px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase text-[rgba(60,60,67,0.54)]">{detailSectionSummaries[section.id]}</span>
             </button>
           ))}
         </div>
+        <ResourceDetailOverview items={overviewItems} />
       </div>
 
       <div className="grid gap-3 p-3">
-        <DetailSection icon={FileText} title="Metadata" summary={sectionCount(metadataPreview)} open={isSectionOpen('metadata')} active={activeDetailSectionId === 'metadata'} sectionRef={setDetailSectionRef('metadata')} onFocusSection={() => setActiveDetailSectionId('metadata')} onToggle={() => toggleSection('metadata')}>
+        <DetailSection icon={FileText} title="Metadata" summary={detailSectionSummaries.metadata} open={isSectionOpen('metadata')} active={activeDetailSectionId === 'metadata'} sectionRef={setDetailSectionRef('metadata')} onFocusSection={() => setActiveDetailSectionId('metadata')} onToggle={() => toggleSection('metadata')}>
           <KeyValueGrid values={metadataPreview} />
         </DetailSection>
-        <DetailSection icon={Activity} title="Status" summary={sectionCount(statusPreview)} open={isSectionOpen('status')} active={activeDetailSectionId === 'status'} sectionRef={setDetailSectionRef('status')} onFocusSection={() => setActiveDetailSectionId('status')} onToggle={() => toggleSection('status')}>
+        <DetailSection icon={Activity} title="Status" summary={detailSectionSummaries.status} open={isSectionOpen('status')} active={activeDetailSectionId === 'status'} sectionRef={setDetailSectionRef('status')} onFocusSection={() => setActiveDetailSectionId('status')} onToggle={() => toggleSection('status')}>
           <KeyValueGrid values={statusPreview} />
         </DetailSection>
-        <DetailSection icon={FileText} title="Safe Preview" summary={sectionCount(summaryPreview)} open={isSectionOpen('safe')} active={activeDetailSectionId === 'safe'} sectionRef={setDetailSectionRef('safe')} onFocusSection={() => setActiveDetailSectionId('safe')} onToggle={() => toggleSection('safe')}>
+        <DetailSection icon={FileText} title="Safe Preview" summary={detailSectionSummaries.safe} open={isSectionOpen('safe')} active={activeDetailSectionId === 'safe'} sectionRef={setDetailSectionRef('safe')} onFocusSection={() => setActiveDetailSectionId('safe')} onToggle={() => toggleSection('safe')}>
           <KeyValueGrid values={summaryPreview} />
         </DetailSection>
-        <DetailSection icon={FileText} title="YAML Preview" summary={yamlPreview ? 'available' : 'empty'} open={isSectionOpen('yaml')} active={activeDetailSectionId === 'yaml'} sectionRef={setDetailSectionRef('yaml')} onFocusSection={() => setActiveDetailSectionId('yaml')} onToggle={() => toggleSection('yaml')}>
+        <DetailSection icon={FileText} title="YAML Preview" summary={detailSectionSummaries.yaml} open={isSectionOpen('yaml')} active={activeDetailSectionId === 'yaml'} sectionRef={setDetailSectionRef('yaml')} onFocusSection={() => setActiveDetailSectionId('yaml')} onToggle={() => toggleSection('yaml')}>
           {yamlPreview ? (
             <pre className="max-h-[360px] overflow-auto rounded-[10px] border border-[rgba(60,60,67,0.12)] bg-[#111827] p-3 font-mono text-[11px] leading-5 text-[#d1d5db]">{yamlPreview}</pre>
           ) : (
             <p className="ku-meta">표시할 YAML preview가 없습니다.</p>
           )}
         </DetailSection>
-        <DetailSection icon={Tags} title="Labels" summary={sectionCount(resource.labels)} open={isSectionOpen('labels')} active={activeDetailSectionId === 'labels'} sectionRef={setDetailSectionRef('labels')} onFocusSection={() => setActiveDetailSectionId('labels')} onToggle={() => toggleSection('labels')}>
+        <DetailSection icon={Tags} title="Labels" summary={detailSectionSummaries.labels} open={isSectionOpen('labels')} active={activeDetailSectionId === 'labels'} sectionRef={setDetailSectionRef('labels')} onFocusSection={() => setActiveDetailSectionId('labels')} onToggle={() => toggleSection('labels')}>
           <KeyValueGrid values={resource.labels} empty="labels 없음" />
         </DetailSection>
-        <DetailSection icon={Tags} title="Annotations" summary={sectionCount(resource.annotations)} open={isSectionOpen('annotations')} active={activeDetailSectionId === 'annotations'} sectionRef={setDetailSectionRef('annotations')} onFocusSection={() => setActiveDetailSectionId('annotations')} onToggle={() => toggleSection('annotations')}>
+        <DetailSection icon={Tags} title="Annotations" summary={detailSectionSummaries.annotations} open={isSectionOpen('annotations')} active={activeDetailSectionId === 'annotations'} sectionRef={setDetailSectionRef('annotations')} onFocusSection={() => setActiveDetailSectionId('annotations')} onToggle={() => toggleSection('annotations')}>
           <KeyValueGrid values={resource.annotations} empty="annotations 없음" />
         </DetailSection>
-        <DetailSection icon={Link2} title="Relations" summary={relationSummary} open={isSectionOpen('relations')} active={activeDetailSectionId === 'relations'} sectionRef={setDetailSectionRef('relations')} onFocusSection={() => setActiveDetailSectionId('relations')} onToggle={() => toggleSection('relations')}>
+        <DetailSection icon={Link2} title="Relations" summary={detailSectionSummaries.relations} open={isSectionOpen('relations')} active={activeDetailSectionId === 'relations'} sectionRef={setDetailSectionRef('relations')} onFocusSection={() => setActiveDetailSectionId('relations')} onToggle={() => toggleSection('relations')}>
           {resource.related.length === 0 ? (
             <p className="ku-meta">관계 없음</p>
           ) : (
@@ -1010,7 +1043,7 @@ function ResourceExplorerDetail({
             </div>
           )}
         </DetailSection>
-        <DetailSection icon={Boxes} title="Events" summary={`${filteredEvents.length} / ${events.length}`} open={isSectionOpen('events')} active={activeDetailSectionId === 'events'} sectionRef={setDetailSectionRef('events')} onFocusSection={() => setActiveDetailSectionId('events')} onToggle={() => toggleSection('events')}>
+        <DetailSection icon={Boxes} title="Events" summary={detailSectionSummaries.events} open={isSectionOpen('events')} active={activeDetailSectionId === 'events'} sectionRef={setDetailSectionRef('events')} onFocusSection={() => setActiveDetailSectionId('events')} onToggle={() => toggleSection('events')}>
           {eventsWarning ? <InlineWarning message="이벤트 조회 권한이 없거나 API가 없어 빈 목록으로 표시합니다." /> : null}
           {eventsError ? <InlineWarning message={`이벤트 조회 실패: ${eventsError}`} /> : null}
           {events.length > 0 ? (
@@ -1128,7 +1161,7 @@ function ResourceExplorerDetail({
             </div>
           )}
         </DetailSection>
-        <DetailSection icon={FileText} title="Logs" summary={logLines.length > 0 ? `${filteredLogLines.length} / ${logLines.length}` : canFetchLogs ? 'ready' : 'empty'} open={isSectionOpen('logs')} active={activeDetailSectionId === 'logs'} sectionRef={setDetailSectionRef('logs')} onFocusSection={() => setActiveDetailSectionId('logs')} onToggle={() => toggleSection('logs')}>
+        <DetailSection icon={FileText} title="Logs" summary={detailSectionSummaries.logs} open={isSectionOpen('logs')} active={activeDetailSectionId === 'logs'} sectionRef={setDetailSectionRef('logs')} onFocusSection={() => setActiveDetailSectionId('logs')} onToggle={() => toggleSection('logs')}>
           {!canFetchLogs ? (
             <p className="ku-meta">Pod 로그 없음</p>
           ) : (
@@ -1394,6 +1427,121 @@ function InlineWarning({ message }: { message: string }) {
       <span>{message}</span>
     </p>
   );
+}
+
+function ResourceDetailOverview({ items }: { items: DetailOverviewItem[] }) {
+  return (
+    <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4" aria-label="리소스 상세 요약">
+      {items.map((item) => (
+        <div key={item.label} className={`min-w-0 rounded-[10px] border px-2.5 py-2 ${detailOverviewToneClassName(item.tone)}`}>
+          <p className="font-mono text-[9px] font-semibold uppercase tracking-[0.04em] text-[rgba(60,60,67,0.52)]">{item.label}</p>
+          <p className="mt-1 truncate text-xs font-semibold text-[#1d1d1f]" title={item.value}>
+            {item.value}
+          </p>
+          <p className="mt-0.5 truncate font-mono text-[10px] font-semibold text-[rgba(60,60,67,0.56)]" title={item.helper}>
+            {item.helper}
+          </p>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function resourceDetailOverviewItems({
+  annotations,
+  canFetchLogs,
+  effectiveLogContainer,
+  eventSummary,
+  logSummary,
+  labels,
+  metadataPreview,
+  relationCount,
+  resource,
+}: {
+  annotations: Record<string, string>;
+  canFetchLogs: boolean;
+  effectiveLogContainer: string;
+  eventSummary: string;
+  logSummary: string;
+  labels: Record<string, string>;
+  metadataPreview: Record<string, unknown>;
+  relationCount: number;
+  resource: ResourceExplorerItem;
+}): DetailOverviewItem[] {
+  const namespace = resource.namespace || (resource.kind === 'Namespace' ? resource.name : 'cluster-scoped');
+  const age = overviewScalar(metadataPreview.age, 'unknown');
+  const uid = overviewScalar(metadataPreview.uid, 'unknown');
+  const owners = overviewList(metadataPreview.owners, 'none');
+  const labelCount = visibleValueCount(labels);
+  const annotationCount = visibleValueCount(annotations);
+  const logContext = canFetchLogs ? `Logs ${effectiveLogContainer ? `${effectiveLogContainer} · ` : ''}${logSummary}` : 'Logs n/a';
+  return [
+    {
+      label: 'Scope',
+      value: namespace,
+      helper: `${resource.clusterId} · ${resource.kind}`,
+      tone: 'accent',
+    },
+    {
+      label: 'Age / UID',
+      value: age,
+      helper: `UID ${uid}`,
+    },
+    {
+      label: 'Owner / Tags',
+      value: owners,
+      helper: `${labelCount} labels · ${annotationCount} annotations`,
+    },
+    {
+      label: 'Signals',
+      value: `${relationCount} relations`,
+      helper: `Events ${eventSummary} · ${logContext}`,
+      tone: relationCount > 0 ? 'accent' : 'default',
+    },
+  ];
+}
+
+function detailOverviewToneClassName(tone: DetailOverviewItem['tone']) {
+  if (tone === 'accent') {
+    return 'border-[rgba(0,122,255,0.16)] bg-[rgba(0,122,255,0.055)]';
+  }
+  if (tone === 'warning') {
+    return 'border-[rgba(255,149,0,0.18)] bg-[rgba(255,149,0,0.07)]';
+  }
+  return 'border-[rgba(60,60,67,0.1)] bg-white/70';
+}
+
+function overviewScalar(value: unknown, fallback: string): string {
+  if (value === undefined || value === null || value === '') {
+    return fallback;
+  }
+  if (Array.isArray(value)) {
+    return overviewList(value, fallback);
+  }
+  if (typeof value === 'object') {
+    return fallback;
+  }
+  return String(value);
+}
+
+function overviewList(value: unknown, fallback: string): string {
+  if (!Array.isArray(value)) {
+    return overviewScalar(value, fallback);
+  }
+  const values = value.flatMap((item) => {
+    if (item === undefined || item === null || item === '') {
+      return [];
+    }
+    if (typeof item === 'object') {
+      return [];
+    }
+    return [String(item)];
+  });
+  if (values.length === 0) {
+    return fallback;
+  }
+  const visibleValues = values.slice(0, 2).join(', ');
+  return values.length > 2 ? `${visibleValues} +${values.length - 2}` : visibleValues;
 }
 
 function parseLogLines(lines: string[]): ParsedLogLine[] {
@@ -1700,8 +1848,11 @@ function renderHighlightedText(text: string, filter: string): ReactNode {
 }
 
 function sectionCount(values: Record<string, unknown>) {
-  const count = Object.entries(values).filter(([, value]) => value !== undefined && value !== '' && (!Array.isArray(value) || value.length > 0)).length;
-  return `${count}`;
+  return `${visibleValueCount(values)}`;
+}
+
+function visibleValueCount(values: Record<string, unknown>) {
+  return Object.entries(values).filter(([, value]) => value !== undefined && value !== '' && (!Array.isArray(value) || value.length > 0)).length;
 }
 
 function ResourceSelect({ label, value, values, onChange }: { label: string; value: string; values: string[]; onChange: (value: string) => void }) {
