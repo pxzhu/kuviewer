@@ -112,6 +112,8 @@ interface DetailOverviewItem {
   tone?: 'default' | 'accent' | 'warning';
 }
 
+type DetailSectionTone = 'default' | 'warning';
+
 export function ResourceExplorer({ liveEnabled, selectedNodeId, snapshot, sourceMode, onOpenTopologyNode, onSelectNode }: ResourceExplorerProps) {
   const [query, setQuery] = useState('');
   const [cluster, setCluster] = useState(allValue);
@@ -686,6 +688,8 @@ function ResourceExplorerDetail({
   const pinnedEvents = useMemo(() => filteredEvents.filter((item) => item.pinned), [filteredEvents]);
   const eventGroups = useMemo(() => groupEventsBySeverity(filteredEvents.filter((item) => !item.pinned)), [filteredEvents]);
   const eventSeverityCounts = useMemo(() => countEventSeverities(events), [events]);
+  const eventWarningCount = eventSeverityCounts.warning;
+  const eventHasWarning = eventWarningCount > 0;
   const filteredRelations = useMemo(() => filterRelatedResources(resource?.related || [], relationFilter), [relationFilter, resource?.related]);
   const normalizedLogFilter = logFilter.trim();
   const normalizedEventFilter = eventFilter.trim();
@@ -697,6 +701,7 @@ function ResourceExplorerDetail({
   const visibleRelationCount = relationGroups.reduce((total, group) => total + group.items.length, 0);
   const hiddenRelationCount = Math.max(filteredRelations.length - visibleRelationCount, 0);
   const eventControlsActive = eventFilter || eventSeverityFilter !== 'all' || eventTimeRangeFilter !== 'all' || eventSortOrder !== 'newest' || pinnedEventKeys.size > 0;
+  const eventFilterSummary = eventControlSummary(eventFilter, eventSeverityFilter, eventTimeRangeFilter, eventSortOrder, pinnedEventKeys.size);
   const canRefreshEvents = liveEnabled && Boolean(resource);
   const eventsAutoRefreshActive = canRefreshEvents && eventsAutoRefreshEnabled;
 
@@ -776,12 +781,13 @@ function ResourceExplorerDetail({
     labels: sectionCount(resource.labels),
     annotations: sectionCount(resource.annotations),
     relations: relationSummary,
-    events: `${filteredEvents.length} / ${events.length}`,
+    events: eventSectionSummary(filteredEvents.length, events.length, eventSeverityCounts),
     logs: logLines.length > 0 ? `${filteredLogLines.length} / ${logLines.length}` : canFetchLogs ? 'ready' : 'empty',
   };
   const overviewItems = resourceDetailOverviewItems({
     canFetchLogs,
     effectiveLogContainer,
+    eventSeverityCounts,
     eventSummary: detailSectionSummaries.events,
     logSummary: detailSectionSummaries.logs,
     labels: resource.labels,
@@ -1069,6 +1075,10 @@ function ResourceExplorerDetail({
   };
   const renderEventCard = (item: EventListItem) => {
     const { event, id, pinned } = item;
+    const severity = eventSeverity(event);
+    const timestampKnown = validEventTimestamp(event.timestamp);
+    const relativeTime = formatRelativeEventTimestamp(event.timestamp);
+    const absoluteTime = formatEventTimestamp(event.timestamp);
     return (
       <div
         key={id}
@@ -1077,9 +1087,19 @@ function ResourceExplorerDetail({
         }`}
       >
         <div className="flex flex-wrap items-start justify-between gap-2">
-          <p className="min-w-0 text-xs font-semibold text-[#1d1d1f]">{renderHighlightedText(event.reason || event.type || 'Event', normalizedEventFilter)}</p>
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className={eventSeverityBadgeClassName(severity)}>{renderHighlightedText(event.type || 'Normal', normalizedEventFilter)}</span>
+              <p className="min-w-0 break-words text-xs font-semibold text-[#1d1d1f]">{renderHighlightedText(event.reason || event.type || 'Event', normalizedEventFilter)}</p>
+            </div>
+            <div className="mt-1 flex flex-wrap items-center gap-1.5">
+              <span className={`ku-chip ${timestampKnown ? '' : 'border-[rgba(142,142,147,0.2)] bg-[rgba(142,142,147,0.1)] text-[#636366]'}`}>
+                {renderHighlightedText(relativeTime, normalizedEventFilter)}
+              </span>
+              {event.source ? <span className="ku-chip">{renderHighlightedText(event.source, normalizedEventFilter)}</span> : null}
+            </div>
+          </div>
           <div className="flex shrink-0 items-center gap-1.5">
-            <span className={`font-mono text-[10px] font-semibold uppercase ${eventSeverityClassName(eventSeverity(event))}`}>{renderHighlightedText(event.type || 'Normal', normalizedEventFilter)}</span>
             <button
               className={`inline-flex items-center gap-1 rounded-[7px] border px-1.5 py-1 text-[10px] font-semibold transition ${
                 pinned
@@ -1096,10 +1116,9 @@ function ResourceExplorerDetail({
             </button>
           </div>
         </div>
-        <p className="mt-1 text-xs text-[rgba(60,60,67,0.72)]">{renderHighlightedText(event.message, normalizedEventFilter)}</p>
-        <p className="mt-1 font-mono text-[10px] font-semibold text-[rgba(60,60,67,0.54)]">
-          {renderHighlightedText(formatEventTimestamp(event.timestamp), normalizedEventFilter)}
-          {event.source ? <> · {renderHighlightedText(event.source, normalizedEventFilter)}</> : ''}
+        <p className="mt-2 break-words text-xs text-[rgba(60,60,67,0.72)]">{renderHighlightedText(event.message, normalizedEventFilter)}</p>
+        <p className="mt-1 break-words font-mono text-[10px] font-semibold text-[rgba(60,60,67,0.54)]">
+          {renderHighlightedText(absoluteTime, normalizedEventFilter)}
         </p>
       </div>
     );
@@ -1130,25 +1149,37 @@ function ResourceExplorerDetail({
           <span className={statusPillClassName(resource.status)}>{resource.status}</span>
         </div>
         <div className="mt-3 flex flex-wrap items-center gap-1.5">
-          {detailJumpSections.map((section) => (
-            <button
-              key={section.id}
-              className={`inline-flex items-center gap-1.5 rounded-[8px] border px-2.5 py-1.5 text-xs font-semibold transition ${
-                activeDetailSectionId === section.id
-                  ? 'border-[rgba(0,122,255,0.24)] bg-[rgba(0,122,255,0.1)] text-[#0057b8]'
-                  : 'border-[rgba(60,60,67,0.12)] bg-white/75 text-[rgba(60,60,67,0.72)] hover:bg-white'
-              }`}
-              type="button"
-              onClick={() => focusDetailSection(section.id)}
-              aria-current={activeDetailSectionId === section.id ? 'true' : undefined}
-              aria-label={`${section.label} ${detailSectionSummaries[section.id]} 섹션으로 이동`}
-              title={`${section.label} 섹션으로 이동`}
-            >
-              <span>{section.label}</span>
-              {' '}
-              <span className="rounded-full bg-white/70 px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase text-[rgba(60,60,67,0.54)]">{detailSectionSummaries[section.id]}</span>
-            </button>
-          ))}
+          {detailJumpSections.map((section) => {
+            const warningTone = section.id === 'events' && eventHasWarning;
+            return (
+              <button
+                key={section.id}
+                className={`inline-flex items-center gap-1.5 rounded-[8px] border px-2.5 py-1.5 text-xs font-semibold transition ${
+                  activeDetailSectionId === section.id
+                    ? warningTone
+                      ? 'border-[rgba(255,149,0,0.28)] bg-[rgba(255,149,0,0.12)] text-[#9a5a00]'
+                      : 'border-[rgba(0,122,255,0.24)] bg-[rgba(0,122,255,0.1)] text-[#0057b8]'
+                    : warningTone
+                      ? 'border-[rgba(255,149,0,0.22)] bg-[rgba(255,149,0,0.08)] text-[#9a5a00] hover:bg-[rgba(255,149,0,0.12)]'
+                      : 'border-[rgba(60,60,67,0.12)] bg-white/75 text-[rgba(60,60,67,0.72)] hover:bg-white'
+                }`}
+                type="button"
+                onClick={() => focusDetailSection(section.id)}
+                aria-current={activeDetailSectionId === section.id ? 'true' : undefined}
+                aria-label={`${section.label} ${detailSectionSummaries[section.id]} 섹션으로 이동`}
+                title={`${section.label} 섹션으로 이동`}
+              >
+                <span>{section.label}</span>
+                <span
+                  className={`rounded-full px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase ${
+                    warningTone ? 'bg-white/80 text-[#9a5a00]' : 'bg-white/70 text-[rgba(60,60,67,0.54)]'
+                  }`}
+                >
+                  {detailSectionSummaries[section.id]}
+                </span>
+              </button>
+            );
+          })}
         </div>
         <ResourceDetailOverview items={overviewItems} />
       </div>
@@ -1251,7 +1282,7 @@ function ResourceExplorerDetail({
             </div>
           )}
         </DetailSection>
-        <DetailSection icon={Boxes} title="Events" summary={detailSectionSummaries.events} open={isSectionOpen('events')} active={activeDetailSectionId === 'events'} sectionRef={setDetailSectionRef('events')} onFocusSection={() => setActiveDetailSectionId('events')} onToggle={() => toggleSection('events')}>
+        <DetailSection icon={Boxes} title="Events" summary={detailSectionSummaries.events} tone={eventHasWarning ? 'warning' : 'default'} open={isSectionOpen('events')} active={activeDetailSectionId === 'events'} sectionRef={setDetailSectionRef('events')} onFocusSection={() => setActiveDetailSectionId('events')} onToggle={() => toggleSection('events')}>
           {liveEnabled ? (
             <div className="mb-2 flex flex-wrap items-center justify-between gap-2 rounded-[10px] border border-[rgba(60,60,67,0.12)] bg-white/70 p-2">
               <div className="flex flex-wrap items-center gap-1.5">
@@ -1259,6 +1290,7 @@ function ResourceExplorerDetail({
                 {eventsLoading ? <span className="ku-chip">조회 중</span> : null}
                 {eventsLastUpdatedAt ? <span className="ku-chip">마지막 조회 {formatRefreshTimestamp(eventsLastUpdatedAt)}</span> : null}
                 {eventsAutoRefreshActive ? <span className="ku-chip">자동 갱신 켜짐</span> : null}
+                {events.length > 0 ? <EventSeverityChips counts={eventSeverityCounts} /> : null}
               </div>
               <div className="flex flex-wrap items-center gap-1.5">
                 <button
@@ -1382,7 +1414,10 @@ function ResourceExplorerDetail({
           ) : events.length === 0 ? (
             <p className="ku-meta">표시할 이벤트가 없습니다.</p>
           ) : filteredEvents.length === 0 ? (
-            <p className="ku-meta">필터와 일치하는 이벤트가 없습니다.</p>
+            <p className="ku-meta">
+              필터와 일치하는 이벤트가 없습니다.
+              {eventFilterSummary ? ` · ${eventFilterSummary}` : ''}
+            </p>
           ) : (
             <div className="grid gap-2">
               {pinnedEvents.length > 0 ? (
@@ -1733,6 +1768,18 @@ function InlineWarning({ message }: { message: string }) {
   );
 }
 
+function EventSeverityChips({ counts }: { counts: Record<EventSeverity, number> }) {
+  return (
+    <>
+      {counts.warning > 0 ? (
+        <span className="ku-chip border-[rgba(255,149,0,0.24)] bg-[rgba(255,149,0,0.1)] text-[#9a5a00]">Warning {counts.warning}</span>
+      ) : null}
+      {counts.normal > 0 ? <span className="ku-chip">Normal {counts.normal}</span> : null}
+      {counts.other > 0 ? <span className="ku-chip">Other {counts.other}</span> : null}
+    </>
+  );
+}
+
 function ResourceDetailOverview({ items }: { items: DetailOverviewItem[] }) {
   return (
     <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4" aria-label="리소스 상세 요약">
@@ -1755,6 +1802,7 @@ function resourceDetailOverviewItems({
   annotations,
   canFetchLogs,
   effectiveLogContainer,
+  eventSeverityCounts,
   eventSummary,
   logSummary,
   labels,
@@ -1765,6 +1813,7 @@ function resourceDetailOverviewItems({
   annotations: Record<string, string>;
   canFetchLogs: boolean;
   effectiveLogContainer: string;
+  eventSeverityCounts: Record<EventSeverity, number>;
   eventSummary: string;
   logSummary: string;
   labels: Record<string, string>;
@@ -1779,6 +1828,7 @@ function resourceDetailOverviewItems({
   const labelCount = visibleValueCount(labels);
   const annotationCount = visibleValueCount(annotations);
   const logContext = canFetchLogs ? `Logs ${effectiveLogContainer ? `${effectiveLogContainer} · ` : ''}${logSummary}` : 'Logs n/a';
+  const eventSignal = eventSeverityCounts.warning > 0 ? `${eventSeverityCounts.warning} warning` : `Events ${eventSummary}`;
   return [
     {
       label: 'Scope',
@@ -1799,8 +1849,8 @@ function resourceDetailOverviewItems({
     {
       label: 'Signals',
       value: `${relationCount} relations`,
-      helper: `Events ${eventSummary} · ${logContext}`,
-      tone: relationCount > 0 ? 'accent' : 'default',
+      helper: `${eventSignal} · ${logContext}`,
+      tone: eventSeverityCounts.warning > 0 ? 'warning' : relationCount > 0 ? 'accent' : 'default',
     },
   ];
 }
@@ -1813,6 +1863,15 @@ function detailOverviewToneClassName(tone: DetailOverviewItem['tone']) {
     return 'border-[rgba(255,149,0,0.18)] bg-[rgba(255,149,0,0.07)]';
   }
   return 'border-[rgba(60,60,67,0.1)] bg-white/70';
+}
+
+function detailSectionToneClassName(active: boolean, tone: DetailSectionTone) {
+  if (tone === 'warning') {
+    return active
+      ? 'border-[rgba(255,149,0,0.34)] bg-white/72 ring-2 ring-[rgba(255,149,0,0.12)]'
+      : 'border-[rgba(255,149,0,0.22)] bg-[rgba(255,149,0,0.035)]';
+  }
+  return active ? 'border-[rgba(0,122,255,0.34)] bg-white/72 ring-2 ring-[rgba(0,122,255,0.12)]' : 'border-[rgba(60,60,67,0.12)] bg-white/72';
 }
 
 function overviewScalar(value: unknown, fallback: string): string {
@@ -2096,14 +2155,36 @@ function groupEventsBySeverity(events: EventListItem[]): EventGroup[] {
   return (['warning', 'normal', 'other'] as const).map((severity) => groups[severity]).filter((group) => group.items.length > 0);
 }
 
-function eventSeverityClassName(severity: EventSeverity) {
+function eventSeverityBadgeClassName(severity: EventSeverity) {
   if (severity === 'warning') {
-    return 'text-[#a05a00]';
+    return 'rounded-full border border-[rgba(255,149,0,0.24)] bg-[rgba(255,149,0,0.1)] px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase text-[#9a5a00]';
   }
   if (severity === 'normal') {
-    return 'text-[rgba(60,60,67,0.54)]';
+    return 'rounded-full border border-[rgba(52,199,89,0.22)] bg-[rgba(52,199,89,0.09)] px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase text-[#248a3d]';
   }
-  return 'text-[#636366]';
+  return 'rounded-full border border-[rgba(142,142,147,0.22)] bg-[rgba(142,142,147,0.09)] px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase text-[#636366]';
+}
+
+function eventSectionSummary(visibleCount: number, totalCount: number, counts: Record<EventSeverity, number>) {
+  const base = `${visibleCount} / ${totalCount}`;
+  if (counts.warning > 0) {
+    return `${base} · ${counts.warning} warn`;
+  }
+  if (totalCount > 0 && counts.other > 0) {
+    return `${base} · ${counts.other} other`;
+  }
+  return base;
+}
+
+function eventControlSummary(filter: string, severityFilter: EventSeverityFilter, timeRangeFilter: EventTimeRangeFilter, sortOrder: EventSortOrder, pinnedCount: number) {
+  const parts = [
+    filter.trim() ? `검색 "${filter.trim().slice(0, 48)}"` : '',
+    severityFilter !== 'all' ? `type ${severityFilter}` : '',
+    timeRangeFilter !== 'all' ? `최근 ${timeRangeFilter}` : '',
+    sortOrder !== 'newest' ? '오래된순' : '',
+    pinnedCount > 0 ? `고정 ${pinnedCount}` : '',
+  ].filter(Boolean);
+  return parts.join(' · ');
 }
 
 function eventText(event: ResourceEvent) {
@@ -2419,6 +2500,7 @@ function DetailSection({
   open,
   sectionRef,
   summary,
+  tone = 'default',
   title,
 }: {
   active?: boolean;
@@ -2429,14 +2511,13 @@ function DetailSection({
   open: boolean;
   sectionRef?: (node: HTMLElement | null) => void;
   summary: string;
+  tone?: DetailSectionTone;
   title: string;
 }) {
   return (
     <section
       ref={sectionRef}
-      className={`rounded-[12px] border bg-white/72 transition ${
-        active ? 'border-[rgba(0,122,255,0.34)] ring-2 ring-[rgba(0,122,255,0.12)]' : 'border-[rgba(60,60,67,0.12)]'
-      }`}
+      className={`rounded-[12px] border transition ${detailSectionToneClassName(active, tone)}`}
       onFocusCapture={onFocusSection}
     >
       <div className="flex items-center justify-between gap-2 px-3 py-2.5">
@@ -2452,7 +2533,7 @@ function DetailSection({
           aria-label={`${title} ${open ? '접기' : '펼치기'}`}
           data-detail-section-toggle="true"
         >
-          <span className="ku-chip">{summary}</span>
+          <span className={tone === 'warning' ? 'ku-chip border-[rgba(255,149,0,0.24)] bg-[rgba(255,149,0,0.1)] text-[#9a5a00]' : 'ku-chip'}>{summary}</span>
           <ChevronDown className={`text-[rgba(60,60,67,0.48)] transition ${open ? 'rotate-180' : ''}`} size={15} aria-hidden="true" />
         </button>
       </div>
@@ -2542,6 +2623,30 @@ function formatEventTimestamp(value: string) {
     return value;
   }
   return date.toLocaleString();
+}
+
+function validEventTimestamp(value: string) {
+  return Boolean(value) && !Number.isNaN(Date.parse(value));
+}
+
+function formatRelativeEventTimestamp(value: string) {
+  if (!validEventTimestamp(value)) {
+    return 'timestamp unknown';
+  }
+  const elapsedMs = Math.max(0, Date.now() - Date.parse(value));
+  const elapsedMinutes = Math.floor(elapsedMs / 60_000);
+  if (elapsedMinutes < 1) {
+    return '방금';
+  }
+  if (elapsedMinutes < 60) {
+    return `${elapsedMinutes}분 전`;
+  }
+  const elapsedHours = Math.floor(elapsedMinutes / 60);
+  if (elapsedHours < 24) {
+    return `${elapsedHours}시간 전`;
+  }
+  const elapsedDays = Math.floor(elapsedHours / 24);
+  return `${elapsedDays}일 전`;
 }
 
 function formatRefreshTimestamp(value: number) {
