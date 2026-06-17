@@ -1,0 +1,151 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" role="img" aria-label="Kuviewer YAML Flow preview">
+  <defs>
+    <linearGradient id="bg" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0" stop-color="#fbfdff"/>
+      <stop offset="0.58" stop-color="#f3f9ff"/>
+      <stop offset="1" stop-color="#ffffff"/>
+    </linearGradient>
+    <linearGradient id="blue" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0" stop-color="#1677ff"/>
+      <stop offset="1" stop-color="#36cfe2"/>
+    </linearGradient>
+    <linearGradient id="lineFade" x1="0" x2="1">
+      <stop offset="0" stop-color="#8eb8f7" stop-opacity="0.08"/>
+      <stop offset="0.45" stop-color="#3588ff" stop-opacity="0.35"/>
+      <stop offset="1" stop-color="#36cfe2" stop-opacity="0.95"/>
+    </linearGradient>
+    <filter id="softShadow" x="-20%" y="-20%" width="140%" height="150%">
+      <feDropShadow dx="0" dy="22" stdDeviation="18" flood-color="#49688f" flood-opacity="0.14"/>
+    </filter>
+    <filter id="nodeShadow" x="-30%" y="-30%" width="160%" height="170%">
+      <feDropShadow dx="0" dy="12" stdDeviation="10" flood-color="#49688f" flood-opacity="0.16"/>
+    </filter>
+    <pattern id="grid" width="28" height="28" patternUnits="userSpaceOnUse">
+      <path d="M28 0H0V28" fill="none" stroke="#8da5c0" stroke-opacity="0.12" stroke-width="1"/>
+    </pattern>
+    <pattern id="dots" width="18" height="18" patternUnits="userSpaceOnUse">
+      <circle cx="2" cy="2" r="1.6" fill="#9cb4ce" fill-opacity="0.22"/>
+    </pattern>
+  </defs>
+
+  <rect width="1200" height="630" fill="url(#bg)"/>
+  <rect width="1200" height="630" fill="url(#grid)" opacity="0.45"/>
+  <circle cx="314" cy="96" r="230" fill="#267aff" opacity="0.08"/>
+  <circle cx="876" cy="118" r="210" fill="#36cfe2" opacity="0.08"/>
+  <circle cx="684" cy="646" r="260" fill="#28b853" opacity="0.06"/>
+
+  <g filter="url(#softShadow)">
+    <rect x="54" y="46" width="1092" height="538" rx="28" fill="#ffffff" fill-opacity="0.78" stroke="#cfdae8" stroke-width="1.5"/>
+    <line x1="54" y1="108" x2="1146" y2="108" stroke="#d8e2ef" stroke-width="1.5"/>
+    <circle cx="86" cy="78" r="8" fill="#ff5f57"/>
+    <circle cx="112" cy="78" r="8" fill="#ffbd2e"/>
+    <circle cx="138" cy="78" r="8" fill="#28c840"/>
+    <rect x="260" y="64" width="520" height="30" rx="10" fill="#f7fbff" stroke="#d6e1ef"/>
+    <circle cx="1072" cy="79" r="3" fill="#91a7c1"/>
+    <circle cx="1090" cy="79" r="3" fill="#91a7c1"/>
+    <circle cx="1108" cy="79" r="3" fill="#91a7c1"/>
+  </g>
+
+  <text x="84" y="170" fill="#1e2b3c" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="44" font-weight="760">Kuviewer</text>
+  <text x="86" y="204" fill="#5e748f" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="15" font-weight="700" letter-spacing="1.2">YAML FLOW</text>
+
+  <g filter="url(#softShadow)">
+    <g opacity="0.58">
+      <path d="M126 238h118l44 44v214H126z" fill="#ffffff" stroke="#d5dfec" stroke-width="1.5"/>
+      <path d="M244 238v44h44" fill="#e8eef7"/>
+    </g>
+    <g opacity="0.78">
+      <path d="M190 214h138l48 48v246H190z" fill="#ffffff" stroke="#d5dfec" stroke-width="1.5"/>
+      <path d="M328 214v48h48" fill="#e8eef7"/>
+    </g>
+    <path d="M266 192h164l54 54v282H266z" fill="#ffffff" stroke="#cbd8e8" stroke-width="1.6"/>
+    <path d="M430 192v54h54" fill="#e5ecf6" stroke="#cbd8e8" stroke-width="1.6"/>
+  </g>
+
+  <g font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="13" font-weight="750">
+    <g fill="none" stroke-linecap="round" stroke-width="7">
+      <path d="M312 252h78" stroke="#c4d0df"/>
+      <path d="M312 282h132" stroke="#b8c7d9"/>
+      <path d="M312 312h164" stroke="#c4d0df"/>
+      <path d="M312 342h112" stroke="#28b853"/>
+      <path d="M312 372h146" stroke="#c4d0df"/>
+      <path d="M312 402h92" stroke="#267aff"/>
+      <path d="M312 432h132" stroke="#c4d0df"/>
+      <path d="M312 462h72" stroke="#ff9500"/>
+    </g>
+    <g fill="#267aff">
+      <circle cx="292" cy="252" r="4"/>
+      <circle cx="292" cy="312" r="4"/>
+      <circle cx="292" cy="402" r="4"/>
+    </g>
+    <g fill="#9db0c6">
+      <circle cx="292" cy="282" r="4"/>
+      <circle cx="292" cy="342" r="4"/>
+      <circle cx="292" cy="372" r="4"/>
+      <circle cx="292" cy="432" r="4"/>
+      <circle cx="292" cy="462" r="4"/>
+    </g>
+  </g>
+
+  <g fill="none" stroke-linecap="round">
+    <path d="M490 286C548 286 552 286 594 314C642 346 660 346 704 346" stroke="#b8c7d9" stroke-dasharray="9 13" stroke-width="3" opacity="0.55"/>
+    <path d="M490 344C560 344 572 344 626 344H708" stroke="url(#lineFade)" stroke-width="5"/>
+    <path d="M490 404C546 404 570 404 610 382C650 360 668 360 704 360" stroke="#b8c7d9" stroke-dasharray="9 13" stroke-width="3" opacity="0.55"/>
+    <path d="M634 313l50 31l-50 31" stroke="#267aff" stroke-width="11" stroke-linejoin="round"/>
+  </g>
+
+  <g transform="translate(735 164)">
+    <rect x="28" y="86" width="334" height="272" rx="32" fill="none" stroke="#36cfe2" stroke-width="3" stroke-dasharray="11 13" opacity="0.86"/>
+    <g stroke="#9bb5d4" stroke-width="3" fill="none" stroke-linecap="round">
+      <path d="M194 164v-58"/>
+      <path d="M194 230v74"/>
+      <path d="M147 194H92"/>
+      <path d="M241 194h80"/>
+      <path d="M112 126c34 0 40 34 76 34"/>
+      <path d="M112 270c34 0 40-34 76-34"/>
+      <path d="M240 160c34 0 38-42 76-42"/>
+      <path d="M240 229c34 0 40 44 76 44"/>
+    </g>
+
+    <g filter="url(#nodeShadow)">
+      <polygon points="194,137 248,168 248,230 194,262 140,230 140,168" fill="url(#blue)"/>
+      <path d="M194 156v82M164 176l30 18l30-18M164 216l30 18l30-18" fill="none" stroke="#ffffff" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" opacity="0.96"/>
+      <path d="M194 164a34 34 0 1 1 0 68a34 34 0 0 1 0-68z" fill="none" stroke="#ffffff" stroke-width="5" opacity="0.9"/>
+    </g>
+
+    <g filter="url(#nodeShadow)">
+      <polygon points="194,14 244,43 244,101 194,130 144,101 144,43" fill="#ffffff" stroke="#28b853" stroke-width="3"/>
+      <path d="M172 72l16 15l32-38" fill="none" stroke="#28b853" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+    </g>
+    <g filter="url(#nodeShadow)">
+      <polygon points="194,302 244,331 244,389 194,418 144,389 144,331" fill="#ffffff" stroke="#28b853" stroke-width="3"/>
+      <ellipse cx="194" cy="344" rx="28" ry="11" fill="#28b853"/>
+      <path d="M166 344v36c0 7 13 13 28 13s28-6 28-13v-36" fill="none" stroke="#28b853" stroke-width="8"/>
+      <path d="M166 362c0 7 13 13 28 13s28-6 28-13" fill="none" stroke="#28b853" stroke-width="5"/>
+    </g>
+    <g filter="url(#nodeShadow)">
+      <polygon points="84,106 128,132 128,184 84,210 40,184 40,132" fill="#ffffff" stroke="#267aff" stroke-width="3"/>
+      <path d="M84 136l24 13v28l-24 14l-24-14v-28z" fill="#267aff"/>
+      <path d="M60 149l24 14l24-14M84 163v28" fill="none" stroke="#ffffff" stroke-width="3"/>
+    </g>
+    <g filter="url(#nodeShadow)">
+      <polygon points="84,246 128,272 128,324 84,350 40,324 40,272" fill="#ffffff" stroke="#267aff" stroke-width="3"/>
+      <path d="M84 276l24 13v28l-24 14l-24-14v-28z" fill="#267aff"/>
+      <path d="M60 289l24 14l24-14M84 303v28" fill="none" stroke="#ffffff" stroke-width="3"/>
+    </g>
+    <g filter="url(#nodeShadow)">
+      <polygon points="334,104 378,130 378,182 334,208 290,182 290,130" fill="#ffffff" stroke="#ff9500" stroke-width="3"/>
+      <rect x="315" y="137" width="38" height="38" rx="9" fill="none" stroke="#ff9500" stroke-width="6"/>
+      <circle cx="324" cy="146" r="3" fill="#ff9500"/>
+      <circle cx="344" cy="146" r="3" fill="#ff9500"/>
+    </g>
+    <g filter="url(#nodeShadow)">
+      <polygon points="334,230 378,256 378,308 334,334 290,308 290,256" fill="#ffffff" stroke="#ff9500" stroke-width="3"/>
+      <rect x="315" y="263" width="38" height="38" rx="9" fill="none" stroke="#ff9500" stroke-width="6"/>
+    </g>
+  </g>
+
+  <rect x="84" y="538" width="204" height="10" rx="5" fill="#e8eef7"/>
+  <rect x="84" y="560" width="132" height="10" rx="5" fill="#eef3f9"/>
+  <rect x="1004" y="500" width="96" height="96" fill="url(#dots)" opacity="0.55"/>
+</svg>

@@ -327,3 +327,161 @@ select:focus-visible,
 .ku-app-shell [class*="hover:bg-white"]:hover {
   background-color: rgba(255, 255, 255, 0.96) !important;
 }
+
+.ku-app-shell[data-brand-theme="radar"] {
+  color-scheme: dark;
+  --ku-bg: #050a12;
+  --ku-surface: rgba(10, 20, 34, 0.78);
+  --ku-surface-solid: #0d1828;
+  --ku-surface-muted: rgba(15, 29, 46, 0.78);
+  --ku-border: rgba(125, 173, 220, 0.18);
+  --ku-border-strong: rgba(109, 186, 255, 0.34);
+  --ku-text: #eef7ff;
+  --ku-text-muted: rgba(196, 218, 240, 0.76);
+  --ku-text-subtle: rgba(155, 180, 207, 0.62);
+  --ku-accent: #2f8cff;
+  --ku-accent-2: #16d9d2;
+  --ku-success: #4bea66;
+  --ku-warning: #ffad1f;
+  --ku-accent-soft: rgba(47, 140, 255, 0.16);
+  --ku-shadow-panel: 0 26px 70px rgba(0, 0, 0, 0.42);
+  --ku-shadow-soft: 0 14px 34px rgba(0, 0, 0, 0.32);
+  color: var(--ku-text);
+  background:
+    linear-gradient(rgba(112, 163, 214, 0.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(112, 163, 214, 0.045) 1px, transparent 1px),
+    radial-gradient(circle at 38% 8%, rgba(47, 140, 255, 0.18), transparent 28%),
+    radial-gradient(circle at 74% 16%, rgba(22, 217, 210, 0.1), transparent 25%),
+    linear-gradient(180deg, #070c15 0%, #081220 46%, #03070d 100%);
+  background-size: 34px 34px, 34px 34px, auto, auto, auto;
+}
+
+.ku-app-shell[data-brand-theme="radar"] header {
+  border-bottom-color: rgba(125, 173, 220, 0.18) !important;
+  background-color: rgba(5, 12, 22, 0.84) !important;
+  box-shadow: 0 20px 70px rgba(0, 0, 0, 0.22) !important;
+}
+
+.ku-app-shell[data-brand-theme="radar"] header img {
+  border-color: rgba(125, 173, 220, 0.26) !important;
+  box-shadow: 0 0 26px rgba(47, 140, 255, 0.18) !important;
+}
+
+.ku-app-shell[data-brand-theme="radar"] .ku-panel {
+  background:
+    linear-gradient(145deg, rgba(16, 31, 50, 0.9), rgba(7, 15, 26, 0.78)),
+    var(--ku-surface);
+}
+
+.ku-app-shell[data-brand-theme="radar"] .ku-panel-muted {
+  background: rgba(12, 24, 40, 0.68);
+}
+
+.ku-app-shell[data-brand-theme="radar"] .ku-control {
+  background: rgba(13, 28, 46, 0.76);
+  box-shadow: 0 2px 14px rgba(0, 0, 0, 0.22);
+}
+
+.ku-app-shell[data-brand-theme="radar"] .ku-control:hover {
+  border-color: rgba(47, 140, 255, 0.42);
+  background: rgba(18, 38, 62, 0.9);
+}
+
+.ku-app-shell[data-brand-theme="radar"] .ku-control-primary {
+  background: linear-gradient(135deg, #176bff, #16d9d2);
+  box-shadow: 0 8px 22px rgba(0, 122, 255, 0.22);
+}
+
+.ku-app-shell[data-brand-theme="radar"] .ku-control-primary:hover {
+  background: linear-gradient(135deg, #2f8cff, #27efe7);
+}
+
+.ku-app-shell[data-brand-theme="radar"] .ku-field {
+  background: rgba(8, 18, 31, 0.82);
+}
+
+.ku-app-shell[data-brand-theme="radar"] .ku-field:focus {
+  border-color: #2f8cff;
+  box-shadow: 0 0 0 4px rgba(47, 140, 255, 0.18);
+}
+
+.ku-app-shell[data-brand-theme="radar"] .ku-chip {
+  background: rgba(13, 28, 46, 0.72);
+  box-shadow: 0 1px 10px rgba(0, 0, 0, 0.18);
+}
+
+.ku-app-shell[data-brand-theme="radar"] .ku-flow-button {
+  background: rgba(12, 26, 43, 0.82);
+}
+
+.ku-app-shell[data-brand-theme="radar"] .ku-flow-button:hover {
+  border-color: rgba(47, 140, 255, 0.42);
+  background: rgba(21, 45, 72, 0.92);
+}
+
+.ku-app-shell[data-brand-theme="radar"] .ku-flow-button-active {
+  border-color: rgba(47, 140, 255, 0.42);
+  background: rgba(47, 140, 255, 0.18);
+  color: #8ec5ff;
+}
+
+.ku-app-shell[data-brand-theme="radar"] .ku-react-flow .react-flow__controls,
+.ku-app-shell[data-brand-theme="radar"] .ku-react-flow .react-flow__minimap {
+  background: rgba(8, 18, 31, 0.86);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.36);
+}
+
+.ku-app-shell[data-brand-theme="radar"] .ku-react-flow .react-flow__controls-button {
+  border-bottom-color: rgba(125, 173, 220, 0.16);
+}
+
+.ku-app-shell[data-brand-theme="radar"] .ku-react-flow .react-flow__controls-button:hover {
+  background: rgba(47, 140, 255, 0.14);
+}
+
+.ku-app-shell[data-brand-theme="radar"] .ku-radar-canvas {
+  background:
+    radial-gradient(circle at center, rgba(47, 140, 255, 0.12), transparent 28%),
+    radial-gradient(circle at 72% 22%, rgba(52, 199, 89, 0.1), transparent 24%),
+    radial-gradient(circle at 32% 74%, rgba(22, 217, 210, 0.1), transparent 26%),
+    linear-gradient(rgba(102, 154, 206, 0.07) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(102, 154, 206, 0.07) 1px, transparent 1px),
+    #07111d;
+  background-size: auto, auto, auto, 28px 28px, 28px 28px, auto;
+}
+
+.ku-app-shell[data-brand-theme="radar"] [class*="bg-[#f5f5f7"] {
+  background-color: rgba(5, 12, 22, 0.84) !important;
+}
+
+.ku-app-shell[data-brand-theme="radar"] [class*="bg-white"] {
+  background-color: rgba(11, 23, 38, 0.76) !important;
+}
+
+.ku-app-shell[data-brand-theme="radar"] [class*="bg-[rgba(242,242,247"] {
+  background-color: rgba(15, 29, 46, 0.78) !important;
+}
+
+.ku-app-shell[data-brand-theme="radar"] [class*="bg-[#1d1d1f]"] {
+  background: linear-gradient(135deg, rgba(23, 107, 255, 0.95), rgba(22, 217, 210, 0.86)) !important;
+}
+
+.ku-app-shell[data-brand-theme="radar"] [class*="text-[#1d1d1f]"] {
+  color: var(--ku-text) !important;
+}
+
+.ku-app-shell[data-brand-theme="radar"] [class*="text-[rgba(60,60,67"] {
+  color: var(--ku-text-muted) !important;
+}
+
+.ku-app-shell[data-brand-theme="radar"] [class*="border-[rgba(60,60,67"] {
+  border-color: var(--ku-border) !important;
+}
+
+.ku-app-shell[data-brand-theme="radar"] [class*="ring-[rgba(60,60,67"] {
+  --tw-ring-color: rgba(125, 173, 220, 0.2) !important;
+}
+
+.ku-app-shell[data-brand-theme="radar"] [class*="hover:bg-white"]:hover {
+  background-color: rgba(19, 39, 63, 0.94) !important;
+}
