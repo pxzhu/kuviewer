@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Boxes, GitBranch, LockKeyhole, Pause, Play, RefreshCw, SearchCode, SlidersHorizontal, Workflow } from 'lucide-react';
+import { Boxes, GitBranch, LockKeyhole, Palette, Pause, Play, RefreshCw, SearchCode, SlidersHorizontal, Workflow } from 'lucide-react';
 import { clearAdminToken, getStoredAdminToken, isValidAdminToken } from '../features/auth/adminToken';
 import { useConnectorStatus } from '../features/status/useConnectorStatus';
 import { type ColorMode, type TopologyFilters, type TopologySourceMode, useTopology } from '../features/topology/useTopology';
@@ -24,6 +24,8 @@ const initialFilters: TopologyFilters = {
   status: 'all',
 };
 const sourceModeStorageKey = 'kuviewer_source_mode';
+const brandThemeStorageKey = 'kuviewer_brand_theme';
+type BrandTheme = 'yaml-flow' | 'radar';
 
 export function App() {
   return <Dashboard />;
@@ -34,6 +36,7 @@ function Dashboard() {
 
   const [filters, setFilters] = useState(initialFilters);
   const [colorMode, setColorMode] = useState<ColorMode>('status');
+  const [brandTheme, setBrandTheme] = useState<BrandTheme>(() => initialBrandTheme());
   const [viewMode, setViewMode] = useState<'topology' | 'traffic' | 'resources'>('topology');
   const [sourceMode, setSourceMode] = useState<TopologySourceMode>(() => initialSourceMode());
   const [liveUnlocked, setLiveUnlocked] = useState(() => isValidAdminToken(getStoredAdminToken()));
@@ -93,7 +96,10 @@ function Dashboard() {
   const selectedNode = selectedNodeId ? nodeMap.get(selectedNodeId) || snapshotNodeMap.get(selectedNodeId) : nodes[0];
   const AutoRefreshIcon = autoRefresh ? Pause : Play;
   const providerLabel = sourceMode === 'live' ? connectorStatus?.source || '실시간' : sourceModeLabel(sourceMode);
-  const brandIconSrc = `${import.meta.env.BASE_URL}favicon-192x192.png?v=0.1.39`;
+  const brandIconSrc =
+    brandTheme === 'radar'
+      ? `${import.meta.env.BASE_URL}images/brand/kuviewer-icon-radar.svg?v=0.1.40`
+      : `${import.meta.env.BASE_URL}images/brand/kuviewer-icon-yaml-flow.svg?v=0.1.40`;
   const topologySourceKey = useMemo(
     () => `${sourceMode}:${snapshot.clusters.map((cluster) => cluster.id).join(',')}:${snapshot.nodes.length}:${snapshot.edges.length}`,
     [snapshot.clusters, snapshot.edges.length, snapshot.nodes.length, sourceMode],
@@ -173,8 +179,13 @@ function Dashboard() {
     setViewMode('topology');
   }, []);
 
+  const handleBrandThemeChange = useCallback((nextTheme: BrandTheme) => {
+    setBrandTheme(nextTheme);
+    storeBrandTheme(nextTheme);
+  }, []);
+
   return (
-    <main className="ku-app-shell text-[#1e2b3c]">
+    <main className="ku-app-shell text-[#1e2b3c]" data-brand-theme={brandTheme}>
       <header className="sticky top-0 z-50 border-b border-[rgba(137,158,186,0.18)] bg-white/82 shadow-[0_16px_46px_rgba(73,104,143,0.12)] backdrop-blur-2xl">
         <div className="mx-auto flex max-w-[1760px] flex-col gap-3 px-3 py-3 sm:px-4 lg:flex-row lg:items-center lg:justify-between lg:px-6">
           <div className="flex min-w-0 gap-3">
@@ -209,6 +220,22 @@ function Dashboard() {
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
+            <div className="grid grid-cols-2 rounded-[11px] border border-[rgba(60,60,67,0.16)] bg-white/70 p-1 shadow-[0_2px_10px_rgba(0,0,0,0.04)] backdrop-blur-xl" aria-label="브랜드 테마">
+              {(['yaml-flow', 'radar'] as BrandTheme[]).map((theme) => (
+                <button
+                  key={theme}
+                  className={`inline-flex h-8 items-center justify-center gap-1.5 rounded-[8px] px-3 text-sm font-semibold transition ${
+                    brandTheme === theme ? 'bg-[#1d1d1f] text-white shadow-sm' : 'text-[rgba(60,60,67,0.72)] hover:bg-white/80'
+                  }`}
+                  type="button"
+                  aria-pressed={brandTheme === theme}
+                  onClick={() => handleBrandThemeChange(theme)}
+                >
+                  <Palette size={14} aria-hidden="true" />
+                  {theme === 'yaml-flow' ? 'D' : 'B'}
+                </button>
+              ))}
+            </div>
             <div className="grid grid-cols-3 rounded-[11px] border border-[rgba(60,60,67,0.16)] bg-white/70 p-1 shadow-[0_2px_10px_rgba(0,0,0,0.04)] backdrop-blur-xl">
               <button
                 className={`inline-flex h-8 items-center justify-center gap-2 rounded-[8px] px-3 text-sm font-semibold transition ${
@@ -340,6 +367,7 @@ function Dashboard() {
           <div className="grid gap-3 lg:gap-4 xl:grid-cols-[minmax(0,1fr)_390px] 2xl:grid-cols-[minmax(0,1fr)_420px]">
             {viewMode === 'topology' ? (
             <TopologyCanvas
+              brandTheme={brandTheme}
               colorMode={colorMode}
               edges={edges}
               nodes={nodes}
@@ -503,6 +531,17 @@ function initialSourceMode(): TopologySourceMode {
   }
   const storedSource = readStoredSourceMode();
   return storedSource || 'upload';
+}
+
+function initialBrandTheme(): BrandTheme {
+  if (typeof window === 'undefined') {
+    return 'yaml-flow';
+  }
+  return window.localStorage.getItem(brandThemeStorageKey) === 'radar' ? 'radar' : 'yaml-flow';
+}
+
+function storeBrandTheme(theme: BrandTheme) {
+  window.localStorage.setItem(brandThemeStorageKey, theme);
 }
 
 function readStoredSourceMode(): TopologySourceMode | null {

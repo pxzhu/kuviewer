@@ -17,7 +17,7 @@ Kuviewer는 Kubernetes 리소스를 웹에서 시각적으로 보는 도구다. 
 ## 현재 구현 상태
 
 - 프론트: `website` 폴더의 React + Vite + Tailwind CSS.
-- 기본 UI 테마는 D번 YAML Flow 브랜드 시안 기반의 밝은 문서-토폴로지 스타일이다. 공유 썸네일, favicon, apple-touch icon도 같은 YAML Flow asset 계열을 사용한다.
+- 기본 UI 테마는 D번 YAML Flow 브랜드 시안 기반의 밝은 문서-토폴로지 스타일이다. 헤더의 B/D 버튼으로 B번 Radar dark 테마를 선택할 수 있으며, 선택값은 UI preference로만 localStorage에 저장한다. 공유 썸네일은 테마와 무관하게 D번 YAML Flow 전용 asset을 사용한다.
 - 토폴로지: `@xyflow/react` 기반이며 노드 드래그, fit/reset, 트래픽/시스템 토글이 있다.
 - 데이터 소스 모드:
   - `YAML 업로드`: 프론트 단독 파싱 및 토폴로지 생성.
@@ -115,7 +115,7 @@ https://kuviewer.example.com/
    - 리소스 관계 검색/그룹화와 토폴로지 이동 UX는 완료됐다.
    - 리소스 상세 섹션 점프/키보드 탐색과 Event severity grouping은 완료됐다.
    - 리소스 리스트 키보드 탐색, density preset, Event 시간 범위 필터, Event 정렬/세션 pinning은 완료됐다.
-   - YAML Flow branding, link preview thumbnail, favicon/apple-touch icon, light document-to-topology UI theme은 완료됐다.
+   - YAML Flow 독립 link preview thumbnail, 투명 favicon/apple-touch icon, D 기본/B Radar theme toggle은 완료됐다.
    - 다음 확장 후보는 resource detail layout polish 또는 log search highlighting refinements다.
 
 4. 실제 Kubernetes 연결 설계

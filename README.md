@@ -17,7 +17,8 @@ Kuviewer is a Kubernetes topology viewer focused on visualizing clusters, namesp
 - `Topology`: draggable React Flow resource relationship map with cluster and namespace zones
 - `Flow`: YAML-derived traffic flow view
 - `Resource Explorer`: read-only Kubernetes resource list, safe YAML/detail preview, topology relations, and live Events
-- YAML Flow-style link preview, favicon, and apple-touch icon assets for shared links and bookmarks
+- Purpose-built YAML Flow link preview, transparent favicon, and apple-touch icon assets for shared links and bookmarks
+- Brand theme toggle: `D` YAML Flow is the default UI theme, while `B` Radar can be selected as a dark app theme without changing shared-link metadata
 - Manual refresh, optional 30 second auto refresh, and last sync status for live mode
 - Backend provider/status line for source, read-only mode, Secret handling, and static UI mode
 - Connector diagnostics panel for backend source, API errors, sync time, and visible/total graph counts
