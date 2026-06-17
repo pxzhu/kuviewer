@@ -218,7 +218,7 @@ function TopologyCanvasInner({ nodes, edges, selectedNodeId, colorMode, sourceKe
         ) : (
           <ReactFlow
             className="ku-react-flow"
-            colorMode="dark"
+            colorMode="light"
             edges={flowEdges}
             fitView
             fitViewOptions={{ padding: 0.16, minZoom: 0.18, maxZoom: 1.1 }}
@@ -245,9 +245,9 @@ function TopologyCanvasInner({ nodes, edges, selectedNodeId, colorMode, sourceKe
             <MiniMap
               pannable
               zoomable
-              maskColor="rgba(3,7,13,0.72)"
+              maskColor="rgba(248,251,255,0.74)"
               nodeBorderRadius={8}
-              nodeColor={(node) => (node.type === 'resource' ? String((node.data as ResourceNodeData).color || '#8e8e93') : 'rgba(125,173,220,0.16)')}
+              nodeColor={(node) => (node.type === 'resource' ? String((node.data as ResourceNodeData).color || '#8e8e93') : 'rgba(137,158,186,0.2)')}
             />
             <Controls showInteractive={false} />
             <Panel position="top-left" className="!m-3">
@@ -472,7 +472,7 @@ function MobileTopologyCanvas({ nodes, edges, selectedNodeId, colorMode, onSelec
                     <text fill={String(data.color)} fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace" fontSize="11" fontWeight="800" x="16" y="28">
                       {data.label}
                     </text>
-                    <text fill="rgba(196,218,240,0.72)" fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace" fontSize="10" fontWeight="700" x="16" y="47">
+                    <text fill="rgba(94,116,143,0.66)" fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace" fontSize="10" fontWeight="700" x="16" y="47">
                       {data.caption}
                     </text>
                   </g>
@@ -508,7 +508,7 @@ function MobileTopologyCanvas({ nodes, edges, selectedNodeId, colorMode, onSelec
                         fontSize="10"
                         fontWeight="800"
                         paintOrder="stroke"
-                        stroke="rgba(3,7,13,0.86)"
+                        stroke="rgba(255,255,255,0.9)"
                         strokeWidth="5"
                         x={labelPoint.x}
                         y={labelPoint.y}
@@ -540,7 +540,7 @@ function MobileTopologyCanvas({ nodes, edges, selectedNodeId, colorMode, onSelec
                     }}
                   >
                     <rect
-                      fill="rgba(9,20,34,0.94)"
+                      fill="rgba(255,255,255,0.94)"
                       height={flowNodeHeight}
                       rx="13"
                       stroke={selected ? String(data.color) : `${String(data.color)}66`}
@@ -552,7 +552,7 @@ function MobileTopologyCanvas({ nodes, edges, selectedNodeId, colorMode, onSelec
                         fill="none"
                         height={flowNodeHeight + (selected ? 8 : 4)}
                         rx="16"
-                        stroke={selected ? 'rgba(47,140,255,0.42)' : 'rgba(125,173,220,0.22)'}
+                        stroke={selected ? 'rgba(38,122,255,0.28)' : 'rgba(137,158,186,0.2)'}
                         strokeWidth={selected ? 5 : 3}
                         width={flowNodeWidth + (selected ? 8 : 4)}
                         x={selected ? -4 : -2}
@@ -560,12 +560,12 @@ function MobileTopologyCanvas({ nodes, edges, selectedNodeId, colorMode, onSelec
                       />
                     ) : null}
                     <rect fill={String(data.color)} height="4" rx="2" width={flowNodeWidth} />
-                    <circle cx="0" cy={flowNodeHeight / 2} fill={String(data.color)} r="5" stroke="#07111d" strokeWidth="2" />
-                    <circle cx={flowNodeWidth} cy={flowNodeHeight / 2} fill={String(data.color)} r="5" stroke="#07111d" strokeWidth="2" />
-                    <text fill="#eef7ff" fontFamily="Inter, ui-sans-serif, system-ui, sans-serif" fontSize="13" fontWeight="800" x="12" y="28">
+                    <circle cx="0" cy={flowNodeHeight / 2} fill={String(data.color)} r="5" stroke="#ffffff" strokeWidth="2" />
+                    <circle cx={flowNodeWidth} cy={flowNodeHeight / 2} fill={String(data.color)} r="5" stroke="#ffffff" strokeWidth="2" />
+                    <text fill="#1e2b3c" fontFamily="Inter, ui-sans-serif, system-ui, sans-serif" fontSize="13" fontWeight="800" x="12" y="28">
                       {truncateMiddle(resource.name, 25)}
                     </text>
-                    <text fill="rgba(196,218,240,0.72)" fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace" fontSize="10" fontWeight="800" x="12" y="46">
+                    <text fill="rgba(94,116,143,0.66)" fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace" fontSize="10" fontWeight="800" x="12" y="46">
                       {truncateMiddle(`${resource.namespace ? `${resource.namespace} / ` : ''}${resource.kind}`, 30)}
                     </text>
                     <rect fill={statusFill(resource.status)} height="18" rx="9" width="66" x={flowNodeWidth - 76} y="18" />
@@ -574,8 +574,8 @@ function MobileTopologyCanvas({ nodes, edges, selectedNodeId, colorMode, onSelec
                     </text>
                     {summaryPreview(resource).map((item, index) => (
                       <g key={item} transform={`translate(${12 + index * 94}, 64)`}>
-                        <rect fill="rgba(15,29,46,0.86)" height="20" rx="10" stroke="rgba(125,173,220,0.16)" width="86" />
-                        <text fill="rgba(196,218,240,0.78)" fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace" fontSize="9" fontWeight="700" x="7" y="13">
+                        <rect fill="rgba(241,247,255,0.86)" height="20" rx="10" stroke="rgba(137,158,186,0.16)" width="86" />
+                        <text fill="rgba(47,65,89,0.74)" fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace" fontSize="9" fontWeight="700" x="7" y="13">
                           {truncateMiddle(item, 13)}
                         </text>
                       </g>
@@ -693,14 +693,14 @@ function ResourceNode({ data }: NodeProps<Node<ResourceNodeData>>) {
 
   return (
     <div
-      className={`relative h-[106px] w-[220px] rounded-[13px] border bg-white/92 px-3 py-2 text-left shadow-[0_16px_34px_rgba(0,0,0,0.32)] backdrop-blur-xl transition ${
-        selected ? 'ring-[3px] ring-[rgba(47,140,255,0.42)]' : related ? 'ring-2 ring-[rgba(125,173,220,0.2)]' : ''
+      className={`relative h-[106px] w-[220px] rounded-[13px] border bg-white/92 px-3 py-2 text-left shadow-[0_16px_34px_rgba(73,104,143,0.14)] backdrop-blur-xl transition ${
+        selected ? 'ring-[3px] ring-[rgba(38,122,255,0.24)]' : related ? 'ring-2 ring-[rgba(137,158,186,0.2)]' : ''
       } ${muted ? 'opacity-35' : 'opacity-100'}`}
       data-testid={`topology-node-${resource.id}`}
       style={{ borderColor: selected ? color : `${color}66`, borderWidth: selected ? 2 : 1 } as CSSProperties}
     >
-      <Handle className="!h-2.5 !w-2.5 !border-2 !border-[#07111d]" position={Position.Left} style={{ backgroundColor: color }} type="target" />
-      <Handle className="!h-2.5 !w-2.5 !border-2 !border-[#07111d]" position={Position.Right} style={{ backgroundColor: color }} type="source" />
+      <Handle className="!h-2.5 !w-2.5 !border-2 !border-white" position={Position.Left} style={{ backgroundColor: color }} type="target" />
+      <Handle className="!h-2.5 !w-2.5 !border-2 !border-white" position={Position.Right} style={{ backgroundColor: color }} type="source" />
       <div className="absolute inset-x-0 top-0 h-1 rounded-t-[13px]" style={{ backgroundColor: color }} />
       <div className="mt-1 flex items-start justify-between gap-2">
         <div className="min-w-0">
@@ -938,7 +938,7 @@ function placeColumns(nodes: TopologyNode[], startX: number, startY: number, sav
 function toFlowEdge(edge: TopologyEdge, selectedNodeId: string): FlowEdge {
   const traffic = isTrafficEdge(edge.type);
   const selected = !selectedNodeId || edge.source === selectedNodeId || edge.target === selectedNodeId;
-  const color = selected ? (traffic ? '#2f8cff' : getEdgeColor(edge)) : 'rgba(125,173,220,0.28)';
+  const color = selected ? (traffic ? '#267aff' : getEdgeColor(edge)) : 'rgba(137,158,186,0.32)';
   const label = selected && (selectedNodeId || traffic) ? edge.type : undefined;
 
   return {
@@ -1029,28 +1029,28 @@ function numericStyleValue(value: unknown, fallback: number) {
 
 function statusFill(status: TopologyNode['status']) {
   if (status === 'healthy') {
-    return 'rgba(75,234,102,0.16)';
+    return 'rgba(40,184,83,0.12)';
   }
   if (status === 'warning') {
-    return 'rgba(255,173,31,0.18)';
+    return 'rgba(255,149,0,0.14)';
   }
   if (status === 'error') {
-    return 'rgba(255,69,58,0.18)';
+    return 'rgba(255,59,48,0.12)';
   }
-  return 'rgba(125,173,220,0.14)';
+  return 'rgba(137,158,186,0.14)';
 }
 
 function statusTextColor(status: TopologyNode['status']) {
   if (status === 'healthy') {
-    return '#8cff9e';
+    return '#1f8f42';
   }
   if (status === 'warning') {
-    return '#ffd27a';
+    return '#a45b00';
   }
   if (status === 'error') {
-    return '#ff9a92';
+    return '#c01f17';
   }
-  return '#b8c9dc';
+  return '#5e748f';
 }
 
 function truncateMiddle(value: string, maxLength: number) {
