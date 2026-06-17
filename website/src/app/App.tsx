@@ -93,6 +93,7 @@ function Dashboard() {
   const selectedNode = selectedNodeId ? nodeMap.get(selectedNodeId) || snapshotNodeMap.get(selectedNodeId) : nodes[0];
   const AutoRefreshIcon = autoRefresh ? Pause : Play;
   const providerLabel = sourceMode === 'live' ? connectorStatus?.source || '실시간' : sourceModeLabel(sourceMode);
+  const brandIconSrc = `${import.meta.env.BASE_URL}favicon-192x192.png`;
   const topologySourceKey = useMemo(
     () => `${sourceMode}:${snapshot.clusters.map((cluster) => cluster.id).join(',')}:${snapshot.nodes.length}:${snapshot.edges.length}`,
     [snapshot.clusters, snapshot.edges.length, snapshot.nodes.length, sourceMode],
@@ -174,9 +175,16 @@ function Dashboard() {
 
   return (
     <main className="ku-app-shell text-[#1d1d1f]">
-      <header className="sticky top-0 z-50 border-b border-[rgba(60,60,67,0.14)] bg-[#f5f5f7]/80 backdrop-blur-2xl">
+      <header className="sticky top-0 z-50 border-b border-[rgba(60,60,67,0.14)] bg-[#f5f5f7]/80 shadow-[0_20px_70px_rgba(0,0,0,0.22)] backdrop-blur-2xl">
         <div className="mx-auto flex max-w-[1760px] flex-col gap-3 px-3 py-3 sm:px-4 lg:flex-row lg:items-center lg:justify-between lg:px-6">
-          <div className="min-w-0">
+          <div className="flex min-w-0 gap-3">
+            <img
+              className="mt-0.5 h-11 w-11 shrink-0 rounded-[13px] border border-[rgba(125,173,220,0.26)] shadow-[0_0_26px_rgba(47,140,255,0.18)]"
+              src={brandIconSrc}
+              alt=""
+              aria-hidden="true"
+            />
+            <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
               <span className="ku-chip border-[rgba(0,122,255,0.18)] bg-[rgba(0,122,255,0.08)] text-[#0066cc]">
                 <Boxes size={13} aria-hidden="true" />
@@ -197,6 +205,7 @@ function Dashboard() {
             </div>
             {error ? <p className="mt-1 text-sm font-semibold text-[#b26a00]">API 오류: {formatUiError(error)}</p> : null}
             {uploadError ? <p className="mt-1 text-sm font-semibold text-[#b26a00]">업로드 오류: {formatUiError(uploadError)}</p> : null}
+            </div>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
