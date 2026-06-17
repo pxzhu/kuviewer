@@ -3,25 +3,28 @@
 @tailwind utilities;
 
 :root {
-  color-scheme: light;
+  color-scheme: dark;
   font-family:
     -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", Inter, ui-sans-serif, system-ui, "Segoe UI", sans-serif;
-  background: #f5f5f7;
-  color: #1d1d1f;
+  background: #050a12;
+  color: #eef7ff;
   font-feature-settings: "cv02", "cv03", "cv04", "cv11";
-  --ku-bg: #f5f5f7;
-  --ku-surface: rgba(255, 255, 255, 0.82);
-  --ku-surface-solid: #ffffff;
-  --ku-surface-muted: rgba(248, 248, 250, 0.88);
-  --ku-border: rgba(60, 60, 67, 0.14);
-  --ku-border-strong: rgba(60, 60, 67, 0.22);
-  --ku-text: #1d1d1f;
-  --ku-text-muted: rgba(60, 60, 67, 0.72);
-  --ku-text-subtle: rgba(60, 60, 67, 0.55);
-  --ku-accent: #007aff;
-  --ku-accent-soft: rgba(0, 122, 255, 0.1);
-  --ku-shadow-panel: 0 18px 48px rgba(0, 0, 0, 0.08);
-  --ku-shadow-soft: 0 8px 24px rgba(0, 0, 0, 0.06);
+  --ku-bg: #050a12;
+  --ku-surface: rgba(10, 20, 34, 0.78);
+  --ku-surface-solid: #0d1828;
+  --ku-surface-muted: rgba(15, 29, 46, 0.78);
+  --ku-border: rgba(125, 173, 220, 0.18);
+  --ku-border-strong: rgba(109, 186, 255, 0.34);
+  --ku-text: #eef7ff;
+  --ku-text-muted: rgba(196, 218, 240, 0.76);
+  --ku-text-subtle: rgba(155, 180, 207, 0.62);
+  --ku-accent: #2f8cff;
+  --ku-accent-2: #16d9d2;
+  --ku-success: #4bea66;
+  --ku-warning: #ffad1f;
+  --ku-accent-soft: rgba(47, 140, 255, 0.16);
+  --ku-shadow-panel: 0 26px 70px rgba(0, 0, 0, 0.42);
+  --ku-shadow-soft: 0 14px 34px rgba(0, 0, 0, 0.32);
 }
 
 * {
@@ -45,7 +48,11 @@ body {
   min-width: 320px;
   min-height: 100%;
   overflow: hidden;
-  background: var(--ku-bg);
+  background:
+    radial-gradient(circle at 28% 12%, rgba(0, 122, 255, 0.16), transparent 30%),
+    radial-gradient(circle at 78% 18%, rgba(52, 199, 89, 0.12), transparent 27%),
+    radial-gradient(circle at 50% 110%, rgba(0, 199, 190, 0.1), transparent 36%),
+    var(--ku-bg);
   overscroll-behavior: none;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
@@ -58,12 +65,21 @@ body {
 }
 
 .ku-app-shell {
+  position: relative;
   height: 100dvh;
   min-height: 100%;
   overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
+  color: var(--ku-text);
+  background:
+    linear-gradient(rgba(112, 163, 214, 0.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(112, 163, 214, 0.045) 1px, transparent 1px),
+    radial-gradient(circle at 38% 8%, rgba(47, 140, 255, 0.18), transparent 28%),
+    radial-gradient(circle at 74% 16%, rgba(22, 217, 210, 0.1), transparent 25%),
+    linear-gradient(180deg, #070c15 0%, #081220 46%, #03070d 100%);
+  background-size: 34px 34px, 34px 34px, auto, auto, auto;
 }
 
 @supports not (height: 100dvh) {
@@ -82,30 +98,32 @@ button:focus-visible,
 input:focus-visible,
 select:focus-visible,
 [role="button"]:focus-visible {
-  outline: 3px solid rgba(0, 122, 255, 0.25);
+  outline: 3px solid rgba(47, 140, 255, 0.36);
   outline-offset: 2px;
 }
 
 ::selection {
-  background: rgba(0, 122, 255, 0.18);
+  background: rgba(47, 140, 255, 0.3);
 }
 
 @layer components {
   .ku-panel {
     border: 1px solid var(--ku-border);
     border-radius: 14px;
-    background: var(--ku-surface);
+    background:
+      linear-gradient(145deg, rgba(16, 31, 50, 0.9), rgba(7, 15, 26, 0.78)),
+      var(--ku-surface);
     box-shadow: var(--ku-shadow-panel);
-    backdrop-filter: blur(18px);
-    -webkit-backdrop-filter: blur(18px);
+    backdrop-filter: blur(22px) saturate(1.2);
+    -webkit-backdrop-filter: blur(22px) saturate(1.2);
   }
 
   .ku-panel-muted {
-    border: 1px solid rgba(60, 60, 67, 0.12);
+    border: 1px solid var(--ku-border);
     border-radius: 14px;
-    background: rgba(255, 255, 255, 0.62);
-    backdrop-filter: blur(18px);
-    -webkit-backdrop-filter: blur(18px);
+    background: rgba(12, 24, 40, 0.68);
+    backdrop-filter: blur(18px) saturate(1.15);
+    -webkit-backdrop-filter: blur(18px) saturate(1.15);
   }
 
   .ku-meta {
@@ -113,7 +131,7 @@ select:focus-visible,
     font-size: 11px;
     font-weight: 600;
     letter-spacing: 0.04em;
-    color: rgba(60, 60, 67, 0.58);
+    color: var(--ku-text-subtle);
     text-transform: uppercase;
   }
 
@@ -123,19 +141,20 @@ select:focus-visible,
     align-items: center;
     justify-content: center;
     gap: 0.5rem;
-    border: 1px solid rgba(60, 60, 67, 0.16);
+    border: 1px solid var(--ku-border);
     border-radius: 10px;
-    background: rgba(255, 255, 255, 0.82);
+    background: rgba(13, 28, 46, 0.76);
     padding: 0 0.75rem;
-    color: #1d1d1f;
+    color: var(--ku-text);
     font-size: 0.875rem;
     font-weight: 600;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+    box-shadow: 0 2px 14px rgba(0, 0, 0, 0.22);
     transition: border-color 140ms ease, background 140ms ease, box-shadow 140ms ease, color 140ms ease;
   }
 
   .ku-control:hover {
-    background: #ffffff;
+    border-color: rgba(47, 140, 255, 0.42);
+    background: rgba(18, 38, 62, 0.9);
   }
 
   .ku-control:disabled {
@@ -150,17 +169,17 @@ select:focus-visible,
     justify-content: center;
     gap: 0.5rem;
     border-radius: 10px;
-    background: #1d1d1f;
+    background: linear-gradient(135deg, #176bff, #16d9d2);
     padding: 0 0.75rem;
     color: #ffffff;
     font-size: 0.875rem;
     font-weight: 600;
-    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.16);
+    box-shadow: 0 8px 22px rgba(0, 122, 255, 0.22);
     transition: background 140ms ease, box-shadow 140ms ease, opacity 140ms ease;
   }
 
   .ku-control-primary:hover {
-    background: #000000;
+    background: linear-gradient(135deg, #2f8cff, #27efe7);
   }
 
   .ku-control-primary:disabled {
@@ -170,11 +189,11 @@ select:focus-visible,
 
   .ku-field {
     height: 2.5rem;
-    border: 1px solid rgba(60, 60, 67, 0.16);
+    border: 1px solid var(--ku-border);
     border-radius: 10px;
-    background: rgba(255, 255, 255, 0.86);
+    background: rgba(8, 18, 31, 0.82);
     padding: 0 0.75rem;
-    color: #1d1d1f;
+    color: var(--ku-text);
     font-size: 0.875rem;
     font-weight: 500;
     outline: none;
@@ -182,12 +201,12 @@ select:focus-visible,
   }
 
   .ku-field::placeholder {
-    color: rgba(60, 60, 67, 0.42);
+    color: var(--ku-text-subtle);
   }
 
   .ku-field:focus {
-    border-color: #007aff;
-    box-shadow: 0 0 0 4px rgba(0, 122, 255, 0.12);
+    border-color: #2f8cff;
+    box-shadow: 0 0 0 4px rgba(47, 140, 255, 0.18);
   }
 
   .ku-chip {
@@ -195,15 +214,15 @@ select:focus-visible,
     height: 1.75rem;
     align-items: center;
     gap: 0.5rem;
-    border: 1px solid rgba(60, 60, 67, 0.12);
+    border: 1px solid var(--ku-border);
     border-radius: 9999px;
-    background: rgba(255, 255, 255, 0.75);
+    background: rgba(13, 28, 46, 0.72);
     padding: 0 0.625rem;
-    color: rgba(60, 60, 67, 0.68);
+    color: var(--ku-text-muted);
     font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
     font-size: 11px;
     font-weight: 600;
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+    box-shadow: 0 1px 10px rgba(0, 0, 0, 0.18);
   }
 
   .ku-flow-button {
@@ -212,37 +231,38 @@ select:focus-visible,
     align-items: center;
     justify-content: center;
     gap: 0.375rem;
-    border: 1px solid rgba(60, 60, 67, 0.14);
+    border: 1px solid var(--ku-border);
     border-radius: 9px;
-    background: rgba(255, 255, 255, 0.74);
+    background: rgba(12, 26, 43, 0.82);
     padding: 0 0.625rem;
-    color: rgba(60, 60, 67, 0.78);
+    color: var(--ku-text-muted);
     font-size: 0.75rem;
     font-weight: 700;
     transition: background 140ms ease, color 140ms ease, border-color 140ms ease;
   }
 
   .ku-flow-button:hover {
-    background: #ffffff;
-    color: #1d1d1f;
+    border-color: rgba(47, 140, 255, 0.42);
+    background: rgba(21, 45, 72, 0.92);
+    color: var(--ku-text);
   }
 
   .ku-flow-button-active {
-    border-color: rgba(0, 122, 255, 0.24);
-    background: rgba(0, 122, 255, 0.1);
-    color: #0066cc;
+    border-color: rgba(47, 140, 255, 0.42);
+    background: rgba(47, 140, 255, 0.18);
+    color: #8ec5ff;
   }
 }
 
 .ku-react-flow .react-flow__controls,
 .ku-react-flow .react-flow__minimap {
-  border: 1px solid rgba(60, 60, 67, 0.14);
+  border: 1px solid var(--ku-border);
   border-radius: 14px;
   overflow: hidden;
-  background: rgba(255, 255, 255, 0.86);
-  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.08);
-  backdrop-filter: blur(18px);
-  -webkit-backdrop-filter: blur(18px);
+  background: rgba(8, 18, 31, 0.86);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.36);
+  backdrop-filter: blur(18px) saturate(1.16);
+  -webkit-backdrop-filter: blur(18px) saturate(1.16);
 }
 
 .ku-react-flow,
@@ -252,10 +272,58 @@ select:focus-visible,
 }
 
 .ku-react-flow .react-flow__controls-button {
-  border-bottom-color: rgba(60, 60, 67, 0.12);
+  border-bottom-color: rgba(125, 173, 220, 0.16);
   background: transparent;
+  color: var(--ku-text-muted);
 }
 
 .ku-react-flow .react-flow__controls-button:hover {
-  background: rgba(242, 242, 247, 0.9);
+  background: rgba(47, 140, 255, 0.14);
+}
+
+.ku-radar-canvas {
+  background:
+    radial-gradient(circle at center, rgba(47, 140, 255, 0.12), transparent 28%),
+    radial-gradient(circle at 72% 22%, rgba(52, 199, 89, 0.1), transparent 24%),
+    radial-gradient(circle at 32% 74%, rgba(22, 217, 210, 0.1), transparent 26%),
+    linear-gradient(rgba(102, 154, 206, 0.07) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(102, 154, 206, 0.07) 1px, transparent 1px),
+    #07111d;
+  background-size: auto, auto, auto, 28px 28px, 28px 28px, auto;
+}
+
+.ku-app-shell [class*="bg-[#f5f5f7"] {
+  background-color: rgba(5, 12, 22, 0.84) !important;
+}
+
+.ku-app-shell [class*="bg-white"] {
+  background-color: rgba(11, 23, 38, 0.76) !important;
+}
+
+.ku-app-shell [class*="bg-[rgba(242,242,247"] {
+  background-color: rgba(15, 29, 46, 0.78) !important;
+}
+
+.ku-app-shell [class*="bg-[#1d1d1f]"] {
+  background: linear-gradient(135deg, rgba(23, 107, 255, 0.95), rgba(22, 217, 210, 0.86)) !important;
+}
+
+.ku-app-shell [class*="text-[#1d1d1f]"] {
+  color: var(--ku-text) !important;
+}
+
+.ku-app-shell [class*="text-[rgba(60,60,67"] {
+  color: var(--ku-text-muted) !important;
+}
+
+.ku-app-shell [class*="border-[rgba(60,60,67"] {
+  border-color: var(--ku-border) !important;
+}
+
+.ku-app-shell [class*="ring-[rgba(60,60,67"] {
+  --tw-ring-color: rgba(125, 173, 220, 0.2) !important;
+}
+
+.ku-app-shell [class*="hover:bg-white"]:hover {
+  background-color: rgba(19, 39, 63, 0.94) !important;
 }
