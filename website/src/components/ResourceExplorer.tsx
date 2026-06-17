@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { KeyboardEvent as ReactKeyboardEvent, ReactNode } from 'react';
-import { Activity, AlertTriangle, ArrowDown, ArrowUp, Bookmark, Boxes, CheckCircle2, ChevronDown, Copy, Download, FileText, GitBranch, Link2, RotateCcw, Search, Tags, Trash2 } from 'lucide-react';
+import { Activity, AlertTriangle, ArrowDown, ArrowUp, Bookmark, Boxes, CheckCircle2, ChevronDown, Copy, Download, FileText, GitBranch, Link2, RefreshCw, RotateCcw, Search, Tags, Trash2 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { fetchResourceEvents, fetchResourceLogs, fetchResources, resourcesFromSnapshot, streamResourceLogs } from '../services/resourceApi';
 import type { ResourceEvent, ResourceExplorerItem } from '../types/resourceExplorer';
@@ -517,6 +517,8 @@ function ResourceExplorerDetail({
   const [events, setEvents] = useState<ResourceEvent[]>([]);
   const [eventsError, setEventsError] = useState('');
   const [eventsWarning, setEventsWarning] = useState('');
+  const [eventsLoading, setEventsLoading] = useState(false);
+  const [eventsLastUpdatedAt, setEventsLastUpdatedAt] = useState<number | null>(null);
   const [eventFilter, setEventFilter] = useState('');
   const [eventSeverityFilter, setEventSeverityFilter] = useState<EventSeverityFilter>('all');
   const [eventTimeRangeFilter, setEventTimeRangeFilter] = useState<EventTimeRangeFilter>('all');
@@ -547,31 +549,70 @@ function ResourceExplorerDetail({
   const detailPanelActiveRef = useRef(false);
   const detailSectionRefs = useRef<Partial<Record<DetailSectionId, HTMLElement | null>>>({});
   const logLineRefs = useRef<Record<number, HTMLDivElement | null>>({});
+  const eventsControllerRef = useRef<AbortController | null>(null);
+  const eventsRequestIdRef = useRef(0);
   const [openSections, setOpenSections] = useState<Set<DetailSectionId>>(() => new Set(defaultOpenDetailSections));
 
-  useEffect(() => {
+  const loadResourceEvents = (options: { preserveExistingEvents?: boolean } = {}) => {
+    const requestId = eventsRequestIdRef.current + 1;
+    eventsRequestIdRef.current = requestId;
+    eventsControllerRef.current?.abort();
+    eventsControllerRef.current = null;
+
     if (!resource || !liveEnabled) {
       setEvents([]);
       setEventsError('');
       setEventsWarning('');
-      return;
+      setEventsLoading(false);
+      setEventsLastUpdatedAt(null);
+      return undefined;
+    }
+
+    if (!options.preserveExistingEvents) {
+      setEvents([]);
+      setEventsLastUpdatedAt(null);
     }
 
     const controller = new AbortController();
+    eventsControllerRef.current = controller;
+    setEventsLoading(true);
+    setEventsError('');
+    setEventsWarning('');
+
     fetchResourceEvents(resource, controller.signal)
       .then((response) => {
+        if (controller.signal.aborted || eventsRequestIdRef.current !== requestId) {
+          return;
+        }
         setEvents([...response.items].sort((a, b) => b.timestamp.localeCompare(a.timestamp)));
         setEventsError('');
         setEventsWarning(response.warning || '');
+        setEventsLastUpdatedAt(Date.now());
       })
       .catch((requestError: unknown) => {
-        if (!controller.signal.aborted) {
-          setEvents([]);
+        if (!controller.signal.aborted && eventsRequestIdRef.current === requestId) {
+          if (!options.preserveExistingEvents) {
+            setEvents([]);
+            setEventsLastUpdatedAt(null);
+          }
           setEventsError(requestError instanceof Error ? requestError.message : 'resource_events_request_failed');
           setEventsWarning('');
         }
+      })
+      .finally(() => {
+        if (!controller.signal.aborted && eventsRequestIdRef.current === requestId) {
+          eventsControllerRef.current = null;
+          setEventsLoading(false);
+        }
       });
-    return () => controller.abort();
+    return controller;
+  };
+
+  useEffect(() => {
+    const controller = loadResourceEvents();
+    return () => {
+      controller?.abort();
+    };
   }, [liveEnabled, resource]);
 
   useEffect(() => {
@@ -597,12 +638,15 @@ function ResourceExplorerDetail({
     setEventTimeRangeFilter('all');
     setEventSortOrder('newest');
     setPinnedEventKeys(new Set());
+    setEventsLastUpdatedAt(null);
     setActiveDetailSectionId('metadata');
     setOpenSections(new Set(defaultOpenDetailSections));
   }, [resource?.id]);
 
   useEffect(() => {
     return () => {
+      eventsControllerRef.current?.abort();
+      eventsControllerRef.current = null;
       logsStreamControllerRef.current?.abort();
       logsStreamControllerRef.current = null;
       logsPausedRef.current = false;
@@ -632,6 +676,7 @@ function ResourceExplorerDetail({
   const visibleRelationCount = relationGroups.reduce((total, group) => total + group.items.length, 0);
   const hiddenRelationCount = Math.max(filteredRelations.length - visibleRelationCount, 0);
   const eventControlsActive = eventFilter || eventSeverityFilter !== 'all' || eventTimeRangeFilter !== 'all' || eventSortOrder !== 'newest' || pinnedEventKeys.size > 0;
+  const canRefreshEvents = liveEnabled && Boolean(resource);
 
   useEffect(() => {
     writeLogDensityPreference(logDensity);
@@ -832,6 +877,14 @@ function ResourceExplorerDetail({
     } finally {
       setLogsLoading(false);
     }
+  };
+
+  const handleRefreshEvents = () => {
+    if (!canRefreshEvents || eventsLoading) {
+      return;
+    }
+    openSection('events');
+    loadResourceEvents({ preserveExistingEvents: true });
   };
 
   const stopLogStream = () => {
@@ -1169,6 +1222,25 @@ function ResourceExplorerDetail({
           )}
         </DetailSection>
         <DetailSection icon={Boxes} title="Events" summary={detailSectionSummaries.events} open={isSectionOpen('events')} active={activeDetailSectionId === 'events'} sectionRef={setDetailSectionRef('events')} onFocusSection={() => setActiveDetailSectionId('events')} onToggle={() => toggleSection('events')}>
+          {liveEnabled ? (
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-2 rounded-[10px] border border-[rgba(60,60,67,0.12)] bg-white/70 p-2">
+              <div className="flex flex-wrap items-center gap-1.5">
+                <p className="ku-meta">live Events · 읽기 전용 · 저장 안 함</p>
+                {eventsLoading ? <span className="ku-chip">조회 중</span> : null}
+                {eventsLastUpdatedAt ? <span className="ku-chip">마지막 조회 {formatRefreshTimestamp(eventsLastUpdatedAt)}</span> : null}
+              </div>
+              <button
+                className="inline-flex items-center gap-1.5 rounded-[9px] border border-[rgba(0,122,255,0.22)] bg-[rgba(0,122,255,0.08)] px-2.5 py-1.5 text-xs font-semibold text-[#0057b8] transition hover:bg-[rgba(0,122,255,0.13)] disabled:cursor-not-allowed disabled:opacity-50"
+                type="button"
+                onClick={handleRefreshEvents}
+                disabled={!canRefreshEvents || eventsLoading}
+                title="선택한 리소스의 Events를 다시 조회"
+              >
+                <RefreshCw className={eventsLoading ? 'animate-spin' : undefined} size={14} aria-hidden="true" />
+                {eventsLoading ? '조회 중' : '새로고침'}
+              </button>
+            </div>
+          ) : null}
           {eventsWarning ? <InlineWarning message="이벤트 조회 권한이 없거나 API가 없어 빈 목록으로 표시합니다." /> : null}
           {eventsError ? <InlineWarning message={`이벤트 조회 실패: ${eventsError}`} /> : null}
           {events.length > 0 ? (
@@ -1257,7 +1329,9 @@ function ResourceExplorerDetail({
               </div>
             </div>
           ) : null}
-          {events.length === 0 ? (
+          {eventsLoading && events.length === 0 ? (
+            <p className="ku-meta">이벤트 조회 중...</p>
+          ) : events.length === 0 ? (
             <p className="ku-meta">표시할 이벤트가 없습니다.</p>
           ) : filteredEvents.length === 0 ? (
             <p className="ku-meta">필터와 일치하는 이벤트가 없습니다.</p>
@@ -2404,6 +2478,25 @@ function formatEventTimestamp(value: string) {
     return value;
   }
   return date.toLocaleString();
+}
+
+function formatRefreshTimestamp(value: number) {
+  if (!Number.isFinite(value) || value <= 0) {
+    return '시각 없음';
+  }
+  const elapsedMs = Math.max(0, Date.now() - value);
+  const elapsedMinutes = Math.floor(elapsedMs / 60_000);
+  if (elapsedMinutes < 1) {
+    return '방금';
+  }
+  if (elapsedMinutes < 60) {
+    return `${elapsedMinutes}분 전`;
+  }
+  const elapsedHours = Math.floor(elapsedMinutes / 60);
+  if (elapsedHours < 24) {
+    return `${elapsedHours}시간 전`;
+  }
+  return new Date(value).toISOString().slice(0, 10);
 }
 
 function formatLogTimestamp(value: string) {
