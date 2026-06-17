@@ -20,6 +20,8 @@ const allValue = 'all';
 const resourceViewPresetStorageKey = 'kuviewer_resource_view_presets';
 const resourceListDensityStorageKey = 'kuviewer_resource_list_density';
 const logDensityStorageKey = 'kuviewer_log_density';
+const eventsAutoRefreshStorageKey = 'kuviewer_events_auto_refresh';
+const eventsAutoRefreshIntervalMs = 30_000;
 const maxResourceViewPresets = 8;
 const maxCollapsedRelations = 24;
 const defaultOpenDetailSections: DetailSectionId[] = ['metadata', 'status', 'safe', 'relations', 'events'];
@@ -519,6 +521,7 @@ function ResourceExplorerDetail({
   const [eventsWarning, setEventsWarning] = useState('');
   const [eventsLoading, setEventsLoading] = useState(false);
   const [eventsLastUpdatedAt, setEventsLastUpdatedAt] = useState<number | null>(null);
+  const [eventsAutoRefreshEnabled, setEventsAutoRefreshEnabled] = useState(() => readEventsAutoRefreshPreference());
   const [eventFilter, setEventFilter] = useState('');
   const [eventSeverityFilter, setEventSeverityFilter] = useState<EventSeverityFilter>('all');
   const [eventTimeRangeFilter, setEventTimeRangeFilter] = useState<EventTimeRangeFilter>('all');
@@ -552,6 +555,7 @@ function ResourceExplorerDetail({
   const eventsControllerRef = useRef<AbortController | null>(null);
   const eventsRequestIdRef = useRef(0);
   const [openSections, setOpenSections] = useState<Set<DetailSectionId>>(() => new Set(defaultOpenDetailSections));
+  const resourceEventsKey = resource ? `${resource.kind}:${resource.namespace || '-'}:${resource.name}` : '';
 
   const loadResourceEvents = (options: { preserveExistingEvents?: boolean } = {}) => {
     const requestId = eventsRequestIdRef.current + 1;
@@ -616,6 +620,23 @@ function ResourceExplorerDetail({
   }, [liveEnabled, resource]);
 
   useEffect(() => {
+    writeEventsAutoRefreshPreference(eventsAutoRefreshEnabled);
+  }, [eventsAutoRefreshEnabled]);
+
+  useEffect(() => {
+    if (!eventsAutoRefreshEnabled || !liveEnabled || !resource) {
+      return undefined;
+    }
+    const intervalId = window.setInterval(() => {
+      if (eventsControllerRef.current) {
+        return;
+      }
+      loadResourceEvents({ preserveExistingEvents: true });
+    }, eventsAutoRefreshIntervalMs);
+    return () => window.clearInterval(intervalId);
+  }, [eventsAutoRefreshEnabled, liveEnabled, resourceEventsKey]);
+
+  useEffect(() => {
     logsStreamControllerRef.current?.abort();
     logsStreamControllerRef.current = null;
     setLogLines([]);
@@ -677,6 +698,7 @@ function ResourceExplorerDetail({
   const hiddenRelationCount = Math.max(filteredRelations.length - visibleRelationCount, 0);
   const eventControlsActive = eventFilter || eventSeverityFilter !== 'all' || eventTimeRangeFilter !== 'all' || eventSortOrder !== 'newest' || pinnedEventKeys.size > 0;
   const canRefreshEvents = liveEnabled && Boolean(resource);
+  const eventsAutoRefreshActive = canRefreshEvents && eventsAutoRefreshEnabled;
 
   useEffect(() => {
     writeLogDensityPreference(logDensity);
@@ -885,6 +907,14 @@ function ResourceExplorerDetail({
     }
     openSection('events');
     loadResourceEvents({ preserveExistingEvents: true });
+  };
+
+  const handleEventsAutoRefreshToggle = () => {
+    if (!canRefreshEvents) {
+      return;
+    }
+    openSection('events');
+    setEventsAutoRefreshEnabled((current) => !current);
   };
 
   const stopLogStream = () => {
@@ -1228,17 +1258,35 @@ function ResourceExplorerDetail({
                 <p className="ku-meta">live Events · 읽기 전용 · 저장 안 함</p>
                 {eventsLoading ? <span className="ku-chip">조회 중</span> : null}
                 {eventsLastUpdatedAt ? <span className="ku-chip">마지막 조회 {formatRefreshTimestamp(eventsLastUpdatedAt)}</span> : null}
+                {eventsAutoRefreshActive ? <span className="ku-chip">자동 갱신 켜짐</span> : null}
               </div>
-              <button
-                className="inline-flex items-center gap-1.5 rounded-[9px] border border-[rgba(0,122,255,0.22)] bg-[rgba(0,122,255,0.08)] px-2.5 py-1.5 text-xs font-semibold text-[#0057b8] transition hover:bg-[rgba(0,122,255,0.13)] disabled:cursor-not-allowed disabled:opacity-50"
-                type="button"
-                onClick={handleRefreshEvents}
-                disabled={!canRefreshEvents || eventsLoading}
-                title="선택한 리소스의 Events를 다시 조회"
-              >
-                <RefreshCw className={eventsLoading ? 'animate-spin' : undefined} size={14} aria-hidden="true" />
-                {eventsLoading ? '조회 중' : '새로고침'}
-              </button>
+              <div className="flex flex-wrap items-center gap-1.5">
+                <button
+                  className={`inline-flex items-center gap-1.5 rounded-[9px] border px-2.5 py-1.5 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                    eventsAutoRefreshActive
+                      ? 'border-[rgba(52,199,89,0.24)] bg-[rgba(52,199,89,0.1)] text-[#248a3d] hover:bg-[rgba(52,199,89,0.14)]'
+                      : 'border-[rgba(60,60,67,0.14)] bg-white/75 text-[rgba(60,60,67,0.72)] hover:bg-white'
+                  }`}
+                  type="button"
+                  onClick={handleEventsAutoRefreshToggle}
+                  disabled={!canRefreshEvents}
+                  aria-pressed={eventsAutoRefreshActive}
+                  title="선택한 리소스의 Events를 30초마다 다시 조회"
+                >
+                  <RefreshCw size={14} aria-hidden="true" />
+                  자동 30초
+                </button>
+                <button
+                  className="inline-flex items-center gap-1.5 rounded-[9px] border border-[rgba(0,122,255,0.22)] bg-[rgba(0,122,255,0.08)] px-2.5 py-1.5 text-xs font-semibold text-[#0057b8] transition hover:bg-[rgba(0,122,255,0.13)] disabled:cursor-not-allowed disabled:opacity-50"
+                  type="button"
+                  onClick={handleRefreshEvents}
+                  disabled={!canRefreshEvents || eventsLoading}
+                  title="선택한 리소스의 Events를 다시 조회"
+                >
+                  <RefreshCw className={eventsLoading ? 'animate-spin' : undefined} size={14} aria-hidden="true" />
+                  {eventsLoading ? '조회 중' : '새로고침'}
+                </button>
+              </div>
             </div>
           ) : null}
           {eventsWarning ? <InlineWarning message="이벤트 조회 권한이 없거나 API가 없어 빈 목록으로 표시합니다." /> : null}
@@ -2196,6 +2244,22 @@ function writeLogDensityPreference(density: LogDensity) {
     window.localStorage.setItem(logDensityStorageKey, density);
   } catch {
     // Density is only a UI preference; storage failures should not break logs.
+  }
+}
+
+function readEventsAutoRefreshPreference() {
+  try {
+    return window.localStorage.getItem(eventsAutoRefreshStorageKey) === 'true';
+  } catch {
+    return false;
+  }
+}
+
+function writeEventsAutoRefreshPreference(enabled: boolean) {
+  try {
+    window.localStorage.setItem(eventsAutoRefreshStorageKey, enabled ? 'true' : 'false');
+  } catch {
+    // Events auto refresh is only a UI preference; storage failures should not break details.
   }
 }
 
