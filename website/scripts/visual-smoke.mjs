@@ -176,6 +176,7 @@ async function verifyResourceExplorer(page) {
   await verifyResourceViewRename(page);
   await verifyResourceViewSearch(page);
   await verifyResourceViewReorder(page);
+  await verifyResourceViewBulkManagement(page);
   await verifyResourceViewConflictImport(page);
   await expect(page.getByRole('heading', { name: 'Metadata' })).toBeVisible({ timeout: 10_000 });
   await expect(page.getByRole('heading', { name: 'Status' })).toBeVisible({ timeout: 10_000 });
@@ -313,6 +314,52 @@ async function verifyResourceViewReorder(page) {
   await page.setInputFiles('[data-testid="resource-view-import-input"]', exportedPath);
   await expect(page.getByTestId('resource-view-message')).toContainText('중복', { timeout: 10_000 });
   await expect.poll(() => savedViewOrder(page, 'Platform')).toEqual([targetName, peerName]);
+}
+
+async function verifyResourceViewBulkManagement(page) {
+  const targetName = 'Visual Rename Target';
+  const peerName = 'Visual Reorder Peer';
+  const targetId = savedViewDomId(targetName);
+  const peerId = savedViewDomId(peerName);
+
+  await page.getByTestId('resource-view-search').fill('Platform');
+  await page.getByTestId('resource-view-select-visible').click();
+  await expect(page.getByTestId('resource-view-bulk-count')).toContainText('선택 2개', { timeout: 10_000 });
+  await page.getByTestId('resource-view-search-clear').click();
+
+  await page.getByTestId(`resource-view-group-select-${savedViewDomId('Platform')}`).click();
+  await expect(page.getByTestId('resource-view-bulk-toolbar')).toHaveCount(0);
+
+  await page.getByTestId(`resource-view-select-${targetId}`).check();
+  await page.getByTestId(`resource-view-select-${peerId}`).check();
+  await expect(page.getByTestId('resource-view-bulk-count')).toContainText('선택 2개', { timeout: 10_000 });
+
+  const download = await Promise.all([
+    page.waitForEvent('download'),
+    page.getByTestId('resource-view-bulk-export').click(),
+  ]).then(([downloadResult]) => downloadResult);
+  const exportedPath = await download.path();
+  if (!exportedPath) {
+    throw new Error('saved view bulk export download path was not available');
+  }
+  const exportedViews = JSON.parse(await readFile(exportedPath, 'utf8'));
+  const exportedNames = exportedViews.map((preset) => preset.name).sort();
+  if (exportedViews.length !== 2 || exportedNames.join(',') !== [peerName, targetName].sort().join(',')) {
+    throw new Error(`saved view bulk export did not include selected presets only: ${JSON.stringify(exportedViews)}`);
+  }
+
+  await page.getByTestId('resource-view-bulk-group-input').fill('Bulk QA');
+  await page.getByTestId('resource-view-bulk-move').click();
+  await expect(page.getByTestId(`resource-view-group-${savedViewDomId('Bulk QA')}`)).toBeVisible({ timeout: 10_000 });
+  await expect.poll(() => savedViewOrder(page, 'Bulk QA')).toEqual([targetName, peerName]);
+  await expect(page.getByTestId('resource-view-bulk-count')).toContainText('선택 2개', { timeout: 10_000 });
+
+  await page.getByTestId('resource-view-bulk-delete').click();
+  await expect(page.getByTestId('resource-view-message')).toContainText('한 번 더', { timeout: 10_000 });
+  await page.getByTestId('resource-view-bulk-delete').click();
+  await expect(page.getByTestId(`resource-view-preset-row-${targetId}`)).toHaveCount(0);
+  await expect(page.getByTestId(`resource-view-preset-row-${peerId}`)).toHaveCount(0);
+  await expect(page.getByTestId('resource-view-bulk-toolbar')).toHaveCount(0);
 }
 
 async function savedViewOrder(page, groupName) {

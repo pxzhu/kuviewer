@@ -266,6 +266,9 @@ export function ResourceExplorer({
   const [presetGroup, setPresetGroup] = useState(defaultResourceViewGroup);
   const [viewPresetSearch, setViewPresetSearch] = useState('');
   const [draggingViewPresetName, setDraggingViewPresetName] = useState('');
+  const [selectedViewPresetNames, setSelectedViewPresetNames] = useState<Set<string>>(() => new Set());
+  const [bulkViewPresetGroup, setBulkViewPresetGroup] = useState(defaultResourceViewGroup);
+  const [bulkViewPresetDeleteConfirm, setBulkViewPresetDeleteConfirm] = useState(false);
   const [collapsedViewGroups, setCollapsedViewGroups] = useState<Set<string>>(() => readCollapsedResourceViewGroups());
   const [resourceViewMessage, setResourceViewMessage] = useState<ResourceViewMessage | null>(null);
   const [resourceViewConflict, setResourceViewConflict] = useState<ResourceViewConflictState | null>(null);
@@ -323,6 +326,10 @@ export function ResourceExplorer({
   const normalizedViewPresetSearch = viewPresetSearch.trim().toLowerCase();
   const canReorderViewPresets = normalizedViewPresetSearch.length === 0;
   const filteredGroupedViewPresets = useMemo(() => filterGroupedResourceViewPresets(groupedViewPresets, normalizedViewPresetSearch), [groupedViewPresets, normalizedViewPresetSearch]);
+  const visibleViewPresets = useMemo(() => filteredGroupedViewPresets.flatMap((group) => group.presets), [filteredGroupedViewPresets]);
+  const selectedViewPresets = useMemo(() => orderResourceViewPresets(viewPresets.filter((preset) => selectedViewPresetNames.has(preset.name))), [selectedViewPresetNames, viewPresets]);
+  const selectedViewPresetCount = selectedViewPresets.length;
+  const allVisibleViewPresetsSelected = visibleViewPresets.length > 0 && visibleViewPresets.every((preset) => selectedViewPresetNames.has(preset.name));
   const viewPresetGroupOptions = useMemo(() => unique([defaultResourceViewGroup, ...viewPresets.map((preset) => preset.group)]), [viewPresets]);
   const filtersAreDefault = resourceViewPresetMatchesFilters(
     {
@@ -425,6 +432,15 @@ export function ResourceExplorer({
   }, [collapsedViewGroups]);
 
   useEffect(() => {
+    const existingPresetNames = new Set(viewPresets.map((preset) => preset.name));
+    setSelectedViewPresetNames((current) => {
+      const next = new Set([...current].filter((presetName) => existingPresetNames.has(presetName)));
+      return next.size === current.size ? current : next;
+    });
+    setBulkViewPresetDeleteConfirm(false);
+  }, [viewPresets]);
+
+  useEffect(() => {
     if (resources.length === 0) {
       return;
     }
@@ -474,6 +490,15 @@ export function ResourceExplorer({
     const nextPresets = normalizeResourceViewPresetOrders(viewPresets.filter((preset) => preset.name !== presetNameToDelete));
     setViewPresets(nextPresets);
     writeResourceViewPresets(nextPresets);
+    setSelectedViewPresetNames((current) => {
+      if (!current.has(presetNameToDelete)) {
+        return current;
+      }
+      const next = new Set(current);
+      next.delete(presetNameToDelete);
+      return next;
+    });
+    setBulkViewPresetDeleteConfirm(false);
     if (presetName.trim() === presetNameToDelete) {
       setPresetName('');
     }
@@ -496,6 +521,15 @@ export function ResourceExplorer({
     const payload = `${JSON.stringify(normalizeResourceViewPresetOrders(viewPresets).map(resourceViewPresetExportRecord), null, 2)}\n`;
     downloadTextFile(payload, 'application/json;charset=utf-8', 'kuviewer-resource-views.json');
     setResourceViewMessage({ tone: 'success', text: `저장된 뷰 ${viewPresets.length}개를 내보냈습니다.` });
+  };
+  const handleExportSelectedViewPresets = () => {
+    if (selectedViewPresetCount === 0) {
+      return;
+    }
+    const payload = `${JSON.stringify(normalizeResourceViewPresetOrders(selectedViewPresets).map(resourceViewPresetExportRecord), null, 2)}\n`;
+    downloadTextFile(payload, 'application/json;charset=utf-8', 'kuviewer-resource-views-selected.json');
+    setBulkViewPresetDeleteConfirm(false);
+    setResourceViewMessage({ tone: 'success', text: `선택한 saved view ${selectedViewPresetCount}개를 내보냈습니다.` });
   };
 
   const handleImportViewPresets = async (file?: File) => {
@@ -614,6 +648,91 @@ export function ResourceExplorer({
       tone: mergeResult.conflicts.length > 0 || invalidCount > 0 || mergeResult.droppedCount > 0 ? 'warning' : 'success',
       text: resourceViewMergeMessage(source, mergeResult, invalidCount, resolved),
     });
+  };
+  const handleToggleViewPresetSelection = (presetNameToToggle: string, selected: boolean) => {
+    setSelectedViewPresetNames((current) => {
+      const next = new Set(current);
+      if (selected) {
+        next.add(presetNameToToggle);
+      } else {
+        next.delete(presetNameToToggle);
+      }
+      return next;
+    });
+    setBulkViewPresetDeleteConfirm(false);
+  };
+  const handleSetVisibleViewPresetSelection = (selected: boolean) => {
+    setSelectedViewPresetNames((current) => {
+      const next = new Set(current);
+      visibleViewPresets.forEach((preset) => {
+        if (selected) {
+          next.add(preset.name);
+        } else {
+          next.delete(preset.name);
+        }
+      });
+      return next;
+    });
+    setBulkViewPresetDeleteConfirm(false);
+    setResourceViewMessage(selected ? { tone: 'success', text: `현재 결과 saved view ${visibleViewPresets.length}개를 선택했습니다.` } : null);
+  };
+  const handleSetGroupViewPresetSelection = (presets: ResourceViewPreset[], selected: boolean) => {
+    setSelectedViewPresetNames((current) => {
+      const next = new Set(current);
+      presets.forEach((preset) => {
+        if (selected) {
+          next.add(preset.name);
+        } else {
+          next.delete(preset.name);
+        }
+      });
+      return next;
+    });
+    setBulkViewPresetDeleteConfirm(false);
+  };
+  const handleClearViewPresetSelection = () => {
+    setSelectedViewPresetNames(new Set());
+    setBulkViewPresetDeleteConfirm(false);
+  };
+  const handleBulkMoveViewPresets = () => {
+    if (selectedViewPresetCount === 0) {
+      return;
+    }
+    const targetGroup = normalizeResourceViewPresetGroup(bulkViewPresetGroup);
+    const nextPresets = moveResourceViewPresetsToGroup(viewPresets, selectedViewPresetNames, targetGroup);
+    setViewPresets(nextPresets);
+    writeResourceViewPresets(nextPresets);
+    setBulkViewPresetGroup(targetGroup);
+    setBulkViewPresetDeleteConfirm(false);
+    setResourceViewConflict(null);
+    setRenamingViewPreset(null);
+    if (matchingViewPreset && selectedViewPresetNames.has(matchingViewPreset.name)) {
+      setPresetGroup(targetGroup);
+    }
+    setResourceViewMessage({ tone: 'success', text: `선택한 saved view ${selectedViewPresetCount}개를 ${targetGroup} 그룹으로 이동했습니다.` });
+  };
+  const handleBulkDeleteViewPresets = () => {
+    if (selectedViewPresetCount === 0) {
+      return;
+    }
+    if (!bulkViewPresetDeleteConfirm) {
+      setBulkViewPresetDeleteConfirm(true);
+      setResourceViewMessage({ tone: 'warning', text: `선택한 saved view ${selectedViewPresetCount}개를 삭제하려면 한 번 더 누르세요.` });
+      return;
+    }
+    const selectedNames = new Set(selectedViewPresets.map((preset) => preset.name));
+    const nextPresets = normalizeResourceViewPresetOrders(viewPresets.filter((preset) => !selectedNames.has(preset.name)));
+    setViewPresets(nextPresets);
+    writeResourceViewPresets(nextPresets);
+    setSelectedViewPresetNames(new Set());
+    setBulkViewPresetDeleteConfirm(false);
+    setResourceViewConflict(null);
+    setRenamingViewPreset(null);
+    if (selectedNames.has(presetName.trim()) || (matchingViewPreset && selectedNames.has(matchingViewPreset.name))) {
+      setPresetName('');
+      setPresetGroup(defaultResourceViewGroup);
+    }
+    setResourceViewMessage({ tone: 'success', text: `선택한 saved view ${selectedNames.size}개를 삭제했습니다.` });
   };
   const handleStartResourceViewRename = (preset: ResourceViewPreset) => {
     setResourceViewConflict(null);
@@ -1250,10 +1369,95 @@ export function ResourceExplorer({
                       {filteredGroupedViewPresets.reduce((total, group) => total + group.presets.length, 0)} / {viewPresets.length}
                     </span>
                   ) : null}
+                  <button
+                    className="rounded-[8px] border border-[rgba(60,60,67,0.12)] bg-white px-2.5 py-1.5 text-xs font-semibold text-[rgba(60,60,67,0.72)] transition hover:bg-[rgba(242,242,247,0.9)] disabled:cursor-not-allowed disabled:opacity-50"
+                    type="button"
+                    onClick={() => handleSetVisibleViewPresetSelection(true)}
+                    disabled={visibleViewPresets.length === 0 || allVisibleViewPresetsSelected}
+                    data-testid="resource-view-select-visible"
+                  >
+                    현재 결과 선택
+                  </button>
+                  <button
+                    className="rounded-[8px] border border-[rgba(60,60,67,0.12)] bg-white px-2.5 py-1.5 text-xs font-semibold text-[rgba(60,60,67,0.72)] transition hover:bg-[rgba(242,242,247,0.9)] disabled:cursor-not-allowed disabled:opacity-50"
+                    type="button"
+                    onClick={handleClearViewPresetSelection}
+                    disabled={selectedViewPresetCount === 0}
+                    data-testid="resource-view-clear-selection"
+                  >
+                    선택 해제
+                  </button>
                 </div>
                 {normalizedViewPresetSearch ? (
                   <p className="ku-meta" data-testid="resource-view-reorder-disabled">검색 해제 후 순서 변경</p>
                 ) : null}
+              </div>
+            ) : null}
+            {selectedViewPresetCount > 0 ? (
+              <div className="grid gap-2 rounded-[12px] border border-[rgba(0,122,255,0.16)] bg-[rgba(0,122,255,0.055)] p-2" data-testid="resource-view-bulk-toolbar">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="ku-chip border-[rgba(0,122,255,0.22)] bg-[rgba(0,122,255,0.08)] text-[#0057b8]" data-testid="resource-view-bulk-count">
+                      선택 {selectedViewPresetCount}개
+                    </span>
+                    <span className="ku-meta">saved view 선택은 메모리에만 보관</span>
+                  </div>
+                  <div className="flex flex-wrap items-center justify-end gap-1.5">
+                    <button
+                      className="inline-flex items-center gap-1.5 rounded-[8px] border border-[rgba(60,60,67,0.12)] bg-white px-2.5 py-1.5 text-xs font-semibold text-[rgba(60,60,67,0.72)] transition hover:bg-[rgba(242,242,247,0.9)]"
+                      type="button"
+                      onClick={handleExportSelectedViewPresets}
+                      data-testid="resource-view-bulk-export"
+                      title="선택한 saved view만 JSON으로 내보내기"
+                    >
+                      <Download size={13} aria-hidden="true" />
+                      선택 export
+                    </button>
+                    <label className="grid min-w-[132px] gap-1">
+                      <span className="ku-meta">Group 이동</span>
+                      <input
+                        className="ku-input h-8 text-xs"
+                        list="resource-view-group-options"
+                        value={bulkViewPresetGroup}
+                        onChange={(event) => {
+                          setBulkViewPresetGroup(event.target.value.slice(0, maxResourceViewGroupLength));
+                          setBulkViewPresetDeleteConfirm(false);
+                        }}
+                        data-testid="resource-view-bulk-group-input"
+                      />
+                    </label>
+                    <button
+                      className="inline-flex items-center gap-1.5 rounded-[8px] border border-[rgba(0,122,255,0.18)] bg-white px-2.5 py-1.5 text-xs font-semibold text-[#0057b8] transition hover:bg-[rgba(0,122,255,0.08)]"
+                      type="button"
+                      onClick={handleBulkMoveViewPresets}
+                      data-testid="resource-view-bulk-move"
+                    >
+                      <Tags size={13} aria-hidden="true" />
+                      Group 이동
+                    </button>
+                    <button
+                      className={`inline-flex items-center gap-1.5 rounded-[8px] border px-2.5 py-1.5 text-xs font-semibold transition ${
+                        bulkViewPresetDeleteConfirm
+                          ? 'border-[rgba(255,59,48,0.28)] bg-[rgba(255,59,48,0.12)] text-[#c01f17] hover:bg-[rgba(255,59,48,0.16)]'
+                          : 'border-[rgba(255,59,48,0.18)] bg-white text-[#c01f17] hover:bg-[rgba(255,59,48,0.08)]'
+                      }`}
+                      type="button"
+                      onClick={handleBulkDeleteViewPresets}
+                      data-testid="resource-view-bulk-delete"
+                    >
+                      <Trash2 size={13} aria-hidden="true" />
+                      {bulkViewPresetDeleteConfirm ? '삭제 확인' : '선택 삭제'}
+                    </button>
+                    <button
+                      className="rounded-[8px] border border-[rgba(60,60,67,0.12)] bg-white px-2.5 py-1.5 text-xs font-semibold text-[rgba(60,60,67,0.72)] transition hover:bg-[rgba(242,242,247,0.9)]"
+                      type="button"
+                      onClick={handleClearViewPresetSelection}
+                      data-testid="resource-view-bulk-clear"
+                    >
+                      선택 해제
+                    </button>
+                  </div>
+                </div>
               </div>
             ) : null}
             {presetNameExists ? <p className="ku-meta">같은 이름으로 저장하면 기존 뷰를 업데이트합니다.</p> : null}
@@ -1303,26 +1507,48 @@ export function ResourceExplorer({
                 {filteredGroupedViewPresets.map((group) => {
                   const collapsed = collapsedViewGroups.has(group.name);
                   const groupDomId = resourceViewGroupDomId(group.name);
+                  const groupSelectedCount = group.presets.filter((preset) => selectedViewPresetNames.has(preset.name)).length;
+                  const groupAllSelected = group.presets.length > 0 && groupSelectedCount === group.presets.length;
+                  const groupPartiallySelected = groupSelectedCount > 0 && !groupAllSelected;
                   return (
                     <div key={group.name} className="grid gap-1.5 rounded-[12px] border border-[rgba(60,60,67,0.1)] bg-[rgba(242,242,247,0.38)] p-2" data-testid={`resource-view-group-${groupDomId}`}>
-                      <button
-                        className="flex w-full items-center justify-between gap-2 rounded-[9px] px-1.5 py-1 text-left transition hover:bg-white/70"
-                        type="button"
-                        onClick={() => toggleViewPresetGroup(group.name)}
-                        aria-expanded={!collapsed}
-                        data-testid={`resource-view-group-toggle-${groupDomId}`}
-                      >
-                        <span className="inline-flex min-w-0 items-center gap-1.5">
+                      <div className="flex flex-wrap items-center justify-between gap-2 rounded-[9px] px-1.5 py-1 transition hover:bg-white/70">
+                        <button
+                          className="inline-flex min-w-0 items-center gap-1.5 text-left"
+                          type="button"
+                          onClick={() => toggleViewPresetGroup(group.name)}
+                          aria-expanded={!collapsed}
+                          data-testid={`resource-view-group-toggle-${groupDomId}`}
+                        >
                           <ChevronDown className={`shrink-0 transition ${collapsed ? '-rotate-90' : ''}`} size={14} aria-hidden="true" />
                           <Tags className="shrink-0 text-[rgba(60,60,67,0.56)]" size={13} aria-hidden="true" />
                           <span className="truncate text-xs font-semibold text-[#1d1d1f]">{group.name}</span>
-                        </span>
-                        <span className="ku-chip">{normalizedViewPresetSearch ? `${group.presets.length} / ${group.total}` : `${group.presets.length} views`}</span>
-                      </button>
+                        </button>
+                        <div className="flex items-center gap-1.5">
+                          <label className="inline-flex items-center gap-1.5 rounded-[8px] border border-[rgba(60,60,67,0.1)] bg-white/72 px-2 py-1 text-xs font-semibold text-[rgba(60,60,67,0.72)]">
+                            <input
+                              className="h-3.5 w-3.5 rounded border-[rgba(60,60,67,0.24)] text-[#0057b8] focus:ring-[rgba(0,122,255,0.25)]"
+                              type="checkbox"
+                              checked={groupAllSelected}
+                              ref={(node) => {
+                                if (node) {
+                                  node.indeterminate = groupPartiallySelected;
+                                }
+                              }}
+                              onChange={(event) => handleSetGroupViewPresetSelection(group.presets, event.currentTarget.checked)}
+                              data-testid={`resource-view-group-select-${groupDomId}`}
+                              aria-label={`${group.name} saved view 선택`}
+                            />
+                            선택
+                          </label>
+                          <span className="ku-chip">{normalizedViewPresetSearch ? `${group.presets.length} / ${group.total}` : `${group.presets.length} views`}</span>
+                        </div>
+                      </div>
                       {collapsed ? null : group.presets.map((preset, presetIndex) => {
                         const active = resourceViewPresetMatchesFilters(preset, currentPresetFilters);
                         const isRenaming = renamingViewPreset?.originalName === preset.name;
                         const presetDomId = resourceViewPresetDomId(preset.name);
+                        const presetBulkSelected = selectedViewPresetNames.has(preset.name);
                         const canMovePresetUp = canReorderViewPresets && presetIndex > 0;
                         const canMovePresetDown = canReorderViewPresets && presetIndex < group.presets.length - 1;
                         return (
@@ -1361,6 +1587,14 @@ export function ResourceExplorer({
                               ) : (
                                 <>
                                   <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+                                    <input
+                                      className="h-4 w-4 rounded border-[rgba(60,60,67,0.24)] text-[#0057b8] focus:ring-[rgba(0,122,255,0.25)]"
+                                      type="checkbox"
+                                      checked={presetBulkSelected}
+                                      onChange={(event) => handleToggleViewPresetSelection(preset.name, event.currentTarget.checked)}
+                                      aria-label={`${preset.name} saved view 선택`}
+                                      data-testid={`resource-view-select-${presetDomId}`}
+                                    />
                                     <p className="truncate text-xs font-semibold text-[#1d1d1f]">{preset.name}</p>
                                     {active ? <span className="rounded-full bg-[rgba(0,122,255,0.1)] px-1.5 py-0.5 text-[9px] font-semibold text-[#0057b8]">적용됨</span> : null}
                                     <span className="rounded-full bg-[rgba(52,199,89,0.1)] px-1.5 py-0.5 text-[9px] font-semibold text-[#248a3d]">{preset.group}</span>
@@ -4524,6 +4758,18 @@ function mergeResourceViewPresets(existingPresets: ResourceViewPreset[], incomin
 
 function upsertResourceViewPreset(presets: ResourceViewPreset[], preset: ResourceViewPreset) {
   return normalizeResourceViewPresetOrders([preset, ...presets.filter((existingPreset) => existingPreset.name !== preset.name)].slice(0, maxResourceViewPresets));
+}
+
+function moveResourceViewPresetsToGroup(presets: ResourceViewPreset[], selectedNames: Set<string>, targetGroup: string) {
+  const normalizedTargetGroup = normalizeResourceViewPresetGroup(targetGroup);
+  const now = Date.now();
+  const selectedPresets = orderResourceViewPresets(presets.filter((preset) => selectedNames.has(preset.name))).map((preset) => ({
+    ...preset,
+    group: normalizedTargetGroup,
+    updatedAt: now,
+  }));
+  const remainingPresets = orderResourceViewPresets(presets.filter((preset) => !selectedNames.has(preset.name)));
+  return normalizeResourceViewPresetOrders([...selectedPresets, ...remainingPresets]);
 }
 
 function normalizeResourceViewPresetOrder(value: unknown, fallback: number) {
