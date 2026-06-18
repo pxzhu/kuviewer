@@ -100,9 +100,36 @@ interface ResourceViewMessage {
   text: string;
 }
 
+type ResourceViewConflictSource = 'import' | 'team';
+type ResourceViewConflictResolution = 'incoming' | 'current' | 'rename';
+
 interface ResourceListSortPreference {
   field: ResourceListSortField;
   direction: ResourceListSortDirection;
+}
+
+interface ResourceViewConflictItem {
+  name: string;
+  existing: ResourceViewPreset;
+  incoming: ResourceViewPreset;
+}
+
+interface ResourceViewConflictState {
+  source: ResourceViewConflictSource;
+  basePresets: ResourceViewPreset[];
+  incomingPresets: ResourceViewPreset[];
+  conflicts: ResourceViewConflictItem[];
+  duplicateCount: number;
+  invalidCount: number;
+  incomingCount: number;
+}
+
+interface ResourceViewMergeResult {
+  presets: ResourceViewPreset[];
+  conflicts: ResourceViewConflictItem[];
+  duplicateCount: number;
+  incomingCount: number;
+  droppedCount: number;
 }
 
 interface RelationGroup {
@@ -198,6 +225,7 @@ export function ResourceExplorer({
   const [viewPresets, setViewPresets] = useState<ResourceViewPreset[]>(() => readResourceViewPresets());
   const [presetName, setPresetName] = useState('');
   const [resourceViewMessage, setResourceViewMessage] = useState<ResourceViewMessage | null>(null);
+  const [resourceViewConflict, setResourceViewConflict] = useState<ResourceViewConflictState | null>(null);
   const [resourceViewTeamLoading, setResourceViewTeamLoading] = useState(false);
   const [detailFocusRequest, setDetailFocusRequest] = useState(0);
   const [resourceListDensity, setResourceListDensity] = useState<ResourceListDensity>(() => readResourceListDensityPreference());
@@ -329,6 +357,7 @@ export function ResourceExplorer({
   }, [clusters, kinds, namespaces, resources.length, statuses]);
 
   const handleSaveViewPreset = () => {
+    setResourceViewConflict(null);
     const nextPreset: ResourceViewPreset = {
       name: nextPresetName,
       query: query.slice(0, 160),
@@ -355,6 +384,7 @@ export function ResourceExplorer({
   };
 
   const handleDeleteViewPreset = (presetNameToDelete: string) => {
+    setResourceViewConflict(null);
     const nextPresets = viewPresets.filter((preset) => preset.name !== presetNameToDelete);
     setViewPresets(nextPresets);
     writeResourceViewPresets(nextPresets);
@@ -389,22 +419,19 @@ export function ResourceExplorer({
     try {
       const parsedValue = JSON.parse(await file.text());
       if (!Array.isArray(parsedValue)) {
+        setResourceViewConflict(null);
         setResourceViewMessage({ tone: 'warning', text: '가져오기 실패: saved view JSON 배열이 아닙니다.' });
         return;
       }
       const importedPresets = parsedValue.flatMap(validResourceViewPreset);
       if (importedPresets.length === 0) {
+        setResourceViewConflict(null);
         setResourceViewMessage({ tone: 'warning', text: `가져오기 실패: 유효한 saved view가 없습니다. ${parsedValue.length}개 항목을 건너뛰었습니다.` });
         return;
       }
-      const nextPresets = mergeResourceViewPresets(viewPresets, importedPresets);
-      setViewPresets(nextPresets);
-      writeResourceViewPresets(nextPresets);
-      setResourceViewMessage({
-        tone: parsedValue.length === importedPresets.length ? 'success' : 'warning',
-        text: `saved view ${importedPresets.length}개를 가져왔습니다. ${Math.max(0, parsedValue.length - importedPresets.length)}개 항목은 건너뛰었습니다.`,
-      });
+      handleIncomingResourceViewPresets('import', importedPresets, Math.max(0, parsedValue.length - importedPresets.length));
     } catch {
+      setResourceViewConflict(null);
       setResourceViewMessage({ tone: 'warning', text: '가져오기 실패: JSON 파일을 읽을 수 없습니다.' });
     }
   };
@@ -418,14 +445,9 @@ export function ResourceExplorer({
     try {
       const response = await fetchResourceViewPresets();
       const teamPresets = response.items.flatMap(validResourceViewPreset);
-      const nextPresets = mergeResourceViewPresets(viewPresets, teamPresets);
-      setViewPresets(nextPresets);
-      writeResourceViewPresets(nextPresets);
-      setResourceViewMessage({
-        tone: 'success',
-        text: teamPresets.length === 0 ? '서버에 저장된 팀 뷰가 없습니다. 현재 브라우저 뷰는 유지했습니다.' : `팀 뷰 ${teamPresets.length}개를 불러와 브라우저 뷰와 병합했습니다.`,
-      });
+      handleIncomingResourceViewPresets('team', teamPresets, Math.max(0, response.items.length - teamPresets.length));
     } catch {
+      setResourceViewConflict(null);
       setResourceViewMessage({ tone: 'warning', text: '팀 뷰를 불러오지 못했습니다. admin token 또는 서버 상태를 확인하세요.' });
     } finally {
       setResourceViewTeamLoading(false);
@@ -439,6 +461,7 @@ export function ResourceExplorer({
     }
     setResourceViewTeamLoading(true);
     try {
+      setResourceViewConflict(null);
       const response = await saveResourceViewPresets(viewPresets.map(resourceViewPresetExportRecord));
       const savedPresets = response.items.flatMap(validResourceViewPreset);
       setViewPresets(savedPresets);
@@ -460,6 +483,42 @@ export function ResourceExplorer({
     setPresetName('');
     setResourceViewMessage(null);
     onSelectNode('');
+  };
+  const handleIncomingResourceViewPresets = (source: ResourceViewConflictSource, incomingPresets: ResourceViewPreset[], invalidCount: number) => {
+    const mergeResult = mergeResourceViewPresets(viewPresets, incomingPresets, 'incoming');
+    if (mergeResult.conflicts.length > 0) {
+      setResourceViewConflict({
+        source,
+        basePresets: viewPresets,
+        incomingPresets,
+        conflicts: mergeResult.conflicts,
+        duplicateCount: mergeResult.duplicateCount,
+        invalidCount,
+        incomingCount: incomingPresets.length,
+      });
+      setResourceViewMessage({
+        tone: 'warning',
+        text: resourceViewConflictPendingMessage(source, mergeResult.conflicts.length, mergeResult.duplicateCount, invalidCount),
+      });
+      return;
+    }
+    applyResourceViewMergeResult(source, mergeResult, invalidCount, false);
+  };
+  const handleResolveResourceViewConflicts = (resolution: ResourceViewConflictResolution) => {
+    if (!resourceViewConflict) {
+      return;
+    }
+    const mergeResult = mergeResourceViewPresets(resourceViewConflict.basePresets, resourceViewConflict.incomingPresets, resolution);
+    applyResourceViewMergeResult(resourceViewConflict.source, mergeResult, resourceViewConflict.invalidCount, true);
+  };
+  const applyResourceViewMergeResult = (source: ResourceViewConflictSource, mergeResult: ResourceViewMergeResult, invalidCount: number, resolved: boolean) => {
+    setViewPresets(mergeResult.presets);
+    writeResourceViewPresets(mergeResult.presets);
+    setResourceViewConflict(null);
+    setResourceViewMessage({
+      tone: mergeResult.conflicts.length > 0 || invalidCount > 0 || mergeResult.droppedCount > 0 ? 'warning' : 'success',
+      text: resourceViewMergeMessage(source, mergeResult, invalidCount, resolved),
+    });
   };
   const resourceSummaryLimit = resourceListDensity === 'compact' ? 2 : 3;
   const resourceRowClassName = (resource: ResourceExplorerItem) =>
@@ -709,6 +768,70 @@ export function ResourceExplorer({
               >
                 {resourceViewMessage.text}
               </p>
+            ) : null}
+            {resourceViewConflict ? (
+              <div
+                className="grid gap-2 rounded-[12px] border border-[rgba(255,149,0,0.24)] bg-[rgba(255,149,0,0.08)] p-2.5"
+                data-testid="resource-view-conflict-panel"
+              >
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="text-xs font-semibold text-[#8a4d00]">
+                      {resourceViewSourceLabel(resourceViewConflict.source)} 충돌 {resourceViewConflict.conflicts.length}개
+                    </p>
+                    <p className="ku-meta mt-0.5">
+                      신규 {resourceViewIncomingNewCount(resourceViewConflict.basePresets, resourceViewConflict.incomingPresets)}개 · 중복 {resourceViewConflict.duplicateCount}개 · 건너뜀 {resourceViewConflict.invalidCount}개
+                    </p>
+                  </div>
+                  <button
+                    className="rounded-[8px] border border-[rgba(60,60,67,0.12)] bg-white px-2 py-1 text-xs font-semibold text-[rgba(60,60,67,0.72)] transition hover:bg-[rgba(242,242,247,0.9)]"
+                    type="button"
+                    onClick={() => setResourceViewConflict(null)}
+                    data-testid="resource-view-conflict-dismiss"
+                  >
+                    닫기
+                  </button>
+                </div>
+                <div className="grid gap-1.5">
+                  {resourceViewConflict.conflicts.slice(0, 4).map((conflict) => (
+                    <div key={conflict.name} className="grid gap-1 rounded-[9px] border border-[rgba(255,149,0,0.18)] bg-white/78 p-2">
+                      <p className="truncate text-xs font-semibold text-[#1d1d1f]">{conflict.name}</p>
+                      <p className="truncate font-mono text-[10px] font-semibold text-[rgba(60,60,67,0.56)]">현재: {resourceViewPresetSummary(conflict.existing)}</p>
+                      <p className="truncate font-mono text-[10px] font-semibold text-[rgba(60,60,67,0.56)]">{resourceViewSourceShortLabel(resourceViewConflict.source)}: {resourceViewPresetSummary(conflict.incoming)}</p>
+                    </div>
+                  ))}
+                  {resourceViewConflict.conflicts.length > 4 ? (
+                    <p className="ku-meta">+{resourceViewConflict.conflicts.length - 4}개 충돌 더 있음</p>
+                  ) : null}
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  <button
+                    className="inline-flex items-center gap-1.5 rounded-[8px] border border-[rgba(0,122,255,0.2)] bg-[rgba(0,122,255,0.08)] px-2.5 py-1.5 text-xs font-semibold text-[#0057b8] transition hover:bg-[rgba(0,122,255,0.12)]"
+                    type="button"
+                    onClick={() => handleResolveResourceViewConflicts('incoming')}
+                    data-testid="resource-view-conflict-apply-incoming"
+                  >
+                    <CheckCircle2 size={13} aria-hidden="true" />
+                    {resourceViewSourceShortLabel(resourceViewConflict.source)} 우선
+                  </button>
+                  <button
+                    className="rounded-[8px] border border-[rgba(60,60,67,0.12)] bg-white px-2.5 py-1.5 text-xs font-semibold text-[rgba(60,60,67,0.72)] transition hover:bg-[rgba(242,242,247,0.9)]"
+                    type="button"
+                    onClick={() => handleResolveResourceViewConflicts('current')}
+                    data-testid="resource-view-conflict-keep-current"
+                  >
+                    현재 유지
+                  </button>
+                  <button
+                    className="rounded-[8px] border border-[rgba(60,60,67,0.12)] bg-white px-2.5 py-1.5 text-xs font-semibold text-[rgba(60,60,67,0.72)] transition hover:bg-[rgba(242,242,247,0.9)]"
+                    type="button"
+                    onClick={() => handleResolveResourceViewConflicts('rename')}
+                    data-testid="resource-view-conflict-rename"
+                  >
+                    이름 바꿔 둘 다 보관
+                  </button>
+                </div>
+              </div>
             ) : null}
             {viewPresets.length > 0 ? (
               <div className="flex gap-1.5 overflow-x-auto pb-0.5" aria-label="저장된 뷰 빠른 적용">
@@ -3561,28 +3684,114 @@ function validResourceViewPreset(value: unknown): ResourceViewPreset[] {
   ];
 }
 
-function mergeResourceViewPresets(existingPresets: ResourceViewPreset[], importedPresets: ResourceViewPreset[]) {
+function mergeResourceViewPresets(existingPresets: ResourceViewPreset[], incomingPresets: ResourceViewPreset[], resolution: ResourceViewConflictResolution): ResourceViewMergeResult {
+  const existingByName = new Map(existingPresets.map((preset) => [preset.name, preset]));
   const seenNames = new Set<string>();
   const merged: ResourceViewPreset[] = [];
-  for (const preset of importedPresets) {
+  const conflicts: ResourceViewConflictItem[] = [];
+  let duplicateCount = 0;
+
+  const pushPreset = (preset: ResourceViewPreset) => {
     if (seenNames.has(preset.name)) {
-      continue;
+      return;
     }
     seenNames.add(preset.name);
     merged.push(preset);
+  };
+
+  if (resolution === 'current') {
+    for (const preset of existingPresets) {
+      pushPreset(preset);
+    }
   }
-  for (const preset of existingPresets) {
-    if (seenNames.has(preset.name)) {
+
+  for (const incomingPreset of incomingPresets) {
+    const existingPreset = existingByName.get(incomingPreset.name);
+    if (!existingPreset) {
+      pushPreset(incomingPreset);
       continue;
     }
-    seenNames.add(preset.name);
-    merged.push(preset);
+    if (resourceViewPresetFiltersEqual(existingPreset, incomingPreset)) {
+      duplicateCount += 1;
+      if (resolution !== 'current') {
+        pushPreset(incomingPreset);
+      }
+      continue;
+    }
+
+    conflicts.push({ name: incomingPreset.name, existing: existingPreset, incoming: incomingPreset });
+    if (resolution === 'incoming') {
+      pushPreset(incomingPreset);
+    } else if (resolution === 'rename') {
+      const renamedPreset = { ...incomingPreset, name: copiedResourceViewPresetName(incomingPreset.name, seenNames, existingByName) };
+      pushPreset(renamedPreset);
+    }
   }
-  return merged.slice(0, maxResourceViewPresets);
+
+  if (resolution !== 'current') {
+    for (const preset of existingPresets) {
+      pushPreset(preset);
+    }
+  }
+
+  const droppedCount = Math.max(0, merged.length - maxResourceViewPresets);
+  return {
+    presets: merged.slice(0, maxResourceViewPresets),
+    conflicts,
+    duplicateCount,
+    incomingCount: incomingPresets.length,
+    droppedCount,
+  };
 }
 
 function upsertResourceViewPreset(presets: ResourceViewPreset[], preset: ResourceViewPreset) {
   return [preset, ...presets.filter((existingPreset) => existingPreset.name !== preset.name)].slice(0, maxResourceViewPresets);
+}
+
+function resourceViewPresetFiltersEqual(left: ResourceViewPreset, right: ResourceViewPreset) {
+  return left.query === right.query && left.cluster === right.cluster && left.namespace === right.namespace && left.kind === right.kind && left.status === right.status;
+}
+
+function copiedResourceViewPresetName(name: string, seenNames: Set<string>, existingByName: Map<string, ResourceViewPreset>) {
+  for (let index = 1; index < 100; index += 1) {
+    const suffix = index === 1 ? ' copy' : ` copy ${index}`;
+    const candidate = `${name.slice(0, Math.max(1, 80 - suffix.length))}${suffix}`;
+    if (!seenNames.has(candidate) && !existingByName.has(candidate)) {
+      return candidate;
+    }
+  }
+  return `${name.slice(0, 72)} ${Date.now().toString(36)}`.slice(0, 80);
+}
+
+function resourceViewConflictPendingMessage(source: ResourceViewConflictSource, conflictCount: number, duplicateCount: number, invalidCount: number) {
+  return `${resourceViewSourceLabel(source)} 충돌 ${conflictCount}개가 있습니다. 해결 방식을 선택하세요.${duplicateCount > 0 ? ` 중복 ${duplicateCount}개는 변경 없음으로 처리됩니다.` : ''}${invalidCount > 0 ? ` ${invalidCount}개 항목은 건너뛰었습니다.` : ''}`;
+}
+
+function resourceViewMergeMessage(source: ResourceViewConflictSource, result: ResourceViewMergeResult, invalidCount: number, resolved: boolean) {
+  if (source === 'team' && result.incomingCount === 0) {
+    return invalidCount > 0 ? `서버에 유효한 팀 뷰가 없습니다. ${invalidCount}개 항목은 건너뛰었습니다.` : '서버에 저장된 팀 뷰가 없습니다. 현재 브라우저 뷰는 유지했습니다.';
+  }
+  const parts = [
+    `${resourceViewSourceLabel(source)} ${result.incomingCount}개를 ${resolved ? '해결해 반영했습니다' : '반영했습니다'}`,
+    result.conflicts.length > 0 ? `충돌 ${result.conflicts.length}개` : '',
+    result.duplicateCount > 0 ? `중복 ${result.duplicateCount}개` : '',
+    invalidCount > 0 ? `건너뜀 ${invalidCount}개` : '',
+    result.droppedCount > 0 ? `최대 ${maxResourceViewPresets}개 제한으로 ${result.droppedCount}개 제외` : '',
+  ].filter(Boolean);
+  return `${parts.join(' · ')}.`;
+}
+
+function resourceViewSourceLabel(source: ResourceViewConflictSource) {
+  return source === 'team' ? '팀 뷰' : '가져온 뷰';
+}
+
+function resourceViewSourceShortLabel(source: ResourceViewConflictSource) {
+  return source === 'team' ? '팀' : '가져온 뷰';
+}
+
+function resourceViewIncomingNewCount(existingPresets: ResourceViewPreset[], incomingPresets: ResourceViewPreset[]) {
+  const existingNames = new Set(existingPresets.map((preset) => preset.name));
+  return incomingPresets.filter((preset) => !existingNames.has(preset.name)).length;
 }
 
 function resourceViewPresetTargetName(inputName: string, suggestedName: string) {
