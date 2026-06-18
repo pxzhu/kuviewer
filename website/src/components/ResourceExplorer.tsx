@@ -263,6 +263,7 @@ export function ResourceExplorer({
   const [viewPresets, setViewPresets] = useState<ResourceViewPreset[]>(() => readResourceViewPresets());
   const [presetName, setPresetName] = useState('');
   const [presetGroup, setPresetGroup] = useState(defaultResourceViewGroup);
+  const [viewPresetSearch, setViewPresetSearch] = useState('');
   const [collapsedViewGroups, setCollapsedViewGroups] = useState<Set<string>>(() => readCollapsedResourceViewGroups());
   const [resourceViewMessage, setResourceViewMessage] = useState<ResourceViewMessage | null>(null);
   const [resourceViewConflict, setResourceViewConflict] = useState<ResourceViewConflictState | null>(null);
@@ -317,6 +318,8 @@ export function ResourceExplorer({
   const nextPresetGroup = normalizeResourceViewPresetGroup(presetGroup || matchingViewPreset?.group || defaultResourceViewGroup);
   const presetNameExists = viewPresets.some((preset) => preset.name === nextPresetName);
   const groupedViewPresets = useMemo(() => groupResourceViewPresets(viewPresets), [viewPresets]);
+  const normalizedViewPresetSearch = viewPresetSearch.trim().toLowerCase();
+  const filteredGroupedViewPresets = useMemo(() => filterGroupedResourceViewPresets(groupedViewPresets, normalizedViewPresetSearch), [groupedViewPresets, normalizedViewPresetSearch]);
   const viewPresetGroupOptions = useMemo(() => unique([defaultResourceViewGroup, ...viewPresets.map((preset) => preset.group)]), [viewPresets]);
   const filtersAreDefault = resourceViewPresetMatchesFilters(
     {
@@ -1133,11 +1136,11 @@ export function ResourceExplorer({
             ) : null}
             {viewPresets.length > 0 ? (
               <div className="grid gap-1.5" aria-label="저장된 뷰 빠른 적용" data-testid="resource-view-quick-groups">
-                {groupedViewPresets.map((group) => (
+                {filteredGroupedViewPresets.map((group) => (
                   <div key={group.name} className="grid gap-1">
                     <p className="ku-meta flex items-center gap-1.5" data-testid={`resource-view-quick-group-${resourceViewGroupDomId(group.name)}`}>
                       <Tags size={12} aria-hidden="true" />
-                      {group.name} · {group.presets.length}
+                      {group.name} · {normalizedViewPresetSearch ? `${group.presets.length} / ${group.total}` : group.presets.length}
                     </p>
                     <div className="flex gap-1.5 overflow-x-auto pb-0.5">
                       {group.presets.map((preset) => {
@@ -1163,6 +1166,38 @@ export function ResourceExplorer({
                     </div>
                   </div>
                 ))}
+              </div>
+            ) : null}
+            {viewPresets.length > 0 ? (
+              <div className="grid gap-1.5 rounded-[12px] border border-[rgba(60,60,67,0.1)] bg-white/72 p-2">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <label className="relative min-w-[220px] flex-1">
+                    <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[rgba(60,60,67,0.45)]" size={15} />
+                    <input
+                      className="ku-input w-full pl-9 pr-9"
+                      placeholder="Saved view search"
+                      value={viewPresetSearch}
+                      onChange={(event) => setViewPresetSearch(event.target.value)}
+                      data-testid="resource-view-search"
+                    />
+                    {viewPresetSearch ? (
+                      <button
+                        className="absolute right-2 top-1/2 inline-flex -translate-y-1/2 items-center justify-center rounded-full p-1 text-[rgba(60,60,67,0.56)] transition hover:bg-[rgba(60,60,67,0.08)]"
+                        type="button"
+                        onClick={() => setViewPresetSearch('')}
+                        aria-label="Saved view search clear"
+                        data-testid="resource-view-search-clear"
+                      >
+                        <X size={14} aria-hidden="true" />
+                      </button>
+                    ) : null}
+                  </label>
+                  {normalizedViewPresetSearch ? (
+                    <span className="ku-chip" data-testid="resource-view-search-count">
+                      {filteredGroupedViewPresets.reduce((total, group) => total + group.presets.length, 0)} / {viewPresets.length}
+                    </span>
+                  ) : null}
+                </div>
               </div>
             ) : null}
             {presetNameExists ? <p className="ku-meta">같은 이름으로 저장하면 기존 뷰를 업데이트합니다.</p> : null}
@@ -1205,9 +1240,11 @@ export function ResourceExplorer({
             </div>
             {viewPresets.length === 0 ? (
               <p className="ku-meta">저장된 뷰 없음</p>
+            ) : filteredGroupedViewPresets.length === 0 ? (
+              <p className="ku-meta" data-testid="resource-view-search-empty">일치하는 saved view 없음</p>
             ) : (
               <div className="grid gap-2" data-testid="resource-view-grouped-list">
-                {groupedViewPresets.map((group) => {
+                {filteredGroupedViewPresets.map((group) => {
                   const collapsed = collapsedViewGroups.has(group.name);
                   const groupDomId = resourceViewGroupDomId(group.name);
                   return (
@@ -1224,7 +1261,7 @@ export function ResourceExplorer({
                           <Tags className="shrink-0 text-[rgba(60,60,67,0.56)]" size={13} aria-hidden="true" />
                           <span className="truncate text-xs font-semibold text-[#1d1d1f]">{group.name}</span>
                         </span>
-                        <span className="ku-chip">{group.presets.length} views</span>
+                        <span className="ku-chip">{normalizedViewPresetSearch ? `${group.presets.length} / ${group.total}` : `${group.presets.length} views`}</span>
                       </button>
                       {collapsed ? null : group.presets.map((preset) => {
                         const active = resourceViewPresetMatchesFilters(preset, currentPresetFilters);
@@ -4394,7 +4431,7 @@ function groupResourceViewPresets(presets: ResourceViewPreset[]) {
     grouped.set(groupName, [...(grouped.get(groupName) || []), preset]);
   }
   return [...grouped.entries()]
-    .map(([name, groupPresets]) => ({ name, presets: groupPresets }))
+    .map(([name, groupPresets]) => ({ name, presets: groupPresets, total: groupPresets.length }))
     .sort((left, right) => {
       if (left.name === defaultResourceViewGroup) {
         return -1;
@@ -4404,6 +4441,29 @@ function groupResourceViewPresets(presets: ResourceViewPreset[]) {
       }
       return left.name.localeCompare(right.name);
     });
+}
+
+function filterGroupedResourceViewPresets(groups: ReturnType<typeof groupResourceViewPresets>, query: string) {
+  if (!query) {
+    return groups;
+  }
+  return groups.flatMap((group) => {
+    const presets = group.presets.filter((preset) => resourceViewPresetSearchText(preset).includes(query));
+    return presets.length > 0 ? [{ ...group, presets }] : [];
+  });
+}
+
+function resourceViewPresetSearchText(preset: ResourceViewPreset) {
+  return [
+    preset.name,
+    preset.group,
+    preset.query,
+    preset.cluster,
+    preset.namespace,
+    preset.kind,
+    preset.status,
+    resourceViewPresetSummary(preset),
+  ].join(' ').toLowerCase();
 }
 
 function resourceViewPresetFiltersEqual(left: ResourceViewPreset, right: ResourceViewPreset) {
