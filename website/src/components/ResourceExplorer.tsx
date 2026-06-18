@@ -553,6 +553,7 @@ function ResourceExplorerDetail({
   const [eventsWarningNotificationsEnabled, setEventsWarningNotificationsEnabled] = useState(() => readEventsWarningNotificationsPreference());
   const [eventNotificationNotice, setEventNotificationNotice] = useState<EventNotificationNotice | null>(null);
   const [newEventKeys, setNewEventKeys] = useState<Set<string>>(() => new Set());
+  const [showNewEventsOnly, setShowNewEventsOnly] = useState(false);
   const [eventFilter, setEventFilter] = useState('');
   const [eventSeverityFilter, setEventSeverityFilter] = useState<EventSeverityFilter>('all');
   const [eventTimeRangeFilter, setEventTimeRangeFilter] = useState<EventTimeRangeFilter>('all');
@@ -605,6 +606,7 @@ function ResourceExplorerDetail({
       setEventsLastUpdatedAt(null);
       setEventNotificationNotice(null);
       setNewEventKeys(new Set());
+      setShowNewEventsOnly(false);
       knownEventKeysRef.current = new Set();
       knownEventKeysInitializedRef.current = false;
       return undefined;
@@ -615,6 +617,7 @@ function ResourceExplorerDetail({
       setEventsLastUpdatedAt(null);
       setEventNotificationNotice(null);
       setNewEventKeys(new Set());
+      setShowNewEventsOnly(false);
       knownEventKeysRef.current = new Set();
       knownEventKeysInitializedRef.current = false;
     }
@@ -673,6 +676,7 @@ function ResourceExplorerDetail({
     if (!eventsWarningNotificationsEnabled) {
       setEventNotificationNotice(null);
       setNewEventKeys(new Set());
+      setShowNewEventsOnly(false);
     }
   }, [eventsWarningNotificationsEnabled]);
 
@@ -715,6 +719,7 @@ function ResourceExplorerDetail({
     setEventsLastUpdatedAt(null);
     setEventNotificationNotice(null);
     setNewEventKeys(new Set());
+    setShowNewEventsOnly(false);
     knownEventKeysRef.current = new Set();
     knownEventKeysInitializedRef.current = false;
     setActiveDetailSectionId('metadata');
@@ -736,13 +741,19 @@ function ResourceExplorerDetail({
   const filteredLogLines = useMemo(() => sortLogLines(filterLogLines(parsedLogLines, logFilter, logTimeRangeFilter, Date.now()), logSortOrder), [logFilter, logSortOrder, logTimeRangeFilter, parsedLogLines]);
   const logSearchMatches = useMemo(() => collectLogSearchMatches(filteredLogLines, logFilter), [filteredLogLines, logFilter]);
   const activeLogMatch = logSearchMatches[activeLogMatchIndex] || null;
-  const filteredEvents = useMemo(
+  const baseFilteredEvents = useMemo(
     () => sortEventListItems(filterEvents(events, eventFilter, eventSeverityFilter, eventTimeRangeFilter, Date.now()), eventSortOrder, pinnedEventKeys),
     [eventFilter, eventSeverityFilter, eventSortOrder, eventTimeRangeFilter, events, pinnedEventKeys],
+  );
+  const filteredEvents = useMemo(
+    () => (showNewEventsOnly ? baseFilteredEvents.filter((item) => newEventKeys.has(eventIdentityKey(item.event))) : baseFilteredEvents),
+    [baseFilteredEvents, newEventKeys, showNewEventsOnly],
   );
   const pinnedEvents = useMemo(() => filteredEvents.filter((item) => item.pinned), [filteredEvents]);
   const eventGroups = useMemo(() => groupEventsBySeverity(filteredEvents.filter((item) => !item.pinned)), [filteredEvents]);
   const eventSeverityCounts = useMemo(() => countEventSeverities(events), [events]);
+  const newEventCount = useMemo(() => countNewEvents(events, newEventKeys), [events, newEventKeys]);
+  const hasNewEvents = newEventCount > 0;
   const eventWarningCount = eventSeverityCounts.warning;
   const eventHasWarning = eventWarningCount > 0;
   const filteredRelations = useMemo(() => filterRelatedResources(resource?.related || [], relationFilter), [relationFilter, resource?.related]);
@@ -755,8 +766,8 @@ function ResourceExplorerDetail({
   );
   const visibleRelationCount = relationGroups.reduce((total, group) => total + group.items.length, 0);
   const hiddenRelationCount = Math.max(filteredRelations.length - visibleRelationCount, 0);
-  const eventControlsActive = eventFilter || eventSeverityFilter !== 'all' || eventTimeRangeFilter !== 'all' || eventSortOrder !== 'newest' || pinnedEventKeys.size > 0;
-  const eventFilterSummary = eventControlSummary(eventFilter, eventSeverityFilter, eventTimeRangeFilter, eventSortOrder, pinnedEventKeys.size);
+  const eventControlsActive = eventFilter || eventSeverityFilter !== 'all' || eventTimeRangeFilter !== 'all' || eventSortOrder !== 'newest' || pinnedEventKeys.size > 0 || showNewEventsOnly;
+  const eventFilterSummary = eventControlSummary(eventFilter, eventSeverityFilter, eventTimeRangeFilter, eventSortOrder, pinnedEventKeys.size, showNewEventsOnly);
   const canRefreshEvents = liveEnabled && Boolean(resource);
   const eventsAutoRefreshActive = canRefreshEvents && eventsAutoRefreshEnabled;
   const canExportEvents = filteredEvents.length > 0;
@@ -993,9 +1004,24 @@ function ResourceExplorerDetail({
       if (!next) {
         setEventNotificationNotice(null);
         setNewEventKeys(new Set());
+        setShowNewEventsOnly(false);
       }
       return next;
     });
+  };
+
+  const handleShowNewEvents = () => {
+    if (!hasNewEvents) {
+      return;
+    }
+    openSection('events');
+    setShowNewEventsOnly(true);
+  };
+
+  const handleClearNewEvents = () => {
+    setEventNotificationNotice(null);
+    setNewEventKeys(new Set());
+    setShowNewEventsOnly(false);
   };
 
   const handleDownloadEvents = (format: EventExportFormat) => {
@@ -1171,7 +1197,14 @@ function ResourceExplorerDetail({
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-1.5">
               <span className={eventSeverityBadgeClassName(severity)}>{renderHighlightedText(event.type || 'Normal', normalizedEventFilter)}</span>
-              {isNewEvent ? <span className="rounded-full border border-[rgba(255,149,0,0.28)] bg-[rgba(255,149,0,0.14)] px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase text-[#9a5a00]">NEW</span> : null}
+              {isNewEvent ? (
+                <span
+                  data-testid="events-new-chip"
+                  className="rounded-full border border-[rgba(255,149,0,0.28)] bg-[rgba(255,149,0,0.14)] px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase text-[#9a5a00]"
+                >
+                  NEW
+                </span>
+              ) : null}
               <p className="min-w-0 break-words text-xs font-semibold text-[#1d1d1f]">{renderHighlightedText(event.reason || event.type || 'Event', normalizedEventFilter)}</p>
             </div>
             <div className="mt-1 flex flex-wrap items-center gap-1.5">
@@ -1382,6 +1415,28 @@ function ResourceExplorerDetail({
                 {eventsLastUpdatedAt ? <span className="ku-chip">마지막 조회 {formatRefreshTimestamp(eventsLastUpdatedAt)}</span> : null}
                 {eventsAutoRefreshActive ? <span className="ku-chip">자동 갱신 켜짐</span> : null}
                 {eventsWarningNotificationsEnabled && canRefreshEvents ? <span className="ku-chip border-[rgba(255,149,0,0.24)] bg-[rgba(255,149,0,0.1)] text-[#9a5a00]">Warning 알림 켜짐</span> : null}
+                {hasNewEvents ? (
+                  <>
+                    <button
+                      className="rounded-full border border-[rgba(255,149,0,0.28)] bg-[rgba(255,149,0,0.14)] px-2 py-1 font-mono text-[10px] font-semibold uppercase text-[#9a5a00] transition hover:bg-[rgba(255,149,0,0.2)]"
+                      type="button"
+                      onClick={handleShowNewEvents}
+                      data-testid="events-new-count"
+                      title="새 Warning/Error Events만 보기"
+                    >
+                      NEW {newEventCount}
+                    </button>
+                    <button
+                      className="rounded-full border border-[rgba(255,149,0,0.22)] bg-white/75 px-2 py-1 text-[10px] font-semibold text-[#8a4d00] transition hover:bg-white"
+                      type="button"
+                      onClick={handleClearNewEvents}
+                      data-testid="events-new-clear"
+                      title="새 Event 표시 지우기"
+                    >
+                      NEW 지우기
+                    </button>
+                  </>
+                ) : null}
                 {events.length > 0 ? <EventSeverityChips counts={eventSeverityCounts} /> : null}
               </div>
               <div className="flex flex-wrap items-center gap-1.5">
@@ -1421,6 +1476,7 @@ function ResourceExplorerDetail({
                   type="button"
                   onClick={handleRefreshEvents}
                   disabled={!canRefreshEvents || eventsLoading}
+                  data-testid="events-refresh"
                   title="선택한 리소스의 Events를 다시 조회"
                 >
                   <RefreshCw className={eventsLoading ? 'animate-spin' : undefined} size={14} aria-hidden="true" />
@@ -1443,14 +1499,34 @@ function ResourceExplorerDetail({
                   {eventNotificationNotice.reason || 'Event'} · {eventNotificationNotice.source || 'source unknown'} · {formatEventTimestamp(eventNotificationNotice.timestamp)}
                 </p>
               </div>
-              <button
-                className="rounded-[9px] border border-[rgba(255,149,0,0.24)] bg-white/75 px-2.5 py-1.5 text-xs font-semibold text-[#8a4d00] transition hover:bg-white"
-                type="button"
-                onClick={() => setEventNotificationNotice(null)}
-                data-testid="events-notification-dismiss"
-              >
-                닫기
-              </button>
+              <div className="flex flex-wrap items-center justify-end gap-1.5">
+                <button
+                  className="rounded-[9px] border border-[rgba(255,149,0,0.24)] bg-white/75 px-2.5 py-1.5 text-xs font-semibold text-[#8a4d00] transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-50"
+                  type="button"
+                  onClick={handleShowNewEvents}
+                  disabled={!hasNewEvents}
+                  data-testid="events-notification-show-new"
+                >
+                  새 이벤트 보기
+                </button>
+                <button
+                  className="rounded-[9px] border border-[rgba(255,149,0,0.24)] bg-white/75 px-2.5 py-1.5 text-xs font-semibold text-[#8a4d00] transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-50"
+                  type="button"
+                  onClick={handleClearNewEvents}
+                  disabled={!hasNewEvents && !eventNotificationNotice}
+                  data-testid="events-notification-clear"
+                >
+                  표시 지우기
+                </button>
+                <button
+                  className="rounded-[9px] border border-[rgba(255,149,0,0.24)] bg-white/75 px-2.5 py-1.5 text-xs font-semibold text-[#8a4d00] transition hover:bg-white"
+                  type="button"
+                  onClick={() => setEventNotificationNotice(null)}
+                  data-testid="events-notification-dismiss"
+                >
+                  닫기
+                </button>
+              </div>
             </div>
           ) : null}
           {eventsWarning ? <InlineWarning message="이벤트 조회 권한이 없거나 API가 없어 빈 목록으로 표시합니다." /> : null}
@@ -1524,8 +1600,24 @@ function ResourceExplorerDetail({
                     {filteredEvents.length} / {events.length}
                   </span>
                   {pinnedEventKeys.size > 0 ? <span className="ku-chip">고정 {pinnedEventKeys.size}</span> : null}
+                  {showNewEventsOnly ? <span className="ku-chip border-[rgba(255,149,0,0.24)] bg-[rgba(255,149,0,0.1)] text-[#9a5a00]">새 이벤트만</span> : null}
                 </div>
                 <div className="flex flex-wrap items-center justify-end gap-1.5">
+                  <button
+                    className={`inline-flex items-center gap-1.5 rounded-[9px] border px-2.5 py-1.5 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                      showNewEventsOnly
+                        ? 'border-[rgba(255,149,0,0.28)] bg-[rgba(255,149,0,0.12)] text-[#8a4d00] hover:bg-[rgba(255,149,0,0.16)]'
+                        : 'border-[rgba(60,60,67,0.12)] bg-white text-[rgba(60,60,67,0.72)] hover:bg-[rgba(242,242,247,0.9)]'
+                    }`}
+                    type="button"
+                    onClick={() => setShowNewEventsOnly((current) => !current)}
+                    disabled={!hasNewEvents}
+                    aria-pressed={showNewEventsOnly}
+                    data-testid="events-new-only-toggle"
+                    title="새 Warning/Error Events만 보기"
+                  >
+                    NEW만
+                  </button>
                   <button
                     className="inline-flex items-center gap-1.5 rounded-[9px] border border-[rgba(60,60,67,0.12)] bg-white px-2.5 py-1.5 text-xs font-semibold text-[rgba(60,60,67,0.72)] transition hover:bg-[rgba(242,242,247,0.9)] disabled:cursor-not-allowed disabled:opacity-50"
                     type="button"
@@ -1558,6 +1650,7 @@ function ResourceExplorerDetail({
                         setEventTimeRangeFilter('all');
                         setEventSortOrder('newest');
                         setPinnedEventKeys(new Set());
+                        setShowNewEventsOnly(false);
                       }}
                     >
                       초기화
@@ -2723,6 +2816,10 @@ function countEventSeverities(events: ResourceEvent[]) {
   );
 }
 
+function countNewEvents(events: ResourceEvent[], newEventKeys: Set<string>) {
+  return events.reduce((count, event) => (newEventKeys.has(eventIdentityKey(event)) ? count + 1 : count), 0);
+}
+
 function groupEventsBySeverity(events: EventListItem[]): EventGroup[] {
   const groups: Record<EventSeverity, EventGroup> = {
     warning: { key: 'warning', label: 'Warning / Error', count: 0, items: [] },
@@ -2758,13 +2855,14 @@ function eventSectionSummary(visibleCount: number, totalCount: number, counts: R
   return base;
 }
 
-function eventControlSummary(filter: string, severityFilter: EventSeverityFilter, timeRangeFilter: EventTimeRangeFilter, sortOrder: EventSortOrder, pinnedCount: number) {
+function eventControlSummary(filter: string, severityFilter: EventSeverityFilter, timeRangeFilter: EventTimeRangeFilter, sortOrder: EventSortOrder, pinnedCount: number, showNewOnly: boolean) {
   const parts = [
     filter.trim() ? `검색 "${filter.trim().slice(0, 48)}"` : '',
     severityFilter !== 'all' ? `type ${severityFilter}` : '',
     timeRangeFilter !== 'all' ? `최근 ${timeRangeFilter}` : '',
     sortOrder !== 'newest' ? '오래된순' : '',
     pinnedCount > 0 ? `고정 ${pinnedCount}` : '',
+    showNewOnly ? '새 이벤트만' : '',
   ].filter(Boolean);
   return parts.join(' · ');
 }
