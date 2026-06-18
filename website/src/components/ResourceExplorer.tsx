@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { CSSProperties, Dispatch, KeyboardEvent as ReactKeyboardEvent, ReactNode, SetStateAction } from 'react';
-import { Activity, AlertTriangle, ArrowDown, ArrowUp, Bookmark, Boxes, CheckCircle2, ChevronDown, Copy, Download, FileText, GitBranch, Link2, Pencil, RefreshCw, RotateCcw, Search, Tags, Trash2, Upload, X } from 'lucide-react';
+import type { CSSProperties, Dispatch, DragEvent as ReactDragEvent, KeyboardEvent as ReactKeyboardEvent, ReactNode, SetStateAction } from 'react';
+import { Activity, AlertTriangle, ArrowDown, ArrowUp, Bookmark, Boxes, CheckCircle2, ChevronDown, Copy, Download, FileText, GitBranch, GripVertical, Link2, Pencil, RefreshCw, RotateCcw, Search, Tags, Trash2, Upload, X } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { fetchResourceEvents, fetchResourceLogs, fetchResourceViewPresets, fetchResources, resourcesFromSnapshot, saveResourceViewPresets, streamResourceLogs } from '../services/resourceApi';
 import type { ResourceEvent, ResourceExplorerItem } from '../types/resourceExplorer';
@@ -102,6 +102,7 @@ const defaultResourceListColumns: ResourceListColumnPreference = {
 interface ResourceViewPreset extends ResourceViewFilters {
   name: string;
   group: string;
+  order: number;
   updatedAt: number;
 }
 
@@ -264,6 +265,7 @@ export function ResourceExplorer({
   const [presetName, setPresetName] = useState('');
   const [presetGroup, setPresetGroup] = useState(defaultResourceViewGroup);
   const [viewPresetSearch, setViewPresetSearch] = useState('');
+  const [draggingViewPresetName, setDraggingViewPresetName] = useState('');
   const [collapsedViewGroups, setCollapsedViewGroups] = useState<Set<string>>(() => readCollapsedResourceViewGroups());
   const [resourceViewMessage, setResourceViewMessage] = useState<ResourceViewMessage | null>(null);
   const [resourceViewConflict, setResourceViewConflict] = useState<ResourceViewConflictState | null>(null);
@@ -319,6 +321,7 @@ export function ResourceExplorer({
   const presetNameExists = viewPresets.some((preset) => preset.name === nextPresetName);
   const groupedViewPresets = useMemo(() => groupResourceViewPresets(viewPresets), [viewPresets]);
   const normalizedViewPresetSearch = viewPresetSearch.trim().toLowerCase();
+  const canReorderViewPresets = normalizedViewPresetSearch.length === 0;
   const filteredGroupedViewPresets = useMemo(() => filterGroupedResourceViewPresets(groupedViewPresets, normalizedViewPresetSearch), [groupedViewPresets, normalizedViewPresetSearch]);
   const viewPresetGroupOptions = useMemo(() => unique([defaultResourceViewGroup, ...viewPresets.map((preset) => preset.group)]), [viewPresets]);
   const filtersAreDefault = resourceViewPresetMatchesFilters(
@@ -329,6 +332,7 @@ export function ResourceExplorer({
       namespace: allValue,
       kind: allValue,
       status: allValue,
+      order: 1,
       group: defaultResourceViewGroup,
       updatedAt: 0,
     },
@@ -433,6 +437,7 @@ export function ResourceExplorer({
   const handleSaveViewPreset = () => {
     setResourceViewConflict(null);
     setRenamingViewPreset(null);
+    const existingPreset = viewPresets.find((preset) => preset.name === nextPresetName);
     const nextPreset: ResourceViewPreset = {
       name: nextPresetName,
       group: nextPresetGroup,
@@ -441,6 +446,7 @@ export function ResourceExplorer({
       namespace,
       kind,
       status,
+      order: existingPreset?.order ?? resourceViewPresetTopOrderForGroup(viewPresets, nextPresetGroup),
       updatedAt: Date.now(),
     };
     const nextPresets = upsertResourceViewPreset(viewPresets, nextPreset);
@@ -465,7 +471,7 @@ export function ResourceExplorer({
   const handleDeleteViewPreset = (presetNameToDelete: string) => {
     setResourceViewConflict(null);
     setRenamingViewPreset(null);
-    const nextPresets = viewPresets.filter((preset) => preset.name !== presetNameToDelete);
+    const nextPresets = normalizeResourceViewPresetOrders(viewPresets.filter((preset) => preset.name !== presetNameToDelete));
     setViewPresets(nextPresets);
     writeResourceViewPresets(nextPresets);
     if (presetName.trim() === presetNameToDelete) {
@@ -487,7 +493,7 @@ export function ResourceExplorer({
   };
 
   const handleExportViewPresets = () => {
-    const payload = `${JSON.stringify(viewPresets.map(resourceViewPresetExportRecord), null, 2)}\n`;
+    const payload = `${JSON.stringify(normalizeResourceViewPresetOrders(viewPresets).map(resourceViewPresetExportRecord), null, 2)}\n`;
     downloadTextFile(payload, 'application/json;charset=utf-8', 'kuviewer-resource-views.json');
     setResourceViewMessage({ tone: 'success', text: `저장된 뷰 ${viewPresets.length}개를 내보냈습니다.` });
   };
@@ -504,7 +510,7 @@ export function ResourceExplorer({
         setResourceViewMessage({ tone: 'warning', text: '가져오기 실패: saved view JSON 배열이 아닙니다.' });
         return;
       }
-      const importedPresets = parsedValue.flatMap(validResourceViewPreset);
+      const importedPresets = normalizeResourceViewPresetOrders(parsedValue.flatMap((value, index) => validResourceViewPreset(value, index + 1)));
       if (importedPresets.length === 0) {
         setResourceViewConflict(null);
         setRenamingViewPreset(null);
@@ -527,7 +533,7 @@ export function ResourceExplorer({
     setResourceViewTeamLoading(true);
     try {
       const response = await fetchResourceViewPresets();
-      const teamPresets = response.items.flatMap(validResourceViewPreset);
+      const teamPresets = normalizeResourceViewPresetOrders(response.items.flatMap((value, index) => validResourceViewPreset(value, index + 1)));
       handleIncomingResourceViewPresets('team', teamPresets, Math.max(0, response.items.length - teamPresets.length));
     } catch {
       setResourceViewConflict(null);
@@ -547,8 +553,8 @@ export function ResourceExplorer({
     try {
       setResourceViewConflict(null);
       setRenamingViewPreset(null);
-      const response = await saveResourceViewPresets(viewPresets.map(resourceViewPresetExportRecord));
-      const savedPresets = response.items.flatMap(validResourceViewPreset);
+      const response = await saveResourceViewPresets(normalizeResourceViewPresetOrders(viewPresets).map(resourceViewPresetExportRecord));
+      const savedPresets = normalizeResourceViewPresetOrders(response.items.flatMap((value, index) => validResourceViewPreset(value, index + 1)));
       setViewPresets(savedPresets);
       writeResourceViewPresets(savedPresets);
       setResourceViewMessage({ tone: 'success', text: `현재 브라우저 뷰 ${savedPresets.length}개를 팀 뷰로 저장했습니다.` });
@@ -661,13 +667,60 @@ export function ResourceExplorer({
     if (targetGroup === preset.group) {
       return;
     }
-    const nextPresets = viewPresets.map((candidate) => candidate.name === preset.name ? { ...candidate, group: targetGroup, updatedAt: Date.now() } : candidate);
+    const nextPresets = normalizeResourceViewPresetOrders(viewPresets.map((candidate) => candidate.name === preset.name ? { ...candidate, group: targetGroup, order: resourceViewPresetTopOrderForGroup(viewPresets, targetGroup), updatedAt: Date.now() } : candidate));
     setViewPresets(nextPresets);
     writeResourceViewPresets(nextPresets);
     if (presetName.trim() === preset.name || matchingViewPreset?.name === preset.name) {
       setPresetGroup(targetGroup);
     }
     setResourceViewMessage({ tone: 'success', text: `"${preset.name}" 뷰를 ${targetGroup} 그룹으로 이동했습니다.` });
+  };
+  const handleMoveViewPreset = (preset: ResourceViewPreset, direction: -1 | 1) => {
+    if (!canReorderViewPresets) {
+      return;
+    }
+    const groupName = normalizeResourceViewPresetGroup(preset.group);
+    const groupPresets = orderResourceViewPresets(viewPresets.filter((candidate) => normalizeResourceViewPresetGroup(candidate.group) === groupName));
+    const currentIndex = groupPresets.findIndex((candidate) => candidate.name === preset.name);
+    const targetPreset = groupPresets[currentIndex + direction];
+    if (currentIndex < 0 || !targetPreset) {
+      return;
+    }
+    const nextPresets = normalizeResourceViewPresetOrders(viewPresets.map((candidate) => {
+      if (candidate.name === preset.name) {
+        return { ...candidate, order: targetPreset.order };
+      }
+      if (candidate.name === targetPreset.name) {
+        return { ...candidate, order: preset.order };
+      }
+      return candidate;
+    }));
+    setViewPresets(nextPresets);
+    writeResourceViewPresets(nextPresets);
+    setResourceViewMessage({ tone: 'success', text: `"${preset.name}" 뷰 순서를 변경했습니다.` });
+  };
+  const handleDropViewPreset = (targetPreset: ResourceViewPreset, event: ReactDragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    if (!canReorderViewPresets) {
+      setDraggingViewPresetName('');
+      return;
+    }
+    const sourceName = event.dataTransfer.getData('text/plain') || draggingViewPresetName;
+    const sourcePreset = viewPresets.find((preset) => preset.name === sourceName);
+    if (!sourcePreset || sourcePreset.name === targetPreset.name || normalizeResourceViewPresetGroup(sourcePreset.group) !== normalizeResourceViewPresetGroup(targetPreset.group)) {
+      setDraggingViewPresetName('');
+      return;
+    }
+    const groupName = normalizeResourceViewPresetGroup(targetPreset.group);
+    const groupPresets = orderResourceViewPresets(viewPresets.filter((candidate) => normalizeResourceViewPresetGroup(candidate.group) === groupName && candidate.name !== sourcePreset.name));
+    const targetIndex = Math.max(0, groupPresets.findIndex((candidate) => candidate.name === targetPreset.name));
+    const reorderedGroup = [...groupPresets.slice(0, targetIndex), sourcePreset, ...groupPresets.slice(targetIndex)];
+    const orderByName = new Map(reorderedGroup.map((candidate, index) => [candidate.name, index + 1]));
+    const nextPresets = normalizeResourceViewPresetOrders(viewPresets.map((candidate) => orderByName.has(candidate.name) ? { ...candidate, order: orderByName.get(candidate.name) ?? candidate.order } : candidate));
+    setViewPresets(nextPresets);
+    writeResourceViewPresets(nextPresets);
+    setDraggingViewPresetName('');
+    setResourceViewMessage({ tone: 'success', text: `"${sourcePreset.name}" 뷰 순서를 변경했습니다.` });
   };
   const toggleViewPresetGroup = (groupName: string) => {
     setCollapsedViewGroups((current) => {
@@ -1198,6 +1251,9 @@ export function ResourceExplorer({
                     </span>
                   ) : null}
                 </div>
+                {normalizedViewPresetSearch ? (
+                  <p className="ku-meta" data-testid="resource-view-reorder-disabled">검색 해제 후 순서 변경</p>
+                ) : null}
               </div>
             ) : null}
             {presetNameExists ? <p className="ku-meta">같은 이름으로 저장하면 기존 뷰를 업데이트합니다.</p> : null}
@@ -1263,15 +1319,23 @@ export function ResourceExplorer({
                         </span>
                         <span className="ku-chip">{normalizedViewPresetSearch ? `${group.presets.length} / ${group.total}` : `${group.presets.length} views`}</span>
                       </button>
-                      {collapsed ? null : group.presets.map((preset) => {
+                      {collapsed ? null : group.presets.map((preset, presetIndex) => {
                         const active = resourceViewPresetMatchesFilters(preset, currentPresetFilters);
                         const isRenaming = renamingViewPreset?.originalName === preset.name;
                         const presetDomId = resourceViewPresetDomId(preset.name);
+                        const canMovePresetUp = canReorderViewPresets && presetIndex > 0;
+                        const canMovePresetDown = canReorderViewPresets && presetIndex < group.presets.length - 1;
                         return (
                           <div
                             key={preset.name}
-                            className={`grid gap-2 rounded-[10px] border p-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center ${active ? 'border-[rgba(0,122,255,0.22)] bg-[rgba(0,122,255,0.06)]' : 'border-[rgba(60,60,67,0.1)] bg-white/78'}`}
+                            className={`grid gap-2 rounded-[10px] border p-2 transition sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center ${draggingViewPresetName === preset.name ? 'opacity-60' : ''} ${active ? 'border-[rgba(0,122,255,0.22)] bg-[rgba(0,122,255,0.06)]' : 'border-[rgba(60,60,67,0.1)] bg-white/78'}`}
                             data-testid={`resource-view-preset-row-${presetDomId}`}
+                            onDragOver={(event) => {
+                              if (canReorderViewPresets) {
+                                event.preventDefault();
+                              }
+                            }}
+                            onDrop={(event) => handleDropViewPreset(preset, event)}
                           >
                             <div className="min-w-0">
                               {isRenaming ? (
@@ -1330,6 +1394,47 @@ export function ResourceExplorer({
                                 </>
                               ) : (
                                 <>
+                                  <button
+                                    className="inline-flex items-center gap-1.5 rounded-[8px] border border-[rgba(60,60,67,0.12)] bg-white px-2 py-1.5 text-xs font-semibold text-[rgba(60,60,67,0.64)] transition hover:bg-[rgba(242,242,247,0.9)] disabled:cursor-not-allowed disabled:opacity-45"
+                                    type="button"
+                                    draggable={canReorderViewPresets}
+                                    onDragStart={(event) => {
+                                      if (!canReorderViewPresets) {
+                                        event.preventDefault();
+                                        return;
+                                      }
+                                      setDraggingViewPresetName(preset.name);
+                                      event.dataTransfer.effectAllowed = 'move';
+                                      event.dataTransfer.setData('text/plain', preset.name);
+                                    }}
+                                    onDragEnd={() => setDraggingViewPresetName('')}
+                                    disabled={!canReorderViewPresets}
+                                    title={canReorderViewPresets ? 'Drag to reorder saved view' : '검색 해제 후 순서 변경'}
+                                    aria-label={`${preset.name} 순서 드래그`}
+                                    data-testid={`resource-view-drag-handle-${presetDomId}`}
+                                  >
+                                    <GripVertical size={13} aria-hidden="true" />
+                                  </button>
+                                  <button
+                                    className="rounded-[8px] border border-[rgba(60,60,67,0.12)] bg-white p-1.5 text-[rgba(60,60,67,0.72)] transition hover:bg-[rgba(242,242,247,0.9)] disabled:cursor-not-allowed disabled:opacity-45"
+                                    type="button"
+                                    onClick={() => handleMoveViewPreset(preset, -1)}
+                                    disabled={!canMovePresetUp}
+                                    aria-label={`${preset.name} 위로 이동`}
+                                    data-testid={`resource-view-reorder-up-${presetDomId}`}
+                                  >
+                                    <ArrowUp size={13} aria-hidden="true" />
+                                  </button>
+                                  <button
+                                    className="rounded-[8px] border border-[rgba(60,60,67,0.12)] bg-white p-1.5 text-[rgba(60,60,67,0.72)] transition hover:bg-[rgba(242,242,247,0.9)] disabled:cursor-not-allowed disabled:opacity-45"
+                                    type="button"
+                                    onClick={() => handleMoveViewPreset(preset, 1)}
+                                    disabled={!canMovePresetDown}
+                                    aria-label={`${preset.name} 아래로 이동`}
+                                    data-testid={`resource-view-reorder-down-${presetDomId}`}
+                                  >
+                                    <ArrowDown size={13} aria-hidden="true" />
+                                  </button>
                                   <label className="grid min-w-[126px] gap-1">
                                     <span className="ku-meta">Group</span>
                                     <input
@@ -4195,7 +4300,7 @@ function readResourceViewPresets(): ResourceViewPreset[] {
     if (!Array.isArray(parsedValue)) {
       return [];
     }
-    return parsedValue.flatMap(validResourceViewPreset).slice(0, maxResourceViewPresets);
+    return normalizeResourceViewPresetOrders(parsedValue.flatMap((value, index) => validResourceViewPreset(value, index + 1)).slice(0, maxResourceViewPresets));
   } catch {
     return [];
   }
@@ -4203,7 +4308,7 @@ function readResourceViewPresets(): ResourceViewPreset[] {
 
 function writeResourceViewPresets(presets: ResourceViewPreset[]) {
   try {
-    window.localStorage.setItem(resourceViewPresetStorageKey, JSON.stringify(presets.slice(0, maxResourceViewPresets)));
+    window.localStorage.setItem(resourceViewPresetStorageKey, JSON.stringify(normalizeResourceViewPresetOrders(presets).slice(0, maxResourceViewPresets)));
   } catch {
     // Presets are a convenience feature; quota/private-mode failures should not break the explorer.
   }
@@ -4320,11 +4425,12 @@ function resourceViewPresetExportRecord(preset: ResourceViewPreset): ResourceVie
     namespace: preset.namespace,
     kind: preset.kind,
     status: preset.status,
+    order: preset.order,
     updatedAt: preset.updatedAt,
   };
 }
 
-function validResourceViewPreset(value: unknown): ResourceViewPreset[] {
+function validResourceViewPreset(value: unknown, fallbackOrder = 1): ResourceViewPreset[] {
   if (!value || typeof value !== 'object') {
     return [];
   }
@@ -4350,6 +4456,7 @@ function validResourceViewPreset(value: unknown): ResourceViewPreset[] {
       namespace: candidate.namespace || allValue,
       kind: candidate.kind || allValue,
       status: candidate.status || allValue,
+      order: normalizeResourceViewPresetOrder(candidate.order, fallbackOrder),
       updatedAt: candidate.updatedAt,
     },
   ];
@@ -4407,7 +4514,7 @@ function mergeResourceViewPresets(existingPresets: ResourceViewPreset[], incomin
 
   const droppedCount = Math.max(0, merged.length - maxResourceViewPresets);
   return {
-    presets: merged.slice(0, maxResourceViewPresets),
+    presets: normalizeResourceViewPresetOrders(merged.slice(0, maxResourceViewPresets)),
     conflicts,
     duplicateCount,
     incomingCount: incomingPresets.length,
@@ -4416,7 +4523,30 @@ function mergeResourceViewPresets(existingPresets: ResourceViewPreset[], incomin
 }
 
 function upsertResourceViewPreset(presets: ResourceViewPreset[], preset: ResourceViewPreset) {
-  return [preset, ...presets.filter((existingPreset) => existingPreset.name !== preset.name)].slice(0, maxResourceViewPresets);
+  return normalizeResourceViewPresetOrders([preset, ...presets.filter((existingPreset) => existingPreset.name !== preset.name)].slice(0, maxResourceViewPresets));
+}
+
+function normalizeResourceViewPresetOrder(value: unknown, fallback: number) {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : fallback;
+}
+
+function normalizeResourceViewPresetOrders(presets: ResourceViewPreset[]) {
+  return orderResourceViewPresets(presets).map((preset, index) => ({ ...preset, order: index + 1 }));
+}
+
+function orderResourceViewPresets(presets: ResourceViewPreset[]) {
+  return presets
+    .map((preset, index) => ({ preset: { ...preset, order: normalizeResourceViewPresetOrder(preset.order, index + 1) }, index }))
+    .sort((left, right) => left.preset.order - right.preset.order || left.index - right.index)
+    .map((entry) => entry.preset);
+}
+
+function resourceViewPresetTopOrderForGroup(presets: ResourceViewPreset[], groupName: string) {
+  const normalizedGroup = normalizeResourceViewPresetGroup(groupName);
+  const groupOrders = presets
+    .filter((preset) => normalizeResourceViewPresetGroup(preset.group) === normalizedGroup)
+    .map((preset) => normalizeResourceViewPresetOrder(preset.order, Number.POSITIVE_INFINITY));
+  return groupOrders.length > 0 ? Math.min(...groupOrders) - 1 : 0;
 }
 
 function normalizeResourceViewPresetGroup(group: string) {
@@ -4431,7 +4561,7 @@ function groupResourceViewPresets(presets: ResourceViewPreset[]) {
     grouped.set(groupName, [...(grouped.get(groupName) || []), preset]);
   }
   return [...grouped.entries()]
-    .map(([name, groupPresets]) => ({ name, presets: groupPresets, total: groupPresets.length }))
+    .map(([name, groupPresets]) => ({ name, presets: orderResourceViewPresets(groupPresets), total: groupPresets.length }))
     .sort((left, right) => {
       if (left.name === defaultResourceViewGroup) {
         return -1;
@@ -4467,7 +4597,7 @@ function resourceViewPresetSearchText(preset: ResourceViewPreset) {
 }
 
 function resourceViewPresetFiltersEqual(left: ResourceViewPreset, right: ResourceViewPreset) {
-  return left.group === right.group && left.query === right.query && left.cluster === right.cluster && left.namespace === right.namespace && left.kind === right.kind && left.status === right.status;
+  return left.group === right.group && left.order === right.order && left.query === right.query && left.cluster === right.cluster && left.namespace === right.namespace && left.kind === right.kind && left.status === right.status;
 }
 
 function copiedResourceViewPresetName(name: string, seenNames: Set<string>, existingByName: Map<string, ResourceViewPreset>) {

@@ -11,6 +11,7 @@ export interface ResourceViewPresetApiRecord {
   namespace: string;
   kind: string;
   status: string;
+  order?: number;
   updatedAt: number;
 }
 
