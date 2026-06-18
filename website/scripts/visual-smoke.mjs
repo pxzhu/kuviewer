@@ -7,6 +7,7 @@ const adminToken = process.env.KUVIEWER_ADMIN_TOKEN || 'kuviewer-admin';
 const visualMode = process.env.KUVIEWER_VISUAL_MODE || 'upload';
 const outputDir = process.env.KUVIEWER_VISUAL_OUTPUT || path.join(process.cwd(), 'artifacts', 'visual-smoke');
 const uploadManifestPath = path.join(outputDir, 'visual-upload.yaml');
+const conflictPresetPath = path.join(outputDir, 'visual-resource-view-conflict.json');
 
 const viewports = [
   { name: 'desktop', viewport: { width: 1440, height: 980 }, isMobile: false, hasTouch: false },
@@ -15,6 +16,17 @@ const viewports = [
 
 await mkdir(outputDir, { recursive: true });
 await writeFile(uploadManifestPath, getSampleManifest(), 'utf8');
+await writeFile(conflictPresetPath, JSON.stringify([
+  {
+    name: 'Visual Conflict',
+    query: 'checkout',
+    cluster: 'all',
+    namespace: 'all',
+    kind: 'Pod',
+    status: 'all',
+    updatedAt: 1700000000000,
+  },
+], null, 2), 'utf8');
 
 for (const target of viewports) {
   await runViewport(target);
@@ -156,6 +168,7 @@ async function verifyResourceExplorer(page) {
   await page.getByRole('button', { name: /리소스 탐색/ }).click();
   await expect(page.getByRole('heading', { name: '리소스 탐색' })).toBeVisible({ timeout: 10_000 });
   await verifyResourceListSorting(page);
+  await verifyResourceViewConflictImport(page);
   await expect(page.getByRole('heading', { name: 'Metadata' })).toBeVisible({ timeout: 10_000 });
   await expect(page.getByRole('heading', { name: 'Status' })).toBeVisible({ timeout: 10_000 });
   await expect(page.getByRole('heading', { name: 'Safe Preview' })).toBeVisible({ timeout: 10_000 });
@@ -165,6 +178,17 @@ async function verifyResourceExplorer(page) {
   await expect(page.getByRole('heading', { name: 'Logs' })).toBeVisible({ timeout: 10_000 });
   await expect(page.getByText('표시할 이벤트가 없습니다')).toBeVisible({ timeout: 10_000 });
   await expect(page.getByText(/Secret value 숨김/)).toBeVisible({ timeout: 10_000 });
+}
+
+async function verifyResourceViewConflictImport(page) {
+  await page.getByTestId('resource-view-name-input').fill('Visual Conflict');
+  await page.getByTestId('resource-view-save').click();
+  await page.setInputFiles('[data-testid="resource-view-import-input"]', conflictPresetPath);
+  await expect(page.getByTestId('resource-view-conflict-panel')).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByTestId('resource-view-conflict-panel')).toContainText('충돌 1개');
+  await page.getByTestId('resource-view-conflict-apply-incoming').click();
+  await expect(page.getByTestId('resource-view-conflict-panel')).toHaveCount(0);
+  await expect(page.getByTestId('resource-view-message')).toContainText('충돌 1개', { timeout: 10_000 });
 }
 
 async function verifyResourceListSorting(page) {
