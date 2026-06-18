@@ -17,16 +17,18 @@ func main() {
 	corsOrigin := os.Getenv("KUVIEWER_CORS_ORIGIN")
 	source := envOrDefault("KUVIEWER_SOURCE", "mock")
 	staticDir := os.Getenv("KUVIEWER_STATIC_DIR")
+	resourceViewsFile := os.Getenv("KUVIEWER_RESOURCE_VIEWS_FILE")
 
 	snapshotProvider, err := provider.New(source)
 	if err != nil {
 		log.Fatal(err)
 	}
 	server := httpapi.NewServerWithConfig(snapshotProvider, httpapi.ServerConfig{
-		AdminToken: adminToken,
-		CORSOrigin: corsOrigin,
-		StaticDir:  staticDir,
-		Source:     source,
+		AdminToken:        adminToken,
+		CORSOrigin:        corsOrigin,
+		StaticDir:         staticDir,
+		Source:            source,
+		ResourceViewsFile: resourceViewsFile,
 	})
 
 	log.Printf("kuviewer server listening on %s source=%s", addr, source)

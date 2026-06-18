@@ -19,19 +19,21 @@ import (
 )
 
 type Server struct {
-	provider   provider.TopologyProvider
-	adminToken string
-	corsOrigin string
-	staticDir  string
-	source     string
-	mux        *http.ServeMux
+	provider      provider.TopologyProvider
+	resourceViews resourceViewStore
+	adminToken    string
+	corsOrigin    string
+	staticDir     string
+	source        string
+	mux           *http.ServeMux
 }
 
 type ServerConfig struct {
-	AdminToken string
-	CORSOrigin string
-	StaticDir  string
-	Source     string
+	AdminToken        string
+	CORSOrigin        string
+	StaticDir         string
+	Source            string
+	ResourceViewsFile string
 }
 
 type statusResponse struct {
@@ -58,12 +60,13 @@ func NewServerWithConfig(snapshotProvider provider.TopologyProvider, config Serv
 	}
 
 	server := &Server{
-		provider:   snapshotProvider,
-		adminToken: config.AdminToken,
-		corsOrigin: config.CORSOrigin,
-		staticDir:  config.StaticDir,
-		source:     source,
-		mux:        http.NewServeMux(),
+		provider:      snapshotProvider,
+		resourceViews: newResourceViewStore(config.ResourceViewsFile),
+		adminToken:    config.AdminToken,
+		corsOrigin:    config.CORSOrigin,
+		staticDir:     config.StaticDir,
+		source:        source,
+		mux:           http.NewServeMux(),
 	}
 
 	server.routes()
@@ -92,6 +95,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/healthz", s.handleHealth)
 	s.mux.HandleFunc("/api/status", s.requireAdmin(s.handleStatus))
 	s.mux.HandleFunc("/api/topology", s.requireAdmin(s.handleTopology))
+	s.mux.HandleFunc("/api/resource-views", s.requireAdmin(s.handleResourceViewsPresets))
 	s.mux.HandleFunc("/api/resources", s.requireAdmin(s.handleResources))
 	s.mux.HandleFunc("/api/resources/", s.requireAdmin(s.handleResourceRoute))
 	if s.staticDir != "" {
@@ -152,6 +156,34 @@ func (s *Server) handleResources(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, topology.ResourceList{Items: resourcesFromSnapshot(snapshot)})
+}
+
+func (s *Server) handleResourceViewsPresets(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		presets, err := s.resourceViews.List(r.Context())
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "resource_views_unavailable")
+			return
+		}
+		writeJSON(w, http.StatusOK, resourceViewPresetList{Items: presets})
+	case http.MethodPut:
+		r.Body = http.MaxBytesReader(w, r.Body, 64*1024)
+		inputs, err := decodeResourceViewPresetInputs(r.Body)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid_resource_views")
+			return
+		}
+		presets := sanitizeResourceViewPresetInputs(inputs, time.Now())
+		savedPresets, err := s.resourceViews.Save(r.Context(), presets)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "resource_views_unavailable")
+			return
+		}
+		writeJSON(w, http.StatusOK, resourceViewPresetList{Items: savedPresets})
+	default:
+		writeError(w, http.StatusMethodNotAllowed, "method_not_allowed")
+	}
 }
 
 func (s *Server) handleResourceRoute(w http.ResponseWriter, r *http.Request) {
@@ -321,7 +353,7 @@ func (s *Server) setCORS(w http.ResponseWriter) {
 
 	w.Header().Set("Access-Control-Allow-Origin", s.corsOrigin)
 	w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
-	w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Methods", "GET, PUT, OPTIONS")
 	w.Header().Set("Vary", "Origin")
 }
 

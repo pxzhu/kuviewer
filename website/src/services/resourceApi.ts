@@ -3,6 +3,20 @@ import type { ResourceEvents, ResourceExplorerItem, ResourceExplorerList, Resour
 import type { SummaryValue, TopologySnapshot } from '../types/topology';
 import { getTopologyApiBaseUrl } from './topologyApi';
 
+export interface ResourceViewPresetApiRecord {
+  name: string;
+  query: string;
+  cluster: string;
+  namespace: string;
+  kind: string;
+  status: string;
+  updatedAt: number;
+}
+
+export interface ResourceViewPresetApiList {
+  items: ResourceViewPresetApiRecord[];
+}
+
 export interface ResourceLogStreamMessage {
   line?: string;
   warning?: string;
@@ -22,6 +36,43 @@ export async function fetchResources(signal?: AbortSignal): Promise<ResourceExpl
     throw new Error(`resources_request_failed:${response.status}`);
   }
   return response.json() as Promise<ResourceExplorerList>;
+}
+
+export async function fetchResourceViewPresets(signal?: AbortSignal): Promise<ResourceViewPresetApiList> {
+  const baseUrl = getTopologyApiBaseUrl().replace(/\/$/, '');
+  if (!baseUrl) {
+    throw new Error('api_base_url_not_configured');
+  }
+
+  const response = await fetch(`${baseUrl}/api/resource-views`, {
+    headers: { Authorization: `Bearer ${getStoredAdminToken()}` },
+    signal,
+  });
+  if (!response.ok) {
+    throw new Error(`resource_views_request_failed:${response.status}`);
+  }
+  return response.json() as Promise<ResourceViewPresetApiList>;
+}
+
+export async function saveResourceViewPresets(presets: ResourceViewPresetApiRecord[], signal?: AbortSignal): Promise<ResourceViewPresetApiList> {
+  const baseUrl = getTopologyApiBaseUrl().replace(/\/$/, '');
+  if (!baseUrl) {
+    throw new Error('api_base_url_not_configured');
+  }
+
+  const response = await fetch(`${baseUrl}/api/resource-views`, {
+    method: 'PUT',
+    headers: {
+      Authorization: `Bearer ${getStoredAdminToken()}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ items: presets }),
+    signal,
+  });
+  if (!response.ok) {
+    throw new Error(`resource_views_save_failed:${response.status}`);
+  }
+  return response.json() as Promise<ResourceViewPresetApiList>;
 }
 
 export async function fetchResourceEvents(resource: Pick<ResourceExplorerItem, 'kind' | 'namespace' | 'name'>, signal?: AbortSignal): Promise<ResourceEvents> {
