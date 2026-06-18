@@ -37,7 +37,7 @@ function Dashboard() {
   const [filters, setFilters] = useState(initialFilters);
   const [colorMode, setColorMode] = useState<ColorMode>('status');
   const [brandTheme, setBrandTheme] = useState<BrandTheme>(() => initialBrandTheme());
-  const [viewMode, setViewMode] = useState<'topology' | 'traffic' | 'resources'>('topology');
+  const [viewMode, setViewMode] = useState<'topology' | 'traffic' | 'resources'>(() => initialViewMode());
   const [sourceMode, setSourceMode] = useState<TopologySourceMode>(() => initialSourceMode());
   const [liveUnlocked, setLiveUnlocked] = useState(() => isValidAdminToken(getStoredAdminToken()));
   const [uploadedState, setUploadedState] = useState<UploadedTopologyState | null>(null);
@@ -531,6 +531,11 @@ function initialSourceMode(): TopologySourceMode {
   }
   const storedSource = readStoredSourceMode();
   return storedSource || 'upload';
+}
+
+function initialViewMode(): 'topology' | 'traffic' | 'resources' {
+  const view = new URLSearchParams(window.location.search).get('view');
+  return view === 'resources' ? 'resources' : 'topology';
 }
 
 function initialBrandTheme(): BrandTheme {

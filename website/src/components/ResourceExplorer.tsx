@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Dispatch, KeyboardEvent as ReactKeyboardEvent, ReactNode, SetStateAction } from 'react';
-import { Activity, AlertTriangle, ArrowDown, ArrowUp, Bookmark, Boxes, CheckCircle2, ChevronDown, Copy, Download, FileText, GitBranch, Link2, RefreshCw, RotateCcw, Search, Tags, Trash2 } from 'lucide-react';
+import { Activity, AlertTriangle, ArrowDown, ArrowUp, Bookmark, Boxes, CheckCircle2, ChevronDown, Copy, Download, FileText, GitBranch, Link2, RefreshCw, RotateCcw, Search, Tags, Trash2, Upload } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { fetchResourceEvents, fetchResourceLogs, fetchResources, resourcesFromSnapshot, streamResourceLogs } from '../services/resourceApi';
 import type { ResourceEvent, ResourceExplorerItem } from '../types/resourceExplorer';
@@ -26,6 +26,13 @@ const eventsAutoRefreshIntervalMs = 30_000;
 const maxResourceViewPresets = 8;
 const maxCollapsedRelations = 24;
 const defaultOpenDetailSections: DetailSectionId[] = ['metadata', 'status', 'safe', 'relations', 'events'];
+const resourceViewParamNames = {
+  query: 'resourceQuery',
+  cluster: 'resourceCluster',
+  namespace: 'resourceNamespace',
+  kind: 'resourceKind',
+  status: 'resourceStatus',
+} as const;
 
 type DetailSectionId = 'metadata' | 'status' | 'safe' | 'yaml' | 'labels' | 'annotations' | 'relations' | 'events' | 'logs';
 type ResourceListDensity = 'comfortable' | 'compact';
@@ -68,6 +75,13 @@ interface ResourceViewPreset {
   kind: string;
   status: string;
   updatedAt: number;
+}
+
+type ResourceViewFilters = Pick<ResourceViewPreset, 'query' | 'cluster' | 'namespace' | 'kind' | 'status'>;
+
+interface ResourceViewMessage {
+  tone: 'success' | 'warning';
+  text: string;
 }
 
 interface RelationGroup {
@@ -141,19 +155,24 @@ interface DetailOverviewItem {
 type DetailSectionTone = 'default' | 'warning' | 'error';
 
 export function ResourceExplorer({ liveEnabled, selectedNodeId, snapshot, sourceMode, onOpenTopologyNode, onSelectNode }: ResourceExplorerProps) {
-  const [query, setQuery] = useState('');
-  const [cluster, setCluster] = useState(allValue);
-  const [namespace, setNamespace] = useState(allValue);
-  const [kind, setKind] = useState(allValue);
-  const [status, setStatus] = useState(allValue);
+  const initialResourceViewFiltersRef = useRef<ResourceViewFilters>(readResourceViewFiltersFromUrl() || defaultResourceViewFilters());
+  const [query, setQuery] = useState(initialResourceViewFiltersRef.current.query);
+  const [cluster, setCluster] = useState(initialResourceViewFiltersRef.current.cluster);
+  const [namespace, setNamespace] = useState(initialResourceViewFiltersRef.current.namespace);
+  const [kind, setKind] = useState(initialResourceViewFiltersRef.current.kind);
+  const [status, setStatus] = useState(initialResourceViewFiltersRef.current.status);
   const [resources, setResources] = useState<ResourceExplorerItem[]>(() => resourcesFromSnapshot(snapshot).items);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [viewPresets, setViewPresets] = useState<ResourceViewPreset[]>(() => readResourceViewPresets());
   const [presetName, setPresetName] = useState('');
+  const [resourceViewMessage, setResourceViewMessage] = useState<ResourceViewMessage | null>(() =>
+    readResourceViewFiltersFromUrl() ? { tone: 'success', text: '공유 링크 필터를 적용했습니다.' } : null,
+  );
   const [detailFocusRequest, setDetailFocusRequest] = useState(0);
   const [resourceListDensity, setResourceListDensity] = useState<ResourceListDensity>(() => readResourceListDensityPreference());
   const resourceRowRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const viewPresetImportInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (sourceMode !== 'live' || !liveEnabled) {
@@ -225,7 +244,7 @@ export function ResourceExplorer({ liveEnabled, selectedNodeId, snapshot, source
       );
     });
   }, [cluster, kind, namespace, query, resources, status]);
-  const selectedResource = filteredResources.find((resource) => resource.id === selectedNodeId) || resources.find((resource) => resource.id === selectedNodeId) || filteredResources[0] || resources[0];
+  const selectedResource = filteredResources.find((resource) => resource.id === selectedNodeId) || filteredResources[0] || resources.find((resource) => resource.id === selectedNodeId) || resources[0];
   const selectedResourceIndex = selectedResource ? filteredResources.findIndex((resource) => resource.id === selectedResource.id) : -1;
 
   useEffect(() => {
@@ -237,6 +256,16 @@ export function ResourceExplorer({ liveEnabled, selectedNodeId, snapshot, source
   useEffect(() => {
     writeResourceListDensityPreference(resourceListDensity);
   }, [resourceListDensity]);
+
+  useEffect(() => {
+    if (resources.length === 0) {
+      return;
+    }
+    setCluster((current) => normalizePresetFilterValue(current, clusters));
+    setNamespace((current) => normalizePresetFilterValue(current, namespaces));
+    setKind((current) => normalizePresetFilterValue(current, kinds));
+    setStatus((current) => normalizePresetFilterValue(current, statuses));
+  }, [clusters, kinds, namespaces, resources.length, statuses]);
 
   const handleSaveViewPreset = () => {
     const nextPreset: ResourceViewPreset = {
@@ -272,6 +301,53 @@ export function ResourceExplorer({ liveEnabled, selectedNodeId, snapshot, source
       setPresetName('');
     }
   };
+
+  const handleCopyResourceViewLink = async () => {
+    const url = resourceViewShareUrl(currentPresetFilters);
+    try {
+      if (!navigator.clipboard?.writeText) {
+        throw new Error('clipboard_unavailable');
+      }
+      await navigator.clipboard.writeText(url);
+      setResourceViewMessage({ tone: 'success', text: '공유 링크를 클립보드에 복사했습니다.' });
+    } catch {
+      setResourceViewMessage({ tone: 'warning', text: '클립보드 복사가 지원되지 않아 공유 링크를 복사하지 못했습니다.' });
+    }
+  };
+
+  const handleExportViewPresets = () => {
+    const payload = `${JSON.stringify(viewPresets.map(resourceViewPresetExportRecord), null, 2)}\n`;
+    downloadTextFile(payload, 'application/json;charset=utf-8', 'kuviewer-resource-views.json');
+    setResourceViewMessage({ tone: 'success', text: `저장된 뷰 ${viewPresets.length}개를 내보냈습니다.` });
+  };
+
+  const handleImportViewPresets = async (file?: File) => {
+    if (!file) {
+      return;
+    }
+    try {
+      const parsedValue = JSON.parse(await file.text());
+      if (!Array.isArray(parsedValue)) {
+        setResourceViewMessage({ tone: 'warning', text: '가져오기 실패: saved view JSON 배열이 아닙니다.' });
+        return;
+      }
+      const importedPresets = parsedValue.flatMap(validResourceViewPreset);
+      if (importedPresets.length === 0) {
+        setResourceViewMessage({ tone: 'warning', text: `가져오기 실패: 유효한 saved view가 없습니다. ${parsedValue.length}개 항목을 건너뛰었습니다.` });
+        return;
+      }
+      const nextPresets = mergeResourceViewPresets(viewPresets, importedPresets);
+      setViewPresets(nextPresets);
+      writeResourceViewPresets(nextPresets);
+      setResourceViewMessage({
+        tone: parsedValue.length === importedPresets.length ? 'success' : 'warning',
+        text: `saved view ${importedPresets.length}개를 가져왔습니다. ${Math.max(0, parsedValue.length - importedPresets.length)}개 항목은 건너뛰었습니다.`,
+      });
+    } catch {
+      setResourceViewMessage({ tone: 'warning', text: '가져오기 실패: JSON 파일을 읽을 수 없습니다.' });
+    }
+  };
+
   const handleResetResourceFilters = () => {
     setQuery('');
     setCluster(allValue);
@@ -279,6 +355,7 @@ export function ResourceExplorer({ liveEnabled, selectedNodeId, snapshot, source
     setKind(allValue);
     setStatus(allValue);
     setPresetName('');
+    setResourceViewMessage(null);
     onSelectNode('');
   };
   const resourceSummaryLimit = resourceListDensity === 'compact' ? 2 : 3;
@@ -397,19 +474,75 @@ export function ResourceExplorer({ liveEnabled, selectedNodeId, snapshot, source
                   </span>
                 )}
               </div>
-              <div className="flex items-center gap-1.5">
+              <div className="flex flex-wrap items-center justify-end gap-1.5">
+                <button
+                  className="inline-flex items-center gap-1.5 rounded-[8px] border border-[rgba(0,122,255,0.18)] bg-[rgba(0,122,255,0.06)] px-2.5 py-1.5 text-xs font-semibold text-[#0057b8] transition hover:bg-[rgba(0,122,255,0.1)]"
+                  type="button"
+                  onClick={() => void handleCopyResourceViewLink()}
+                  data-testid="resource-view-share-link"
+                  title="현재 Resource Explorer 필터 공유 링크 복사"
+                >
+                  <Link2 size={13} aria-hidden="true" />
+                  공유 링크
+                </button>
+                <button
+                  className="inline-flex items-center gap-1.5 rounded-[8px] border border-[rgba(60,60,67,0.12)] bg-white px-2.5 py-1.5 text-xs font-semibold text-[rgba(60,60,67,0.72)] transition hover:bg-[rgba(242,242,247,0.9)] disabled:cursor-not-allowed disabled:opacity-50"
+                  type="button"
+                  onClick={handleExportViewPresets}
+                  disabled={viewPresets.length === 0}
+                  data-testid="resource-view-export"
+                  title="저장된 Resource Explorer view를 JSON으로 내보내기"
+                >
+                  <Download size={13} aria-hidden="true" />
+                  내보내기
+                </button>
+                <button
+                  className="inline-flex items-center gap-1.5 rounded-[8px] border border-[rgba(60,60,67,0.12)] bg-white px-2.5 py-1.5 text-xs font-semibold text-[rgba(60,60,67,0.72)] transition hover:bg-[rgba(242,242,247,0.9)]"
+                  type="button"
+                  onClick={() => viewPresetImportInputRef.current?.click()}
+                  data-testid="resource-view-import"
+                  title="저장된 Resource Explorer view JSON 가져오기"
+                >
+                  <Upload size={13} aria-hidden="true" />
+                  가져오기
+                </button>
                 <button
                   className="inline-flex items-center gap-1.5 rounded-[8px] border border-[rgba(60,60,67,0.12)] bg-white px-2.5 py-1.5 text-xs font-semibold text-[rgba(60,60,67,0.72)] transition hover:bg-[rgba(242,242,247,0.9)] disabled:cursor-not-allowed disabled:opacity-50"
                   type="button"
                   onClick={handleResetResourceFilters}
                   disabled={filtersAreDefault}
+                  data-testid="resource-view-reset"
                 >
                   <RotateCcw size={13} aria-hidden="true" />
                   필터 초기화
                 </button>
                 <span className="ku-chip">{viewPresets.length} / {maxResourceViewPresets}</span>
+                <input
+                  ref={viewPresetImportInputRef}
+                  className="hidden"
+                  type="file"
+                  accept="application/json,.json"
+                  data-testid="resource-view-import-input"
+                  onChange={(event) => {
+                    const file = event.currentTarget.files?.[0];
+                    void handleImportViewPresets(file);
+                    event.currentTarget.value = '';
+                  }}
+                />
               </div>
             </div>
+            {resourceViewMessage ? (
+              <p
+                className={`rounded-[9px] border px-2.5 py-1.5 text-xs font-semibold ${
+                  resourceViewMessage.tone === 'success'
+                    ? 'border-[rgba(52,199,89,0.22)] bg-[rgba(52,199,89,0.1)] text-[#248a3d]'
+                    : 'border-[rgba(255,149,0,0.24)] bg-[rgba(255,149,0,0.1)] text-[#8a4d00]'
+                }`}
+                data-testid="resource-view-message"
+              >
+                {resourceViewMessage.text}
+              </p>
+            ) : null}
             {viewPresets.length > 0 ? (
               <div className="flex gap-1.5 overflow-x-auto pb-0.5" aria-label="저장된 뷰 빠른 적용">
                 {viewPresets.map((preset) => {
@@ -436,11 +569,18 @@ export function ResourceExplorer({ liveEnabled, selectedNodeId, snapshot, source
             ) : null}
             {presetNameExists ? <p className="ku-meta">같은 이름으로 저장하면 기존 뷰를 업데이트합니다.</p> : null}
             <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
-              <input className="ku-input w-full" placeholder={suggestedPresetName} value={presetName} onChange={(event) => setPresetName(event.target.value)} />
+              <input
+                className="ku-input w-full"
+                placeholder={suggestedPresetName}
+                value={presetName}
+                onChange={(event) => setPresetName(event.target.value)}
+                data-testid="resource-view-name-input"
+              />
               <button
                 className="inline-flex h-9 items-center justify-center gap-2 rounded-[9px] border border-[rgba(0,122,255,0.22)] bg-[rgba(0,122,255,0.08)] px-3 text-xs font-semibold text-[#0057b8] transition hover:bg-[rgba(0,122,255,0.13)]"
                 type="button"
                 onClick={handleSaveViewPreset}
+                data-testid="resource-view-save"
               >
                 <Bookmark size={14} aria-hidden="true" />
                 {savePresetLabel}
@@ -3064,6 +3204,66 @@ function writeResourceViewPresets(presets: ResourceViewPreset[]) {
   }
 }
 
+function defaultResourceViewFilters(): ResourceViewFilters {
+  return {
+    query: '',
+    cluster: allValue,
+    namespace: allValue,
+    kind: allValue,
+    status: allValue,
+  };
+}
+
+function readResourceViewFiltersFromUrl(): ResourceViewFilters | null {
+  try {
+    if (typeof window === 'undefined') {
+      return null;
+    }
+    const params = new URLSearchParams(window.location.search);
+    const hasResourceViewParams =
+      params.get('view') === 'resources' ||
+      Object.values(resourceViewParamNames).some((paramName) => params.has(paramName));
+    if (!hasResourceViewParams) {
+      return null;
+    }
+    return {
+      query: (params.get(resourceViewParamNames.query) || '').slice(0, 160),
+      cluster: params.get(resourceViewParamNames.cluster) || allValue,
+      namespace: params.get(resourceViewParamNames.namespace) || allValue,
+      kind: params.get(resourceViewParamNames.kind) || allValue,
+      status: params.get(resourceViewParamNames.status) || allValue,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function resourceViewShareUrl(filters: ResourceViewFilters) {
+  const url = new URL(window.location.href);
+  const params = new URLSearchParams();
+  params.set('view', 'resources');
+  params.set(resourceViewParamNames.query, filters.query.slice(0, 160));
+  params.set(resourceViewParamNames.cluster, filters.cluster || allValue);
+  params.set(resourceViewParamNames.namespace, filters.namespace || allValue);
+  params.set(resourceViewParamNames.kind, filters.kind || allValue);
+  params.set(resourceViewParamNames.status, filters.status || allValue);
+  url.search = params.toString();
+  url.hash = '';
+  return url.toString();
+}
+
+function resourceViewPresetExportRecord(preset: ResourceViewPreset): ResourceViewPreset {
+  return {
+    name: preset.name,
+    query: preset.query,
+    cluster: preset.cluster,
+    namespace: preset.namespace,
+    kind: preset.kind,
+    status: preset.status,
+    updatedAt: preset.updatedAt,
+  };
+}
+
 function validResourceViewPreset(value: unknown): ResourceViewPreset[] {
   if (!value || typeof value !== 'object') {
     return [];
@@ -3092,6 +3292,26 @@ function validResourceViewPreset(value: unknown): ResourceViewPreset[] {
       updatedAt: candidate.updatedAt,
     },
   ];
+}
+
+function mergeResourceViewPresets(existingPresets: ResourceViewPreset[], importedPresets: ResourceViewPreset[]) {
+  const seenNames = new Set<string>();
+  const merged: ResourceViewPreset[] = [];
+  for (const preset of importedPresets) {
+    if (seenNames.has(preset.name)) {
+      continue;
+    }
+    seenNames.add(preset.name);
+    merged.push(preset);
+  }
+  for (const preset of existingPresets) {
+    if (seenNames.has(preset.name)) {
+      continue;
+    }
+    seenNames.add(preset.name);
+    merged.push(preset);
+  }
+  return merged.slice(0, maxResourceViewPresets);
 }
 
 function upsertResourceViewPreset(presets: ResourceViewPreset[], preset: ResourceViewPreset) {
