@@ -8,6 +8,7 @@ const visualMode = process.env.KUVIEWER_VISUAL_MODE || 'upload';
 const outputDir = process.env.KUVIEWER_VISUAL_OUTPUT || path.join(process.cwd(), 'artifacts', 'visual-smoke');
 const uploadManifestPath = path.join(outputDir, 'visual-upload.yaml');
 const conflictPresetPath = path.join(outputDir, 'visual-resource-view-conflict.json');
+const wrappedPresetPath = path.join(outputDir, 'visual-resource-view-items-wrapper.json');
 
 const viewports = [
   { name: 'desktop', viewport: { width: 1440, height: 980 }, isMobile: false, hasTouch: false },
@@ -29,6 +30,21 @@ await writeFile(conflictPresetPath, JSON.stringify([
     updatedAt: 1700000000000,
   },
 ], null, 2), 'utf8');
+await writeFile(wrappedPresetPath, JSON.stringify({
+  items: [
+    {
+      name: 'Visual Wrapped Import',
+      group: 'Wrapped',
+      query: 'gateway',
+      cluster: 'all',
+      namespace: 'all',
+      kind: 'Service',
+      status: 'healthy',
+      order: 1,
+      updatedAt: 1700000100000,
+    },
+  ],
+}, null, 2), 'utf8');
 
 for (const target of viewports) {
   await runViewport(target);
@@ -177,6 +193,7 @@ async function verifyResourceExplorer(page) {
   await verifyResourceViewFolderPolish(page);
   await verifyResourceViewSearch(page);
   await verifyResourceViewReorder(page);
+  await verifyResourceViewImportExportPolish(page);
   await verifyResourceViewBulkManagement(page);
   await verifyResourceViewConflictImport(page);
   await expect(page.getByRole('heading', { name: 'Metadata' })).toBeVisible({ timeout: 10_000 });
@@ -342,6 +359,30 @@ async function verifyResourceViewReorder(page) {
   await expect.poll(() => savedViewOrder(page, 'Platform')).toEqual([targetName, peerName]);
 }
 
+async function verifyResourceViewImportExportPolish(page) {
+  const wrappedName = 'Visual Wrapped Import';
+  const wrappedId = savedViewDomId(wrappedName);
+  const download = await Promise.all([
+    page.waitForEvent('download'),
+    page.getByTestId('resource-view-export').click(),
+  ]).then(([downloadResult]) => downloadResult);
+  const fileName = download.suggestedFilename();
+  if (!/^kuviewer-resource-views-all-.+\.json$/.test(fileName)) {
+    throw new Error(`saved view export filename did not include scope/timestamp: ${fileName}`);
+  }
+  await expect(page.getByTestId('resource-view-transfer-summary')).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByTestId('resource-view-transfer-action')).toContainText('All export');
+  await expect(page.getByTestId('resource-view-transfer-file')).toContainText(fileName);
+  await expect(page.getByTestId('resource-view-transfer-folders')).toContainText('Platform');
+
+  await page.setInputFiles('[data-testid="resource-view-import-input"]', wrappedPresetPath);
+  await expect(page.getByTestId('resource-view-transfer-action')).toContainText('Import preview', { timeout: 10_000 });
+  await expect(page.getByTestId('resource-view-transfer-file')).toContainText('visual-resource-view-items-wrapper.json');
+  await expect(page.getByTestId('resource-view-transfer-folders')).toContainText('format { items }');
+  await expect(page.getByTestId(`resource-view-preset-row-${wrappedId}`)).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByTestId(`resource-view-preset-row-${wrappedId}`)).toContainText('Wrapped', { timeout: 10_000 });
+}
+
 async function verifyResourceViewBulkManagement(page) {
   const targetName = 'Visual Rename Target';
   const peerName = 'Visual Reorder Peer';
@@ -368,11 +409,17 @@ async function verifyResourceViewBulkManagement(page) {
   if (!exportedPath) {
     throw new Error('saved view bulk export download path was not available');
   }
+  const selectedFileName = download.suggestedFilename();
+  if (!/^kuviewer-resource-views-selected-.+\.json$/.test(selectedFileName)) {
+    throw new Error(`saved view selected export filename did not include scope/timestamp: ${selectedFileName}`);
+  }
   const exportedViews = JSON.parse(await readFile(exportedPath, 'utf8'));
   const exportedNames = exportedViews.map((preset) => preset.name).sort();
   if (exportedViews.length !== 2 || exportedNames.join(',') !== [peerName, targetName].sort().join(',')) {
     throw new Error(`saved view bulk export did not include selected presets only: ${JSON.stringify(exportedViews)}`);
   }
+  await expect(page.getByTestId('resource-view-transfer-action')).toContainText('Selected export', { timeout: 10_000 });
+  await expect(page.getByTestId('resource-view-transfer-file')).toContainText(selectedFileName);
 
   await page.getByTestId('resource-view-bulk-group-input').fill('Bulk QA');
   await page.getByTestId('resource-view-bulk-move').click();

@@ -119,6 +119,16 @@ interface ResourceViewMessage {
   text: string;
 }
 
+interface ResourceViewTransferSummary {
+  action: 'export' | 'import';
+  scope: 'all' | 'selected' | 'incoming';
+  fileName: string;
+  count: number;
+  skippedCount: number;
+  folders: string[];
+  format?: 'array' | 'items';
+}
+
 interface ResourceViewRenameState {
   originalName: string;
   draftName: string;
@@ -271,6 +281,7 @@ export function ResourceExplorer({
   const [bulkViewPresetDeleteConfirm, setBulkViewPresetDeleteConfirm] = useState(false);
   const [collapsedViewGroups, setCollapsedViewGroups] = useState<Set<string>>(() => readCollapsedResourceViewGroups());
   const [resourceViewMessage, setResourceViewMessage] = useState<ResourceViewMessage | null>(null);
+  const [resourceViewTransferSummary, setResourceViewTransferSummary] = useState<ResourceViewTransferSummary | null>(null);
   const [resourceViewConflict, setResourceViewConflict] = useState<ResourceViewConflictState | null>(null);
   const [renamingViewPreset, setRenamingViewPreset] = useState<ResourceViewRenameState | null>(null);
   const [resourceViewTeamLoading, setResourceViewTeamLoading] = useState(false);
@@ -521,18 +532,38 @@ export function ResourceExplorer({
   };
 
   const handleExportViewPresets = () => {
-    const payload = `${JSON.stringify(normalizeResourceViewPresetOrders(viewPresets).map(resourceViewPresetExportRecord), null, 2)}\n`;
-    downloadTextFile(payload, 'application/json;charset=utf-8', 'kuviewer-resource-views.json');
-    setResourceViewMessage({ tone: 'success', text: `저장된 뷰 ${viewPresets.length}개를 내보냈습니다.` });
+    const exportPresets = normalizeResourceViewPresetOrders(viewPresets);
+    const fileName = resourceViewExportFileName('all');
+    const payload = `${JSON.stringify(exportPresets.map(resourceViewPresetExportRecord), null, 2)}\n`;
+    downloadTextFile(payload, 'application/json;charset=utf-8', fileName);
+    setResourceViewTransferSummary({
+      action: 'export',
+      scope: 'all',
+      fileName,
+      count: exportPresets.length,
+      skippedCount: 0,
+      folders: resourceViewPresetFolderNames(exportPresets),
+    });
+    setResourceViewMessage({ tone: 'success', text: `저장된 뷰 ${exportPresets.length}개를 ${fileName} 파일로 내보냈습니다.` });
   };
   const handleExportSelectedViewPresets = () => {
     if (selectedViewPresetCount === 0) {
       return;
     }
-    const payload = `${JSON.stringify(normalizeResourceViewPresetOrders(selectedViewPresets).map(resourceViewPresetExportRecord), null, 2)}\n`;
-    downloadTextFile(payload, 'application/json;charset=utf-8', 'kuviewer-resource-views-selected.json');
+    const exportPresets = normalizeResourceViewPresetOrders(selectedViewPresets);
+    const fileName = resourceViewExportFileName('selected');
+    const payload = `${JSON.stringify(exportPresets.map(resourceViewPresetExportRecord), null, 2)}\n`;
+    downloadTextFile(payload, 'application/json;charset=utf-8', fileName);
+    setResourceViewTransferSummary({
+      action: 'export',
+      scope: 'selected',
+      fileName,
+      count: exportPresets.length,
+      skippedCount: 0,
+      folders: resourceViewPresetFolderNames(exportPresets),
+    });
     setBulkViewPresetDeleteConfirm(false);
-    setResourceViewMessage({ tone: 'success', text: `선택한 saved view ${selectedViewPresetCount}개를 내보냈습니다.` });
+    setResourceViewMessage({ tone: 'success', text: `선택한 saved view ${exportPresets.length}개를 ${fileName} 파일로 내보냈습니다.` });
   };
 
   const handleImportViewPresets = async (file?: File) => {
@@ -541,23 +572,45 @@ export function ResourceExplorer({
     }
     try {
       const parsedValue = JSON.parse(await file.text());
-      if (!Array.isArray(parsedValue)) {
+      const parsedImport = resourceViewImportItems(parsedValue);
+      if (!parsedImport) {
         setResourceViewConflict(null);
         setRenamingViewPreset(null);
-        setResourceViewMessage({ tone: 'warning', text: '가져오기 실패: saved view JSON 배열이 아닙니다.' });
+        setResourceViewTransferSummary(null);
+        setResourceViewMessage({ tone: 'warning', text: '가져오기 실패: saved view JSON 배열 또는 { items } 형식이 아닙니다.' });
         return;
       }
-      const importedPresets = normalizeResourceViewPresetOrders(parsedValue.flatMap((value, index) => validResourceViewPreset(value, index + 1)));
+      const importedPresets = normalizeResourceViewPresetOrders(parsedImport.items.flatMap((value, index) => validResourceViewPreset(value, index + 1)));
+      const skippedCount = Math.max(0, parsedImport.items.length - importedPresets.length);
       if (importedPresets.length === 0) {
         setResourceViewConflict(null);
         setRenamingViewPreset(null);
-        setResourceViewMessage({ tone: 'warning', text: `가져오기 실패: 유효한 saved view가 없습니다. ${parsedValue.length}개 항목을 건너뛰었습니다.` });
+        setResourceViewTransferSummary({
+          action: 'import',
+          scope: 'incoming',
+          fileName: file.name || 'resource-views.json',
+          count: 0,
+          skippedCount,
+          folders: [],
+          format: parsedImport.format,
+        });
+        setResourceViewMessage({ tone: 'warning', text: `가져오기 실패: 유효한 saved view가 없습니다. ${parsedImport.items.length}개 항목을 건너뛰었습니다.` });
         return;
       }
-      handleIncomingResourceViewPresets('import', importedPresets, Math.max(0, parsedValue.length - importedPresets.length));
+      setResourceViewTransferSummary({
+        action: 'import',
+        scope: 'incoming',
+        fileName: file.name || 'resource-views.json',
+        count: importedPresets.length,
+        skippedCount,
+        folders: resourceViewPresetFolderNames(importedPresets),
+        format: parsedImport.format,
+      });
+      handleIncomingResourceViewPresets('import', importedPresets, skippedCount);
     } catch {
       setResourceViewConflict(null);
       setRenamingViewPreset(null);
+      setResourceViewTransferSummary(null);
       setResourceViewMessage({ tone: 'warning', text: '가져오기 실패: JSON 파일을 읽을 수 없습니다.' });
     }
   };
@@ -1260,6 +1313,43 @@ export function ResourceExplorer({
               >
                 {resourceViewMessage.text}
               </p>
+            ) : null}
+            {resourceViewTransferSummary ? (
+              <div className="grid gap-2 rounded-[12px] border border-[rgba(0,122,255,0.14)] bg-[rgba(0,122,255,0.045)] p-2" data-testid="resource-view-transfer-summary">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="inline-flex items-center gap-1 rounded-full bg-white/82 px-2 py-1 text-[10px] font-semibold text-[#0057b8]" data-testid="resource-view-transfer-action">
+                      {resourceViewTransferSummary.action === 'export' ? <Download size={12} aria-hidden="true" /> : <Upload size={12} aria-hidden="true" />}
+                      {resourceViewTransferActionLabel(resourceViewTransferSummary)}
+                    </span>
+                    <span className="ku-chip" data-testid="resource-view-transfer-count">
+                      {resourceViewTransferSummary.count} views
+                    </span>
+                    {resourceViewTransferSummary.skippedCount > 0 ? (
+                      <span className="ku-chip border-[rgba(255,149,0,0.24)] bg-[rgba(255,149,0,0.1)] text-[#8a4d00]" data-testid="resource-view-transfer-skipped">
+                        skipped {resourceViewTransferSummary.skippedCount}
+                      </span>
+                    ) : null}
+                  </div>
+                  <button
+                    className="rounded-[8px] border border-[rgba(60,60,67,0.12)] bg-white px-2 py-1 text-xs font-semibold text-[rgba(60,60,67,0.72)] transition hover:bg-[rgba(242,242,247,0.9)]"
+                    type="button"
+                    onClick={() => setResourceViewTransferSummary(null)}
+                    data-testid="resource-view-transfer-dismiss"
+                  >
+                    닫기
+                  </button>
+                </div>
+                <div className="grid gap-1">
+                  <p className="truncate font-mono text-[10px] font-semibold text-[rgba(60,60,67,0.62)]" data-testid="resource-view-transfer-file">
+                    {resourceViewTransferSummary.fileName}
+                  </p>
+                  <p className="ku-meta" data-testid="resource-view-transfer-folders">
+                    Folders {resourceViewTransferSummary.folders.length}: {resourceViewTransferSummary.folders.length > 0 ? resourceViewTransferSummary.folders.join(', ') : 'none'}
+                    {resourceViewTransferSummary.format ? ` · format ${resourceViewTransferSummary.format === 'items' ? '{ items }' : 'array'}` : ''}
+                  </p>
+                </div>
+              </div>
             ) : null}
             {resourceViewConflict ? (
               <div
@@ -4760,6 +4850,28 @@ function resourceViewPresetExportRecord(preset: ResourceViewPreset): ResourceVie
   };
 }
 
+function resourceViewExportFileName(scope: 'all' | 'selected') {
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+  return `kuviewer-resource-views-${scope}-${timestamp}.json`;
+}
+
+function resourceViewPresetFolderNames(presets: ResourceViewPreset[]) {
+  return unique(presets.map((preset) => normalizeResourceViewPresetGroup(preset.group))).sort((left, right) => left.localeCompare(right));
+}
+
+function resourceViewImportItems(value: unknown): { format: 'array' | 'items'; items: unknown[] } | null {
+  if (Array.isArray(value)) {
+    return { format: 'array', items: value };
+  }
+  if (value && typeof value === 'object') {
+    const candidate = value as Record<string, unknown>;
+    if (Array.isArray(candidate.items)) {
+      return { format: 'items', items: candidate.items };
+    }
+  }
+  return null;
+}
+
 function validResourceViewPreset(value: unknown, fallbackOrder = 1): ResourceViewPreset[] {
   if (!value || typeof value !== 'object') {
     return [];
@@ -4969,6 +5081,13 @@ function resourceViewMergeMessage(source: ResourceViewConflictSource, result: Re
     result.droppedCount > 0 ? `최대 ${maxResourceViewPresets}개 제한으로 ${result.droppedCount}개 제외` : '',
   ].filter(Boolean);
   return `${parts.join(' · ')}.`;
+}
+
+function resourceViewTransferActionLabel(summary: ResourceViewTransferSummary) {
+  if (summary.action === 'export') {
+    return summary.scope === 'selected' ? 'Selected export' : 'All export';
+  }
+  return 'Import preview';
 }
 
 function resourceViewSourceLabel(source: ResourceViewConflictSource) {
