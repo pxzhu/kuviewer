@@ -185,6 +185,18 @@ interface EventExportRow {
   pinned: boolean;
 }
 
+interface ResourceBulkExportRow {
+  cluster: string;
+  namespace: string;
+  kind: string;
+  name: string;
+  status: string;
+  labelsCount: number;
+  annotationsCount: number;
+  summaryKeys: string[];
+  relatedCount: number;
+}
+
 interface EventNotificationNotice {
   count: number;
   reason: string;
@@ -254,6 +266,8 @@ export function ResourceExplorer({
   const [resourceListDensity, setResourceListDensity] = useState<ResourceListDensity>(() => readResourceListDensityPreference());
   const [resourceListSort, setResourceListSort] = useState<ResourceListSortPreference>(() => readResourceListSortPreference());
   const [resourceListColumns, setResourceListColumns] = useState<ResourceListColumnPreference>(() => readResourceListColumnPreference());
+  const [selectedResourceIds, setSelectedResourceIds] = useState<Set<string>>(() => new Set());
+  const [resourceBulkMessage, setResourceBulkMessage] = useState<ResourceViewMessage | null>(null);
   const resourceRowRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const viewPresetImportInputRef = useRef<HTMLInputElement>(null);
 
@@ -331,6 +345,9 @@ export function ResourceExplorer({
   const sortedResources = useMemo(() => sortResourceList(filteredResources, resourceListSort), [filteredResources, resourceListSort]);
   const selectedResource = sortedResources.find((resource) => resource.id === selectedNodeId) || sortedResources[0] || resources.find((resource) => resource.id === selectedNodeId) || resources[0];
   const selectedResourceIndex = selectedResource ? sortedResources.findIndex((resource) => resource.id === selectedResource.id) : -1;
+  const selectedResources = useMemo(() => sortedResources.filter((resource) => selectedResourceIds.has(resource.id)), [selectedResourceIds, sortedResources]);
+  const selectedResourceCount = selectedResources.length;
+  const allFilteredResourcesSelected = sortedResources.length > 0 && selectedResourceCount === sortedResources.length;
 
   useEffect(() => {
     if (resourceViewFiltersEqual(resourceFiltersPropRef.current, resourceFilters)) {
@@ -361,6 +378,14 @@ export function ResourceExplorer({
       onSelectNode(selectedResource.id);
     }
   }, [onSelectNode, selectedNodeId, selectedResource]);
+
+  useEffect(() => {
+    const visibleResourceIds = new Set(sortedResources.map((resource) => resource.id));
+    setSelectedResourceIds((current) => {
+      const next = new Set([...current].filter((resourceId) => visibleResourceIds.has(resourceId)));
+      return next.size === current.size ? current : next;
+    });
+  }, [sortedResources]);
 
   useEffect(() => {
     writeResourceListDensityPreference(resourceListDensity);
@@ -615,6 +640,49 @@ export function ResourceExplorer({
       handleCancelResourceViewRename();
     }
   };
+  const handleToggleResourceSelection = (resourceId: string, selected: boolean) => {
+    setSelectedResourceIds((current) => {
+      const next = new Set(current);
+      if (selected) {
+        next.add(resourceId);
+      } else {
+        next.delete(resourceId);
+      }
+      return next;
+    });
+    setResourceBulkMessage(null);
+  };
+  const handleSelectFilteredResources = () => {
+    setSelectedResourceIds(new Set(sortedResources.map((resource) => resource.id)));
+    setResourceBulkMessage({ tone: 'success', text: `현재 필터 결과 ${sortedResources.length}개를 선택했습니다.` });
+  };
+  const handleClearResourceSelection = () => {
+    setSelectedResourceIds(new Set());
+    setResourceBulkMessage(null);
+  };
+  const handleCopySelectedResourceNames = async () => {
+    if (selectedResources.length === 0) {
+      return;
+    }
+    try {
+      if (!navigator.clipboard?.writeText) {
+        throw new Error('clipboard_unavailable');
+      }
+      await navigator.clipboard.writeText(`${selectedResources.map(resourceBulkCopyName).join('\n')}\n`);
+      setResourceBulkMessage({ tone: 'success', text: `선택한 리소스 ${selectedResources.length}개 이름을 복사했습니다.` });
+    } catch {
+      setResourceBulkMessage({ tone: 'warning', text: '클립보드 복사가 지원되지 않아 이름을 복사하지 못했습니다.' });
+    }
+  };
+  const handleExportSelectedResources = (format: 'json' | 'csv') => {
+    if (selectedResources.length === 0) {
+      return;
+    }
+    const content = format === 'json' ? resourceBulkExportJson(selectedResources) : resourceBulkExportCsv(selectedResources);
+    const mimeType = format === 'json' ? 'application/json;charset=utf-8' : 'text/csv;charset=utf-8';
+    downloadTextFile(content, mimeType, resourceBulkExportFileName(format));
+    setResourceBulkMessage({ tone: 'success', text: `선택한 리소스 ${selectedResources.length}개를 ${format.toUpperCase()}로 내보냈습니다.` });
+  };
   const resourceSummaryLimit = resourceListDensity === 'compact' ? 2 : 3;
   const visibleOptionalColumnCount = resourceListOptionalColumns.filter((column) => resourceListColumns[column.key]).length;
   const toggleResourceListColumn = (column: ResourceListOptionalColumn) => {
@@ -624,6 +692,8 @@ export function ResourceExplorer({
     `${resourceListDensity === 'compact' ? 'mb-1.5 rounded-[10px] px-2 py-2' : 'mb-2 rounded-[12px] p-3'} w-full cursor-pointer border text-left transition focus:outline-none focus:ring-2 focus:ring-[rgba(0,122,255,0.22)] ${
       resource.id === selectedResource?.id
         ? 'border-[rgba(0,122,255,0.36)] bg-[rgba(0,122,255,0.1)] shadow-[0_0_0_1px_rgba(0,122,255,0.08)]'
+        : selectedResourceIds.has(resource.id)
+          ? 'border-[rgba(52,199,89,0.24)] bg-[rgba(52,199,89,0.08)] hover:bg-[rgba(52,199,89,0.11)]'
         : 'border-[rgba(60,60,67,0.12)] bg-white/78 hover:bg-white'
     }`;
   const resourceGridClassName =
@@ -1103,6 +1173,82 @@ export function ResourceExplorer({
           </div>
         </div>
 
+        <div className="grid gap-2 border-b border-[rgba(60,60,67,0.1)] p-3" data-testid="resource-bulk-toolbar">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className={`ku-chip ${selectedResourceCount > 0 ? 'border-[rgba(0,122,255,0.22)] bg-[rgba(0,122,255,0.08)] text-[#0057b8]' : ''}`} data-testid="resource-bulk-count">
+                선택 {selectedResourceCount}개
+              </span>
+              <span className="ku-meta">현재 필터 결과 {sortedResources.length}개 · 메모리에만 보관</span>
+            </div>
+            <div className="flex flex-wrap items-center justify-end gap-1.5">
+              <button
+                className="rounded-[8px] border border-[rgba(60,60,67,0.12)] bg-white px-2.5 py-1.5 text-xs font-semibold text-[rgba(60,60,67,0.72)] transition hover:bg-[rgba(242,242,247,0.9)] disabled:cursor-not-allowed disabled:opacity-50"
+                type="button"
+                onClick={handleSelectFilteredResources}
+                disabled={sortedResources.length === 0 || allFilteredResourcesSelected}
+                data-testid="resource-bulk-select-all"
+              >
+                현재 필터 전체 선택
+              </button>
+              <button
+                className="rounded-[8px] border border-[rgba(60,60,67,0.12)] bg-white px-2.5 py-1.5 text-xs font-semibold text-[rgba(60,60,67,0.72)] transition hover:bg-[rgba(242,242,247,0.9)] disabled:cursor-not-allowed disabled:opacity-50"
+                type="button"
+                onClick={handleClearResourceSelection}
+                disabled={selectedResourceCount === 0}
+                data-testid="resource-bulk-clear"
+              >
+                선택 해제
+              </button>
+              <button
+                className="inline-flex items-center gap-1.5 rounded-[8px] border border-[rgba(0,122,255,0.18)] bg-[rgba(0,122,255,0.06)] px-2.5 py-1.5 text-xs font-semibold text-[#0057b8] transition hover:bg-[rgba(0,122,255,0.1)] disabled:cursor-not-allowed disabled:opacity-50"
+                type="button"
+                onClick={() => void handleCopySelectedResourceNames()}
+                disabled={selectedResourceCount === 0}
+                data-testid="resource-bulk-copy-names"
+                title="선택한 리소스 이름을 클립보드에 복사"
+              >
+                <Copy size={13} aria-hidden="true" />
+                이름 복사
+              </button>
+              <button
+                className="inline-flex items-center gap-1.5 rounded-[8px] border border-[rgba(60,60,67,0.12)] bg-white px-2.5 py-1.5 text-xs font-semibold text-[rgba(60,60,67,0.72)] transition hover:bg-[rgba(242,242,247,0.9)] disabled:cursor-not-allowed disabled:opacity-50"
+                type="button"
+                onClick={() => handleExportSelectedResources('json')}
+                disabled={selectedResourceCount === 0}
+                data-testid="resource-bulk-export-json"
+                title="선택한 리소스 safe inventory를 JSON으로 다운로드"
+              >
+                <Download size={13} aria-hidden="true" />
+                JSON
+              </button>
+              <button
+                className="inline-flex items-center gap-1.5 rounded-[8px] border border-[rgba(60,60,67,0.12)] bg-white px-2.5 py-1.5 text-xs font-semibold text-[rgba(60,60,67,0.72)] transition hover:bg-[rgba(242,242,247,0.9)] disabled:cursor-not-allowed disabled:opacity-50"
+                type="button"
+                onClick={() => handleExportSelectedResources('csv')}
+                disabled={selectedResourceCount === 0}
+                data-testid="resource-bulk-export-csv"
+                title="선택한 리소스 safe inventory를 CSV로 다운로드"
+              >
+                <Download size={13} aria-hidden="true" />
+                CSV
+              </button>
+            </div>
+          </div>
+          {resourceBulkMessage ? (
+            <p
+              className={`rounded-[9px] border px-2.5 py-1.5 text-xs font-semibold ${
+                resourceBulkMessage.tone === 'success'
+                  ? 'border-[rgba(52,199,89,0.22)] bg-[rgba(52,199,89,0.1)] text-[#248a3d]'
+                  : 'border-[rgba(255,149,0,0.24)] bg-[rgba(255,149,0,0.1)] text-[#8a4d00]'
+              }`}
+              data-testid="resource-bulk-message"
+            >
+              {resourceBulkMessage.text}
+            </p>
+          ) : null}
+        </div>
+
         <div
           className="max-h-[68vh] overflow-auto p-2 focus:outline-none focus:ring-2 focus:ring-[rgba(0,122,255,0.22)]"
           role="listbox"
@@ -1114,6 +1260,7 @@ export function ResourceExplorer({
           {sortedResources.length === 0 ? <p className="ku-meta p-2">필터와 일치하는 리소스가 없습니다.</p> : null}
           {sortedResources.length > 0 ? (
             <div className={`${resourceHeaderGridClassName} mb-2 hidden md:grid`} style={resourceGridStyle} data-testid="resource-list-column-header">
+              <span className="ku-meta" data-resource-column="select">Select</span>
               <span className="ku-meta" data-resource-column="kind">Kind</span>
               <span className="ku-meta" data-resource-column="name">Name</span>
               {resourceListColumns.namespace ? <span className="ku-meta" data-resource-column="namespace">Namespace</span> : null}
@@ -1126,6 +1273,8 @@ export function ResourceExplorer({
           {sortedResources.map((resource) => {
             const summaryEntries = Object.entries(resource.summary).slice(0, resourceSummaryLimit);
             const resourceAge = resourceListAge(resource);
+            const resourceBulkSelected = selectedResourceIds.has(resource.id);
+            const resourceBulkDomId = resourceOptionDomId(resource.id);
             return (
               <div
                 key={resource.id}
@@ -1137,10 +1286,23 @@ export function ResourceExplorer({
                 role="option"
                 aria-selected={resource.id === selectedResource?.id}
                 data-resource-row="true"
+                data-resource-bulk-selected={resourceBulkSelected ? 'true' : 'false'}
                 tabIndex={resource.id === selectedResource?.id ? 0 : -1}
                 onClick={() => onSelectNode(resource.id)}
               >
                 <div className={resourceGridClassName} style={resourceGridStyle}>
+                  <div className="flex min-w-0 items-center gap-2" data-resource-column="select" onClick={(event) => event.stopPropagation()}>
+                    <input
+                      className="h-4 w-4 rounded border-[rgba(60,60,67,0.24)] text-[#0057b8] focus:ring-[rgba(0,122,255,0.25)]"
+                      type="checkbox"
+                      checked={resourceBulkSelected}
+                      onChange={(event) => handleToggleResourceSelection(resource.id, event.currentTarget.checked)}
+                      aria-label={`${resource.kind} ${resource.namespace ? `${resource.namespace}/` : ''}${resource.name} 선택`}
+                      data-testid={`resource-bulk-checkbox-${resourceBulkDomId}`}
+                      data-resource-bulk-control="true"
+                    />
+                    <span className={`${resourceColumnLabelClassName} md:hidden`}>선택</span>
+                  </div>
                   <div className="min-w-0" data-resource-column="kind">
                     <span className={resourceColumnLabelClassName}>Kind</span>
                     <span className={resourceColumnValueClassName} title={resource.kind}>{resource.kind}</span>
@@ -3350,7 +3512,7 @@ function eventExportJson(items: EventListItem[]) {
   return `${JSON.stringify(eventExportRows(items), null, 2)}\n`;
 }
 
-function eventCsvCell(value: string | boolean) {
+function eventCsvCell(value: unknown) {
   const text = String(value);
   if (/[",\n\r]/.test(text)) {
     return `"${text.replace(/"/g, '""')}"`;
@@ -4154,6 +4316,9 @@ function isResourceListShortcutTarget(target: EventTarget | null) {
   if (!(target instanceof HTMLElement)) {
     return false;
   }
+  if (target.closest('[data-resource-bulk-control="true"]')) {
+    return true;
+  }
   if (target.closest('[data-resource-row="true"]')) {
     return false;
   }
@@ -4201,7 +4366,7 @@ function compareResourceText(left: string, right: string) {
 }
 
 function resourceListGridTemplate(columns: ResourceListColumnPreference) {
-  const tracks = ['minmax(92px,0.72fr)', 'minmax(150px,1.45fr)'];
+  const tracks = ['minmax(44px,0.32fr)', 'minmax(92px,0.72fr)', 'minmax(150px,1.45fr)'];
   if (columns.namespace) {
     tracks.push('minmax(92px,0.72fr)');
   }
@@ -4234,6 +4399,39 @@ function resourceListCellValue(value: unknown) {
     return value ? 'true' : 'false';
   }
   return '-';
+}
+
+function resourceBulkCopyName(resource: ResourceExplorerItem) {
+  return `${resource.kind} ${resource.namespace ? `${resource.namespace}/` : ''}${resource.name}`;
+}
+
+function resourceBulkExportRows(resources: ResourceExplorerItem[]): ResourceBulkExportRow[] {
+  return resources.map((resource) => ({
+    cluster: resource.clusterId,
+    namespace: resource.namespace || '',
+    kind: resource.kind,
+    name: resource.name,
+    status: resource.status,
+    labelsCount: Object.keys(resource.labels).length,
+    annotationsCount: Object.keys(resource.annotations).length,
+    summaryKeys: Object.keys(resource.summary).sort(),
+    relatedCount: resource.related.length,
+  }));
+}
+
+function resourceBulkExportJson(resources: ResourceExplorerItem[]) {
+  return `${JSON.stringify(resourceBulkExportRows(resources), null, 2)}\n`;
+}
+
+function resourceBulkExportCsv(resources: ResourceExplorerItem[]) {
+  const header: Array<keyof ResourceBulkExportRow> = ['cluster', 'namespace', 'kind', 'name', 'status', 'labelsCount', 'annotationsCount', 'summaryKeys', 'relatedCount'];
+  const rows = resourceBulkExportRows(resources).map((row) => header.map((key) => eventCsvCell(Array.isArray(row[key]) ? row[key].join(';') : row[key])).join(','));
+  return `${header.join(',')}\n${rows.join('\n')}\n`;
+}
+
+function resourceBulkExportFileName(format: 'json' | 'csv') {
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+  return `kuviewer-resources-selected-${timestamp}.${format}`;
 }
 
 function isEditableTarget(target: EventTarget | null) {
