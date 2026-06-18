@@ -268,6 +268,7 @@ export function ResourceExplorer({
   const [resourceListColumns, setResourceListColumns] = useState<ResourceListColumnPreference>(() => readResourceListColumnPreference());
   const [selectedResourceIds, setSelectedResourceIds] = useState<Set<string>>(() => new Set());
   const [resourceBulkMessage, setResourceBulkMessage] = useState<ResourceViewMessage | null>(null);
+  const resourceSelectionAnchorRef = useRef<string | null>(null);
   const resourceRowRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const viewPresetImportInputRef = useRef<HTMLInputElement>(null);
 
@@ -385,7 +386,10 @@ export function ResourceExplorer({
       const next = new Set([...current].filter((resourceId) => visibleResourceIds.has(resourceId)));
       return next.size === current.size ? current : next;
     });
-  }, [sortedResources]);
+    if (resourceSelectionAnchorRef.current && !visibleResourceIds.has(resourceSelectionAnchorRef.current)) {
+      resourceSelectionAnchorRef.current = selectedResource && visibleResourceIds.has(selectedResource.id) ? selectedResource.id : sortedResources[0]?.id ?? null;
+    }
+  }, [selectedResource, sortedResources]);
 
   useEffect(() => {
     writeResourceListDensityPreference(resourceListDensity);
@@ -641,6 +645,7 @@ export function ResourceExplorer({
     }
   };
   const handleToggleResourceSelection = (resourceId: string, selected: boolean) => {
+    resourceSelectionAnchorRef.current = resourceId;
     setSelectedResourceIds((current) => {
       const next = new Set(current);
       if (selected) {
@@ -653,11 +658,16 @@ export function ResourceExplorer({
     setResourceBulkMessage(null);
   };
   const handleSelectFilteredResources = () => {
+    if (sortedResources.length === 0) {
+      return;
+    }
     setSelectedResourceIds(new Set(sortedResources.map((resource) => resource.id)));
+    resourceSelectionAnchorRef.current = selectedResource?.id ?? sortedResources[0]?.id ?? null;
     setResourceBulkMessage({ tone: 'success', text: `현재 필터 결과 ${sortedResources.length}개를 선택했습니다.` });
   };
   const handleClearResourceSelection = () => {
     setSelectedResourceIds(new Set());
+    resourceSelectionAnchorRef.current = selectedResource?.id ?? sortedResources[0]?.id ?? null;
     setResourceBulkMessage(null);
   };
   const handleCopySelectedResourceNames = async () => {
@@ -722,35 +732,81 @@ export function ResourceExplorer({
       resourceRowRefs.current[resourceId]?.focus({ preventScroll: true });
     });
   };
-  const selectResourceAtIndex = (index: number) => {
+  const handleSelectResource = (resourceId: string) => {
+    resourceSelectionAnchorRef.current = resourceId;
+    onSelectNode(resourceId);
+  };
+  const selectResourceRange = (anchorResourceId: string, targetResourceId: string) => {
+    const targetIndex = sortedResources.findIndex((resource) => resource.id === targetResourceId);
+    if (targetIndex < 0) {
+      return;
+    }
+    const anchorIndex = sortedResources.findIndex((resource) => resource.id === anchorResourceId);
+    const normalizedAnchorIndex = anchorIndex >= 0 ? anchorIndex : selectedResourceIndex >= 0 ? selectedResourceIndex : targetIndex;
+    const startIndex = Math.min(normalizedAnchorIndex, targetIndex);
+    const endIndex = Math.max(normalizedAnchorIndex, targetIndex);
+    const rangeResourceIds = sortedResources.slice(startIndex, endIndex + 1).map((resource) => resource.id);
+    setSelectedResourceIds((current) => {
+      const next = new Set(current);
+      rangeResourceIds.forEach((resourceId) => next.add(resourceId));
+      return next;
+    });
+    resourceSelectionAnchorRef.current = sortedResources[normalizedAnchorIndex]?.id ?? targetResourceId;
+    setResourceBulkMessage(null);
+    onSelectNode(targetResourceId);
+    focusResourceRow(targetResourceId);
+  };
+  const selectResourceAtIndex = (index: number, rangeSelection = false) => {
     if (sortedResources.length === 0) {
       return;
     }
     const nextIndex = Math.max(0, Math.min(sortedResources.length - 1, index));
     const nextResource = sortedResources[nextIndex];
+    if (rangeSelection) {
+      selectResourceRange(resourceSelectionAnchorRef.current ?? selectedResource?.id ?? nextResource.id, nextResource.id);
+      return;
+    }
+    resourceSelectionAnchorRef.current = nextResource.id;
     onSelectNode(nextResource.id);
     focusResourceRow(nextResource.id);
   };
   const handleResourceListKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
-    if (event.altKey || event.ctrlKey || event.metaKey || isResourceListShortcutTarget(event.target)) {
+    const shortcutTarget = isResourceListShortcutTarget(event.target);
+
+    if (!shortcutTarget && !event.altKey && (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'a') {
+      event.preventDefault();
+      handleSelectFilteredResources();
+      return;
+    }
+
+    if (!shortcutTarget && event.key === 'Escape' && (selectedResourceCount > 0 || resourceBulkMessage)) {
+      event.preventDefault();
+      handleClearResourceSelection();
+      return;
+    }
+
+    if (event.altKey || event.ctrlKey || event.metaKey || shortcutTarget) {
       return;
     }
 
     if (event.key === 'ArrowDown') {
       event.preventDefault();
-      selectResourceAtIndex(selectedResourceIndex >= 0 ? selectedResourceIndex + 1 : 0);
+      selectResourceAtIndex(selectedResourceIndex >= 0 ? selectedResourceIndex + 1 : 0, event.shiftKey);
     } else if (event.key === 'ArrowUp') {
       event.preventDefault();
-      selectResourceAtIndex(selectedResourceIndex >= 0 ? selectedResourceIndex - 1 : sortedResources.length - 1);
+      selectResourceAtIndex(selectedResourceIndex >= 0 ? selectedResourceIndex - 1 : sortedResources.length - 1, event.shiftKey);
     } else if (event.key === 'Home') {
       event.preventDefault();
-      selectResourceAtIndex(0);
+      selectResourceAtIndex(0, event.shiftKey);
     } else if (event.key === 'End') {
       event.preventDefault();
-      selectResourceAtIndex(sortedResources.length - 1);
+      selectResourceAtIndex(sortedResources.length - 1, event.shiftKey);
     } else if (event.key === 'Enter' && selectedResource) {
       event.preventDefault();
       setDetailFocusRequest((request) => request + 1);
+    } else if ((event.key === ' ' || event.key === 'Spacebar') && selectedResource) {
+      event.preventDefault();
+      handleToggleResourceSelection(selectedResource.id, !selectedResourceIds.has(selectedResource.id));
     }
   };
 
@@ -1180,6 +1236,7 @@ export function ResourceExplorer({
                 선택 {selectedResourceCount}개
               </span>
               <span className="ku-meta">현재 필터 결과 {sortedResources.length}개 · 메모리에만 보관</span>
+              <span className="ku-meta" data-testid="resource-bulk-keyboard-hint">Space 선택 · Shift+Arrow 범위 · Ctrl/⌘+A 전체</span>
             </div>
             <div className="flex flex-wrap items-center justify-end gap-1.5">
               <button
@@ -1288,7 +1345,7 @@ export function ResourceExplorer({
                 data-resource-row="true"
                 data-resource-bulk-selected={resourceBulkSelected ? 'true' : 'false'}
                 tabIndex={resource.id === selectedResource?.id ? 0 : -1}
-                onClick={() => onSelectNode(resource.id)}
+                onClick={() => handleSelectResource(resource.id)}
               >
                 <div className={resourceGridClassName} style={resourceGridStyle}>
                   <div className="flex min-w-0 items-center gap-2" data-resource-column="select" onClick={(event) => event.stopPropagation()}>

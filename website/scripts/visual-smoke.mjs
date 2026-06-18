@@ -170,6 +170,7 @@ async function verifyResourceExplorer(page) {
   await verifyResourceListSorting(page);
   await verifyResourceListColumns(page);
   await verifyResourceBulkActions(page);
+  await verifyResourceKeyboardMultiSelect(page);
   await verifyResourceViewRename(page);
   await verifyResourceViewConflictImport(page);
   await expect(page.getByRole('heading', { name: 'Metadata' })).toBeVisible({ timeout: 10_000 });
@@ -308,6 +309,46 @@ async function verifyResourceBulkActions(page) {
     throw new Error('select all did not select resources');
   }
   await page.getByTestId('resource-bulk-clear').click();
+}
+
+async function verifyResourceKeyboardMultiSelect(page) {
+  const rows = page.locator('[data-resource-row="true"]');
+  await expect(rows.first()).toBeVisible({ timeout: 10_000 });
+  const rowCount = await rows.count();
+  if (rowCount < 3) {
+    return;
+  }
+
+  await rows.nth(0).focus();
+  await page.keyboard.press('Space');
+  await expect(page.getByTestId('resource-bulk-count')).toContainText('선택 1개', { timeout: 10_000 });
+
+  await page.keyboard.down('Shift');
+  await page.keyboard.press('ArrowDown');
+  await page.keyboard.up('Shift');
+  await expect(page.getByTestId('resource-bulk-count')).toContainText('선택 2개', { timeout: 10_000 });
+
+  await page.keyboard.down('Shift');
+  await page.keyboard.press('End');
+  await page.keyboard.up('Shift');
+  const selectedAfterRange = await page.locator('[data-resource-bulk-selected="true"]').count();
+  if (selectedAfterRange < 3) {
+    throw new Error(`keyboard range selection selected too few rows: ${selectedAfterRange}`);
+  }
+
+  await page.keyboard.press('Escape');
+  await expect(page.getByTestId('resource-bulk-count')).toContainText('선택 0개', { timeout: 10_000 });
+  await expect(page.locator('[data-resource-bulk-selected="true"]')).toHaveCount(0);
+
+  await rows.nth(0).focus();
+  await page.keyboard.press('Control+A');
+  const selectedAfterShortcut = await page.locator('[data-resource-bulk-selected="true"]').count();
+  if (selectedAfterShortcut !== rowCount) {
+    throw new Error(`keyboard select all selected ${selectedAfterShortcut} of ${rowCount} rows`);
+  }
+
+  await page.keyboard.press('Escape');
+  await expect(page.getByTestId('resource-bulk-count')).toContainText('선택 0개', { timeout: 10_000 });
 }
 
 async function visibleResourceNames(page) {
