@@ -105,14 +105,21 @@ interface LogSearchMatch {
   end: number;
 }
 
+interface HealthSignal {
+  label: string;
+  value: string;
+  helper: string;
+  tone: 'default' | 'accent' | 'healthy' | 'warning' | 'error';
+}
+
 interface DetailOverviewItem {
   label: string;
   value: string;
   helper: string;
-  tone?: 'default' | 'accent' | 'warning';
+  tone?: 'default' | 'accent' | 'warning' | 'error';
 }
 
-type DetailSectionTone = 'default' | 'warning';
+type DetailSectionTone = 'default' | 'warning' | 'error';
 
 export function ResourceExplorer({ liveEnabled, selectedNodeId, snapshot, sourceMode, onOpenTopologyNode, onSelectNode }: ResourceExplorerProps) {
   const [query, setQuery] = useState('');
@@ -761,6 +768,8 @@ function ResourceExplorerDetail({
     ...(resource.preview.secretValues ? { secretValues: resource.preview.secretValues } : {}),
   };
   const yamlPreview = typeof resource.preview.safeYaml === 'string' ? resource.preview.safeYaml : '';
+  const healthSignals = resourceHealthSignals(resource, statusPreview, summaryPreview);
+  const healthSectionTone = healthSignalSectionTone(resource, healthSignals);
   const canFetchLogs = liveEnabled && resource.kind === 'Pod';
   const logContainerOptions = podLogContainerOptions(resource);
   const effectiveLogContainer = selectedLogContainer || logContainerOptions.find((option) => !option.init)?.name || logContainerOptions[0]?.name || '';
@@ -775,7 +784,7 @@ function ResourceExplorerDetail({
   const relationSummary = normalizedRelationFilter ? `${filteredRelations.length} / ${resource.related.length}` : `${resource.related.length}`;
   const detailSectionSummaries: Record<DetailSectionId, string> = {
     metadata: sectionCount(metadataPreview),
-    status: sectionCount(statusPreview),
+    status: healthSectionSummary(resource, healthSignals, statusPreview),
     safe: sectionCount(summaryPreview),
     yaml: yamlPreview ? 'available' : 'empty',
     labels: sectionCount(resource.labels),
@@ -792,6 +801,7 @@ function ResourceExplorerDetail({
     logSummary: detailSectionSummaries.logs,
     labels: resource.labels,
     annotations: resource.annotations,
+    healthSignals,
     metadataPreview,
     relationCount: resource.related.length,
     resource,
@@ -1150,18 +1160,22 @@ function ResourceExplorerDetail({
         </div>
         <div className="mt-3 flex flex-wrap items-center gap-1.5">
           {detailJumpSections.map((section) => {
-            const warningTone = section.id === 'events' && eventHasWarning;
+            const jumpTone: DetailSectionTone = section.id === 'events' && eventHasWarning ? 'warning' : section.id === 'status' ? healthSectionTone : 'default';
             return (
               <button
                 key={section.id}
                 className={`inline-flex items-center gap-1.5 rounded-[8px] border px-2.5 py-1.5 text-xs font-semibold transition ${
                   activeDetailSectionId === section.id
-                    ? warningTone
-                      ? 'border-[rgba(255,149,0,0.28)] bg-[rgba(255,149,0,0.12)] text-[#9a5a00]'
-                      : 'border-[rgba(0,122,255,0.24)] bg-[rgba(0,122,255,0.1)] text-[#0057b8]'
-                    : warningTone
-                      ? 'border-[rgba(255,149,0,0.22)] bg-[rgba(255,149,0,0.08)] text-[#9a5a00] hover:bg-[rgba(255,149,0,0.12)]'
-                      : 'border-[rgba(60,60,67,0.12)] bg-white/75 text-[rgba(60,60,67,0.72)] hover:bg-white'
+                    ? jumpTone === 'error'
+                      ? 'border-[rgba(255,59,48,0.28)] bg-[rgba(255,59,48,0.12)] text-[#b42318]'
+                      : jumpTone === 'warning'
+                        ? 'border-[rgba(255,149,0,0.28)] bg-[rgba(255,149,0,0.12)] text-[#9a5a00]'
+                        : 'border-[rgba(0,122,255,0.24)] bg-[rgba(0,122,255,0.1)] text-[#0057b8]'
+                    : jumpTone === 'error'
+                      ? 'border-[rgba(255,59,48,0.22)] bg-[rgba(255,59,48,0.08)] text-[#b42318] hover:bg-[rgba(255,59,48,0.12)]'
+                      : jumpTone === 'warning'
+                        ? 'border-[rgba(255,149,0,0.22)] bg-[rgba(255,149,0,0.08)] text-[#9a5a00] hover:bg-[rgba(255,149,0,0.12)]'
+                        : 'border-[rgba(60,60,67,0.12)] bg-white/75 text-[rgba(60,60,67,0.72)] hover:bg-white'
                 }`}
                 type="button"
                 onClick={() => focusDetailSection(section.id)}
@@ -1172,7 +1186,11 @@ function ResourceExplorerDetail({
                 <span>{section.label}</span>
                 <span
                   className={`rounded-full px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase ${
-                    warningTone ? 'bg-white/80 text-[#9a5a00]' : 'bg-white/70 text-[rgba(60,60,67,0.54)]'
+                    jumpTone === 'error'
+                      ? 'bg-white/80 text-[#b42318]'
+                      : jumpTone === 'warning'
+                        ? 'bg-white/80 text-[#9a5a00]'
+                        : 'bg-white/70 text-[rgba(60,60,67,0.54)]'
                   }`}
                 >
                   {detailSectionSummaries[section.id]}
@@ -1188,7 +1206,8 @@ function ResourceExplorerDetail({
         <DetailSection icon={FileText} title="Metadata" summary={detailSectionSummaries.metadata} open={isSectionOpen('metadata')} active={activeDetailSectionId === 'metadata'} sectionRef={setDetailSectionRef('metadata')} onFocusSection={() => setActiveDetailSectionId('metadata')} onToggle={() => toggleSection('metadata')}>
           <KeyValueGrid values={metadataPreview} />
         </DetailSection>
-        <DetailSection icon={Activity} title="Status" summary={detailSectionSummaries.status} open={isSectionOpen('status')} active={activeDetailSectionId === 'status'} sectionRef={setDetailSectionRef('status')} onFocusSection={() => setActiveDetailSectionId('status')} onToggle={() => toggleSection('status')}>
+        <DetailSection icon={Activity} title="Status" summary={detailSectionSummaries.status} tone={healthSectionTone} open={isSectionOpen('status')} active={activeDetailSectionId === 'status'} sectionRef={setDetailSectionRef('status')} onFocusSection={() => setActiveDetailSectionId('status')} onToggle={() => toggleSection('status')}>
+          <HealthSignalPanel signals={healthSignals} />
           <KeyValueGrid values={statusPreview} />
         </DetailSection>
         <DetailSection icon={FileText} title="Safe Preview" summary={detailSectionSummaries.safe} open={isSectionOpen('safe')} active={activeDetailSectionId === 'safe'} sectionRef={setDetailSectionRef('safe')} onFocusSection={() => setActiveDetailSectionId('safe')} onToggle={() => toggleSection('safe')}>
@@ -1780,6 +1799,30 @@ function EventSeverityChips({ counts }: { counts: Record<EventSeverity, number> 
   );
 }
 
+function HealthSignalPanel({ signals }: { signals: HealthSignal[] }) {
+  if (signals.length === 0) {
+    return null;
+  }
+  return (
+    <div className="mb-2 grid gap-2 sm:grid-cols-2 xl:grid-cols-3" aria-label="Health Signals">
+      {signals.slice(0, 6).map((signal) => (
+        <div key={`${signal.label}:${signal.value}`} className={`min-w-0 rounded-[10px] border px-2.5 py-2 ${healthSignalToneClassName(signal.tone)}`}>
+          <div className="flex min-w-0 items-center justify-between gap-2">
+            <p className="truncate font-mono text-[9px] font-semibold uppercase tracking-[0.04em] text-[rgba(60,60,67,0.56)]">{signal.label}</p>
+            <span className={healthSignalBadgeClassName(signal.tone)}>{signal.tone}</span>
+          </div>
+          <p className="mt-1 truncate text-xs font-semibold text-[#1d1d1f]" title={signal.value}>
+            {signal.value}
+          </p>
+          <p className="mt-0.5 truncate font-mono text-[10px] font-semibold text-[rgba(60,60,67,0.58)]" title={signal.helper}>
+            {signal.helper}
+          </p>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function ResourceDetailOverview({ items }: { items: DetailOverviewItem[] }) {
   return (
     <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4" aria-label="리소스 상세 요약">
@@ -1804,6 +1847,7 @@ function resourceDetailOverviewItems({
   effectiveLogContainer,
   eventSeverityCounts,
   eventSummary,
+  healthSignals,
   logSummary,
   labels,
   metadataPreview,
@@ -1815,6 +1859,7 @@ function resourceDetailOverviewItems({
   effectiveLogContainer: string;
   eventSeverityCounts: Record<EventSeverity, number>;
   eventSummary: string;
+  healthSignals: HealthSignal[];
   logSummary: string;
   labels: Record<string, string>;
   metadataPreview: Record<string, unknown>;
@@ -1829,6 +1874,8 @@ function resourceDetailOverviewItems({
   const annotationCount = visibleValueCount(annotations);
   const logContext = canFetchLogs ? `Logs ${effectiveLogContainer ? `${effectiveLogContainer} · ` : ''}${logSummary}` : 'Logs n/a';
   const eventSignal = eventSeverityCounts.warning > 0 ? `${eventSeverityCounts.warning} warning` : `Events ${eventSummary}`;
+  const primaryHealthSignal = healthSignals[0] ?? fallbackHealthSignal(resource);
+  const healthTone = primaryHealthSignal.tone === 'error' ? 'error' : primaryHealthSignal.tone === 'warning' || eventSeverityCounts.warning > 0 ? 'warning' : relationCount > 0 ? 'accent' : 'default';
   return [
     {
       label: 'Scope',
@@ -1848,9 +1895,9 @@ function resourceDetailOverviewItems({
     },
     {
       label: 'Signals',
-      value: `${relationCount} relations`,
-      helper: `${eventSignal} · ${logContext}`,
-      tone: eventSeverityCounts.warning > 0 ? 'warning' : relationCount > 0 ? 'accent' : 'default',
+      value: primaryHealthSignal.value,
+      helper: `${primaryHealthSignal.helper} · ${relationCount} rel · ${eventSignal} · ${logContext}`,
+      tone: healthTone,
     },
   ];
 }
@@ -1862,16 +1909,317 @@ function detailOverviewToneClassName(tone: DetailOverviewItem['tone']) {
   if (tone === 'warning') {
     return 'border-[rgba(255,149,0,0.18)] bg-[rgba(255,149,0,0.07)]';
   }
+  if (tone === 'error') {
+    return 'border-[rgba(255,59,48,0.18)] bg-[rgba(255,59,48,0.07)]';
+  }
   return 'border-[rgba(60,60,67,0.1)] bg-white/70';
 }
 
 function detailSectionToneClassName(active: boolean, tone: DetailSectionTone) {
+  if (tone === 'error') {
+    return active
+      ? 'border-[rgba(255,59,48,0.34)] bg-white/72 ring-2 ring-[rgba(255,59,48,0.12)]'
+      : 'border-[rgba(255,59,48,0.22)] bg-[rgba(255,59,48,0.035)]';
+  }
   if (tone === 'warning') {
     return active
       ? 'border-[rgba(255,149,0,0.34)] bg-white/72 ring-2 ring-[rgba(255,149,0,0.12)]'
       : 'border-[rgba(255,149,0,0.22)] bg-[rgba(255,149,0,0.035)]';
   }
   return active ? 'border-[rgba(0,122,255,0.34)] bg-white/72 ring-2 ring-[rgba(0,122,255,0.12)]' : 'border-[rgba(60,60,67,0.12)] bg-white/72';
+}
+
+function resourceHealthSignals(resource: ResourceExplorerItem, statusPreview: Record<string, unknown>, summaryPreview: Record<string, unknown>): HealthSignal[] {
+  const facts = { ...summaryPreview, ...statusPreview };
+  const signals: HealthSignal[] = [];
+  const addSignal = (signal: HealthSignal) => {
+    if (!signals.some((existing) => existing.label === signal.label && existing.value === signal.value)) {
+      signals.push(signal);
+    }
+  };
+  const statusTone = healthToneFromStatus(resource.status);
+  const addGenericHealth = () => {
+    addSignal({
+      label: 'Health',
+      value: statusTitle(resource.status),
+      helper: `${resource.kind} status`,
+      tone: statusTone,
+    });
+  };
+
+  if (resource.kind === 'Pod') {
+    const phase = factScalar(facts, 'phase', resource.status === 'healthy' ? 'Running' : 'unknown');
+    const ready = ratioFromValue(firstFact(facts, ['ready']));
+    const restarts = numberFromValue(firstFact(facts, ['restarts']));
+    const node = factScalar(facts, 'node', 'unassigned');
+    if (resource.status === 'error') {
+      addSignal({ label: 'Health', value: `Pod ${phase}`, helper: 'pod phase/status indicates failure', tone: 'error' });
+    } else if (ready && ready.ready < ready.total) {
+      addSignal({ label: 'Health', value: 'Pod not ready', helper: `${ready.ready}/${ready.total} containers ready`, tone: 'warning' });
+    } else if (phase !== 'Running' && phase !== 'Succeeded' && phase !== 'unknown') {
+      addSignal({ label: 'Health', value: `Pod ${phase}`, helper: 'phase is not Running', tone: resource.status === 'healthy' ? 'default' : 'warning' });
+    } else {
+      addSignal({ label: 'Health', value: phase === 'Succeeded' ? 'Pod completed' : 'Pod ready', helper: ready ? `${ready.ready}/${ready.total} containers ready` : `phase ${phase}`, tone: resource.status === 'healthy' ? 'healthy' : statusTone });
+    }
+    if (restarts > 0) {
+      addSignal({ label: 'Restarts', value: `${restarts}`, helper: 'container restart count', tone: restarts >= 3 || resource.status !== 'healthy' ? 'warning' : 'default' });
+    }
+    if (node !== 'unassigned') {
+      addSignal({ label: 'Node', value: node, helper: 'scheduled node', tone: 'accent' });
+    }
+    addConditionSignal(addSignal, facts);
+  } else if (['Deployment', 'ReplicaSet', 'StatefulSet', 'DaemonSet', 'HorizontalPodAutoscaler'].includes(resource.kind)) {
+    const replicas = ratioFromValue(firstFact(facts, ['replicas', 'ready']));
+    if (replicas) {
+      addSignal({
+        label: 'Replicas',
+        value: `${replicas.ready}/${replicas.total}`,
+        helper: replicas.ready < replicas.total ? 'ready replicas below desired' : 'ready replicas match desired',
+        tone: replicas.ready < replicas.total ? 'warning' : 'healthy',
+      });
+    } else {
+      addGenericHealth();
+    }
+    const target = factScalar(facts, 'target', '');
+    if (target) {
+      addSignal({ label: 'Target', value: target, helper: 'scale target', tone: 'accent' });
+    }
+    const range = factScalar(facts, 'range', '');
+    if (range) {
+      addSignal({ label: 'Range', value: range, helper: 'configured replica range', tone: 'default' });
+    }
+  } else if (resource.kind === 'Service') {
+    const endpoints = ratioFromValue(firstFact(facts, ['readyEndpoints', 'endpoints']));
+    if (endpoints) {
+      const emptyEndpoints = endpoints.total === 0 || endpoints.ready === 0;
+      addSignal({
+        label: 'Endpoints',
+        value: `${endpoints.ready}/${endpoints.total}`,
+        helper: emptyEndpoints ? 'no ready endpoints' : endpoints.ready < endpoints.total ? 'some endpoints are not ready' : 'ready endpoints match total',
+        tone: emptyEndpoints ? (resource.status === 'error' ? 'error' : 'warning') : endpoints.ready < endpoints.total ? 'warning' : 'healthy',
+      });
+    } else if (resource.status === 'unknown') {
+      addSignal({ label: 'Endpoints', value: 'unknown', helper: 'selector or endpoints unavailable', tone: 'default' });
+    } else {
+      addGenericHealth();
+    }
+    const serviceType = factScalar(facts, 'type', '');
+    if (serviceType) {
+      addSignal({ label: 'Type', value: serviceType, helper: 'service type', tone: 'accent' });
+    }
+  } else if (['PersistentVolumeClaim', 'PersistentVolume'].includes(resource.kind)) {
+    const phase = factScalar(facts, 'phase', resource.status === 'healthy' ? 'Bound' : 'unknown');
+    addSignal({
+      label: 'Storage',
+      value: phase === 'unknown' ? statusTitle(resource.status) : phase,
+      helper: storageHealthHelper(facts),
+      tone: resource.status === 'error' ? 'error' : resource.status === 'warning' || (phase !== 'Bound' && phase !== 'Available' && phase !== 'unknown') ? 'warning' : resource.status === 'healthy' ? 'healthy' : 'default',
+    });
+    const storageClass = factScalar(facts, 'storageClass', '');
+    if (storageClass) {
+      addSignal({ label: 'Class', value: storageClass, helper: 'storage class', tone: 'default' });
+    }
+  } else if (resource.kind === 'Job') {
+    const failed = numberFromValue(firstFact(facts, ['failed']));
+    const succeeded = numberFromValue(firstFact(facts, ['succeeded']));
+    const completions = numberFromValue(firstFact(facts, ['completions']));
+    if (failed > 0) {
+      addSignal({ label: 'Job', value: 'Failed', helper: `${failed} failed attempts`, tone: 'error' });
+    } else if (completions > 0) {
+      addSignal({ label: 'Job', value: `${succeeded}/${completions}`, helper: 'succeeded completions', tone: succeeded >= completions ? 'healthy' : 'warning' });
+    } else {
+      addGenericHealth();
+    }
+  } else if (resource.kind === 'CronJob') {
+    addSignal({ label: 'Schedule', value: factScalar(facts, 'schedule', 'unknown'), helper: `${factScalar(facts, 'active', '0')} active jobs`, tone: resource.status === 'healthy' ? 'healthy' : statusTone });
+  } else if (['Ingress', 'Gateway', 'HTTPRoute', 'GRPCRoute', 'TLSRoute', 'TCPRoute'].includes(resource.kind)) {
+    addSignal({ label: 'Routing', value: routeSignalValue(facts), helper: routeSignalHelper(facts), tone: resource.status === 'healthy' ? 'healthy' : statusTone });
+  } else if (resource.kind === 'NetworkPolicy') {
+    addSignal({ label: 'Policy', value: factScalar(facts, 'policyTypes', 'NetworkPolicy'), helper: networkPolicyHealthHelper(facts), tone: resource.status === 'healthy' ? 'healthy' : statusTone });
+  } else if (resource.kind === 'CustomResource') {
+    const conditions = factScalar(facts, 'conditions', '');
+    addSignal({ label: 'CustomResource', value: conditions || statusTitle(resource.status), helper: customResourceHealthHelper(facts), tone: conditions.includes('False') || conditions.includes('Unknown') ? 'warning' : resource.status === 'healthy' ? 'healthy' : statusTone });
+  } else {
+    addGenericHealth();
+  }
+
+  if (signals.length === 0) {
+    addGenericHealth();
+  }
+  return signals.slice(0, 6);
+}
+
+function fallbackHealthSignal(resource: ResourceExplorerItem): HealthSignal {
+  return {
+    label: 'Health',
+    value: statusTitle(resource.status),
+    helper: `${resource.kind} status`,
+    tone: healthToneFromStatus(resource.status),
+  };
+}
+
+function healthSectionSummary(resource: ResourceExplorerItem, signals: HealthSignal[], statusPreview: Record<string, unknown>) {
+  if (resource.status === 'error' || resource.status === 'warning') {
+    return resource.status;
+  }
+  const issue = signals.find((signal) => signal.tone === 'error' || signal.tone === 'warning');
+  if (issue) {
+    return issue.tone;
+  }
+  return sectionCount(statusPreview);
+}
+
+function healthSignalSectionTone(resource: ResourceExplorerItem, signals: HealthSignal[]): DetailSectionTone {
+  if (resource.status === 'error' || signals.some((signal) => signal.tone === 'error')) {
+    return 'error';
+  }
+  if (resource.status === 'warning' || signals.some((signal) => signal.tone === 'warning')) {
+    return 'warning';
+  }
+  return 'default';
+}
+
+function healthToneFromStatus(status: string): HealthSignal['tone'] {
+  if (status === 'error') {
+    return 'error';
+  }
+  if (status === 'warning') {
+    return 'warning';
+  }
+  if (status === 'healthy') {
+    return 'healthy';
+  }
+  return 'default';
+}
+
+function healthSignalToneClassName(tone: HealthSignal['tone']) {
+  if (tone === 'healthy') {
+    return 'border-[rgba(52,199,89,0.18)] bg-[rgba(52,199,89,0.06)]';
+  }
+  if (tone === 'accent') {
+    return 'border-[rgba(0,122,255,0.16)] bg-[rgba(0,122,255,0.055)]';
+  }
+  if (tone === 'warning') {
+    return 'border-[rgba(255,149,0,0.2)] bg-[rgba(255,149,0,0.075)]';
+  }
+  if (tone === 'error') {
+    return 'border-[rgba(255,59,48,0.2)] bg-[rgba(255,59,48,0.075)]';
+  }
+  return 'border-[rgba(60,60,67,0.1)] bg-white/70';
+}
+
+function healthSignalBadgeClassName(tone: HealthSignal['tone']) {
+  if (tone === 'healthy') {
+    return 'rounded-full bg-[rgba(52,199,89,0.12)] px-1.5 py-0.5 font-mono text-[8px] font-semibold uppercase text-[#248a3d]';
+  }
+  if (tone === 'accent') {
+    return 'rounded-full bg-[rgba(0,122,255,0.1)] px-1.5 py-0.5 font-mono text-[8px] font-semibold uppercase text-[#0057b8]';
+  }
+  if (tone === 'warning') {
+    return 'rounded-full bg-[rgba(255,149,0,0.12)] px-1.5 py-0.5 font-mono text-[8px] font-semibold uppercase text-[#9a5a00]';
+  }
+  if (tone === 'error') {
+    return 'rounded-full bg-[rgba(255,59,48,0.12)] px-1.5 py-0.5 font-mono text-[8px] font-semibold uppercase text-[#b42318]';
+  }
+  return 'rounded-full bg-[rgba(142,142,147,0.12)] px-1.5 py-0.5 font-mono text-[8px] font-semibold uppercase text-[#636366]';
+}
+
+function addConditionSignal(addSignal: (signal: HealthSignal) => void, facts: Record<string, unknown>) {
+  const conditions = factScalar(facts, 'conditions', '');
+  if (!conditions) {
+    return;
+  }
+  addSignal({
+    label: 'Conditions',
+    value: conditions,
+    helper: 'condition summary',
+    tone: conditions.includes('False') || conditions.includes('Unknown') ? 'warning' : 'default',
+  });
+}
+
+function routeSignalValue(facts: Record<string, unknown>) {
+  const hosts = factScalar(facts, 'hosts', factScalar(facts, 'host', 'route'));
+  return hosts || 'route';
+}
+
+function routeSignalHelper(facts: Record<string, unknown>) {
+  const pieces = [
+    factScalar(facts, 'listeners', '') ? `${factScalar(facts, 'listeners', '')} listeners` : '',
+    factScalar(facts, 'rules', '') ? `${factScalar(facts, 'rules', '')} rules` : '',
+    factScalar(facts, 'backends', '') ? `${factScalar(facts, 'backends', '')} backends` : '',
+  ].filter(Boolean);
+  return pieces.length > 0 ? pieces.join(' · ') : 'routing summary';
+}
+
+function networkPolicyHealthHelper(facts: Record<string, unknown>) {
+  const ingress = factScalar(facts, 'ingress', '');
+  const egress = factScalar(facts, 'egress', '');
+  if (ingress && egress) {
+    return 'ingress and egress intent';
+  }
+  return ingress || egress || 'policy intent summary';
+}
+
+function customResourceHealthHelper(facts: Record<string, unknown>) {
+  const specFields = factScalar(facts, 'specFields', '');
+  const statusFields = factScalar(facts, 'statusFields', '');
+  return [specFields ? `${specFields} spec fields` : '', statusFields ? `${statusFields} status fields` : ''].filter(Boolean).join(' · ') || 'safe custom resource summary';
+}
+
+function storageHealthHelper(facts: Record<string, unknown>) {
+  return [factScalar(facts, 'storage', ''), factScalar(facts, 'capacity', ''), factScalar(facts, 'volume', ''), factScalar(facts, 'mode', '')].filter(Boolean).join(' · ') || 'storage summary';
+}
+
+function statusTitle(status: string) {
+  if (!status) {
+    return 'Unknown';
+  }
+  return status.charAt(0).toUpperCase() + status.slice(1);
+}
+
+function firstFact(values: Record<string, unknown>, keys: string[]) {
+  for (const key of keys) {
+    const value = values[key];
+    if (value !== undefined && value !== null && value !== '') {
+      return value;
+    }
+  }
+  return undefined;
+}
+
+function factScalar(values: Record<string, unknown>, key: string, fallback: string) {
+  return overviewScalar(values[key], fallback);
+}
+
+function numberFromValue(value: unknown) {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === 'boolean') {
+    return value ? 1 : 0;
+  }
+  if (typeof value === 'string') {
+    const parsed = Number(value.trim());
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+  return 0;
+}
+
+function ratioFromValue(value: unknown): { ready: number; total: number } | null {
+  if (typeof value === 'boolean') {
+    return { ready: value ? 1 : 0, total: 1 };
+  }
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return { ready: value, total: value };
+  }
+  if (typeof value !== 'string') {
+    return null;
+  }
+  const match = value.trim().match(/^(\d+)\s*\/\s*(\d+)$/);
+  if (!match) {
+    return null;
+  }
+  return { ready: Number(match[1]), total: Number(match[2]) };
 }
 
 function overviewScalar(value: unknown, fallback: string): string {
@@ -2533,7 +2881,17 @@ function DetailSection({
           aria-label={`${title} ${open ? '접기' : '펼치기'}`}
           data-detail-section-toggle="true"
         >
-          <span className={tone === 'warning' ? 'ku-chip border-[rgba(255,149,0,0.24)] bg-[rgba(255,149,0,0.1)] text-[#9a5a00]' : 'ku-chip'}>{summary}</span>
+          <span
+            className={
+              tone === 'error'
+                ? 'ku-chip border-[rgba(255,59,48,0.24)] bg-[rgba(255,59,48,0.1)] text-[#b42318]'
+                : tone === 'warning'
+                  ? 'ku-chip border-[rgba(255,149,0,0.24)] bg-[rgba(255,149,0,0.1)] text-[#9a5a00]'
+                  : 'ku-chip'
+            }
+          >
+            {summary}
+          </span>
           <ChevronDown className={`text-[rgba(60,60,67,0.48)] transition ${open ? 'rotate-180' : ''}`} size={15} aria-hidden="true" />
         </button>
       </div>
