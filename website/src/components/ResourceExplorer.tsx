@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties, Dispatch, DragEvent as ReactDragEvent, KeyboardEvent as ReactKeyboardEvent, ReactNode, SetStateAction } from 'react';
-import { Activity, AlertTriangle, ArrowDown, ArrowUp, Bookmark, Boxes, CheckCircle2, ChevronDown, Copy, Download, FileText, GitBranch, GripVertical, Link2, Pencil, RefreshCw, RotateCcw, Search, Tags, Trash2, Upload, X } from 'lucide-react';
+import { Activity, AlertTriangle, ArrowDown, ArrowUp, Bookmark, Boxes, CheckCircle2, ChevronDown, Copy, Download, FileText, Folder, FolderOpen, GitBranch, GripVertical, Link2, Pencil, RefreshCw, RotateCcw, Search, Tags, Trash2, Upload, X } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { fetchResourceEvents, fetchResourceLogs, fetchResourceViewPresets, fetchResources, resourcesFromSnapshot, saveResourceViewPresets, streamResourceLogs } from '../services/resourceApi';
 import type { ResourceEvent, ResourceExplorerItem } from '../types/resourceExplorer';
@@ -330,6 +330,9 @@ export function ResourceExplorer({
   const selectedViewPresets = useMemo(() => orderResourceViewPresets(viewPresets.filter((preset) => selectedViewPresetNames.has(preset.name))), [selectedViewPresetNames, viewPresets]);
   const selectedViewPresetCount = selectedViewPresets.length;
   const allVisibleViewPresetsSelected = visibleViewPresets.length > 0 && visibleViewPresets.every((preset) => selectedViewPresetNames.has(preset.name));
+  const visibleViewPresetFolderCount = filteredGroupedViewPresets.length;
+  const collapsedVisibleViewPresetFolderCount = filteredGroupedViewPresets.filter((group) => collapsedViewGroups.has(group.name)).length;
+  const selectedVisibleViewPresetCount = visibleViewPresets.filter((preset) => selectedViewPresetNames.has(preset.name)).length;
   const viewPresetGroupOptions = useMemo(() => unique([defaultResourceViewGroup, ...viewPresets.map((preset) => preset.group)]), [viewPresets]);
   const filtersAreDefault = resourceViewPresetMatchesFilters(
     {
@@ -852,6 +855,22 @@ export function ResourceExplorer({
       return next;
     });
   };
+  const handleExpandVisibleViewPresetFolders = () => {
+    const visibleGroupNames = new Set(filteredGroupedViewPresets.map((group) => group.name));
+    setCollapsedViewGroups((current) => {
+      const next = new Set([...current].filter((groupName) => !visibleGroupNames.has(groupName)));
+      return next;
+    });
+    setResourceViewMessage({ tone: 'success', text: `saved view folder ${visibleGroupNames.size}개를 펼쳤습니다.` });
+  };
+  const handleCollapseVisibleViewPresetFolders = () => {
+    setCollapsedViewGroups((current) => {
+      const next = new Set(current);
+      filteredGroupedViewPresets.forEach((group) => next.add(group.name));
+      return next;
+    });
+    setResourceViewMessage({ tone: 'success', text: `saved view folder ${filteredGroupedViewPresets.length}개를 접었습니다.` });
+  };
   const handleResourceViewRenameKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
     if (event.key === 'Enter') {
       event.preventDefault();
@@ -1307,11 +1326,86 @@ export function ResourceExplorer({
               </div>
             ) : null}
             {viewPresets.length > 0 ? (
+              <div className="grid gap-2 rounded-[12px] border border-[rgba(60,60,67,0.1)] bg-[rgba(242,242,247,0.42)] p-2" data-testid="resource-view-folder-summary">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="inline-flex items-center gap-1 rounded-full bg-white/82 px-2 py-1 text-[10px] font-semibold text-[rgba(60,60,67,0.72)]" data-testid="resource-view-folder-summary-count">
+                      <FolderOpen size={12} aria-hidden="true" />
+                      Folders {normalizedViewPresetSearch ? `${visibleViewPresetFolderCount} / ${groupedViewPresets.length}` : visibleViewPresetFolderCount}
+                    </span>
+                    <span className="ku-chip" data-testid="resource-view-folder-collapsed-count">접힘 {collapsedVisibleViewPresetFolderCount}</span>
+                    {selectedViewPresetCount > 0 ? (
+                      <span className="ku-chip border-[rgba(0,122,255,0.22)] bg-[rgba(0,122,255,0.08)] text-[#0057b8]" data-testid="resource-view-folder-selected-count">
+                        선택 {selectedVisibleViewPresetCount} / {selectedViewPresetCount}
+                      </span>
+                    ) : null}
+                  </div>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <button
+                      className="rounded-[8px] border border-[rgba(60,60,67,0.12)] bg-white px-2.5 py-1.5 text-xs font-semibold text-[rgba(60,60,67,0.72)] transition hover:bg-[rgba(242,242,247,0.9)] disabled:cursor-not-allowed disabled:opacity-50"
+                      type="button"
+                      onClick={handleExpandVisibleViewPresetFolders}
+                      disabled={visibleViewPresetFolderCount === 0 || collapsedVisibleViewPresetFolderCount === 0}
+                      data-testid="resource-view-folder-expand-all"
+                    >
+                      모두 펼치기
+                    </button>
+                    <button
+                      className="rounded-[8px] border border-[rgba(60,60,67,0.12)] bg-white px-2.5 py-1.5 text-xs font-semibold text-[rgba(60,60,67,0.72)] transition hover:bg-[rgba(242,242,247,0.9)] disabled:cursor-not-allowed disabled:opacity-50"
+                      type="button"
+                      onClick={handleCollapseVisibleViewPresetFolders}
+                      disabled={visibleViewPresetFolderCount === 0 || collapsedVisibleViewPresetFolderCount === visibleViewPresetFolderCount}
+                      data-testid="resource-view-folder-collapse-all"
+                    >
+                      모두 접기
+                    </button>
+                  </div>
+                </div>
+                {visibleViewPresetFolderCount > 0 ? (
+                  <div className="flex gap-1.5 overflow-x-auto pb-0.5" data-testid="resource-view-folder-chips">
+                    {filteredGroupedViewPresets.map((group) => {
+                      const collapsed = collapsedViewGroups.has(group.name);
+                      const groupDomId = resourceViewGroupDomId(group.name);
+                      const selectedCount = group.presets.filter((preset) => selectedViewPresetNames.has(preset.name)).length;
+                      const active = matchingViewPreset?.group === group.name;
+                      const FolderIcon = collapsed ? Folder : FolderOpen;
+                      return (
+                        <button
+                          key={group.name}
+                          className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1.5 text-xs font-semibold transition ${
+                            active
+                              ? 'border-[rgba(0,122,255,0.24)] bg-[rgba(0,122,255,0.1)] text-[#0057b8]'
+                              : collapsed
+                                ? 'border-[rgba(60,60,67,0.12)] bg-white/72 text-[rgba(60,60,67,0.62)] hover:bg-white'
+                                : 'border-[rgba(52,199,89,0.16)] bg-white/86 text-[rgba(60,60,67,0.72)] hover:bg-white'
+                          }`}
+                          type="button"
+                          onClick={() => toggleViewPresetGroup(group.name)}
+                          aria-expanded={!collapsed}
+                          data-testid={`resource-view-folder-chip-${groupDomId}`}
+                          title={`${group.name} folder ${collapsed ? '펼치기' : '접기'}`}
+                        >
+                          <FolderIcon size={13} aria-hidden="true" />
+                          <span>{group.name}</span>
+                          <span className="rounded-full bg-[rgba(60,60,67,0.06)] px-1.5 py-0.5 text-[9px] font-semibold">
+                            {normalizedViewPresetSearch ? `${group.presets.length}/${group.total}` : group.presets.length}
+                          </span>
+                          {selectedCount > 0 ? <span className="rounded-full bg-[rgba(0,122,255,0.1)] px-1.5 py-0.5 text-[9px] font-semibold text-[#0057b8]">{selectedCount} selected</span> : null}
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <p className="ku-meta" data-testid="resource-view-folder-empty">일치하는 folder 없음</p>
+                )}
+              </div>
+            ) : null}
+            {viewPresets.length > 0 ? (
               <div className="grid gap-1.5" aria-label="저장된 뷰 빠른 적용" data-testid="resource-view-quick-groups">
                 {filteredGroupedViewPresets.map((group) => (
                   <div key={group.name} className="grid gap-1">
                     <p className="ku-meta flex items-center gap-1.5" data-testid={`resource-view-quick-group-${resourceViewGroupDomId(group.name)}`}>
-                      <Tags size={12} aria-hidden="true" />
+                      <FolderOpen size={12} aria-hidden="true" />
                       {group.name} · {normalizedViewPresetSearch ? `${group.presets.length} / ${group.total}` : group.presets.length}
                     </p>
                     <div className="flex gap-1.5 overflow-x-auto pb-0.5">
@@ -1510,6 +1604,7 @@ export function ResourceExplorer({
                   const groupSelectedCount = group.presets.filter((preset) => selectedViewPresetNames.has(preset.name)).length;
                   const groupAllSelected = group.presets.length > 0 && groupSelectedCount === group.presets.length;
                   const groupPartiallySelected = groupSelectedCount > 0 && !groupAllSelected;
+                  const HeaderFolderIcon = collapsed ? Folder : FolderOpen;
                   return (
                     <div key={group.name} className="grid gap-1.5 rounded-[12px] border border-[rgba(60,60,67,0.1)] bg-[rgba(242,242,247,0.38)] p-2" data-testid={`resource-view-group-${groupDomId}`}>
                       <div className="flex flex-wrap items-center justify-between gap-2 rounded-[9px] px-1.5 py-1 transition hover:bg-white/70">
@@ -1521,7 +1616,7 @@ export function ResourceExplorer({
                           data-testid={`resource-view-group-toggle-${groupDomId}`}
                         >
                           <ChevronDown className={`shrink-0 transition ${collapsed ? '-rotate-90' : ''}`} size={14} aria-hidden="true" />
-                          <Tags className="shrink-0 text-[rgba(60,60,67,0.56)]" size={13} aria-hidden="true" />
+                          <HeaderFolderIcon className="shrink-0 text-[rgba(60,60,67,0.56)]" size={13} aria-hidden="true" />
                           <span className="truncate text-xs font-semibold text-[#1d1d1f]">{group.name}</span>
                         </button>
                         <div className="flex items-center gap-1.5">
@@ -1541,6 +1636,7 @@ export function ResourceExplorer({
                             />
                             선택
                           </label>
+                          {groupSelectedCount > 0 ? <span className="ku-chip border-[rgba(0,122,255,0.2)] bg-[rgba(0,122,255,0.08)] text-[#0057b8]">{groupSelectedCount} selected</span> : null}
                           <span className="ku-chip">{normalizedViewPresetSearch ? `${group.presets.length} / ${group.total}` : `${group.presets.length} views`}</span>
                         </div>
                       </div>

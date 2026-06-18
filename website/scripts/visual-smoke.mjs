@@ -174,6 +174,7 @@ async function verifyResourceExplorer(page) {
   await verifyResourceBulkActions(page);
   await verifyResourceKeyboardMultiSelect(page);
   await verifyResourceViewRename(page);
+  await verifyResourceViewFolderPolish(page);
   await verifyResourceViewSearch(page);
   await verifyResourceViewReorder(page);
   await verifyResourceViewBulkManagement(page);
@@ -255,6 +256,31 @@ async function verifyResourceViewRename(page) {
   await page.getByTestId(`resource-view-rename-save-${targetId}`).click();
   await expect(page.getByTestId(`resource-view-rename-error-${targetId}`)).toContainText('이미 같은 이름', { timeout: 10_000 });
   await page.getByTestId(`resource-view-rename-cancel-${targetId}`).click();
+}
+
+async function verifyResourceViewFolderPolish(page) {
+  const targetId = savedViewDomId('Visual Rename Target');
+  const duplicateId = savedViewDomId('Visual Rename Duplicate');
+  const platformFolderId = savedViewDomId('Platform');
+
+  await expect(page.getByTestId('resource-view-folder-summary')).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByTestId('resource-view-folder-summary-count')).toContainText('Folders', { timeout: 10_000 });
+  await expect(page.getByTestId(`resource-view-folder-chip-${platformFolderId}`)).toContainText('Platform', { timeout: 10_000 });
+
+  await page.getByTestId(`resource-view-folder-chip-${platformFolderId}`).click();
+  await expect(page.getByTestId(`resource-view-preset-row-${targetId}`)).toHaveCount(0);
+  await expect(page.getByTestId('resource-view-folder-collapsed-count')).toContainText('접힘 1', { timeout: 10_000 });
+
+  await page.getByTestId('resource-view-folder-expand-all').click();
+  await expect(page.getByTestId(`resource-view-preset-row-${targetId}`)).toBeVisible({ timeout: 10_000 });
+
+  await page.getByTestId('resource-view-folder-collapse-all').click();
+  await expect(page.getByTestId(`resource-view-preset-row-${targetId}`)).toHaveCount(0);
+  await expect(page.getByTestId(`resource-view-preset-row-${duplicateId}`)).toHaveCount(0);
+
+  await page.getByTestId('resource-view-folder-expand-all').click();
+  await expect(page.getByTestId(`resource-view-preset-row-${targetId}`)).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByTestId(`resource-view-preset-row-${duplicateId}`)).toBeVisible({ timeout: 10_000 });
 }
 
 async function verifyResourceViewSearch(page) {
