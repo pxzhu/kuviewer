@@ -169,6 +169,7 @@ async function verifyResourceExplorer(page) {
   await expect(page.getByRole('heading', { name: '리소스 탐색' })).toBeVisible({ timeout: 10_000 });
   await verifyResourceListSorting(page);
   await verifyResourceListColumns(page);
+  await verifyResourceBulkActions(page);
   await verifyResourceViewRename(page);
   await verifyResourceViewConflictImport(page);
   await expect(page.getByRole('heading', { name: 'Metadata' })).toBeVisible({ timeout: 10_000 });
@@ -273,6 +274,40 @@ async function verifyResourceListColumns(page) {
   if ((await page.locator('[data-resource-column="summary"]').count()) === 0) {
     throw new Error('summary column did not return after re-enable');
   }
+}
+
+async function verifyResourceBulkActions(page) {
+  const checkboxes = page.locator('[data-testid^="resource-bulk-checkbox-"]');
+  await expect(checkboxes.first()).toBeVisible({ timeout: 10_000 });
+  if ((await checkboxes.count()) < 2) {
+    return;
+  }
+
+  await expect(page.getByTestId('resource-bulk-count')).toContainText('선택 0개');
+  await expect(page.getByTestId('resource-bulk-copy-names')).toBeDisabled();
+  await expect(page.getByTestId('resource-bulk-export-json')).toBeDisabled();
+  await expect(page.getByTestId('resource-bulk-export-csv')).toBeDisabled();
+
+  await checkboxes.nth(0).click();
+  await checkboxes.nth(1).click();
+  await expect(page.getByTestId('resource-bulk-count')).toContainText('선택 2개', { timeout: 10_000 });
+  await expect(page.getByTestId('resource-bulk-copy-names')).toBeEnabled();
+  await expect(page.getByTestId('resource-bulk-export-json')).toBeEnabled();
+  await expect(page.getByTestId('resource-bulk-export-csv')).toBeEnabled();
+  if ((await page.locator('[data-resource-bulk-selected="true"]').count()) < 2) {
+    throw new Error('selected resource rows were not marked');
+  }
+
+  await page.getByTestId('resource-bulk-clear').click();
+  await expect(page.getByTestId('resource-bulk-count')).toContainText('선택 0개', { timeout: 10_000 });
+  await expect(page.locator('[data-resource-bulk-selected="true"]')).toHaveCount(0);
+
+  await page.getByTestId('resource-bulk-select-all').click();
+  const selectedAfterAll = await page.locator('[data-resource-bulk-selected="true"]').count();
+  if (selectedAfterAll < 1) {
+    throw new Error('select all did not select resources');
+  }
+  await page.getByTestId('resource-bulk-clear').click();
 }
 
 async function visibleResourceNames(page) {
