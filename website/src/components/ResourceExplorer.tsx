@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { KeyboardEvent as ReactKeyboardEvent, ReactNode } from 'react';
+import type { Dispatch, KeyboardEvent as ReactKeyboardEvent, ReactNode, SetStateAction } from 'react';
 import { Activity, AlertTriangle, ArrowDown, ArrowUp, Bookmark, Boxes, CheckCircle2, ChevronDown, Copy, Download, FileText, GitBranch, Link2, RefreshCw, RotateCcw, Search, Tags, Trash2 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { fetchResourceEvents, fetchResourceLogs, fetchResources, resourcesFromSnapshot, streamResourceLogs } from '../services/resourceApi';
@@ -21,6 +21,7 @@ const resourceViewPresetStorageKey = 'kuviewer_resource_view_presets';
 const resourceListDensityStorageKey = 'kuviewer_resource_list_density';
 const logDensityStorageKey = 'kuviewer_log_density';
 const eventsAutoRefreshStorageKey = 'kuviewer_events_auto_refresh';
+const eventsWarningNotificationsStorageKey = 'kuviewer_events_warning_notifications';
 const eventsAutoRefreshIntervalMs = 30_000;
 const maxResourceViewPresets = 8;
 const maxCollapsedRelations = 24;
@@ -98,6 +99,13 @@ interface EventExportRow {
   source: string;
   message: string;
   pinned: boolean;
+}
+
+interface EventNotificationNotice {
+  count: number;
+  reason: string;
+  source: string;
+  timestamp: string;
 }
 
 interface ParsedLogLine {
@@ -542,6 +550,9 @@ function ResourceExplorerDetail({
   const [eventsLoading, setEventsLoading] = useState(false);
   const [eventsLastUpdatedAt, setEventsLastUpdatedAt] = useState<number | null>(null);
   const [eventsAutoRefreshEnabled, setEventsAutoRefreshEnabled] = useState(() => readEventsAutoRefreshPreference());
+  const [eventsWarningNotificationsEnabled, setEventsWarningNotificationsEnabled] = useState(() => readEventsWarningNotificationsPreference());
+  const [eventNotificationNotice, setEventNotificationNotice] = useState<EventNotificationNotice | null>(null);
+  const [newEventKeys, setNewEventKeys] = useState<Set<string>>(() => new Set());
   const [eventFilter, setEventFilter] = useState('');
   const [eventSeverityFilter, setEventSeverityFilter] = useState<EventSeverityFilter>('all');
   const [eventTimeRangeFilter, setEventTimeRangeFilter] = useState<EventTimeRangeFilter>('all');
@@ -574,6 +585,9 @@ function ResourceExplorerDetail({
   const logLineRefs = useRef<Record<number, HTMLDivElement | null>>({});
   const eventsControllerRef = useRef<AbortController | null>(null);
   const eventsRequestIdRef = useRef(0);
+  const knownEventKeysRef = useRef<Set<string>>(new Set());
+  const knownEventKeysInitializedRef = useRef(false);
+  const eventsWarningNotificationsEnabledRef = useRef(eventsWarningNotificationsEnabled);
   const [openSections, setOpenSections] = useState<Set<DetailSectionId>>(() => new Set(defaultOpenDetailSections));
   const resourceEventsKey = resource ? `${resource.kind}:${resource.namespace || '-'}:${resource.name}` : '';
 
@@ -589,12 +603,20 @@ function ResourceExplorerDetail({
       setEventsWarning('');
       setEventsLoading(false);
       setEventsLastUpdatedAt(null);
+      setEventNotificationNotice(null);
+      setNewEventKeys(new Set());
+      knownEventKeysRef.current = new Set();
+      knownEventKeysInitializedRef.current = false;
       return undefined;
     }
 
     if (!options.preserveExistingEvents) {
       setEvents([]);
       setEventsLastUpdatedAt(null);
+      setEventNotificationNotice(null);
+      setNewEventKeys(new Set());
+      knownEventKeysRef.current = new Set();
+      knownEventKeysInitializedRef.current = false;
     }
 
     const controller = new AbortController();
@@ -608,7 +630,9 @@ function ResourceExplorerDetail({
         if (controller.signal.aborted || eventsRequestIdRef.current !== requestId) {
           return;
         }
-        setEvents([...response.items].sort((a, b) => b.timestamp.localeCompare(a.timestamp)));
+        const nextEvents = [...response.items].sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+        updateEventNotificationState(nextEvents, knownEventKeysRef, knownEventKeysInitializedRef, eventsWarningNotificationsEnabledRef.current, setEventNotificationNotice, setNewEventKeys);
+        setEvents(nextEvents);
         setEventsError('');
         setEventsWarning(response.warning || '');
         setEventsLastUpdatedAt(Date.now());
@@ -642,6 +666,15 @@ function ResourceExplorerDetail({
   useEffect(() => {
     writeEventsAutoRefreshPreference(eventsAutoRefreshEnabled);
   }, [eventsAutoRefreshEnabled]);
+
+  useEffect(() => {
+    eventsWarningNotificationsEnabledRef.current = eventsWarningNotificationsEnabled;
+    writeEventsWarningNotificationsPreference(eventsWarningNotificationsEnabled);
+    if (!eventsWarningNotificationsEnabled) {
+      setEventNotificationNotice(null);
+      setNewEventKeys(new Set());
+    }
+  }, [eventsWarningNotificationsEnabled]);
 
   useEffect(() => {
     if (!eventsAutoRefreshEnabled || !liveEnabled || !resource) {
@@ -680,6 +713,10 @@ function ResourceExplorerDetail({
     setEventSortOrder('newest');
     setPinnedEventKeys(new Set());
     setEventsLastUpdatedAt(null);
+    setEventNotificationNotice(null);
+    setNewEventKeys(new Set());
+    knownEventKeysRef.current = new Set();
+    knownEventKeysInitializedRef.current = false;
     setActiveDetailSectionId('metadata');
     setOpenSections(new Set(defaultOpenDetailSections));
   }, [resource?.id]);
@@ -945,6 +982,22 @@ function ResourceExplorerDetail({
     setEventsAutoRefreshEnabled((current) => !current);
   };
 
+  const handleEventsWarningNotificationsToggle = () => {
+    if (!canRefreshEvents) {
+      return;
+    }
+    openSection('events');
+    setEventsWarningNotificationsEnabled((current) => {
+      const next = !current;
+      eventsWarningNotificationsEnabledRef.current = next;
+      if (!next) {
+        setEventNotificationNotice(null);
+        setNewEventKeys(new Set());
+      }
+      return next;
+    });
+  };
+
   const handleDownloadEvents = (format: EventExportFormat) => {
     if (!canExportEvents) {
       return;
@@ -1099,6 +1152,7 @@ function ResourceExplorerDetail({
   const renderEventCard = (item: EventListItem) => {
     const { event, id, pinned } = item;
     const severity = eventSeverity(event);
+    const isNewEvent = newEventKeys.has(eventIdentityKey(event));
     const timestampKnown = validEventTimestamp(event.timestamp);
     const relativeTime = formatRelativeEventTimestamp(event.timestamp);
     const absoluteTime = formatEventTimestamp(event.timestamp);
@@ -1106,13 +1160,18 @@ function ResourceExplorerDetail({
       <div
         key={id}
         className={`rounded-[10px] border p-2 ${
-          pinned ? 'border-[rgba(0,122,255,0.26)] bg-[rgba(0,122,255,0.06)]' : 'border-[rgba(60,60,67,0.12)] bg-white/75'
+          isNewEvent
+            ? 'border-[rgba(255,149,0,0.35)] bg-[rgba(255,149,0,0.08)]'
+            : pinned
+              ? 'border-[rgba(0,122,255,0.26)] bg-[rgba(0,122,255,0.06)]'
+              : 'border-[rgba(60,60,67,0.12)] bg-white/75'
         }`}
       >
         <div className="flex flex-wrap items-start justify-between gap-2">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-1.5">
               <span className={eventSeverityBadgeClassName(severity)}>{renderHighlightedText(event.type || 'Normal', normalizedEventFilter)}</span>
+              {isNewEvent ? <span className="rounded-full border border-[rgba(255,149,0,0.28)] bg-[rgba(255,149,0,0.14)] px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase text-[#9a5a00]">NEW</span> : null}
               <p className="min-w-0 break-words text-xs font-semibold text-[#1d1d1f]">{renderHighlightedText(event.reason || event.type || 'Event', normalizedEventFilter)}</p>
             </div>
             <div className="mt-1 flex flex-wrap items-center gap-1.5">
@@ -1322,9 +1381,26 @@ function ResourceExplorerDetail({
                 {eventsLoading ? <span className="ku-chip">조회 중</span> : null}
                 {eventsLastUpdatedAt ? <span className="ku-chip">마지막 조회 {formatRefreshTimestamp(eventsLastUpdatedAt)}</span> : null}
                 {eventsAutoRefreshActive ? <span className="ku-chip">자동 갱신 켜짐</span> : null}
+                {eventsWarningNotificationsEnabled && canRefreshEvents ? <span className="ku-chip border-[rgba(255,149,0,0.24)] bg-[rgba(255,149,0,0.1)] text-[#9a5a00]">Warning 알림 켜짐</span> : null}
                 {events.length > 0 ? <EventSeverityChips counts={eventSeverityCounts} /> : null}
               </div>
               <div className="flex flex-wrap items-center gap-1.5">
+                <button
+                  className={`inline-flex items-center gap-1.5 rounded-[9px] border px-2.5 py-1.5 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                    eventsWarningNotificationsEnabled && canRefreshEvents
+                      ? 'border-[rgba(255,149,0,0.28)] bg-[rgba(255,149,0,0.12)] text-[#8a4d00] hover:bg-[rgba(255,149,0,0.16)]'
+                      : 'border-[rgba(60,60,67,0.14)] bg-white/75 text-[rgba(60,60,67,0.72)] hover:bg-white'
+                  }`}
+                  type="button"
+                  onClick={handleEventsWarningNotificationsToggle}
+                  disabled={!canRefreshEvents}
+                  aria-pressed={eventsWarningNotificationsEnabled && canRefreshEvents}
+                  data-testid="events-warning-notifications-toggle"
+                  title="새 Warning/Error Events를 앱 내부 알림으로 표시"
+                >
+                  <AlertTriangle size={14} aria-hidden="true" />
+                  Warning 알림
+                </button>
                 <button
                   className={`inline-flex items-center gap-1.5 rounded-[9px] border px-2.5 py-1.5 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 ${
                     eventsAutoRefreshActive
@@ -1351,6 +1427,30 @@ function ResourceExplorerDetail({
                   {eventsLoading ? '조회 중' : '새로고침'}
                 </button>
               </div>
+            </div>
+          ) : null}
+          {eventNotificationNotice ? (
+            <div
+              className="mb-2 flex flex-wrap items-start justify-between gap-2 rounded-[10px] border border-[rgba(255,149,0,0.24)] bg-[rgba(255,149,0,0.1)] p-2"
+              data-testid="events-notification-banner"
+            >
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <AlertTriangle size={15} className="text-[#9a5a00]" aria-hidden="true" />
+                  <p className="text-xs font-semibold text-[#7a4300]">새 Warning/Error Events {eventNotificationNotice.count}개</p>
+                </div>
+                <p className="mt-1 break-words text-xs text-[rgba(60,60,67,0.72)]">
+                  {eventNotificationNotice.reason || 'Event'} · {eventNotificationNotice.source || 'source unknown'} · {formatEventTimestamp(eventNotificationNotice.timestamp)}
+                </p>
+              </div>
+              <button
+                className="rounded-[9px] border border-[rgba(255,149,0,0.24)] bg-white/75 px-2.5 py-1.5 text-xs font-semibold text-[#8a4d00] transition hover:bg-white"
+                type="button"
+                onClick={() => setEventNotificationNotice(null)}
+                data-testid="events-notification-dismiss"
+              >
+                닫기
+              </button>
             </div>
           ) : null}
           {eventsWarning ? <InlineWarning message="이벤트 조회 권한이 없거나 API가 없어 빈 목록으로 표시합니다." /> : null}
@@ -2530,9 +2630,54 @@ function sortableEventTimestamp(event: ResourceEvent) {
 }
 
 function eventListItemId(event: ResourceEvent, index: number) {
-  return [event.timestamp, event.type, event.reason, event.source, event.message, String(index)]
+  return `${eventIdentityKey(event)}\u001f${index}`;
+}
+
+function eventIdentityKey(event: ResourceEvent) {
+  return [event.timestamp, event.type, event.reason, event.source, event.message]
     .map((part) => part.trim())
     .join('\u001f');
+}
+
+function updateEventNotificationState(
+  nextEvents: ResourceEvent[],
+  knownEventKeysRef: { current: Set<string> },
+  knownEventKeysInitializedRef: { current: boolean },
+  notificationsEnabled: boolean,
+  setEventNotificationNotice: Dispatch<SetStateAction<EventNotificationNotice | null>>,
+  setNewEventKeys: Dispatch<SetStateAction<Set<string>>>,
+) {
+  const nextKeys = new Set(nextEvents.map(eventIdentityKey));
+  if (!knownEventKeysInitializedRef.current) {
+    knownEventKeysRef.current = nextKeys;
+    knownEventKeysInitializedRef.current = true;
+    return;
+  }
+
+  const previousKeys = knownEventKeysRef.current;
+  const newWarningEvents = nextEvents.filter((event) => !previousKeys.has(eventIdentityKey(event)) && eventSeverity(event) === 'warning');
+  knownEventKeysRef.current = nextKeys;
+
+  if (!notificationsEnabled || newWarningEvents.length === 0) {
+    return;
+  }
+
+  const newWarningKeys = new Set(newWarningEvents.map(eventIdentityKey));
+  setNewEventKeys((current) => {
+    const next = new Set(current);
+    for (const key of newWarningKeys) {
+      next.add(key);
+    }
+    return next;
+  });
+
+  const representativeEvent = newWarningEvents[0];
+  setEventNotificationNotice({
+    count: newWarningEvents.length,
+    reason: representativeEvent.reason || representativeEvent.type || 'Event',
+    source: representativeEvent.source || 'source unknown',
+    timestamp: representativeEvent.timestamp,
+  });
 }
 
 function eventMatchesSeverityFilter(event: ResourceEvent, severityFilter: EventSeverityFilter) {
@@ -2778,6 +2923,22 @@ function writeEventsAutoRefreshPreference(enabled: boolean) {
     window.localStorage.setItem(eventsAutoRefreshStorageKey, enabled ? 'true' : 'false');
   } catch {
     // Events auto refresh is only a UI preference; storage failures should not break details.
+  }
+}
+
+function readEventsWarningNotificationsPreference() {
+  try {
+    return window.localStorage.getItem(eventsWarningNotificationsStorageKey) === 'true';
+  } catch {
+    return false;
+  }
+}
+
+function writeEventsWarningNotificationsPreference(enabled: boolean) {
+  try {
+    window.localStorage.setItem(eventsWarningNotificationsStorageKey, enabled ? 'true' : 'false');
+  } catch {
+    // Events warning notifications are only a UI preference; storage failures should not break details.
   }
 }
 
