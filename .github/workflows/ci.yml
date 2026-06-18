@@ -39,6 +39,9 @@ jobs:
         working-directory: website
         run: VITE_BASE_PATH=/ npm run build
 
+      - name: Desktop packaging spec check
+        run: node scripts/check-desktop-packaging-spec.mjs
+
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
