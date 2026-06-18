@@ -3,6 +3,7 @@ import type { CSSProperties, Dispatch, DragEvent as ReactDragEvent, KeyboardEven
 import { Activity, AlertTriangle, ArrowDown, ArrowUp, Bookmark, Boxes, CheckCircle2, ChevronDown, Copy, Download, FileText, Folder, FolderOpen, GitBranch, GripVertical, Link2, Pencil, RefreshCw, RotateCcw, Search, Tags, Trash2, Upload, X } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { fetchResourceEvents, fetchResourceLogs, fetchResourceViewPresets, fetchResources, resourcesFromSnapshot, saveResourceViewPresets, streamResourceLogs } from '../services/resourceApi';
+import type { ResourceViewPresetApiMetadata } from '../services/resourceApi';
 import type { ResourceEvent, ResourceExplorerItem } from '../types/resourceExplorer';
 import type { TopologySnapshot } from '../types/topology';
 import type { TopologySourceMode } from '../features/topology/useTopology';
@@ -139,6 +140,7 @@ interface ResourceViewTeamSyncSummary {
   localCount: number;
   folders: string[];
   timestamp: number;
+  snapshotMetadata?: ResourceViewTeamSnapshotMetadata;
 }
 
 interface ResourceViewTeamComparePreview {
@@ -155,6 +157,14 @@ interface ResourceViewTeamComparePreview {
   teamOnlyNames: string[];
   folders: string[];
   timestamp: number;
+  snapshotMetadata?: ResourceViewTeamSnapshotMetadata;
+}
+
+interface ResourceViewTeamSnapshotMetadata {
+  version: number;
+  updatedAt: number;
+  count: number;
+  storage: string;
 }
 
 interface ResourceViewRenameState {
@@ -662,7 +672,8 @@ export function ResourceExplorer({
       const response = await fetchResourceViewPresets();
       const teamPresets = normalizeResourceViewPresetOrders(response.items.flatMap((value, index) => validResourceViewPreset(value, index + 1)));
       const skippedCount = Math.max(0, response.items.length - teamPresets.length);
-      const comparePreview = buildResourceViewTeamComparePreview('load', viewPresets, teamPresets, skippedCount);
+      const snapshotMetadata = resourceViewTeamSnapshotMetadata(response.metadata, teamPresets.length);
+      const comparePreview = buildResourceViewTeamComparePreview('load', viewPresets, teamPresets, skippedCount, snapshotMetadata);
       setResourceViewTransferSummary(null);
       setResourceViewTeamSyncSummary(null);
       setResourceViewConflict(null);
@@ -709,7 +720,8 @@ export function ResourceExplorer({
       const response = await fetchResourceViewPresets();
       const teamPresets = normalizeResourceViewPresetOrders(response.items.flatMap((value, index) => validResourceViewPreset(value, index + 1)));
       const skippedCount = Math.max(0, response.items.length - teamPresets.length);
-      const comparePreview = buildResourceViewTeamComparePreview('save', viewPresets, teamPresets, skippedCount);
+      const snapshotMetadata = resourceViewTeamSnapshotMetadata(response.metadata, teamPresets.length);
+      const comparePreview = buildResourceViewTeamComparePreview('save', viewPresets, teamPresets, skippedCount, snapshotMetadata);
       setResourceViewConflict(null);
       setRenamingViewPreset(null);
       setResourceViewTransferSummary(null);
@@ -742,6 +754,7 @@ export function ResourceExplorer({
       const response = await saveResourceViewPresets(normalizeResourceViewPresetOrders(viewPresets).map(resourceViewPresetExportRecord));
       const savedPresets = normalizeResourceViewPresetOrders(response.items.flatMap((value, index) => validResourceViewPreset(value, index + 1)));
       const skippedCount = Math.max(0, viewPresets.length - savedPresets.length);
+      const snapshotMetadata = resourceViewTeamSnapshotMetadata(response.metadata, savedPresets.length);
       setViewPresets(savedPresets);
       writeResourceViewPresets(savedPresets);
       setResourceViewTransferSummary(null);
@@ -755,6 +768,7 @@ export function ResourceExplorer({
         localCount: viewPresets.length,
         folders: resourceViewPresetFolderNames(savedPresets),
         timestamp: Date.now(),
+        snapshotMetadata,
       });
       setResourceViewTeamComparePreview(null);
       setResourceViewMessage({ tone: 'success', text: `현재 브라우저 뷰 ${savedPresets.length}개를 팀 뷰로 저장했습니다.` });
@@ -1524,6 +1538,11 @@ export function ResourceExplorer({
                       Folders {resourceViewTeamComparePreview.folders.length}: {resourceViewTeamComparePreview.folders.length > 0 ? resourceViewTeamComparePreview.folders.join(', ') : 'none'}
                       {resourceViewTeamComparePreview.mergeResult.droppedCount > 0 ? ` · 최대 ${maxResourceViewPresets}개 제한으로 ${resourceViewTeamComparePreview.mergeResult.droppedCount}개 제외 예정` : ''}
                     </p>
+                    {resourceViewTeamComparePreview.snapshotMetadata ? (
+                      <p className="ku-meta mt-1" data-testid="resource-view-team-compare-snapshot">
+                        {formatResourceViewTeamSnapshotMetadata(resourceViewTeamComparePreview.snapshotMetadata)}
+                      </p>
+                    ) : null}
                   </div>
                   <button
                     className="rounded-[8px] border border-[rgba(60,60,67,0.12)] bg-white px-2 py-1 text-xs font-semibold text-[rgba(60,60,67,0.72)] transition hover:bg-[rgba(242,242,247,0.9)]"
@@ -1624,6 +1643,11 @@ export function ResourceExplorer({
                   <p className="ku-meta" data-testid="resource-view-team-sync-meta">
                     Local before {resourceViewTeamSyncSummary.localCount} · {formatPresetUpdatedAt(resourceViewTeamSyncSummary.timestamp)}
                   </p>
+                  {resourceViewTeamSyncSummary.snapshotMetadata ? (
+                    <p className="ku-meta" data-testid="resource-view-team-sync-snapshot">
+                      {formatResourceViewTeamSnapshotMetadata(resourceViewTeamSyncSummary.snapshotMetadata)}
+                    </p>
+                  ) : null}
                 </div>
               </div>
             ) : null}
@@ -5265,7 +5289,7 @@ function mergeResourceViewPresets(existingPresets: ResourceViewPreset[], incomin
   };
 }
 
-function buildResourceViewTeamComparePreview(action: 'load' | 'save', localPresets: ResourceViewPreset[], teamPresets: ResourceViewPreset[], invalidCount: number): ResourceViewTeamComparePreview {
+function buildResourceViewTeamComparePreview(action: 'load' | 'save', localPresets: ResourceViewPreset[], teamPresets: ResourceViewPreset[], invalidCount: number, snapshotMetadata?: ResourceViewTeamSnapshotMetadata): ResourceViewTeamComparePreview {
   const existingPresets = action === 'load' ? localPresets : teamPresets;
   const incomingPresets = action === 'load' ? teamPresets : localPresets;
   const mergeResult = mergeResourceViewPresets(existingPresets, incomingPresets, 'incoming');
@@ -5298,6 +5322,7 @@ function buildResourceViewTeamComparePreview(action: 'load' | 'save', localPrese
     teamOnlyNames: teamPresets.filter((preset) => !localNames.has(preset.name)).map((preset) => preset.name),
     folders: resourceViewPresetFolderNames(incomingPresets),
     timestamp: Date.now(),
+    snapshotMetadata,
   };
 }
 
@@ -5312,6 +5337,7 @@ function resourceViewTeamSyncSummaryFromCompare(preview: ResourceViewTeamCompare
     localCount: preview.localCount,
     folders: preview.folders,
     timestamp: Date.now(),
+    snapshotMetadata: preview.snapshotMetadata,
   };
 }
 
@@ -5530,6 +5556,34 @@ function resourceViewPresetSummary(preset: ResourceViewPreset) {
     preset.status !== allValue ? `status:${preset.status}` : '',
   ].filter(Boolean);
   return parts.length > 0 ? parts.join(' · ') : '전체 필터';
+}
+
+function resourceViewTeamSnapshotMetadata(metadata: ResourceViewPresetApiMetadata | undefined, fallbackCount: number): ResourceViewTeamSnapshotMetadata | undefined {
+  if (!metadata) {
+    return undefined;
+  }
+  return {
+    version: finiteNonNegativeNumber(metadata.version, 0),
+    updatedAt: finiteNonNegativeNumber(metadata.updatedAt, 0),
+    count: finiteNonNegativeNumber(metadata.count, fallbackCount),
+    storage: resourceViewTeamSnapshotStorage(metadata.storage),
+  };
+}
+
+function finiteNonNegativeNumber(value: unknown, fallback: number) {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? Math.floor(value) : fallback;
+}
+
+function resourceViewTeamSnapshotStorage(value: unknown) {
+  if (typeof value !== 'string') {
+    return 'server';
+  }
+  const storage = value.trim().slice(0, 24);
+  return storage || 'server';
+}
+
+function formatResourceViewTeamSnapshotMetadata(metadata: ResourceViewTeamSnapshotMetadata) {
+  return `Snapshot v${metadata.version} · ${metadata.count} views · ${metadata.storage} · ${formatPresetUpdatedAt(metadata.updatedAt)}`;
 }
 
 function formatPresetUpdatedAt(updatedAt: number) {

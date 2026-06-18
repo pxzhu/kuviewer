@@ -161,12 +161,12 @@ func (s *Server) handleResources(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleResourceViewsPresets(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
-		presets, err := s.resourceViews.List(r.Context())
+		snapshot, err := s.resourceViews.List(r.Context())
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "resource_views_unavailable")
 			return
 		}
-		writeJSON(w, http.StatusOK, resourceViewPresetList{Items: presets})
+		writeJSON(w, http.StatusOK, resourceViewPresetList{Items: snapshot.Items, Metadata: snapshot.Metadata})
 	case http.MethodPut:
 		r.Body = http.MaxBytesReader(w, r.Body, 64*1024)
 		inputs, err := decodeResourceViewPresetInputs(r.Body)
@@ -175,12 +175,12 @@ func (s *Server) handleResourceViewsPresets(w http.ResponseWriter, r *http.Reque
 			return
 		}
 		presets := sanitizeResourceViewPresetInputs(inputs, time.Now())
-		savedPresets, err := s.resourceViews.Save(r.Context(), presets)
+		snapshot, err := s.resourceViews.Save(r.Context(), presets)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "resource_views_unavailable")
 			return
 		}
-		writeJSON(w, http.StatusOK, resourceViewPresetList{Items: savedPresets})
+		writeJSON(w, http.StatusOK, resourceViewPresetList{Items: snapshot.Items, Metadata: snapshot.Metadata})
 	default:
 		writeError(w, http.StatusMethodNotAllowed, "method_not_allowed")
 	}

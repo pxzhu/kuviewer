@@ -17,6 +17,14 @@ export interface ResourceViewPresetApiRecord {
 
 export interface ResourceViewPresetApiList {
   items: ResourceViewPresetApiRecord[];
+  metadata?: ResourceViewPresetApiMetadata;
+}
+
+export interface ResourceViewPresetApiMetadata {
+  version?: number;
+  updatedAt?: number;
+  count?: number;
+  storage?: string;
 }
 
 export interface ResourceLogStreamMessage {

@@ -250,7 +250,18 @@ async function verifyResourceViewTeamSyncPolish(page) {
   await page.route('**/api/resource-views', async (route) => {
     if (route.request().method() === 'PUT') {
       savedTeamPayload = JSON.parse(route.request().postData() || '{"items":[]}');
-      await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ items: savedTeamPayload.items || [] }) });
+      await route.fulfill({
+        contentType: 'application/json',
+        body: JSON.stringify({
+          items: savedTeamPayload.items || [],
+          metadata: {
+            version: 1700000400000,
+            updatedAt: 1700000400000,
+            count: (savedTeamPayload.items || []).length,
+            storage: 'memory',
+          },
+        }),
+      });
       return;
     }
     await route.fulfill({
@@ -269,6 +280,12 @@ async function verifyResourceViewTeamSyncPolish(page) {
             updatedAt: 1700000200000,
           },
         ],
+        metadata: {
+          version: 1700000300000,
+          updatedAt: 1700000300000,
+          count: 1,
+          storage: 'file',
+        },
       }),
     });
   });
@@ -289,6 +306,9 @@ async function verifyResourceViewTeamSyncPolish(page) {
   await expect(page.getByTestId('resource-view-team-compare-team')).toContainText('Team 1');
   await expect(page.getByTestId('resource-view-team-compare-new')).toContainText('신규 1');
   await expect(page.getByTestId('resource-view-team-compare-folders')).toContainText('Team QA');
+  await expect(page.getByTestId('resource-view-team-compare-snapshot')).toContainText('Snapshot v1700000300000');
+  await expect(page.getByTestId('resource-view-team-compare-snapshot')).toContainText('1 views');
+  await expect(page.getByTestId('resource-view-team-compare-snapshot')).toContainText('file');
   await expect(page.getByTestId(`resource-view-preset-row-${savedViewDomId('Visual Team Incoming')}`)).toHaveCount(0);
   await page.getByTestId('resource-view-team-compare-apply').click();
   await expect(page.getByTestId('resource-view-team-sync-summary')).toBeVisible({ timeout: 10_000 });
@@ -296,6 +316,7 @@ async function verifyResourceViewTeamSyncPolish(page) {
   await expect(page.getByTestId('resource-view-team-sync-count')).toContainText('1 views');
   await expect(page.getByTestId('resource-view-team-sync-new')).toContainText('신규 1');
   await expect(page.getByTestId('resource-view-team-sync-folders')).toContainText('Team QA');
+  await expect(page.getByTestId('resource-view-team-sync-snapshot')).toContainText('Snapshot v1700000300000');
   await expect(page.getByTestId(`resource-view-preset-row-${savedViewDomId('Visual Team Incoming')}`)).toBeVisible({ timeout: 10_000 });
 
   await page.getByTestId('resource-view-team-save').click();
@@ -304,6 +325,7 @@ async function verifyResourceViewTeamSyncPolish(page) {
   await expect(page.getByTestId('resource-view-team-compare-local')).toContainText('Local');
   await expect(page.getByTestId('resource-view-team-compare-team')).toContainText('Team 1');
   await expect(page.getByTestId('resource-view-team-compare-team-only')).toHaveCount(0);
+  await expect(page.getByTestId('resource-view-team-compare-snapshot')).toContainText('Snapshot v1700000300000');
   await expect(page.getByTestId('resource-view-message')).toContainText('저장 실행 전 한 번 더', { timeout: 10_000 });
   await expect(page.getByTestId('resource-view-team-save')).toHaveAttribute('aria-pressed', 'true');
   await expect(page.getByTestId('resource-view-team-save')).toContainText('팀 저장 확인');
@@ -311,6 +333,8 @@ async function verifyResourceViewTeamSyncPolish(page) {
   await page.getByTestId('resource-view-team-compare-save').click();
   await expect(page.getByTestId('resource-view-team-sync-action')).toContainText('Team save', { timeout: 10_000 });
   await expect(page.getByTestId('resource-view-team-sync-folders')).toContainText('Team QA');
+  await expect(page.getByTestId('resource-view-team-sync-snapshot')).toContainText('Snapshot v1700000400000');
+  await expect(page.getByTestId('resource-view-team-sync-snapshot')).toContainText('memory');
   if (!savedTeamPayload?.items?.some((preset) => preset.name === 'Visual Team Incoming' && preset.group === 'Team QA')) {
     throw new Error(`team save payload did not include synced view: ${JSON.stringify(savedTeamPayload)}`);
   }
