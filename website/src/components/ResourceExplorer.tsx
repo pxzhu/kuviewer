@@ -20,6 +20,7 @@ interface ResourceExplorerProps {
 
 const allValue = 'all';
 const resourceViewPresetStorageKey = 'kuviewer_resource_view_presets';
+const resourceViewPresetCollapsedGroupsStorageKey = 'kuviewer_resource_view_collapsed_groups';
 const resourceListDensityStorageKey = 'kuviewer_resource_list_density';
 const resourceListSortStorageKey = 'kuviewer_resource_list_sort';
 const resourceListColumnsStorageKey = 'kuviewer_resource_list_columns';
@@ -29,6 +30,8 @@ const eventsAutoRefreshStorageKey = 'kuviewer_events_auto_refresh';
 const eventsWarningNotificationsStorageKey = 'kuviewer_events_warning_notifications';
 const eventsAutoRefreshIntervalMs = 30_000;
 const maxResourceViewPresets = 8;
+const defaultResourceViewGroup = 'General';
+const maxResourceViewGroupLength = 40;
 const maxCollapsedRelations = 24;
 const defaultOpenDetailSections: DetailSectionId[] = ['metadata', 'status', 'safe', 'relations', 'events'];
 const resourceViewParamNames = {
@@ -98,6 +101,7 @@ const defaultResourceListColumns: ResourceListColumnPreference = {
 
 interface ResourceViewPreset extends ResourceViewFilters {
   name: string;
+  group: string;
   updatedAt: number;
 }
 
@@ -258,6 +262,8 @@ export function ResourceExplorer({
   const [error, setError] = useState('');
   const [viewPresets, setViewPresets] = useState<ResourceViewPreset[]>(() => readResourceViewPresets());
   const [presetName, setPresetName] = useState('');
+  const [presetGroup, setPresetGroup] = useState(defaultResourceViewGroup);
+  const [collapsedViewGroups, setCollapsedViewGroups] = useState<Set<string>>(() => readCollapsedResourceViewGroups());
   const [resourceViewMessage, setResourceViewMessage] = useState<ResourceViewMessage | null>(null);
   const [resourceViewConflict, setResourceViewConflict] = useState<ResourceViewConflictState | null>(null);
   const [renamingViewPreset, setRenamingViewPreset] = useState<ResourceViewRenameState | null>(null);
@@ -308,7 +314,10 @@ export function ResourceExplorer({
   const currentPresetFilters = useMemo(() => ({ query, cluster, namespace, kind, status }), [cluster, kind, namespace, query, status]);
   const matchingViewPreset = useMemo(() => viewPresets.find((preset) => resourceViewPresetMatchesFilters(preset, currentPresetFilters)), [currentPresetFilters, viewPresets]);
   const nextPresetName = resourceViewPresetTargetName(presetName, matchingViewPreset?.name || suggestedPresetName);
+  const nextPresetGroup = normalizeResourceViewPresetGroup(presetGroup || matchingViewPreset?.group || defaultResourceViewGroup);
   const presetNameExists = viewPresets.some((preset) => preset.name === nextPresetName);
+  const groupedViewPresets = useMemo(() => groupResourceViewPresets(viewPresets), [viewPresets]);
+  const viewPresetGroupOptions = useMemo(() => unique([defaultResourceViewGroup, ...viewPresets.map((preset) => preset.group)]), [viewPresets]);
   const filtersAreDefault = resourceViewPresetMatchesFilters(
     {
       name: 'default',
@@ -317,6 +326,7 @@ export function ResourceExplorer({
       namespace: allValue,
       kind: allValue,
       status: allValue,
+      group: defaultResourceViewGroup,
       updatedAt: 0,
     },
     currentPresetFilters,
@@ -404,6 +414,10 @@ export function ResourceExplorer({
   }, [resourceListColumns]);
 
   useEffect(() => {
+    writeCollapsedResourceViewGroups(collapsedViewGroups);
+  }, [collapsedViewGroups]);
+
+  useEffect(() => {
     if (resources.length === 0) {
       return;
     }
@@ -418,6 +432,7 @@ export function ResourceExplorer({
     setRenamingViewPreset(null);
     const nextPreset: ResourceViewPreset = {
       name: nextPresetName,
+      group: nextPresetGroup,
       query: query.slice(0, 160),
       cluster,
       namespace,
@@ -429,6 +444,7 @@ export function ResourceExplorer({
     setViewPresets(nextPresets);
     writeResourceViewPresets(nextPresets);
     setPresetName(nextPreset.name);
+    setPresetGroup(nextPreset.group);
   };
 
   const handleApplyViewPreset = (preset: ResourceViewPreset) => {
@@ -439,6 +455,7 @@ export function ResourceExplorer({
     setKind(normalizePresetFilterValue(preset.kind, kinds));
     setStatus(normalizePresetFilterValue(preset.status, statuses));
     setPresetName(preset.name);
+    setPresetGroup(preset.group);
     onSelectNode('');
   };
 
@@ -547,6 +564,7 @@ export function ResourceExplorer({
     setKind(allValue);
     setStatus(allValue);
     setPresetName('');
+    setPresetGroup(defaultResourceViewGroup);
     setResourceViewMessage(null);
     onSelectNode('');
   };
@@ -634,6 +652,30 @@ export function ResourceExplorer({
       setPresetName(targetName);
     }
     setResourceViewMessage({ tone: 'success', text: `saved view 이름을 "${targetName}"으로 변경했습니다.` });
+  };
+  const handleUpdateViewPresetGroup = (preset: ResourceViewPreset, groupValue: string) => {
+    const targetGroup = normalizeResourceViewPresetGroup(groupValue);
+    if (targetGroup === preset.group) {
+      return;
+    }
+    const nextPresets = viewPresets.map((candidate) => candidate.name === preset.name ? { ...candidate, group: targetGroup, updatedAt: Date.now() } : candidate);
+    setViewPresets(nextPresets);
+    writeResourceViewPresets(nextPresets);
+    if (presetName.trim() === preset.name || matchingViewPreset?.name === preset.name) {
+      setPresetGroup(targetGroup);
+    }
+    setResourceViewMessage({ tone: 'success', text: `"${preset.name}" 뷰를 ${targetGroup} 그룹으로 이동했습니다.` });
+  };
+  const toggleViewPresetGroup = (groupName: string) => {
+    setCollapsedViewGroups((current) => {
+      const next = new Set(current);
+      if (next.has(groupName)) {
+        next.delete(groupName);
+      } else {
+        next.add(groupName);
+      }
+      return next;
+    });
   };
   const handleResourceViewRenameKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
     if (event.key === 'Enter') {
@@ -1090,40 +1132,69 @@ export function ResourceExplorer({
               </div>
             ) : null}
             {viewPresets.length > 0 ? (
-              <div className="flex gap-1.5 overflow-x-auto pb-0.5" aria-label="저장된 뷰 빠른 적용">
-                {viewPresets.map((preset) => {
-                  const active = resourceViewPresetMatchesFilters(preset, currentPresetFilters);
-                  return (
-                    <button
-                      key={preset.name}
-                      className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1.5 text-xs font-semibold transition ${
-                        active
-                          ? 'border-[rgba(0,122,255,0.24)] bg-[rgba(0,122,255,0.1)] text-[#0057b8]'
-                          : 'border-[rgba(60,60,67,0.12)] bg-white/82 text-[rgba(60,60,67,0.72)] hover:bg-white'
-                      }`}
-                      type="button"
-                      onClick={() => handleApplyViewPreset(preset)}
-                      aria-pressed={active}
-                      title={`${preset.name} · ${resourceViewPresetSummary(preset)}`}
-                    >
-                      {active ? <CheckCircle2 size={13} aria-hidden="true" /> : <Bookmark size={13} aria-hidden="true" />}
-                      <span>{preset.name}</span>
-                    </button>
-                  );
-                })}
+              <div className="grid gap-1.5" aria-label="저장된 뷰 빠른 적용" data-testid="resource-view-quick-groups">
+                {groupedViewPresets.map((group) => (
+                  <div key={group.name} className="grid gap-1">
+                    <p className="ku-meta flex items-center gap-1.5" data-testid={`resource-view-quick-group-${resourceViewGroupDomId(group.name)}`}>
+                      <Tags size={12} aria-hidden="true" />
+                      {group.name} · {group.presets.length}
+                    </p>
+                    <div className="flex gap-1.5 overflow-x-auto pb-0.5">
+                      {group.presets.map((preset) => {
+                        const active = resourceViewPresetMatchesFilters(preset, currentPresetFilters);
+                        return (
+                          <button
+                            key={preset.name}
+                            className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1.5 text-xs font-semibold transition ${
+                              active
+                                ? 'border-[rgba(0,122,255,0.24)] bg-[rgba(0,122,255,0.1)] text-[#0057b8]'
+                                : 'border-[rgba(60,60,67,0.12)] bg-white/82 text-[rgba(60,60,67,0.72)] hover:bg-white'
+                            }`}
+                            type="button"
+                            onClick={() => handleApplyViewPreset(preset)}
+                            aria-pressed={active}
+                            title={`${preset.name} · ${preset.group} · ${resourceViewPresetSummary(preset)}`}
+                          >
+                            {active ? <CheckCircle2 size={13} aria-hidden="true" /> : <Bookmark size={13} aria-hidden="true" />}
+                            <span>{preset.name}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
               </div>
             ) : null}
             {presetNameExists ? <p className="ku-meta">같은 이름으로 저장하면 기존 뷰를 업데이트합니다.</p> : null}
-            <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
-              <input
-                className="ku-input w-full"
-                placeholder={suggestedPresetName}
-                value={presetName}
-                onChange={(event) => setPresetName(event.target.value)}
-                data-testid="resource-view-name-input"
-              />
+            <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(150px,0.45fr)_auto]">
+              <label className="grid gap-1">
+                <span className="ku-meta">View name</span>
+                <input
+                  className="ku-input w-full"
+                  placeholder={suggestedPresetName}
+                  value={presetName}
+                  onChange={(event) => setPresetName(event.target.value)}
+                  data-testid="resource-view-name-input"
+                />
+              </label>
+              <label className="grid gap-1">
+                <span className="ku-meta">Group</span>
+                <input
+                  className="ku-input w-full"
+                  list="resource-view-group-options"
+                  placeholder={defaultResourceViewGroup}
+                  value={presetGroup}
+                  onChange={(event) => setPresetGroup(event.target.value.slice(0, maxResourceViewGroupLength))}
+                  data-testid="resource-view-group-input"
+                />
+                <datalist id="resource-view-group-options">
+                  {viewPresetGroupOptions.map((groupName) => (
+                    <option key={groupName} value={groupName} />
+                  ))}
+                </datalist>
+              </label>
               <button
-                className="inline-flex h-9 items-center justify-center gap-2 rounded-[9px] border border-[rgba(0,122,255,0.22)] bg-[rgba(0,122,255,0.08)] px-3 text-xs font-semibold text-[#0057b8] transition hover:bg-[rgba(0,122,255,0.13)]"
+                className="inline-flex h-9 items-center justify-center gap-2 self-end rounded-[9px] border border-[rgba(0,122,255,0.22)] bg-[rgba(0,122,255,0.08)] px-3 text-xs font-semibold text-[#0057b8] transition hover:bg-[rgba(0,122,255,0.13)]"
                 type="button"
                 onClick={handleSaveViewPreset}
                 data-testid="resource-view-save"
@@ -1135,92 +1206,132 @@ export function ResourceExplorer({
             {viewPresets.length === 0 ? (
               <p className="ku-meta">저장된 뷰 없음</p>
             ) : (
-              <div className="grid gap-1.5">
-                {viewPresets.map((preset) => {
-                  const active = resourceViewPresetMatchesFilters(preset, currentPresetFilters);
-                  const isRenaming = renamingViewPreset?.originalName === preset.name;
-                  const presetDomId = resourceViewPresetDomId(preset.name);
+              <div className="grid gap-2" data-testid="resource-view-grouped-list">
+                {groupedViewPresets.map((group) => {
+                  const collapsed = collapsedViewGroups.has(group.name);
+                  const groupDomId = resourceViewGroupDomId(group.name);
                   return (
-                    <div
-                      key={preset.name}
-                      className={`grid gap-2 rounded-[10px] border p-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center ${active ? 'border-[rgba(0,122,255,0.22)] bg-[rgba(0,122,255,0.06)]' : 'border-[rgba(60,60,67,0.1)] bg-white/78'}`}
-                      data-testid={`resource-view-preset-row-${presetDomId}`}
-                    >
-                      <div className="min-w-0">
-                        {isRenaming ? (
-                          <div className="grid gap-1.5">
-                            <label className="grid gap-1">
-                              <span className="ku-meta">saved view 이름</span>
-                              <input
-                                className="ku-input h-8 w-full text-xs"
-                                value={renamingViewPreset.draftName}
-                                onChange={(event) => setRenamingViewPreset((current) => current && current.originalName === preset.name ? { ...current, draftName: event.target.value.slice(0, 80), error: '' } : current)}
-                                onKeyDown={handleResourceViewRenameKeyDown}
-                                data-testid={`resource-view-rename-input-${presetDomId}`}
-                                autoFocus
-                              />
-                            </label>
-                            {renamingViewPreset.error ? (
-                              <p className="rounded-[8px] border border-[rgba(255,149,0,0.22)] bg-[rgba(255,149,0,0.08)] px-2 py-1 text-xs font-semibold text-[#8a4d00]" data-testid={`resource-view-rename-error-${presetDomId}`}>
-                                {renamingViewPreset.error}
-                              </p>
-                            ) : null}
-                            <p className="truncate font-mono text-[10px] font-semibold text-[rgba(60,60,67,0.54)]">{resourceViewPresetSummary(preset)}</p>
-                          </div>
-                        ) : (
-                          <>
-                            <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-                              <p className="truncate text-xs font-semibold text-[#1d1d1f]">{preset.name}</p>
-                              {active ? <span className="rounded-full bg-[rgba(0,122,255,0.1)] px-1.5 py-0.5 text-[9px] font-semibold text-[#0057b8]">적용됨</span> : null}
-                              <span className="rounded-full bg-[rgba(60,60,67,0.06)] px-1.5 py-0.5 font-mono text-[9px] font-semibold text-[rgba(60,60,67,0.54)]">{formatPresetUpdatedAt(preset.updatedAt)}</span>
+                    <div key={group.name} className="grid gap-1.5 rounded-[12px] border border-[rgba(60,60,67,0.1)] bg-[rgba(242,242,247,0.38)] p-2" data-testid={`resource-view-group-${groupDomId}`}>
+                      <button
+                        className="flex w-full items-center justify-between gap-2 rounded-[9px] px-1.5 py-1 text-left transition hover:bg-white/70"
+                        type="button"
+                        onClick={() => toggleViewPresetGroup(group.name)}
+                        aria-expanded={!collapsed}
+                        data-testid={`resource-view-group-toggle-${groupDomId}`}
+                      >
+                        <span className="inline-flex min-w-0 items-center gap-1.5">
+                          <ChevronDown className={`shrink-0 transition ${collapsed ? '-rotate-90' : ''}`} size={14} aria-hidden="true" />
+                          <Tags className="shrink-0 text-[rgba(60,60,67,0.56)]" size={13} aria-hidden="true" />
+                          <span className="truncate text-xs font-semibold text-[#1d1d1f]">{group.name}</span>
+                        </span>
+                        <span className="ku-chip">{group.presets.length} views</span>
+                      </button>
+                      {collapsed ? null : group.presets.map((preset) => {
+                        const active = resourceViewPresetMatchesFilters(preset, currentPresetFilters);
+                        const isRenaming = renamingViewPreset?.originalName === preset.name;
+                        const presetDomId = resourceViewPresetDomId(preset.name);
+                        return (
+                          <div
+                            key={preset.name}
+                            className={`grid gap-2 rounded-[10px] border p-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center ${active ? 'border-[rgba(0,122,255,0.22)] bg-[rgba(0,122,255,0.06)]' : 'border-[rgba(60,60,67,0.1)] bg-white/78'}`}
+                            data-testid={`resource-view-preset-row-${presetDomId}`}
+                          >
+                            <div className="min-w-0">
+                              {isRenaming ? (
+                                <div className="grid gap-1.5">
+                                  <label className="grid gap-1">
+                                    <span className="ku-meta">saved view 이름</span>
+                                    <input
+                                      className="ku-input h-8 w-full text-xs"
+                                      value={renamingViewPreset.draftName}
+                                      onChange={(event) => setRenamingViewPreset((current) => current && current.originalName === preset.name ? { ...current, draftName: event.target.value.slice(0, 80), error: '' } : current)}
+                                      onKeyDown={handleResourceViewRenameKeyDown}
+                                      data-testid={`resource-view-rename-input-${presetDomId}`}
+                                      autoFocus
+                                    />
+                                  </label>
+                                  {renamingViewPreset.error ? (
+                                    <p className="rounded-[8px] border border-[rgba(255,149,0,0.22)] bg-[rgba(255,149,0,0.08)] px-2 py-1 text-xs font-semibold text-[#8a4d00]" data-testid={`resource-view-rename-error-${presetDomId}`}>
+                                      {renamingViewPreset.error}
+                                    </p>
+                                  ) : null}
+                                  <p className="truncate font-mono text-[10px] font-semibold text-[rgba(60,60,67,0.54)]">{resourceViewPresetSummary(preset)}</p>
+                                </div>
+                              ) : (
+                                <>
+                                  <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+                                    <p className="truncate text-xs font-semibold text-[#1d1d1f]">{preset.name}</p>
+                                    {active ? <span className="rounded-full bg-[rgba(0,122,255,0.1)] px-1.5 py-0.5 text-[9px] font-semibold text-[#0057b8]">적용됨</span> : null}
+                                    <span className="rounded-full bg-[rgba(52,199,89,0.1)] px-1.5 py-0.5 text-[9px] font-semibold text-[#248a3d]">{preset.group}</span>
+                                    <span className="rounded-full bg-[rgba(60,60,67,0.06)] px-1.5 py-0.5 font-mono text-[9px] font-semibold text-[rgba(60,60,67,0.54)]">{formatPresetUpdatedAt(preset.updatedAt)}</span>
+                                  </div>
+                                  <p className="mt-0.5 truncate font-mono text-[10px] font-semibold text-[rgba(60,60,67,0.54)]">{resourceViewPresetSummary(preset)}</p>
+                                </>
+                              )}
                             </div>
-                            <p className="mt-0.5 truncate font-mono text-[10px] font-semibold text-[rgba(60,60,67,0.54)]">{resourceViewPresetSummary(preset)}</p>
-                          </>
-                        )}
-                      </div>
-                      <div className="flex flex-wrap items-center gap-1.5">
-                        {isRenaming ? (
-                          <>
-                            <button
-                              className="inline-flex items-center gap-1.5 rounded-[8px] border border-[rgba(0,122,255,0.2)] bg-[rgba(0,122,255,0.08)] px-2.5 py-1.5 text-xs font-semibold text-[#0057b8] transition hover:bg-[rgba(0,122,255,0.12)]"
-                              type="button"
-                              onClick={handleCommitResourceViewRename}
-                              data-testid={`resource-view-rename-save-${presetDomId}`}
-                            >
-                              <CheckCircle2 size={13} aria-hidden="true" />
-                              저장
-                            </button>
-                            <button
-                              className="inline-flex items-center gap-1.5 rounded-[8px] border border-[rgba(60,60,67,0.12)] bg-white px-2.5 py-1.5 text-xs font-semibold text-[rgba(60,60,67,0.72)] transition hover:bg-[rgba(242,242,247,0.9)]"
-                              type="button"
-                              onClick={handleCancelResourceViewRename}
-                              data-testid={`resource-view-rename-cancel-${presetDomId}`}
-                            >
-                              <X size={13} aria-hidden="true" />
-                              취소
-                            </button>
-                          </>
-                        ) : (
-                          <>
-                            <button className="rounded-[8px] border border-[rgba(60,60,67,0.12)] bg-white px-2.5 py-1.5 text-xs font-semibold text-[rgba(60,60,67,0.72)] transition hover:bg-[rgba(242,242,247,0.9)]" type="button" onClick={() => handleApplyViewPreset(preset)}>
-                              적용
-                            </button>
-                            <button
-                              className="inline-flex items-center gap-1.5 rounded-[8px] border border-[rgba(60,60,67,0.12)] bg-white px-2.5 py-1.5 text-xs font-semibold text-[rgba(60,60,67,0.72)] transition hover:bg-[rgba(242,242,247,0.9)]"
-                              type="button"
-                              onClick={() => handleStartResourceViewRename(preset)}
-                              data-testid={`resource-view-rename-start-${presetDomId}`}
-                              aria-label={`${preset.name} 이름 변경`}
-                            >
-                              <Pencil size={13} aria-hidden="true" />
-                              이름 변경
-                            </button>
-                            <button className="rounded-[8px] border border-[rgba(255,59,48,0.18)] bg-[rgba(255,59,48,0.06)] p-1.5 text-[#c01f17] transition hover:bg-[rgba(255,59,48,0.1)]" type="button" onClick={() => handleDeleteViewPreset(preset.name)} aria-label={`${preset.name} 삭제`}>
-                              <Trash2 size={14} aria-hidden="true" />
-                            </button>
-                          </>
-                        )}
-                      </div>
+                            <div className="flex flex-wrap items-center gap-1.5 sm:justify-end">
+                              {isRenaming ? (
+                                <>
+                                  <button
+                                    className="inline-flex items-center gap-1.5 rounded-[8px] border border-[rgba(0,122,255,0.2)] bg-[rgba(0,122,255,0.08)] px-2.5 py-1.5 text-xs font-semibold text-[#0057b8] transition hover:bg-[rgba(0,122,255,0.12)]"
+                                    type="button"
+                                    onClick={handleCommitResourceViewRename}
+                                    data-testid={`resource-view-rename-save-${presetDomId}`}
+                                  >
+                                    <CheckCircle2 size={13} aria-hidden="true" />
+                                    저장
+                                  </button>
+                                  <button
+                                    className="inline-flex items-center gap-1.5 rounded-[8px] border border-[rgba(60,60,67,0.12)] bg-white px-2.5 py-1.5 text-xs font-semibold text-[rgba(60,60,67,0.72)] transition hover:bg-[rgba(242,242,247,0.9)]"
+                                    type="button"
+                                    onClick={handleCancelResourceViewRename}
+                                    data-testid={`resource-view-rename-cancel-${presetDomId}`}
+                                  >
+                                    <X size={13} aria-hidden="true" />
+                                    취소
+                                  </button>
+                                </>
+                              ) : (
+                                <>
+                                  <label className="grid min-w-[126px] gap-1">
+                                    <span className="ku-meta">Group</span>
+                                    <input
+                                      className="ku-input h-8 text-xs"
+                                      list="resource-view-group-options"
+                                      defaultValue={preset.group}
+                                      onBlur={(event) => handleUpdateViewPresetGroup(preset, event.currentTarget.value)}
+                                      onKeyDown={(event) => {
+                                        if (event.key === 'Enter') {
+                                          event.preventDefault();
+                                          handleUpdateViewPresetGroup(preset, event.currentTarget.value);
+                                          event.currentTarget.blur();
+                                        }
+                                      }}
+                                      data-testid={`resource-view-group-input-${presetDomId}`}
+                                    />
+                                  </label>
+                                  <button className="rounded-[8px] border border-[rgba(60,60,67,0.12)] bg-white px-2.5 py-1.5 text-xs font-semibold text-[rgba(60,60,67,0.72)] transition hover:bg-[rgba(242,242,247,0.9)]" type="button" onClick={() => handleApplyViewPreset(preset)}>
+                                    적용
+                                  </button>
+                                  <button
+                                    className="inline-flex items-center gap-1.5 rounded-[8px] border border-[rgba(60,60,67,0.12)] bg-white px-2.5 py-1.5 text-xs font-semibold text-[rgba(60,60,67,0.72)] transition hover:bg-[rgba(242,242,247,0.9)]"
+                                    type="button"
+                                    onClick={() => handleStartResourceViewRename(preset)}
+                                    data-testid={`resource-view-rename-start-${presetDomId}`}
+                                    aria-label={`${preset.name} 이름 변경`}
+                                  >
+                                    <Pencil size={13} aria-hidden="true" />
+                                    이름 변경
+                                  </button>
+                                  <button className="rounded-[8px] border border-[rgba(255,59,48,0.18)] bg-[rgba(255,59,48,0.06)] p-1.5 text-[#c01f17] transition hover:bg-[rgba(255,59,48,0.1)]" type="button" onClick={() => handleDeleteViewPreset(preset.name)} aria-label={`${preset.name} 삭제`}>
+                                    <Trash2 size={14} aria-hidden="true" />
+                                  </button>
+                                </>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
                   );
                 })}
@@ -1591,6 +1702,13 @@ function ResourceExplorerDetail({
     return () => window.clearInterval(intervalId);
   }, [eventsAutoRefreshEnabled, liveEnabled, resourceEventsKey]);
 
+  const resetLogPauseState = () => {
+    logsPausedRef.current = false;
+    pendingLogLinesRef.current = [];
+    setLogsPaused(false);
+    setPendingLogLines([]);
+  };
+
   useEffect(() => {
     logsStreamControllerRef.current?.abort();
     logsStreamControllerRef.current = null;
@@ -1940,13 +2058,6 @@ function ResourceExplorerDetail({
     logsStreamControllerRef.current = null;
     setLogsStreaming(false);
     resetLogPauseState();
-  };
-
-  const resetLogPauseState = () => {
-    logsPausedRef.current = false;
-    pendingLogLinesRef.current = [];
-    setLogsPaused(false);
-    setPendingLogLines([]);
   };
 
   const appendVisibleLogLine = (line: string) => {
@@ -4061,6 +4172,30 @@ function writeResourceViewPresets(presets: ResourceViewPreset[]) {
   }
 }
 
+function readCollapsedResourceViewGroups(): Set<string> {
+  try {
+    const rawValue = window.localStorage.getItem(resourceViewPresetCollapsedGroupsStorageKey);
+    if (!rawValue) {
+      return new Set();
+    }
+    const parsedValue = JSON.parse(rawValue);
+    if (!Array.isArray(parsedValue)) {
+      return new Set();
+    }
+    return new Set(parsedValue.flatMap((value) => typeof value === 'string' ? [normalizeResourceViewPresetGroup(value)] : []));
+  } catch {
+    return new Set();
+  }
+}
+
+function writeCollapsedResourceViewGroups(groups: Set<string>) {
+  try {
+    window.localStorage.setItem(resourceViewPresetCollapsedGroupsStorageKey, JSON.stringify([...groups].sort()));
+  } catch {
+    // Group collapse state is only a UI preference.
+  }
+}
+
 export function defaultResourceViewFilters(): ResourceViewFilters {
   return {
     query: '',
@@ -4142,6 +4277,7 @@ function resourceViewShareUrl(filters: ResourceViewFilters, sourceMode: Topology
 function resourceViewPresetExportRecord(preset: ResourceViewPreset): ResourceViewPreset {
   return {
     name: preset.name,
+    group: preset.group,
     query: preset.query,
     cluster: preset.cluster,
     namespace: preset.namespace,
@@ -4171,6 +4307,7 @@ function validResourceViewPreset(value: unknown): ResourceViewPreset[] {
   return [
     {
       name: candidate.name.trim().slice(0, 80),
+      group: normalizeResourceViewPresetGroup(typeof candidate.group === 'string' ? candidate.group : ''),
       query: candidate.query.slice(0, 160),
       cluster: candidate.cluster || allValue,
       namespace: candidate.namespace || allValue,
@@ -4245,8 +4382,32 @@ function upsertResourceViewPreset(presets: ResourceViewPreset[], preset: Resourc
   return [preset, ...presets.filter((existingPreset) => existingPreset.name !== preset.name)].slice(0, maxResourceViewPresets);
 }
 
+function normalizeResourceViewPresetGroup(group: string) {
+  const normalized = group.trim().slice(0, maxResourceViewGroupLength);
+  return normalized || defaultResourceViewGroup;
+}
+
+function groupResourceViewPresets(presets: ResourceViewPreset[]) {
+  const grouped = new Map<string, ResourceViewPreset[]>();
+  for (const preset of presets) {
+    const groupName = normalizeResourceViewPresetGroup(preset.group);
+    grouped.set(groupName, [...(grouped.get(groupName) || []), preset]);
+  }
+  return [...grouped.entries()]
+    .map(([name, groupPresets]) => ({ name, presets: groupPresets }))
+    .sort((left, right) => {
+      if (left.name === defaultResourceViewGroup) {
+        return -1;
+      }
+      if (right.name === defaultResourceViewGroup) {
+        return 1;
+      }
+      return left.name.localeCompare(right.name);
+    });
+}
+
 function resourceViewPresetFiltersEqual(left: ResourceViewPreset, right: ResourceViewPreset) {
-  return left.query === right.query && left.cluster === right.cluster && left.namespace === right.namespace && left.kind === right.kind && left.status === right.status;
+  return left.group === right.group && left.query === right.query && left.cluster === right.cluster && left.namespace === right.namespace && left.kind === right.kind && left.status === right.status;
 }
 
 function copiedResourceViewPresetName(name: string, seenNames: Set<string>, existingByName: Map<string, ResourceViewPreset>) {
@@ -4303,6 +4464,10 @@ function resourceViewPresetDomId(name: string) {
   return name.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 80) || 'view';
 }
 
+function resourceViewGroupDomId(name: string) {
+  return name.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 40) || 'group';
+}
+
 function resourceViewPresetMatchesFilters(preset: ResourceViewPreset, filters: Pick<ResourceViewPreset, 'query' | 'cluster' | 'namespace' | 'kind' | 'status'>) {
   return (
     preset.query === filters.query.slice(0, 160) &&
@@ -4333,6 +4498,7 @@ function suggestedResourceViewPresetName(filters: Pick<ResourceViewPreset, 'quer
 
 function resourceViewPresetSummary(preset: ResourceViewPreset) {
   const parts = [
+    `group:${preset.group}`,
     preset.query.trim() ? `q:${preset.query.trim()}` : '',
     preset.cluster !== allValue ? `cluster:${preset.cluster}` : '',
     preset.namespace !== allValue ? `ns:${preset.namespace}` : '',
