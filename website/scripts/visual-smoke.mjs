@@ -103,7 +103,9 @@ async function selectVisualMode(page, mode) {
     await page.getByTestId('upload-cluster-name').fill('visual upload');
     await page.getByTestId('upload-cluster-id').fill('visual-upload');
     await page.setInputFiles('[data-testid="upload-files"]', uploadManifestPath);
-    await page.getByTestId('upload-warning-toggle').click();
+    if (!(await page.getByTestId('upload-warning-panel').isVisible().catch(() => false))) {
+      await page.getByTestId('upload-warning-toggle').click();
+    }
     await expect(page.getByTestId('upload-warning-panel')).toContainText('지원하지 않는 kind', { timeout: 10_000 });
     return;
   }
@@ -196,6 +198,9 @@ async function verifyResourceExplorer(page) {
   await verifyResourceViewImportExportPolish(page);
   await verifyResourceViewBulkManagement(page);
   await verifyResourceViewConflictImport(page);
+  await verifyResourceViewTeamSyncPolish(page);
+  await selectVisualMode(page, visualMode);
+  await page.getByRole('button', { name: /리소스 탐색/ }).click();
   await expect(page.getByRole('heading', { name: 'Metadata' })).toBeVisible({ timeout: 10_000 });
   await expect(page.getByRole('heading', { name: 'Status' })).toBeVisible({ timeout: 10_000 });
   await expect(page.getByRole('heading', { name: 'Safe Preview' })).toBeVisible({ timeout: 10_000 });
@@ -219,6 +224,84 @@ async function verifyResourceViewConflictImport(page) {
   await expect(page.getByTestId('resource-view-message')).toContainText('충돌 1개', { timeout: 10_000 });
   await expect(page.getByTestId(`resource-view-group-${savedViewDomId('Imported')}`)).toBeVisible({ timeout: 10_000 });
   await expect(page.getByTestId(`resource-view-preset-row-${savedViewDomId('Visual Conflict')}`)).toContainText('Imported', { timeout: 10_000 });
+}
+
+async function verifyResourceViewTeamSyncPolish(page) {
+  let savedTeamPayload = null;
+  await page.route('**/api/status', async (route) => {
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({
+        mode: 'api',
+        source: 'visual-smoke',
+        readOnly: true,
+        secrets: 'hidden',
+        static: true,
+        serverTime: new Date().toISOString(),
+      }),
+    });
+  });
+  await page.route('**/api/topology', async (route) => {
+    await route.fulfill({ contentType: 'application/json', body: JSON.stringify(getTeamSyncSnapshot()) });
+  });
+  await page.route('**/api/resources', async (route) => {
+    await route.fulfill({ contentType: 'application/json', body: JSON.stringify(getTeamSyncResources()) });
+  });
+  await page.route('**/api/resource-views', async (route) => {
+    if (route.request().method() === 'PUT') {
+      savedTeamPayload = JSON.parse(route.request().postData() || '{"items":[]}');
+      await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ items: savedTeamPayload.items || [] }) });
+      return;
+    }
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({
+        items: [
+          {
+            name: 'Visual Team Incoming',
+            group: 'Team QA',
+            query: 'team-api',
+            cluster: 'visual-live',
+            namespace: 'default',
+            kind: 'Pod',
+            status: 'healthy',
+            order: 1,
+            updatedAt: 1700000200000,
+          },
+        ],
+      }),
+    });
+  });
+
+  await page.getByTestId('source-mode-live').click();
+  const unlockButton = page.getByTestId('unlock-live');
+  if (await unlockButton.isVisible().catch(() => false)) {
+    await page.getByTestId('live-token-input').fill(adminToken);
+    await unlockButton.click();
+  }
+  await expect(page.getByText('실시간 연결됨')).toBeVisible({ timeout: 10_000 });
+  await page.getByRole('button', { name: /리소스 탐색/ }).click();
+  await expect(page.getByTestId('resource-view-team-load')).toBeEnabled({ timeout: 10_000 });
+
+  await page.getByTestId('resource-view-team-load').click();
+  await expect(page.getByTestId('resource-view-team-sync-summary')).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByTestId('resource-view-team-sync-action')).toContainText('Team load');
+  await expect(page.getByTestId('resource-view-team-sync-count')).toContainText('1 views');
+  await expect(page.getByTestId('resource-view-team-sync-new')).toContainText('신규 1');
+  await expect(page.getByTestId('resource-view-team-sync-folders')).toContainText('Team QA');
+  await expect(page.getByTestId(`resource-view-preset-row-${savedViewDomId('Visual Team Incoming')}`)).toBeVisible({ timeout: 10_000 });
+
+  await page.getByTestId('resource-view-team-save').click();
+  await expect(page.getByTestId('resource-view-message')).toContainText('한 번 더', { timeout: 10_000 });
+  await expect(page.getByTestId('resource-view-team-save')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByTestId('resource-view-team-save')).toContainText('팀 저장 확인');
+
+  await page.getByTestId('resource-view-team-save').click();
+  await expect(page.getByTestId('resource-view-team-sync-action')).toContainText('Team save', { timeout: 10_000 });
+  await expect(page.getByTestId('resource-view-team-sync-folders')).toContainText('Team QA');
+  if (!savedTeamPayload?.items?.some((preset) => preset.name === 'Visual Team Incoming' && preset.group === 'Team QA')) {
+    throw new Error(`team save payload did not include synced view: ${JSON.stringify(savedTeamPayload)}`);
+  }
 }
 
 async function verifyResourceViewRename(page) {
@@ -577,6 +660,111 @@ async function visibleResourceNames(page) {
 
 function savedViewDomId(name) {
   return name.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 80) || 'view';
+}
+
+function getTeamSyncSnapshot() {
+  return {
+    clusters: [
+      {
+        id: 'visual-live',
+        name: 'Visual Live',
+        provider: 'Kubernetes',
+        version: 'v1.30',
+        nodeReady: 1,
+        nodeTotal: 1,
+        podRunning: 1,
+        podWarning: 0,
+        namespaces: 1,
+      },
+    ],
+    nodes: [
+      {
+        id: 'visual-live:Namespace::default',
+        clusterId: 'visual-live',
+        kind: 'Namespace',
+        namespace: '',
+        name: 'default',
+        status: 'healthy',
+        labels: { team: 'visual' },
+        summary: { workloads: 1 },
+        x: 260,
+        y: 160,
+      },
+      {
+        id: 'visual-live:Pod:default:team-api',
+        clusterId: 'visual-live',
+        kind: 'Pod',
+        namespace: 'default',
+        name: 'team-api',
+        status: 'healthy',
+        labels: { app: 'team-api' },
+        summary: { phase: 'Running', ready: '1/1' },
+        x: 560,
+        y: 160,
+      },
+    ],
+    edges: [
+      {
+        id: 'visual-live:Namespace::default->visual-live:Pod:default:team-api',
+        source: 'visual-live:Namespace::default',
+        target: 'visual-live:Pod:default:team-api',
+        type: 'contains',
+      },
+    ],
+  };
+}
+
+function getTeamSyncResources() {
+  return {
+    items: [
+      {
+        id: 'visual-live:Namespace::default',
+        clusterId: 'visual-live',
+        kind: 'Namespace',
+        namespace: '',
+        name: 'default',
+        status: 'healthy',
+        labels: { team: 'visual' },
+        annotations: {},
+        summary: { workloads: 1 },
+        preview: { metadata: { kind: 'Namespace', name: 'default', namespace: '', cluster: 'visual-live' }, status: { status: 'healthy' } },
+        related: [
+          {
+            nodeId: 'visual-live:Pod:default:team-api',
+            kind: 'Pod',
+            namespace: 'default',
+            name: 'team-api',
+            edgeType: 'contains',
+            direction: 'outgoing',
+            sourceField: '',
+          },
+        ],
+      },
+      {
+        id: 'visual-live:Pod:default:team-api',
+        clusterId: 'visual-live',
+        kind: 'Pod',
+        namespace: 'default',
+        name: 'team-api',
+        status: 'healthy',
+        labels: { app: 'team-api' },
+        annotations: {},
+        summary: { phase: 'Running', ready: '1/1' },
+        preview: { metadata: { kind: 'Pod', name: 'team-api', namespace: 'default', cluster: 'visual-live' }, status: { status: 'healthy', phase: 'Running' } },
+        related: [
+          {
+            nodeId: 'visual-live:Namespace::default',
+            kind: 'Namespace',
+            namespace: '',
+            name: 'default',
+            edgeType: 'contains',
+            direction: 'incoming',
+            sourceField: '',
+          },
+        ],
+      },
+    ],
+  };
 }
 
 function assertSorted(values, direction) {
