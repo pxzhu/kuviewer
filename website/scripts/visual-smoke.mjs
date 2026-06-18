@@ -168,6 +168,7 @@ async function verifyResourceExplorer(page) {
   await page.getByRole('button', { name: /리소스 탐색/ }).click();
   await expect(page.getByRole('heading', { name: '리소스 탐색' })).toBeVisible({ timeout: 10_000 });
   await verifyResourceListSorting(page);
+  await verifyResourceListColumns(page);
   await verifyResourceViewConflictImport(page);
   await expect(page.getByRole('heading', { name: 'Metadata' })).toBeVisible({ timeout: 10_000 });
   await expect(page.getByRole('heading', { name: 'Status' })).toBeVisible({ timeout: 10_000 });
@@ -208,6 +209,37 @@ async function verifyResourceListSorting(page) {
   await expect(page.getByTestId('resource-list-sort-asc')).toHaveAttribute('aria-pressed', 'true');
   const ascendingNames = await visibleResourceNames(page);
   assertSorted(ascendingNames, 'asc');
+}
+
+async function verifyResourceListColumns(page) {
+  const summaryToggle = page.getByTestId('resource-list-column-summary');
+  await expect(summaryToggle).toBeVisible({ timeout: 10_000 });
+  await expect(summaryToggle).toHaveAttribute('aria-pressed', 'true');
+  if ((await page.locator('[data-resource-column="summary"]').count()) === 0) {
+    throw new Error('summary column is missing by default');
+  }
+
+  await summaryToggle.click();
+  await expect(summaryToggle).toHaveAttribute('aria-pressed', 'false');
+  await expect(page.locator('[data-resource-column="summary"]')).toHaveCount(0);
+  const storedColumns = await page.evaluate(() => JSON.parse(window.localStorage.getItem('kuviewer_resource_list_columns') || '{}'));
+  if (storedColumns.summary !== false) {
+    throw new Error(`summary column preference did not persist: ${JSON.stringify(storedColumns)}`);
+  }
+
+  await page.goto(baseUrl, { waitUntil: 'networkidle' });
+  await expect(page.getByRole('heading', { name: 'Kuviewer' })).toBeVisible({ timeout: 10_000 });
+  await selectVisualMode(page, visualMode);
+  await page.getByRole('button', { name: /리소스 탐색/ }).click();
+  await expect(page.getByRole('heading', { name: '리소스 탐색' })).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByTestId('resource-list-column-summary')).toHaveAttribute('aria-pressed', 'false');
+  await expect(page.locator('[data-resource-column="summary"]')).toHaveCount(0);
+
+  await page.getByTestId('resource-list-column-summary').click();
+  await expect(page.getByTestId('resource-list-column-summary')).toHaveAttribute('aria-pressed', 'true');
+  if ((await page.locator('[data-resource-column="summary"]').count()) === 0) {
+    throw new Error('summary column did not return after re-enable');
+  }
 }
 
 async function visibleResourceNames(page) {

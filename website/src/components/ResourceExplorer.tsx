@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { Dispatch, KeyboardEvent as ReactKeyboardEvent, ReactNode, SetStateAction } from 'react';
+import type { CSSProperties, Dispatch, KeyboardEvent as ReactKeyboardEvent, ReactNode, SetStateAction } from 'react';
 import { Activity, AlertTriangle, ArrowDown, ArrowUp, Bookmark, Boxes, CheckCircle2, ChevronDown, Copy, Download, FileText, GitBranch, Link2, RefreshCw, RotateCcw, Search, Tags, Trash2, Upload } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { fetchResourceEvents, fetchResourceLogs, fetchResourceViewPresets, fetchResources, resourcesFromSnapshot, saveResourceViewPresets, streamResourceLogs } from '../services/resourceApi';
@@ -22,6 +22,7 @@ const allValue = 'all';
 const resourceViewPresetStorageKey = 'kuviewer_resource_view_presets';
 const resourceListDensityStorageKey = 'kuviewer_resource_list_density';
 const resourceListSortStorageKey = 'kuviewer_resource_list_sort';
+const resourceListColumnsStorageKey = 'kuviewer_resource_list_columns';
 const resourceDetailDensityStorageKey = 'kuviewer_resource_detail_density';
 const logDensityStorageKey = 'kuviewer_log_density';
 const eventsAutoRefreshStorageKey = 'kuviewer_events_auto_refresh';
@@ -42,6 +43,7 @@ type DetailSectionId = 'metadata' | 'status' | 'safe' | 'yaml' | 'labels' | 'ann
 type ResourceListDensity = 'comfortable' | 'compact';
 type ResourceListSortField = 'name' | 'kind' | 'namespace' | 'status' | 'cluster';
 type ResourceListSortDirection = 'asc' | 'desc';
+type ResourceListOptionalColumn = 'namespace' | 'cluster' | 'age' | 'summary';
 type ResourceDetailDensity = 'comfortable' | 'compact';
 type LogDensity = 'comfortable' | 'compact';
 type EventSeverity = 'warning' | 'normal' | 'other';
@@ -81,6 +83,18 @@ const resourceListSortOptions: Array<{ value: ResourceListSortField; label: stri
   { value: 'cluster', label: 'Cluster' },
 ];
 const defaultResourceListSortPreference: ResourceListSortPreference = { field: 'kind', direction: 'asc' };
+const resourceListOptionalColumns: Array<{ key: ResourceListOptionalColumn; label: string }> = [
+  { key: 'namespace', label: 'Namespace' },
+  { key: 'cluster', label: 'Cluster' },
+  { key: 'age', label: 'Age' },
+  { key: 'summary', label: 'Summary' },
+];
+const defaultResourceListColumns: ResourceListColumnPreference = {
+  namespace: true,
+  cluster: false,
+  age: true,
+  summary: true,
+};
 
 interface ResourceViewPreset extends ResourceViewFilters {
   name: string;
@@ -107,6 +121,8 @@ interface ResourceListSortPreference {
   field: ResourceListSortField;
   direction: ResourceListSortDirection;
 }
+
+type ResourceListColumnPreference = Record<ResourceListOptionalColumn, boolean>;
 
 interface ResourceViewConflictItem {
   name: string;
@@ -230,6 +246,7 @@ export function ResourceExplorer({
   const [detailFocusRequest, setDetailFocusRequest] = useState(0);
   const [resourceListDensity, setResourceListDensity] = useState<ResourceListDensity>(() => readResourceListDensityPreference());
   const [resourceListSort, setResourceListSort] = useState<ResourceListSortPreference>(() => readResourceListSortPreference());
+  const [resourceListColumns, setResourceListColumns] = useState<ResourceListColumnPreference>(() => readResourceListColumnPreference());
   const resourceRowRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const viewPresetImportInputRef = useRef<HTMLInputElement>(null);
 
@@ -345,6 +362,10 @@ export function ResourceExplorer({
   useEffect(() => {
     writeResourceListSortPreference(resourceListSort);
   }, [resourceListSort]);
+
+  useEffect(() => {
+    writeResourceListColumnPreference(resourceListColumns);
+  }, [resourceListColumns]);
 
   useEffect(() => {
     if (resources.length === 0) {
@@ -521,17 +542,32 @@ export function ResourceExplorer({
     });
   };
   const resourceSummaryLimit = resourceListDensity === 'compact' ? 2 : 3;
+  const visibleOptionalColumnCount = resourceListOptionalColumns.filter((column) => resourceListColumns[column.key]).length;
+  const toggleResourceListColumn = (column: ResourceListOptionalColumn) => {
+    setResourceListColumns((current) => ({ ...current, [column]: !current[column] }));
+  };
   const resourceRowClassName = (resource: ResourceExplorerItem) =>
     `${resourceListDensity === 'compact' ? 'mb-1.5 rounded-[10px] px-2 py-2' : 'mb-2 rounded-[12px] p-3'} w-full cursor-pointer border text-left transition focus:outline-none focus:ring-2 focus:ring-[rgba(0,122,255,0.22)] ${
       resource.id === selectedResource?.id
         ? 'border-[rgba(0,122,255,0.36)] bg-[rgba(0,122,255,0.1)] shadow-[0_0_0_1px_rgba(0,122,255,0.08)]'
         : 'border-[rgba(60,60,67,0.12)] bg-white/78 hover:bg-white'
     }`;
+  const resourceGridClassName =
+    resourceListDensity === 'compact'
+      ? 'grid gap-1.5 md:[grid-template-columns:var(--resource-list-columns)] md:items-center'
+      : 'grid gap-2 md:[grid-template-columns:var(--resource-list-columns)] md:items-center';
+  const resourceHeaderGridClassName = `${resourceGridClassName} rounded-[10px] border border-[rgba(60,60,67,0.08)] bg-[rgba(242,242,247,0.66)] px-3 py-2`;
+  const resourceGridStyle = { '--resource-list-columns': resourceListGridTemplate(resourceListColumns) } as CSSProperties;
   const resourceNameClassName = resourceListDensity === 'compact' ? 'truncate text-xs font-semibold text-[#1d1d1f]' : 'truncate text-sm font-semibold text-[#1d1d1f]';
   const resourceMetaClassName =
     resourceListDensity === 'compact'
       ? 'mt-0.5 truncate font-mono text-[9px] font-semibold uppercase tracking-[0.03em] text-[rgba(60,60,67,0.58)]'
       : 'mt-0.5 truncate font-mono text-[10px] font-semibold uppercase tracking-[0.03em] text-[rgba(60,60,67,0.58)]';
+  const resourceColumnLabelClassName = 'ku-meta md:hidden';
+  const resourceColumnValueClassName =
+    resourceListDensity === 'compact'
+      ? 'min-w-0 truncate font-mono text-[10px] font-semibold text-[rgba(60,60,67,0.72)]'
+      : 'min-w-0 truncate font-mono text-[11px] font-semibold text-[rgba(60,60,67,0.72)]';
   const resourceSummaryContainerClassName = resourceListDensity === 'compact' ? 'mt-1 flex flex-wrap gap-1' : 'mt-2 flex flex-wrap gap-1.5';
   const resourceSummaryChipClassName =
     resourceListDensity === 'compact'
@@ -645,6 +681,26 @@ export function ResourceExplorer({
                     {option.label}
                   </button>
                 ))}
+              </div>
+              <div className="grid gap-1">
+                <span className="ku-meta">컬럼 · {visibleOptionalColumnCount + 3}</span>
+                <div className="flex max-w-[280px] flex-wrap gap-1 rounded-[9px] border border-[rgba(60,60,67,0.12)] bg-white/70 p-1" aria-label="리소스 목록 표시 컬럼">
+                  {resourceListOptionalColumns.map((column) => (
+                    <button
+                      key={column.key}
+                      className={`rounded-[7px] px-2 py-1 text-xs font-semibold transition ${
+                        resourceListColumns[column.key] ? 'bg-[#1d1d1f] text-white shadow-sm' : 'text-[rgba(60,60,67,0.72)] hover:bg-white'
+                      }`}
+                      data-testid={`resource-list-column-${column.key}`}
+                      type="button"
+                      onClick={() => toggleResourceListColumn(column.key)}
+                      aria-pressed={resourceListColumns[column.key]}
+                      title={`${column.label} 컬럼 ${resourceListColumns[column.key] ? '숨기기' : '표시'}`}
+                    >
+                      {column.label}
+                    </button>
+                  ))}
+                </div>
               </div>
               <span className="ku-chip">{loading ? '로딩 중' : `${filteredResources.length} / ${resources.length}`}</span>
             </div>
@@ -914,39 +970,89 @@ export function ResourceExplorer({
           onKeyDown={handleResourceListKeyDown}
         >
           {sortedResources.length === 0 ? <p className="ku-meta p-2">필터와 일치하는 리소스가 없습니다.</p> : null}
-          {sortedResources.map((resource) => (
-            <div
-              key={resource.id}
-              id={resourceOptionDomId(resource.id)}
-              className={resourceRowClassName(resource)}
-              ref={(node) => {
-                resourceRowRefs.current[resource.id] = node;
-              }}
-              role="option"
-              aria-selected={resource.id === selectedResource?.id}
-              data-resource-row="true"
-              tabIndex={resource.id === selectedResource?.id ? 0 : -1}
-              onClick={() => onSelectNode(resource.id)}
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <p className={resourceNameClassName}>{resource.name}</p>
-                  <p className={resourceMetaClassName}>
-                    {resource.namespace ? `${resource.namespace} / ` : ''}
-                    {resource.kind}
-                  </p>
-                </div>
-                <span className={statusPillClassName(resource.status)}>{resource.status}</span>
-              </div>
-              <div className={resourceSummaryContainerClassName}>
-                {Object.entries(resource.summary).slice(0, resourceSummaryLimit).map(([key, value]) => (
-                  <span key={key} className={resourceSummaryChipClassName}>
-                    {key}:{String(value)}
-                  </span>
-                ))}
-              </div>
+          {sortedResources.length > 0 ? (
+            <div className={`${resourceHeaderGridClassName} mb-2 hidden md:grid`} style={resourceGridStyle} data-testid="resource-list-column-header">
+              <span className="ku-meta" data-resource-column="kind">Kind</span>
+              <span className="ku-meta" data-resource-column="name">Name</span>
+              {resourceListColumns.namespace ? <span className="ku-meta" data-resource-column="namespace">Namespace</span> : null}
+              <span className="ku-meta" data-resource-column="status">Status</span>
+              {resourceListColumns.cluster ? <span className="ku-meta" data-resource-column="cluster">Cluster</span> : null}
+              {resourceListColumns.age ? <span className="ku-meta" data-resource-column="age">Age</span> : null}
+              {resourceListColumns.summary ? <span className="ku-meta" data-resource-column="summary">Summary</span> : null}
             </div>
-          ))}
+          ) : null}
+          {sortedResources.map((resource) => {
+            const summaryEntries = Object.entries(resource.summary).slice(0, resourceSummaryLimit);
+            const resourceAge = resourceListAge(resource);
+            return (
+              <div
+                key={resource.id}
+                id={resourceOptionDomId(resource.id)}
+                className={resourceRowClassName(resource)}
+                ref={(node) => {
+                  resourceRowRefs.current[resource.id] = node;
+                }}
+                role="option"
+                aria-selected={resource.id === selectedResource?.id}
+                data-resource-row="true"
+                tabIndex={resource.id === selectedResource?.id ? 0 : -1}
+                onClick={() => onSelectNode(resource.id)}
+              >
+                <div className={resourceGridClassName} style={resourceGridStyle}>
+                  <div className="min-w-0" data-resource-column="kind">
+                    <span className={resourceColumnLabelClassName}>Kind</span>
+                    <span className={resourceColumnValueClassName} title={resource.kind}>{resource.kind}</span>
+                  </div>
+                  <div className="min-w-0" data-resource-column="name">
+                    <span className={resourceColumnLabelClassName}>Name</span>
+                    <p className={resourceNameClassName} title={resource.name}>{resource.name}</p>
+                    <p className={`${resourceMetaClassName} md:hidden`}>
+                      {resource.namespace ? `${resource.namespace} / ` : ''}
+                      {resource.clusterId}
+                    </p>
+                  </div>
+                  {resourceListColumns.namespace ? (
+                    <div className="min-w-0" data-resource-column="namespace">
+                      <span className={resourceColumnLabelClassName}>Namespace</span>
+                      <span className={resourceColumnValueClassName} title={resource.namespace || '-'}>{resource.namespace || '-'}</span>
+                    </div>
+                  ) : null}
+                  <div className="min-w-0" data-resource-column="status">
+                    <span className={resourceColumnLabelClassName}>Status</span>
+                    <span className={statusPillClassName(resource.status)}>{resource.status}</span>
+                  </div>
+                  {resourceListColumns.cluster ? (
+                    <div className="min-w-0" data-resource-column="cluster">
+                      <span className={resourceColumnLabelClassName}>Cluster</span>
+                      <span className={resourceColumnValueClassName} title={resource.clusterId}>{resource.clusterId}</span>
+                    </div>
+                  ) : null}
+                  {resourceListColumns.age ? (
+                    <div className="min-w-0" data-resource-column="age">
+                      <span className={resourceColumnLabelClassName}>Age</span>
+                      <span className={resourceColumnValueClassName} title={resourceAge}>{resourceAge}</span>
+                    </div>
+                  ) : null}
+                  {resourceListColumns.summary ? (
+                    <div className="min-w-0" data-resource-column="summary">
+                      <span className={resourceColumnLabelClassName}>Summary</span>
+                      {summaryEntries.length > 0 ? (
+                        <div className={`${resourceSummaryContainerClassName} md:mt-0`}>
+                          {summaryEntries.map(([key, value]) => (
+                            <span key={key} className={resourceSummaryChipClassName}>
+                              {key}:{String(value)}
+                            </span>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className={resourceColumnValueClassName}>-</span>
+                      )}
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+            );
+          })}
         </div>
       </div>
 
@@ -3476,6 +3582,36 @@ function normalizeResourceListSortPreference(value: Partial<ResourceListSortPref
   return { field, direction };
 }
 
+function readResourceListColumnPreference(): ResourceListColumnPreference {
+  try {
+    const rawValue = window.localStorage.getItem(resourceListColumnsStorageKey);
+    if (!rawValue) {
+      return { ...defaultResourceListColumns };
+    }
+    const parsedValue = JSON.parse(rawValue) as Partial<Record<ResourceListOptionalColumn, unknown>>;
+    return normalizeResourceListColumnPreference(parsedValue);
+  } catch {
+    return { ...defaultResourceListColumns };
+  }
+}
+
+function writeResourceListColumnPreference(columns: ResourceListColumnPreference) {
+  try {
+    window.localStorage.setItem(resourceListColumnsStorageKey, JSON.stringify(normalizeResourceListColumnPreference(columns)));
+  } catch {
+    // Column visibility is only a UI preference; storage failures should not break the explorer.
+  }
+}
+
+function normalizeResourceListColumnPreference(value: Partial<Record<ResourceListOptionalColumn, unknown>>): ResourceListColumnPreference {
+  return {
+    namespace: typeof value.namespace === 'boolean' ? value.namespace : defaultResourceListColumns.namespace,
+    cluster: typeof value.cluster === 'boolean' ? value.cluster : defaultResourceListColumns.cluster,
+    age: typeof value.age === 'boolean' ? value.age : defaultResourceListColumns.age,
+    summary: typeof value.summary === 'boolean' ? value.summary : defaultResourceListColumns.summary,
+  };
+}
+
 function readResourceDetailDensityPreference(): ResourceDetailDensity {
   try {
     return window.localStorage.getItem(resourceDetailDensityStorageKey) === 'compact' ? 'compact' : 'comfortable';
@@ -3912,6 +4048,42 @@ function compareResourceSortValue(left: ResourceExplorerItem, right: ResourceExp
 
 function compareResourceText(left: string, right: string) {
   return left.localeCompare(right, undefined, { numeric: true, sensitivity: 'base' });
+}
+
+function resourceListGridTemplate(columns: ResourceListColumnPreference) {
+  const tracks = ['minmax(92px,0.72fr)', 'minmax(150px,1.45fr)'];
+  if (columns.namespace) {
+    tracks.push('minmax(92px,0.72fr)');
+  }
+  tracks.push('minmax(92px,0.72fr)');
+  if (columns.cluster) {
+    tracks.push('minmax(96px,0.82fr)');
+  }
+  if (columns.age) {
+    tracks.push('minmax(74px,0.62fr)');
+  }
+  if (columns.summary) {
+    tracks.push('minmax(150px,1.25fr)');
+  }
+  return tracks.join(' ');
+}
+
+function resourceListAge(resource: ResourceExplorerItem) {
+  const metadata = recordFromUnknown(resource.preview.metadata);
+  return resourceListCellValue(metadata.age);
+}
+
+function resourceListCellValue(value: unknown) {
+  if (typeof value === 'string' && value.trim()) {
+    return value;
+  }
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return String(value);
+  }
+  if (typeof value === 'boolean') {
+    return value ? 'true' : 'false';
+  }
+  return '-';
 }
 
 function isEditableTarget(target: EventTarget | null) {
