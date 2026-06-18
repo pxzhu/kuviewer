@@ -155,6 +155,7 @@ async function verifyNodeDrag(page, viewportName) {
 async function verifyResourceExplorer(page) {
   await page.getByRole('button', { name: /리소스 탐색/ }).click();
   await expect(page.getByRole('heading', { name: '리소스 탐색' })).toBeVisible({ timeout: 10_000 });
+  await verifyResourceListSorting(page);
   await expect(page.getByRole('heading', { name: 'Metadata' })).toBeVisible({ timeout: 10_000 });
   await expect(page.getByRole('heading', { name: 'Status' })).toBeVisible({ timeout: 10_000 });
   await expect(page.getByRole('heading', { name: 'Safe Preview' })).toBeVisible({ timeout: 10_000 });
@@ -164,6 +165,42 @@ async function verifyResourceExplorer(page) {
   await expect(page.getByRole('heading', { name: 'Logs' })).toBeVisible({ timeout: 10_000 });
   await expect(page.getByText('표시할 이벤트가 없습니다')).toBeVisible({ timeout: 10_000 });
   await expect(page.getByText(/Secret value 숨김/)).toBeVisible({ timeout: 10_000 });
+}
+
+async function verifyResourceListSorting(page) {
+  const rows = page.locator('[data-resource-row="true"]');
+  await expect(rows.first()).toBeVisible({ timeout: 10_000 });
+  if ((await rows.count()) < 2) {
+    return;
+  }
+
+  await page.getByTestId('resource-list-sort-field').selectOption('name');
+  await page.getByTestId('resource-list-sort-desc').click();
+  await expect(page.getByTestId('resource-list-sort-desc')).toHaveAttribute('aria-pressed', 'true');
+  const descendingNames = await visibleResourceNames(page);
+  assertSorted(descendingNames, 'desc');
+
+  await page.getByTestId('resource-list-sort-asc').click();
+  await expect(page.getByTestId('resource-list-sort-asc')).toHaveAttribute('aria-pressed', 'true');
+  const ascendingNames = await visibleResourceNames(page);
+  assertSorted(ascendingNames, 'asc');
+}
+
+async function visibleResourceNames(page) {
+  return page.locator('[data-resource-row="true"]').evaluateAll((elements) =>
+    elements.map((element) => element.querySelector('p')?.textContent?.trim() || '').filter(Boolean),
+  );
+}
+
+function assertSorted(values, direction) {
+  const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
+  const sorted = [...values].sort((left, right) => collator.compare(left, right));
+  if (direction === 'desc') {
+    sorted.reverse();
+  }
+  if (values.join('\u001f') !== sorted.join('\u001f')) {
+    throw new Error(`resource list ${direction} sort failed: ${values.join(', ')}`);
+  }
 }
 
 async function findClickableResourceNode(page) {
