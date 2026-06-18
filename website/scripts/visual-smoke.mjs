@@ -169,6 +169,7 @@ async function verifyResourceExplorer(page) {
   await expect(page.getByRole('heading', { name: '리소스 탐색' })).toBeVisible({ timeout: 10_000 });
   await verifyResourceListSorting(page);
   await verifyResourceListColumns(page);
+  await verifyResourceViewRename(page);
   await verifyResourceViewConflictImport(page);
   await expect(page.getByRole('heading', { name: 'Metadata' })).toBeVisible({ timeout: 10_000 });
   await expect(page.getByRole('heading', { name: 'Status' })).toBeVisible({ timeout: 10_000 });
@@ -190,6 +191,38 @@ async function verifyResourceViewConflictImport(page) {
   await page.getByTestId('resource-view-conflict-apply-incoming').click();
   await expect(page.getByTestId('resource-view-conflict-panel')).toHaveCount(0);
   await expect(page.getByTestId('resource-view-message')).toContainText('충돌 1개', { timeout: 10_000 });
+}
+
+async function verifyResourceViewRename(page) {
+  const sourceName = 'Visual Rename Source';
+  const targetName = 'Visual Rename Target';
+  const duplicateName = 'Visual Rename Duplicate';
+  const sourceId = savedViewDomId(sourceName);
+  const targetId = savedViewDomId(targetName);
+
+  await page.getByTestId('resource-view-name-input').fill(sourceName);
+  await page.getByTestId('resource-view-save').click();
+  await expect(page.getByTestId(`resource-view-preset-row-${sourceId}`)).toBeVisible({ timeout: 10_000 });
+
+  await page.getByTestId('resource-view-name-input').fill(duplicateName);
+  await page.getByTestId('resource-view-save').click();
+  await expect(page.getByTestId(`resource-view-preset-row-${savedViewDomId(duplicateName)}`)).toBeVisible({ timeout: 10_000 });
+
+  await page.getByTestId(`resource-view-rename-start-${sourceId}`).click();
+  await page.getByTestId(`resource-view-rename-input-${sourceId}`).fill(targetName);
+  await page.getByTestId(`resource-view-rename-save-${sourceId}`).click();
+  await expect(page.getByTestId(`resource-view-preset-row-${targetId}`)).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByTestId(`resource-view-preset-row-${sourceId}`)).toHaveCount(0);
+  await expect(page.getByTestId('resource-view-message')).toContainText(targetName, { timeout: 10_000 });
+
+  await page.getByTestId(`resource-view-preset-row-${targetId}`).getByRole('button', { name: '적용' }).click();
+  await expect(page.getByTestId(`resource-view-preset-row-${targetId}`)).toContainText('적용됨', { timeout: 10_000 });
+
+  await page.getByTestId(`resource-view-rename-start-${targetId}`).click();
+  await page.getByTestId(`resource-view-rename-input-${targetId}`).fill(duplicateName);
+  await page.getByTestId(`resource-view-rename-save-${targetId}`).click();
+  await expect(page.getByTestId(`resource-view-rename-error-${targetId}`)).toContainText('이미 같은 이름', { timeout: 10_000 });
+  await page.getByTestId(`resource-view-rename-cancel-${targetId}`).click();
 }
 
 async function verifyResourceListSorting(page) {
@@ -246,6 +279,10 @@ async function visibleResourceNames(page) {
   return page.locator('[data-resource-row="true"]').evaluateAll((elements) =>
     elements.map((element) => element.querySelector('p')?.textContent?.trim() || '').filter(Boolean),
   );
+}
+
+function savedViewDomId(name) {
+  return name.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 80) || 'view';
 }
 
 function assertSorted(values, direction) {

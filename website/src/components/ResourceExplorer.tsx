@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties, Dispatch, KeyboardEvent as ReactKeyboardEvent, ReactNode, SetStateAction } from 'react';
-import { Activity, AlertTriangle, ArrowDown, ArrowUp, Bookmark, Boxes, CheckCircle2, ChevronDown, Copy, Download, FileText, GitBranch, Link2, RefreshCw, RotateCcw, Search, Tags, Trash2, Upload } from 'lucide-react';
+import { Activity, AlertTriangle, ArrowDown, ArrowUp, Bookmark, Boxes, CheckCircle2, ChevronDown, Copy, Download, FileText, GitBranch, Link2, Pencil, RefreshCw, RotateCcw, Search, Tags, Trash2, Upload, X } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { fetchResourceEvents, fetchResourceLogs, fetchResourceViewPresets, fetchResources, resourcesFromSnapshot, saveResourceViewPresets, streamResourceLogs } from '../services/resourceApi';
 import type { ResourceEvent, ResourceExplorerItem } from '../types/resourceExplorer';
@@ -112,6 +112,12 @@ export interface ResourceViewFilters {
 interface ResourceViewMessage {
   tone: 'success' | 'warning';
   text: string;
+}
+
+interface ResourceViewRenameState {
+  originalName: string;
+  draftName: string;
+  error: string;
 }
 
 type ResourceViewConflictSource = 'import' | 'team';
@@ -242,6 +248,7 @@ export function ResourceExplorer({
   const [presetName, setPresetName] = useState('');
   const [resourceViewMessage, setResourceViewMessage] = useState<ResourceViewMessage | null>(null);
   const [resourceViewConflict, setResourceViewConflict] = useState<ResourceViewConflictState | null>(null);
+  const [renamingViewPreset, setRenamingViewPreset] = useState<ResourceViewRenameState | null>(null);
   const [resourceViewTeamLoading, setResourceViewTeamLoading] = useState(false);
   const [detailFocusRequest, setDetailFocusRequest] = useState(0);
   const [resourceListDensity, setResourceListDensity] = useState<ResourceListDensity>(() => readResourceListDensityPreference());
@@ -379,6 +386,7 @@ export function ResourceExplorer({
 
   const handleSaveViewPreset = () => {
     setResourceViewConflict(null);
+    setRenamingViewPreset(null);
     const nextPreset: ResourceViewPreset = {
       name: nextPresetName,
       query: query.slice(0, 160),
@@ -395,6 +403,7 @@ export function ResourceExplorer({
   };
 
   const handleApplyViewPreset = (preset: ResourceViewPreset) => {
+    setRenamingViewPreset(null);
     setQuery(preset.query);
     setCluster(normalizePresetFilterValue(preset.cluster, clusters));
     setNamespace(normalizePresetFilterValue(preset.namespace, namespaces));
@@ -406,6 +415,7 @@ export function ResourceExplorer({
 
   const handleDeleteViewPreset = (presetNameToDelete: string) => {
     setResourceViewConflict(null);
+    setRenamingViewPreset(null);
     const nextPresets = viewPresets.filter((preset) => preset.name !== presetNameToDelete);
     setViewPresets(nextPresets);
     writeResourceViewPresets(nextPresets);
@@ -441,18 +451,21 @@ export function ResourceExplorer({
       const parsedValue = JSON.parse(await file.text());
       if (!Array.isArray(parsedValue)) {
         setResourceViewConflict(null);
+        setRenamingViewPreset(null);
         setResourceViewMessage({ tone: 'warning', text: '가져오기 실패: saved view JSON 배열이 아닙니다.' });
         return;
       }
       const importedPresets = parsedValue.flatMap(validResourceViewPreset);
       if (importedPresets.length === 0) {
         setResourceViewConflict(null);
+        setRenamingViewPreset(null);
         setResourceViewMessage({ tone: 'warning', text: `가져오기 실패: 유효한 saved view가 없습니다. ${parsedValue.length}개 항목을 건너뛰었습니다.` });
         return;
       }
       handleIncomingResourceViewPresets('import', importedPresets, Math.max(0, parsedValue.length - importedPresets.length));
     } catch {
       setResourceViewConflict(null);
+      setRenamingViewPreset(null);
       setResourceViewMessage({ tone: 'warning', text: '가져오기 실패: JSON 파일을 읽을 수 없습니다.' });
     }
   };
@@ -469,6 +482,7 @@ export function ResourceExplorer({
       handleIncomingResourceViewPresets('team', teamPresets, Math.max(0, response.items.length - teamPresets.length));
     } catch {
       setResourceViewConflict(null);
+      setRenamingViewPreset(null);
       setResourceViewMessage({ tone: 'warning', text: '팀 뷰를 불러오지 못했습니다. admin token 또는 서버 상태를 확인하세요.' });
     } finally {
       setResourceViewTeamLoading(false);
@@ -483,6 +497,7 @@ export function ResourceExplorer({
     setResourceViewTeamLoading(true);
     try {
       setResourceViewConflict(null);
+      setRenamingViewPreset(null);
       const response = await saveResourceViewPresets(viewPresets.map(resourceViewPresetExportRecord));
       const savedPresets = response.items.flatMap(validResourceViewPreset);
       setViewPresets(savedPresets);
@@ -496,6 +511,7 @@ export function ResourceExplorer({
   };
 
   const handleResetResourceFilters = () => {
+    setRenamingViewPreset(null);
     setQuery('');
     setCluster(allValue);
     setNamespace(allValue);
@@ -506,6 +522,7 @@ export function ResourceExplorer({
     onSelectNode('');
   };
   const handleIncomingResourceViewPresets = (source: ResourceViewConflictSource, incomingPresets: ResourceViewPreset[], invalidCount: number) => {
+    setRenamingViewPreset(null);
     const mergeResult = mergeResourceViewPresets(viewPresets, incomingPresets, 'incoming');
     if (mergeResult.conflicts.length > 0) {
       setResourceViewConflict({
@@ -536,10 +553,67 @@ export function ResourceExplorer({
     setViewPresets(mergeResult.presets);
     writeResourceViewPresets(mergeResult.presets);
     setResourceViewConflict(null);
+    setRenamingViewPreset(null);
     setResourceViewMessage({
       tone: mergeResult.conflicts.length > 0 || invalidCount > 0 || mergeResult.droppedCount > 0 ? 'warning' : 'success',
       text: resourceViewMergeMessage(source, mergeResult, invalidCount, resolved),
     });
+  };
+  const handleStartResourceViewRename = (preset: ResourceViewPreset) => {
+    setResourceViewConflict(null);
+    setResourceViewMessage(null);
+    setRenamingViewPreset({ originalName: preset.name, draftName: preset.name, error: '' });
+  };
+  const handleCancelResourceViewRename = () => {
+    setRenamingViewPreset(null);
+  };
+  const handleCommitResourceViewRename = () => {
+    if (!renamingViewPreset) {
+      return;
+    }
+    const targetName = normalizeResourceViewPresetName(renamingViewPreset.draftName);
+    if (!targetName) {
+      setRenamingViewPreset((current) => current && current.originalName === renamingViewPreset.originalName ? { ...current, error: '이름을 입력하세요.' } : current);
+      return;
+    }
+    if (targetName === renamingViewPreset.originalName) {
+      setRenamingViewPreset(null);
+      setResourceViewMessage({ tone: 'success', text: 'saved view 이름이 변경되지 않았습니다.' });
+      return;
+    }
+    if (viewPresets.some((preset) => preset.name === targetName && preset.name !== renamingViewPreset.originalName)) {
+      setRenamingViewPreset((current) => current && current.originalName === renamingViewPreset.originalName ? { ...current, error: '이미 같은 이름의 saved view가 있습니다.' } : current);
+      return;
+    }
+    let renamed = false;
+    const nextPresets = viewPresets.map((preset) => {
+      if (preset.name !== renamingViewPreset.originalName) {
+        return preset;
+      }
+      renamed = true;
+      return { ...preset, name: targetName, updatedAt: Date.now() };
+    });
+    if (!renamed) {
+      setRenamingViewPreset(null);
+      setResourceViewMessage({ tone: 'warning', text: '이름을 변경할 saved view를 찾을 수 없습니다.' });
+      return;
+    }
+    setViewPresets(nextPresets);
+    writeResourceViewPresets(nextPresets);
+    setRenamingViewPreset(null);
+    if (presetName.trim() === renamingViewPreset.originalName || matchingViewPreset?.name === renamingViewPreset.originalName) {
+      setPresetName(targetName);
+    }
+    setResourceViewMessage({ tone: 'success', text: `saved view 이름을 "${targetName}"으로 변경했습니다.` });
+  };
+  const handleResourceViewRenameKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      handleCommitResourceViewRename();
+    } else if (event.key === 'Escape') {
+      event.preventDefault();
+      handleCancelResourceViewRename();
+    }
   };
   const resourceSummaryLimit = resourceListDensity === 'compact' ? 2 : 3;
   const visibleOptionalColumnCount = resourceListOptionalColumns.filter((column) => resourceListColumns[column.key]).length;
@@ -936,26 +1010,94 @@ export function ResourceExplorer({
               <p className="ku-meta">저장된 뷰 없음</p>
             ) : (
               <div className="grid gap-1.5">
-                {viewPresets.map((preset) => (
-                  <div key={preset.name} className={`grid gap-2 rounded-[10px] border p-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center ${resourceViewPresetMatchesFilters(preset, currentPresetFilters) ? 'border-[rgba(0,122,255,0.22)] bg-[rgba(0,122,255,0.06)]' : 'border-[rgba(60,60,67,0.1)] bg-white/78'}`}>
-                    <div className="min-w-0">
-                      <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-                        <p className="truncate text-xs font-semibold text-[#1d1d1f]">{preset.name}</p>
-                        {resourceViewPresetMatchesFilters(preset, currentPresetFilters) ? <span className="rounded-full bg-[rgba(0,122,255,0.1)] px-1.5 py-0.5 text-[9px] font-semibold text-[#0057b8]">적용됨</span> : null}
-                        <span className="rounded-full bg-[rgba(60,60,67,0.06)] px-1.5 py-0.5 font-mono text-[9px] font-semibold text-[rgba(60,60,67,0.54)]">{formatPresetUpdatedAt(preset.updatedAt)}</span>
+                {viewPresets.map((preset) => {
+                  const active = resourceViewPresetMatchesFilters(preset, currentPresetFilters);
+                  const isRenaming = renamingViewPreset?.originalName === preset.name;
+                  const presetDomId = resourceViewPresetDomId(preset.name);
+                  return (
+                    <div
+                      key={preset.name}
+                      className={`grid gap-2 rounded-[10px] border p-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center ${active ? 'border-[rgba(0,122,255,0.22)] bg-[rgba(0,122,255,0.06)]' : 'border-[rgba(60,60,67,0.1)] bg-white/78'}`}
+                      data-testid={`resource-view-preset-row-${presetDomId}`}
+                    >
+                      <div className="min-w-0">
+                        {isRenaming ? (
+                          <div className="grid gap-1.5">
+                            <label className="grid gap-1">
+                              <span className="ku-meta">saved view 이름</span>
+                              <input
+                                className="ku-input h-8 w-full text-xs"
+                                value={renamingViewPreset.draftName}
+                                onChange={(event) => setRenamingViewPreset((current) => current && current.originalName === preset.name ? { ...current, draftName: event.target.value.slice(0, 80), error: '' } : current)}
+                                onKeyDown={handleResourceViewRenameKeyDown}
+                                data-testid={`resource-view-rename-input-${presetDomId}`}
+                                autoFocus
+                              />
+                            </label>
+                            {renamingViewPreset.error ? (
+                              <p className="rounded-[8px] border border-[rgba(255,149,0,0.22)] bg-[rgba(255,149,0,0.08)] px-2 py-1 text-xs font-semibold text-[#8a4d00]" data-testid={`resource-view-rename-error-${presetDomId}`}>
+                                {renamingViewPreset.error}
+                              </p>
+                            ) : null}
+                            <p className="truncate font-mono text-[10px] font-semibold text-[rgba(60,60,67,0.54)]">{resourceViewPresetSummary(preset)}</p>
+                          </div>
+                        ) : (
+                          <>
+                            <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+                              <p className="truncate text-xs font-semibold text-[#1d1d1f]">{preset.name}</p>
+                              {active ? <span className="rounded-full bg-[rgba(0,122,255,0.1)] px-1.5 py-0.5 text-[9px] font-semibold text-[#0057b8]">적용됨</span> : null}
+                              <span className="rounded-full bg-[rgba(60,60,67,0.06)] px-1.5 py-0.5 font-mono text-[9px] font-semibold text-[rgba(60,60,67,0.54)]">{formatPresetUpdatedAt(preset.updatedAt)}</span>
+                            </div>
+                            <p className="mt-0.5 truncate font-mono text-[10px] font-semibold text-[rgba(60,60,67,0.54)]">{resourceViewPresetSummary(preset)}</p>
+                          </>
+                        )}
                       </div>
-                      <p className="mt-0.5 truncate font-mono text-[10px] font-semibold text-[rgba(60,60,67,0.54)]">{resourceViewPresetSummary(preset)}</p>
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        {isRenaming ? (
+                          <>
+                            <button
+                              className="inline-flex items-center gap-1.5 rounded-[8px] border border-[rgba(0,122,255,0.2)] bg-[rgba(0,122,255,0.08)] px-2.5 py-1.5 text-xs font-semibold text-[#0057b8] transition hover:bg-[rgba(0,122,255,0.12)]"
+                              type="button"
+                              onClick={handleCommitResourceViewRename}
+                              data-testid={`resource-view-rename-save-${presetDomId}`}
+                            >
+                              <CheckCircle2 size={13} aria-hidden="true" />
+                              저장
+                            </button>
+                            <button
+                              className="inline-flex items-center gap-1.5 rounded-[8px] border border-[rgba(60,60,67,0.12)] bg-white px-2.5 py-1.5 text-xs font-semibold text-[rgba(60,60,67,0.72)] transition hover:bg-[rgba(242,242,247,0.9)]"
+                              type="button"
+                              onClick={handleCancelResourceViewRename}
+                              data-testid={`resource-view-rename-cancel-${presetDomId}`}
+                            >
+                              <X size={13} aria-hidden="true" />
+                              취소
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <button className="rounded-[8px] border border-[rgba(60,60,67,0.12)] bg-white px-2.5 py-1.5 text-xs font-semibold text-[rgba(60,60,67,0.72)] transition hover:bg-[rgba(242,242,247,0.9)]" type="button" onClick={() => handleApplyViewPreset(preset)}>
+                              적용
+                            </button>
+                            <button
+                              className="inline-flex items-center gap-1.5 rounded-[8px] border border-[rgba(60,60,67,0.12)] bg-white px-2.5 py-1.5 text-xs font-semibold text-[rgba(60,60,67,0.72)] transition hover:bg-[rgba(242,242,247,0.9)]"
+                              type="button"
+                              onClick={() => handleStartResourceViewRename(preset)}
+                              data-testid={`resource-view-rename-start-${presetDomId}`}
+                              aria-label={`${preset.name} 이름 변경`}
+                            >
+                              <Pencil size={13} aria-hidden="true" />
+                              이름 변경
+                            </button>
+                            <button className="rounded-[8px] border border-[rgba(255,59,48,0.18)] bg-[rgba(255,59,48,0.06)] p-1.5 text-[#c01f17] transition hover:bg-[rgba(255,59,48,0.1)]" type="button" onClick={() => handleDeleteViewPreset(preset.name)} aria-label={`${preset.name} 삭제`}>
+                              <Trash2 size={14} aria-hidden="true" />
+                            </button>
+                          </>
+                        )}
+                      </div>
                     </div>
-                    <div className="flex items-center gap-1.5">
-                      <button className="rounded-[8px] border border-[rgba(60,60,67,0.12)] bg-white px-2.5 py-1.5 text-xs font-semibold text-[rgba(60,60,67,0.72)] transition hover:bg-[rgba(242,242,247,0.9)]" type="button" onClick={() => handleApplyViewPreset(preset)}>
-                        적용
-                      </button>
-                      <button className="rounded-[8px] border border-[rgba(255,59,48,0.18)] bg-[rgba(255,59,48,0.06)] p-1.5 text-[#c01f17] transition hover:bg-[rgba(255,59,48,0.1)]" type="button" onClick={() => handleDeleteViewPreset(preset.name)} aria-label={`${preset.name} 삭제`}>
-                        <Trash2 size={14} aria-hidden="true" />
-                      </button>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
@@ -3931,7 +4073,15 @@ function resourceViewIncomingNewCount(existingPresets: ResourceViewPreset[], inc
 }
 
 function resourceViewPresetTargetName(inputName: string, suggestedName: string) {
-  return (inputName.trim() || suggestedName || '전체 리소스').slice(0, 80);
+  return normalizeResourceViewPresetName(inputName) || normalizeResourceViewPresetName(suggestedName) || '전체 리소스';
+}
+
+function normalizeResourceViewPresetName(name: string) {
+  return name.trim().slice(0, 80);
+}
+
+function resourceViewPresetDomId(name: string) {
+  return name.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 80) || 'view';
 }
 
 function resourceViewPresetMatchesFilters(preset: ResourceViewPreset, filters: Pick<ResourceViewPreset, 'query' | 'cluster' | 'namespace' | 'kind' | 'status'>) {
