@@ -173,6 +173,7 @@ async function verifyResourceExplorer(page) {
   await verifyResourceBulkActions(page);
   await verifyResourceKeyboardMultiSelect(page);
   await verifyResourceViewRename(page);
+  await verifyResourceViewSearch(page);
   await verifyResourceViewConflictImport(page);
   await expect(page.getByRole('heading', { name: 'Metadata' })).toBeVisible({ timeout: 10_000 });
   await expect(page.getByRole('heading', { name: 'Status' })).toBeVisible({ timeout: 10_000 });
@@ -251,6 +252,24 @@ async function verifyResourceViewRename(page) {
   await page.getByTestId(`resource-view-rename-save-${targetId}`).click();
   await expect(page.getByTestId(`resource-view-rename-error-${targetId}`)).toContainText('이미 같은 이름', { timeout: 10_000 });
   await page.getByTestId(`resource-view-rename-cancel-${targetId}`).click();
+}
+
+async function verifyResourceViewSearch(page) {
+  const targetId = savedViewDomId('Visual Rename Target');
+  const duplicateId = savedViewDomId('Visual Rename Duplicate');
+
+  await page.getByTestId('resource-view-search').fill('Platform');
+  await expect(page.getByTestId('resource-view-search-count')).toContainText('1 /', { timeout: 10_000 });
+  await expect(page.getByTestId(`resource-view-group-${savedViewDomId('Platform')}`)).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByTestId(`resource-view-preset-row-${targetId}`)).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByTestId(`resource-view-preset-row-${duplicateId}`)).toHaveCount(0);
+
+  await page.getByTestId('resource-view-search').fill('no matching saved view');
+  await expect(page.getByTestId('resource-view-search-empty')).toBeVisible({ timeout: 10_000 });
+
+  await page.getByTestId('resource-view-search-clear').click();
+  await expect(page.getByTestId('resource-view-search-count')).toHaveCount(0);
+  await expect(page.getByTestId(`resource-view-preset-row-${duplicateId}`)).toBeVisible({ timeout: 10_000 });
 }
 
 async function verifyResourceListSorting(page) {
