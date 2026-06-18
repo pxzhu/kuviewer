@@ -21,6 +21,7 @@ interface ResourceExplorerProps {
 const allValue = 'all';
 const resourceViewPresetStorageKey = 'kuviewer_resource_view_presets';
 const resourceListDensityStorageKey = 'kuviewer_resource_list_density';
+const resourceDetailDensityStorageKey = 'kuviewer_resource_detail_density';
 const logDensityStorageKey = 'kuviewer_log_density';
 const eventsAutoRefreshStorageKey = 'kuviewer_events_auto_refresh';
 const eventsWarningNotificationsStorageKey = 'kuviewer_events_warning_notifications';
@@ -38,6 +39,7 @@ const resourceViewParamNames = {
 
 type DetailSectionId = 'metadata' | 'status' | 'safe' | 'yaml' | 'labels' | 'annotations' | 'relations' | 'events' | 'logs';
 type ResourceListDensity = 'comfortable' | 'compact';
+type ResourceDetailDensity = 'comfortable' | 'compact';
 type LogDensity = 'comfortable' | 'compact';
 type EventSeverity = 'warning' | 'normal' | 'other';
 type EventSeverityFilter = 'all' | 'warning' | 'normal';
@@ -752,6 +754,7 @@ function ResourceExplorerDetail({
   const [logSortOrder, setLogSortOrder] = useState<LogSortOrder>('received');
   const [logCopyStatus, setLogCopyStatus] = useState<{ tone: 'success' | 'warning'; message: string } | null>(null);
   const [logDensity, setLogDensity] = useState<LogDensity>(() => readLogDensityPreference());
+  const [resourceDetailDensity, setResourceDetailDensity] = useState<ResourceDetailDensity>(() => readResourceDetailDensityPreference());
   const [relationFilter, setRelationFilter] = useState('');
   const [relationsExpanded, setRelationsExpanded] = useState(false);
   const [activeDetailSectionId, setActiveDetailSectionId] = useState<DetailSectionId>('metadata');
@@ -950,6 +953,10 @@ function ResourceExplorerDetail({
   useEffect(() => {
     writeLogDensityPreference(logDensity);
   }, [logDensity]);
+
+  useEffect(() => {
+    writeResourceDetailDensityPreference(resourceDetailDensity);
+  }, [resourceDetailDensity]);
 
   useEffect(() => {
     if (!logCopyStatus) {
@@ -1436,7 +1443,29 @@ function ResourceExplorerDetail({
               {resource.kind}
             </p>
           </div>
-          <span className={statusPillClassName(resource.status)}>{resource.status}</span>
+          <div className="flex shrink-0 flex-col items-end gap-2 sm:flex-row sm:items-center">
+            <div className="grid grid-cols-2 rounded-[9px] border border-[rgba(60,60,67,0.12)] bg-white/70 p-0.5" aria-label="리소스 상세 밀도">
+              {([
+                { value: 'comfortable', label: '기본' },
+                { value: 'compact', label: '촘촘' },
+              ] as const).map((option) => (
+                <button
+                  key={option.value}
+                  className={`rounded-[7px] px-2 py-1 text-xs font-semibold transition ${
+                    resourceDetailDensity === option.value ? 'bg-[#1d1d1f] text-white shadow-sm' : 'text-[rgba(60,60,67,0.72)] hover:bg-white'
+                  }`}
+                  data-testid={`resource-detail-density-${option.value}`}
+                  type="button"
+                  onClick={() => setResourceDetailDensity(option.value)}
+                  aria-pressed={resourceDetailDensity === option.value}
+                  title={`리소스 상세 ${option.label} 표시`}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+            <span className={statusPillClassName(resource.status)}>{resource.status}</span>
+          </div>
         </div>
         <div className="mt-3 flex flex-wrap items-center gap-1.5">
           {detailJumpSections.map((section) => {
@@ -1484,27 +1513,27 @@ function ResourceExplorerDetail({
 
       <div className="grid gap-3 p-3">
         <DetailSection icon={FileText} title="Metadata" summary={detailSectionSummaries.metadata} open={isSectionOpen('metadata')} active={activeDetailSectionId === 'metadata'} sectionRef={setDetailSectionRef('metadata')} onFocusSection={() => setActiveDetailSectionId('metadata')} onToggle={() => toggleSection('metadata')}>
-          <KeyValueGrid values={metadataPreview} />
+          <KeyValueGrid density={resourceDetailDensity} testId="metadata" values={metadataPreview} />
         </DetailSection>
         <DetailSection icon={Activity} title="Status" summary={detailSectionSummaries.status} tone={healthSectionTone} open={isSectionOpen('status')} active={activeDetailSectionId === 'status'} sectionRef={setDetailSectionRef('status')} onFocusSection={() => setActiveDetailSectionId('status')} onToggle={() => toggleSection('status')}>
           <HealthSignalPanel signals={healthSignals} />
-          <KeyValueGrid values={statusPreview} />
+          <KeyValueGrid density={resourceDetailDensity} testId="status" values={statusPreview} />
         </DetailSection>
         <DetailSection icon={FileText} title="Safe Preview" summary={detailSectionSummaries.safe} open={isSectionOpen('safe')} active={activeDetailSectionId === 'safe'} sectionRef={setDetailSectionRef('safe')} onFocusSection={() => setActiveDetailSectionId('safe')} onToggle={() => toggleSection('safe')}>
-          <KeyValueGrid values={summaryPreview} />
+          <KeyValueGrid density={resourceDetailDensity} testId="safe" values={summaryPreview} />
         </DetailSection>
         <DetailSection icon={FileText} title="YAML Preview" summary={detailSectionSummaries.yaml} open={isSectionOpen('yaml')} active={activeDetailSectionId === 'yaml'} sectionRef={setDetailSectionRef('yaml')} onFocusSection={() => setActiveDetailSectionId('yaml')} onToggle={() => toggleSection('yaml')}>
           {yamlPreview ? (
-            <pre className="max-h-[360px] overflow-auto rounded-[10px] border border-[rgba(60,60,67,0.12)] bg-[#111827] p-3 font-mono text-[11px] leading-5 text-[#d1d5db]">{yamlPreview}</pre>
+            <pre className={`max-h-[360px] overflow-auto rounded-[10px] border border-[rgba(60,60,67,0.12)] bg-[#111827] font-mono text-[#d1d5db] ${resourceDetailDensity === 'compact' ? 'p-2 text-[10px] leading-4' : 'p-3 text-[11px] leading-5'}`}>{yamlPreview}</pre>
           ) : (
             <p className="ku-meta">표시할 YAML preview가 없습니다.</p>
           )}
         </DetailSection>
         <DetailSection icon={Tags} title="Labels" summary={detailSectionSummaries.labels} open={isSectionOpen('labels')} active={activeDetailSectionId === 'labels'} sectionRef={setDetailSectionRef('labels')} onFocusSection={() => setActiveDetailSectionId('labels')} onToggle={() => toggleSection('labels')}>
-          <KeyValueGrid values={resource.labels} empty="labels 없음" />
+          <KeyValueGrid density={resourceDetailDensity} empty="labels 없음" testId="labels" values={resource.labels} />
         </DetailSection>
         <DetailSection icon={Tags} title="Annotations" summary={detailSectionSummaries.annotations} open={isSectionOpen('annotations')} active={activeDetailSectionId === 'annotations'} sectionRef={setDetailSectionRef('annotations')} onFocusSection={() => setActiveDetailSectionId('annotations')} onToggle={() => toggleSection('annotations')}>
-          <KeyValueGrid values={resource.annotations} empty="annotations 없음" />
+          <KeyValueGrid density={resourceDetailDensity} empty="annotations 없음" testId="annotations" values={resource.annotations} />
         </DetailSection>
         <DetailSection icon={Link2} title="Relations" summary={detailSectionSummaries.relations} open={isSectionOpen('relations')} active={activeDetailSectionId === 'relations'} sectionRef={setDetailSectionRef('relations')} onFocusSection={() => setActiveDetailSectionId('relations')} onToggle={() => toggleSection('relations')}>
           {resource.related.length === 0 ? (
@@ -3167,6 +3196,22 @@ function writeResourceListDensityPreference(density: ResourceListDensity) {
   }
 }
 
+function readResourceDetailDensityPreference(): ResourceDetailDensity {
+  try {
+    return window.localStorage.getItem(resourceDetailDensityStorageKey) === 'compact' ? 'compact' : 'comfortable';
+  } catch {
+    return 'comfortable';
+  }
+}
+
+function writeResourceDetailDensityPreference(density: ResourceDetailDensity) {
+  try {
+    window.localStorage.setItem(resourceDetailDensityStorageKey, density);
+  } catch {
+    // Detail density is only a UI preference; storage failures should not break details.
+  }
+}
+
 function readLogDensityPreference(): LogDensity {
   try {
     return window.localStorage.getItem(logDensityStorageKey) === 'compact' ? 'compact' : 'comfortable';
@@ -3533,19 +3578,71 @@ function DetailSection({
   );
 }
 
-function KeyValueGrid({ values, empty = '데이터 없음' }: { values: Record<string, unknown>; empty?: string }) {
-  const entries = Object.entries(values).filter(([, value]) => value !== undefined && value !== '' && (!Array.isArray(value) || value.length > 0));
+function KeyValueGrid({
+  density = 'comfortable',
+  empty = '데이터 없음',
+  limit = 20,
+  testId,
+  values,
+}: {
+  density?: ResourceDetailDensity;
+  empty?: string;
+  limit?: number;
+  testId: string;
+  values: Record<string, unknown>;
+}) {
+  const entries = useMemo(
+    () => Object.entries(values).filter(([, value]) => value !== undefined && value !== '' && (!Array.isArray(value) || value.length > 0)),
+    [values],
+  );
+  const [expanded, setExpanded] = useState(false);
+  const entriesKey = useMemo(() => entries.map(([key]) => key).join('\u001f'), [entries]);
+
+  useEffect(() => {
+    setExpanded(false);
+  }, [entriesKey]);
+
   if (entries.length === 0) {
     return <p className="ku-meta">{empty}</p>;
   }
+  const compact = density === 'compact';
+  const visibleEntries = expanded ? entries : entries.slice(0, limit);
+  const hiddenCount = Math.max(0, entries.length - visibleEntries.length);
+  const gridClassName = compact ? 'grid gap-1' : 'grid gap-1.5';
+  const rowClassName = compact
+    ? 'grid grid-cols-[minmax(84px,0.32fr)_minmax(0,1fr)] gap-2 rounded-[7px] border border-[rgba(60,60,67,0.06)] bg-[rgba(242,242,247,0.62)] px-2 py-1'
+    : 'grid grid-cols-[minmax(112px,0.34fr)_minmax(0,1fr)] gap-2 rounded-[8px] border border-[rgba(60,60,67,0.06)] bg-[rgba(242,242,247,0.68)] px-2.5 py-1.5';
+  const keyClassName = compact
+    ? 'min-w-0 truncate font-mono text-[9px] font-semibold text-[rgba(60,60,67,0.58)]'
+    : 'min-w-0 truncate font-mono text-[10px] font-semibold text-[rgba(60,60,67,0.58)]';
+  const valueClassName = compact
+    ? 'min-w-0 break-words font-mono text-[9px] font-semibold leading-4 text-[#1d1d1f]'
+    : 'min-w-0 break-words font-mono text-[10px] font-semibold leading-5 text-[#1d1d1f]';
   return (
-    <div className="grid gap-1.5">
-      {entries.slice(0, 20).map(([key, value]) => (
-        <div key={key} className="grid grid-cols-[120px_minmax(0,1fr)] gap-2 rounded-[8px] bg-[rgba(242,242,247,0.68)] px-2 py-1.5">
-          <span className="truncate font-mono text-[10px] font-semibold text-[rgba(60,60,67,0.58)]">{key}</span>
-          <span className="min-w-0 break-words font-mono text-[10px] font-semibold text-[#1d1d1f]">{formatValue(value)}</span>
-        </div>
-      ))}
+    <div className="grid gap-2" data-testid={`resource-key-value-grid-${testId}`} data-density={density}>
+      <div className={gridClassName}>
+        {visibleEntries.map(([key, value]) => {
+          const valueText = formatValue(value);
+          return (
+            <div key={key} className={rowClassName} data-testid={`resource-key-value-row-${testId}`}>
+              <span className={keyClassName} title={key}>{key}</span>
+              <span className={valueClassName} title={valueText}>{valueText}</span>
+            </div>
+          );
+        })}
+      </div>
+      {entries.length > limit ? (
+        <button
+          className="inline-flex w-fit items-center gap-1.5 rounded-[8px] border border-[rgba(60,60,67,0.12)] bg-white px-2.5 py-1.5 text-xs font-semibold text-[rgba(60,60,67,0.72)] transition hover:bg-[rgba(242,242,247,0.9)]"
+          type="button"
+          onClick={() => setExpanded(!expanded)}
+          aria-expanded={expanded}
+          data-testid={`resource-key-value-toggle-${testId}`}
+        >
+          <ChevronDown className={`transition ${expanded ? 'rotate-180' : ''}`} size={13} aria-hidden="true" />
+          {expanded ? '접기' : `더 보기 · ${hiddenCount}개`}
+        </button>
+      ) : null}
     </div>
   );
 }
