@@ -5,6 +5,7 @@ import { getTopologyApiBaseUrl } from './topologyApi';
 
 export interface ResourceViewPresetApiRecord {
   name: string;
+  group?: string;
   query: string;
   cluster: string;
   namespace: string;

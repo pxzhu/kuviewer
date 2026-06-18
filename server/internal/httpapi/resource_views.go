@@ -18,6 +18,7 @@ import (
 const (
 	maxResourceViewPresets  = 8
 	maxResourceViewNameLen  = 80
+	maxResourceViewGroupLen = 40
 	maxResourceViewQueryLen = 160
 )
 
@@ -25,6 +26,7 @@ var errResourceViewsUnavailable = errors.New("resource views unavailable")
 
 type resourceViewPreset struct {
 	Name      string `json:"name"`
+	Group     string `json:"group"`
 	Query     string `json:"query"`
 	Cluster   string `json:"cluster"`
 	Namespace string `json:"namespace"`
@@ -39,6 +41,7 @@ type resourceViewPresetList struct {
 
 type resourceViewPresetInput struct {
 	Name      interface{} `json:"name"`
+	Group     interface{} `json:"group"`
 	Query     interface{} `json:"query"`
 	Cluster   interface{} `json:"cluster"`
 	Namespace interface{} `json:"namespace"`
@@ -168,6 +171,7 @@ func sanitizeResourceViewPresetInputs(inputs []resourceViewPresetInput, now time
 		seenNames[name] = true
 		presets = append(presets, resourceViewPreset{
 			Name:      name,
+			Group:     groupInput(input.Group),
 			Query:     truncateString(stringInput(input.Query, ""), maxResourceViewQueryLen),
 			Cluster:   filterInput(input.Cluster),
 			Namespace: filterInput(input.Namespace),
@@ -180,6 +184,14 @@ func sanitizeResourceViewPresetInputs(inputs []resourceViewPresetInput, now time
 		}
 	}
 	return presets
+}
+
+func groupInput(value interface{}) string {
+	text := truncateString(strings.TrimSpace(stringInput(value, "")), maxResourceViewGroupLen)
+	if text == "" {
+		return "General"
+	}
+	return text
 }
 
 func stringInput(value interface{}, fallback string) string {

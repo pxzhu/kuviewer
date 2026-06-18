@@ -19,6 +19,7 @@ await writeFile(uploadManifestPath, getSampleManifest(), 'utf8');
 await writeFile(conflictPresetPath, JSON.stringify([
   {
     name: 'Visual Conflict',
+    group: 'Imported',
     query: 'checkout',
     cluster: 'all',
     namespace: 'all',
@@ -186,6 +187,7 @@ async function verifyResourceExplorer(page) {
 
 async function verifyResourceViewConflictImport(page) {
   await page.getByTestId('resource-view-name-input').fill('Visual Conflict');
+  await page.getByTestId('resource-view-group-input').fill('General');
   await page.getByTestId('resource-view-save').click();
   await page.setInputFiles('[data-testid="resource-view-import-input"]', conflictPresetPath);
   await expect(page.getByTestId('resource-view-conflict-panel')).toBeVisible({ timeout: 10_000 });
@@ -193,6 +195,8 @@ async function verifyResourceViewConflictImport(page) {
   await page.getByTestId('resource-view-conflict-apply-incoming').click();
   await expect(page.getByTestId('resource-view-conflict-panel')).toHaveCount(0);
   await expect(page.getByTestId('resource-view-message')).toContainText('충돌 1개', { timeout: 10_000 });
+  await expect(page.getByTestId(`resource-view-group-${savedViewDomId('Imported')}`)).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByTestId(`resource-view-preset-row-${savedViewDomId('Visual Conflict')}`)).toContainText('Imported', { timeout: 10_000 });
 }
 
 async function verifyResourceViewRename(page) {
@@ -201,12 +205,28 @@ async function verifyResourceViewRename(page) {
   const duplicateName = 'Visual Rename Duplicate';
   const sourceId = savedViewDomId(sourceName);
   const targetId = savedViewDomId(targetName);
+  const sourceGroup = 'Workloads';
+  const movedGroup = 'Platform';
 
   await page.getByTestId('resource-view-name-input').fill(sourceName);
+  await page.getByTestId('resource-view-group-input').fill(sourceGroup);
   await page.getByTestId('resource-view-save').click();
+  await expect(page.getByTestId(`resource-view-group-${savedViewDomId(sourceGroup)}`)).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByTestId(`resource-view-preset-row-${sourceId}`)).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByTestId(`resource-view-preset-row-${sourceId}`)).toContainText(sourceGroup, { timeout: 10_000 });
+
+  await page.getByTestId(`resource-view-group-toggle-${savedViewDomId(sourceGroup)}`).click();
+  await expect(page.getByTestId(`resource-view-preset-row-${sourceId}`)).toHaveCount(0);
+  await page.getByTestId(`resource-view-group-toggle-${savedViewDomId(sourceGroup)}`).click();
   await expect(page.getByTestId(`resource-view-preset-row-${sourceId}`)).toBeVisible({ timeout: 10_000 });
 
+  const storedGroupedViews = await page.evaluate(() => JSON.parse(window.localStorage.getItem('kuviewer_resource_view_presets') || '[]'));
+  if (!storedGroupedViews.some((preset) => preset.name === 'Visual Rename Source' && preset.group === 'Workloads')) {
+    throw new Error(`saved view group was not stored: ${JSON.stringify(storedGroupedViews)}`);
+  }
+
   await page.getByTestId('resource-view-name-input').fill(duplicateName);
+  await page.getByTestId('resource-view-group-input').fill('General');
   await page.getByTestId('resource-view-save').click();
   await expect(page.getByTestId(`resource-view-preset-row-${savedViewDomId(duplicateName)}`)).toBeVisible({ timeout: 10_000 });
 
@@ -216,6 +236,12 @@ async function verifyResourceViewRename(page) {
   await expect(page.getByTestId(`resource-view-preset-row-${targetId}`)).toBeVisible({ timeout: 10_000 });
   await expect(page.getByTestId(`resource-view-preset-row-${sourceId}`)).toHaveCount(0);
   await expect(page.getByTestId('resource-view-message')).toContainText(targetName, { timeout: 10_000 });
+  await expect(page.getByTestId(`resource-view-preset-row-${targetId}`)).toContainText(sourceGroup, { timeout: 10_000 });
+
+  await page.getByTestId(`resource-view-group-input-${targetId}`).fill(movedGroup);
+  await page.keyboard.press('Enter');
+  await expect(page.getByTestId(`resource-view-group-${savedViewDomId(movedGroup)}`)).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByTestId(`resource-view-preset-row-${targetId}`)).toContainText(movedGroup, { timeout: 10_000 });
 
   await page.getByTestId(`resource-view-preset-row-${targetId}`).getByRole('button', { name: '적용' }).click();
   await expect(page.getByTestId(`resource-view-preset-row-${targetId}`)).toContainText('적용됨', { timeout: 10_000 });
