@@ -1,5 +1,5 @@
 import { chromium, expect } from '@playwright/test';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
 const baseUrl = process.env.KUVIEWER_VISUAL_URL || 'http://127.0.0.1:4174/kuviewer/';
@@ -25,6 +25,7 @@ await writeFile(conflictPresetPath, JSON.stringify([
     namespace: 'all',
     kind: 'Pod',
     status: 'all',
+    order: 1,
     updatedAt: 1700000000000,
   },
 ], null, 2), 'utf8');
@@ -35,7 +36,7 @@ for (const target of viewports) {
 
 async function runViewport({ name, viewport, isMobile, hasTouch }) {
   const browser = await chromium.launch();
-  const context = await browser.newContext({ viewport, isMobile, hasTouch });
+  const context = await browser.newContext({ viewport, isMobile, hasTouch, acceptDownloads: true });
   await context.addInitScript((token) => {
     window.localStorage.removeItem('kuviewer_admin_token');
     window.sessionStorage.setItem('kuviewer_admin_token', token);
@@ -174,6 +175,7 @@ async function verifyResourceExplorer(page) {
   await verifyResourceKeyboardMultiSelect(page);
   await verifyResourceViewRename(page);
   await verifyResourceViewSearch(page);
+  await verifyResourceViewReorder(page);
   await verifyResourceViewConflictImport(page);
   await expect(page.getByRole('heading', { name: 'Metadata' })).toBeVisible({ timeout: 10_000 });
   await expect(page.getByRole('heading', { name: 'Status' })).toBeVisible({ timeout: 10_000 });
@@ -270,6 +272,57 @@ async function verifyResourceViewSearch(page) {
   await page.getByTestId('resource-view-search-clear').click();
   await expect(page.getByTestId('resource-view-search-count')).toHaveCount(0);
   await expect(page.getByTestId(`resource-view-preset-row-${duplicateId}`)).toBeVisible({ timeout: 10_000 });
+}
+
+async function verifyResourceViewReorder(page) {
+  const targetName = 'Visual Rename Target';
+  const peerName = 'Visual Reorder Peer';
+  const targetId = savedViewDomId(targetName);
+  const peerId = savedViewDomId(peerName);
+
+  await page.getByTestId('resource-view-name-input').fill(peerName);
+  await page.getByTestId('resource-view-group-input').fill('Platform');
+  await page.getByTestId('resource-view-save').click();
+  await expect(page.getByTestId(`resource-view-preset-row-${peerId}`)).toBeVisible({ timeout: 10_000 });
+  await expect.poll(() => savedViewOrder(page, 'Platform')).toEqual([peerName, targetName]);
+
+  await page.getByTestId(`resource-view-reorder-down-${peerId}`).click();
+  await expect.poll(() => savedViewOrder(page, 'Platform')).toEqual([targetName, peerName]);
+
+  await page.getByTestId('resource-view-search').fill('Platform');
+  await expect(page.getByTestId('resource-view-reorder-disabled')).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByTestId(`resource-view-reorder-up-${peerId}`)).toBeDisabled();
+  await expect(page.getByTestId(`resource-view-drag-handle-${peerId}`)).toBeDisabled();
+  await page.getByTestId('resource-view-search-clear').click();
+
+  const download = await Promise.all([
+    page.waitForEvent('download'),
+    page.getByTestId('resource-view-export').click(),
+  ]).then(([downloadResult]) => downloadResult);
+  const exportedPath = await download.path();
+  if (!exportedPath) {
+    throw new Error('saved view export download path was not available');
+  }
+  const exportedViews = JSON.parse(await readFile(exportedPath, 'utf8'));
+  const exportedTarget = exportedViews.find((preset) => preset.name === targetName);
+  const exportedPeer = exportedViews.find((preset) => preset.name === peerName);
+  if (!exportedTarget || !exportedPeer || !(exportedTarget.order < exportedPeer.order)) {
+    throw new Error(`saved view order was not exported: ${JSON.stringify(exportedViews)}`);
+  }
+
+  await page.setInputFiles('[data-testid="resource-view-import-input"]', exportedPath);
+  await expect(page.getByTestId('resource-view-message')).toContainText('중복', { timeout: 10_000 });
+  await expect.poll(() => savedViewOrder(page, 'Platform')).toEqual([targetName, peerName]);
+}
+
+async function savedViewOrder(page, groupName) {
+  return page.evaluate((group) => {
+    const views = JSON.parse(window.localStorage.getItem('kuviewer_resource_view_presets') || '[]');
+    return views
+      .filter((preset) => preset.group === group)
+      .sort((left, right) => left.order - right.order)
+      .map((preset) => preset.name);
+  }, groupName);
 }
 
 async function verifyResourceListSorting(page) {

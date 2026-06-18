@@ -650,7 +650,7 @@ func TestResourceViewPresetsMemoryStore(t *testing.T) {
 	recorder := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodPut, "/api/resource-views", strings.NewReader(`{
 		"items": [
-			{"name":" Pods ","group":" Workloads ","query":"checkout","cluster":"","namespace":"checkout","kind":"Pod","status":"healthy","updatedAt":1000},
+			{"name":" Pods ","group":" Workloads ","query":"checkout","cluster":"","namespace":"checkout","kind":"Pod","status":"healthy","order":1,"updatedAt":1000},
 			{"name":"Pods","query":"duplicate","cluster":"test","namespace":"checkout","kind":"Service","status":"warning","updatedAt":2000},
 			{"name":"Services","query":42,"cluster":"test","namespace":"","kind":"Service","status":"","updatedAt":"bad"},
 			{"name":"","query":"skip","cluster":"test","namespace":"checkout","kind":"Pod","status":"healthy","updatedAt":3000},
@@ -676,13 +676,16 @@ func TestResourceViewPresetsMemoryStore(t *testing.T) {
 	if len(saved.Items) != 8 {
 		t.Fatalf("items = %d, want 8: %+v", len(saved.Items), saved.Items)
 	}
-	if saved.Items[0].Name != "Pods" || saved.Items[0].Group != "Workloads" || saved.Items[0].Cluster != "all" || saved.Items[0].Query != "checkout" {
+	if saved.Items[0].Name != "Pods" || saved.Items[0].Group != "Workloads" || saved.Items[0].Cluster != "all" || saved.Items[0].Query != "checkout" || saved.Items[0].Order != 1 {
 		t.Fatalf("first item = %+v, want trimmed first Pods preset", saved.Items[0])
 	}
-	if saved.Items[1].Name != "Services" || saved.Items[1].Group != "General" || saved.Items[1].Query != "" || saved.Items[1].Namespace != "all" || saved.Items[1].Status != "all" || saved.Items[1].UpdatedAt <= 0 {
+	if saved.Items[1].Name != "Services" || saved.Items[1].Group != "General" || saved.Items[1].Query != "" || saved.Items[1].Namespace != "all" || saved.Items[1].Status != "all" || saved.Items[1].Order != 2 || saved.Items[1].UpdatedAt <= 0 {
 		t.Fatalf("second item = %+v, want normalized Services preset", saved.Items[1])
 	}
-	for _, item := range saved.Items {
+	for index, item := range saved.Items {
+		if item.Order != int64(index+1) {
+			t.Fatalf("item order = %d for index %d, want contiguous order: %+v", item.Order, index, saved.Items)
+		}
 		if item.Name == "Nine" {
 			t.Fatalf("item Nine was not truncated: %+v", saved.Items)
 		}
@@ -713,7 +716,7 @@ func TestResourceViewPresetsFileStore(t *testing.T) {
 	}
 
 	recorder = httptest.NewRecorder()
-	request = httptest.NewRequest(http.MethodPut, "/api/resource-views", strings.NewReader(`{"items":[{"name":"Team Pods","group":"Team","query":"checkout","cluster":"test","namespace":"checkout","kind":"Pod","status":"healthy","updatedAt":1234}]}`))
+	request = httptest.NewRequest(http.MethodPut, "/api/resource-views", strings.NewReader(`{"items":[{"name":"Team Pods","group":"Team","query":"checkout","cluster":"test","namespace":"checkout","kind":"Pod","status":"healthy","order":20,"updatedAt":1234}]}`))
 	request.Header.Set("Authorization", "Bearer secret-token")
 	handler.ServeHTTP(recorder, request)
 
@@ -744,7 +747,7 @@ func TestResourceViewPresetsFileStore(t *testing.T) {
 	if err := json.NewDecoder(recorder.Body).Decode(&reloaded); err != nil {
 		t.Fatalf("decode reloaded list: %v", err)
 	}
-	if len(reloaded.Items) != 1 || reloaded.Items[0].Name != "Team Pods" || reloaded.Items[0].Group != "Team" {
+	if len(reloaded.Items) != 1 || reloaded.Items[0].Name != "Team Pods" || reloaded.Items[0].Group != "Team" || reloaded.Items[0].Order != 1 {
 		t.Fatalf("reloaded = %+v, want persisted Team Pods", reloaded.Items)
 	}
 }

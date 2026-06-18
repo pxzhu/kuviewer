@@ -9,6 +9,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -32,6 +33,7 @@ type resourceViewPreset struct {
 	Namespace string `json:"namespace"`
 	Kind      string `json:"kind"`
 	Status    string `json:"status"`
+	Order     int64  `json:"order"`
 	UpdatedAt int64  `json:"updatedAt"`
 }
 
@@ -47,6 +49,7 @@ type resourceViewPresetInput struct {
 	Namespace interface{} `json:"namespace"`
 	Kind      interface{} `json:"kind"`
 	Status    interface{} `json:"status"`
+	Order     interface{} `json:"order"`
 	UpdatedAt interface{} `json:"updatedAt"`
 }
 
@@ -168,6 +171,7 @@ func sanitizeResourceViewPresetInputs(inputs []resourceViewPresetInput, now time
 		if name == "" || seenNames[name] {
 			continue
 		}
+		fallbackOrder := int64(len(presets) + 1)
 		seenNames[name] = true
 		presets = append(presets, resourceViewPreset{
 			Name:      name,
@@ -177,13 +181,14 @@ func sanitizeResourceViewPresetInputs(inputs []resourceViewPresetInput, now time
 			Namespace: filterInput(input.Namespace),
 			Kind:      filterInput(input.Kind),
 			Status:    filterInput(input.Status),
+			Order:     orderInput(input.Order, fallbackOrder),
 			UpdatedAt: timestampInput(input.UpdatedAt, nowMillis),
 		})
 		if len(presets) >= maxResourceViewPresets {
 			break
 		}
 	}
-	return presets
+	return normalizeResourceViewPresetOrders(presets)
 }
 
 func groupInput(value interface{}) string {
@@ -230,6 +235,39 @@ func timestampInput(value interface{}, fallback int64) int64 {
 	default:
 		return fallback
 	}
+}
+
+func orderInput(value interface{}, fallback int64) int64 {
+	switch typed := value.(type) {
+	case float64:
+		if math.IsNaN(typed) || math.IsInf(typed, 0) || typed <= 0 {
+			return fallback
+		}
+		return int64(typed)
+	case int64:
+		if typed <= 0 {
+			return fallback
+		}
+		return typed
+	case int:
+		if typed <= 0 {
+			return fallback
+		}
+		return int64(typed)
+	default:
+		return fallback
+	}
+}
+
+func normalizeResourceViewPresetOrders(items []resourceViewPreset) []resourceViewPreset {
+	normalized := cloneResourceViewPresets(items)
+	sort.SliceStable(normalized, func(left, right int) bool {
+		return normalized[left].Order < normalized[right].Order
+	})
+	for index := range normalized {
+		normalized[index].Order = int64(index + 1)
+	}
+	return normalized
 }
 
 func truncateString(value string, maxLength int) string {
