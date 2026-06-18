@@ -21,6 +21,7 @@ interface ResourceExplorerProps {
 const allValue = 'all';
 const resourceViewPresetStorageKey = 'kuviewer_resource_view_presets';
 const resourceListDensityStorageKey = 'kuviewer_resource_list_density';
+const resourceListSortStorageKey = 'kuviewer_resource_list_sort';
 const resourceDetailDensityStorageKey = 'kuviewer_resource_detail_density';
 const logDensityStorageKey = 'kuviewer_log_density';
 const eventsAutoRefreshStorageKey = 'kuviewer_events_auto_refresh';
@@ -39,6 +40,8 @@ const resourceViewParamNames = {
 
 type DetailSectionId = 'metadata' | 'status' | 'safe' | 'yaml' | 'labels' | 'annotations' | 'relations' | 'events' | 'logs';
 type ResourceListDensity = 'comfortable' | 'compact';
+type ResourceListSortField = 'name' | 'kind' | 'namespace' | 'status' | 'cluster';
+type ResourceListSortDirection = 'asc' | 'desc';
 type ResourceDetailDensity = 'comfortable' | 'compact';
 type LogDensity = 'comfortable' | 'compact';
 type EventSeverity = 'warning' | 'normal' | 'other';
@@ -70,6 +73,14 @@ const logSortOptions: Array<{ value: LogSortOrder; label: string }> = [
   { value: 'newest', label: '최신순' },
   { value: 'oldest', label: '오래된순' },
 ];
+const resourceListSortOptions: Array<{ value: ResourceListSortField; label: string }> = [
+  { value: 'kind', label: 'Kind' },
+  { value: 'name', label: '이름' },
+  { value: 'namespace', label: 'Namespace' },
+  { value: 'status', label: 'Status' },
+  { value: 'cluster', label: 'Cluster' },
+];
+const defaultResourceListSortPreference: ResourceListSortPreference = { field: 'kind', direction: 'asc' };
 
 interface ResourceViewPreset extends ResourceViewFilters {
   name: string;
@@ -87,6 +98,11 @@ export interface ResourceViewFilters {
 interface ResourceViewMessage {
   tone: 'success' | 'warning';
   text: string;
+}
+
+interface ResourceListSortPreference {
+  field: ResourceListSortField;
+  direction: ResourceListSortDirection;
 }
 
 interface RelationGroup {
@@ -185,6 +201,7 @@ export function ResourceExplorer({
   const [resourceViewTeamLoading, setResourceViewTeamLoading] = useState(false);
   const [detailFocusRequest, setDetailFocusRequest] = useState(0);
   const [resourceListDensity, setResourceListDensity] = useState<ResourceListDensity>(() => readResourceListDensityPreference());
+  const [resourceListSort, setResourceListSort] = useState<ResourceListSortPreference>(() => readResourceListSortPreference());
   const resourceRowRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const viewPresetImportInputRef = useRef<HTMLInputElement>(null);
 
@@ -259,8 +276,9 @@ export function ResourceExplorer({
       );
     });
   }, [cluster, kind, namespace, query, resources, status]);
-  const selectedResource = filteredResources.find((resource) => resource.id === selectedNodeId) || filteredResources[0] || resources.find((resource) => resource.id === selectedNodeId) || resources[0];
-  const selectedResourceIndex = selectedResource ? filteredResources.findIndex((resource) => resource.id === selectedResource.id) : -1;
+  const sortedResources = useMemo(() => sortResourceList(filteredResources, resourceListSort), [filteredResources, resourceListSort]);
+  const selectedResource = sortedResources.find((resource) => resource.id === selectedNodeId) || sortedResources[0] || resources.find((resource) => resource.id === selectedNodeId) || resources[0];
+  const selectedResourceIndex = selectedResource ? sortedResources.findIndex((resource) => resource.id === selectedResource.id) : -1;
 
   useEffect(() => {
     if (resourceViewFiltersEqual(resourceFiltersPropRef.current, resourceFilters)) {
@@ -295,6 +313,10 @@ export function ResourceExplorer({
   useEffect(() => {
     writeResourceListDensityPreference(resourceListDensity);
   }, [resourceListDensity]);
+
+  useEffect(() => {
+    writeResourceListSortPreference(resourceListSort);
+  }, [resourceListSort]);
 
   useEffect(() => {
     if (resources.length === 0) {
@@ -462,11 +484,11 @@ export function ResourceExplorer({
     });
   };
   const selectResourceAtIndex = (index: number) => {
-    if (filteredResources.length === 0) {
+    if (sortedResources.length === 0) {
       return;
     }
-    const nextIndex = Math.max(0, Math.min(filteredResources.length - 1, index));
-    const nextResource = filteredResources[nextIndex];
+    const nextIndex = Math.max(0, Math.min(sortedResources.length - 1, index));
+    const nextResource = sortedResources[nextIndex];
     onSelectNode(nextResource.id);
     focusResourceRow(nextResource.id);
   };
@@ -480,13 +502,13 @@ export function ResourceExplorer({
       selectResourceAtIndex(selectedResourceIndex >= 0 ? selectedResourceIndex + 1 : 0);
     } else if (event.key === 'ArrowUp') {
       event.preventDefault();
-      selectResourceAtIndex(selectedResourceIndex >= 0 ? selectedResourceIndex - 1 : filteredResources.length - 1);
+      selectResourceAtIndex(selectedResourceIndex >= 0 ? selectedResourceIndex - 1 : sortedResources.length - 1);
     } else if (event.key === 'Home') {
       event.preventDefault();
       selectResourceAtIndex(0);
     } else if (event.key === 'End') {
       event.preventDefault();
-      selectResourceAtIndex(filteredResources.length - 1);
+      selectResourceAtIndex(sortedResources.length - 1);
     } else if (event.key === 'Enter' && selectedResource) {
       event.preventDefault();
       setDetailFocusRequest((request) => request + 1);
@@ -503,6 +525,48 @@ export function ResourceExplorer({
               <p className="ku-meta mt-1">읽기 전용 Kubernetes 리소스 목록 · Secret value 숨김</p>
             </div>
             <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+              <label className="grid min-w-[116px] gap-1">
+                <span className="ku-meta">정렬</span>
+                <select
+                  className="ku-select h-8 text-xs"
+                  value={resourceListSort.field}
+                  data-testid="resource-list-sort-field"
+                  onChange={(event) => setResourceListSort((current) => ({ ...current, field: event.target.value as ResourceListSortField }))}
+                >
+                  {resourceListSortOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <div className="grid gap-1">
+                <span className="ku-meta">방향</span>
+                <div className="grid grid-cols-2 rounded-[9px] border border-[rgba(60,60,67,0.12)] bg-white/70 p-0.5" aria-label="리소스 목록 정렬 방향">
+                  {([
+                    { value: 'asc', label: '오름차순', icon: ArrowUp },
+                    { value: 'desc', label: '내림차순', icon: ArrowDown },
+                  ] as const).map((option) => {
+                    const Icon = option.icon;
+                    return (
+                      <button
+                        key={option.value}
+                        className={`rounded-[7px] px-2 py-1 text-xs font-semibold transition ${
+                          resourceListSort.direction === option.value ? 'bg-[#1d1d1f] text-white shadow-sm' : 'text-[rgba(60,60,67,0.72)] hover:bg-white'
+                        }`}
+                        data-testid={`resource-list-sort-${option.value}`}
+                        type="button"
+                        onClick={() => setResourceListSort((current) => ({ ...current, direction: option.value }))}
+                        aria-pressed={resourceListSort.direction === option.value}
+                        aria-label={`리소스 목록 ${option.label} 정렬`}
+                        title={`리소스 목록 ${option.label} 정렬`}
+                      >
+                        <Icon size={13} aria-hidden="true" />
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
               <div className="grid grid-cols-2 rounded-[9px] border border-[rgba(60,60,67,0.12)] bg-white/70 p-0.5" aria-label="리소스 목록 밀도">
                 {([
                   { value: 'comfortable', label: '기본' },
@@ -726,8 +790,8 @@ export function ResourceExplorer({
           aria-activedescendant={selectedResource && selectedResourceIndex >= 0 ? resourceOptionDomId(selectedResource.id) : undefined}
           onKeyDown={handleResourceListKeyDown}
         >
-          {filteredResources.length === 0 ? <p className="ku-meta p-2">필터와 일치하는 리소스가 없습니다.</p> : null}
-          {filteredResources.map((resource) => (
+          {sortedResources.length === 0 ? <p className="ku-meta p-2">필터와 일치하는 리소스가 없습니다.</p> : null}
+          {sortedResources.map((resource) => (
             <div
               key={resource.id}
               id={resourceOptionDomId(resource.id)}
@@ -3262,6 +3326,33 @@ function writeResourceListDensityPreference(density: ResourceListDensity) {
   }
 }
 
+function readResourceListSortPreference(): ResourceListSortPreference {
+  try {
+    const rawValue = window.localStorage.getItem(resourceListSortStorageKey);
+    if (!rawValue) {
+      return defaultResourceListSortPreference;
+    }
+    const parsedValue = JSON.parse(rawValue) as Partial<ResourceListSortPreference>;
+    return normalizeResourceListSortPreference(parsedValue);
+  } catch {
+    return defaultResourceListSortPreference;
+  }
+}
+
+function writeResourceListSortPreference(sortPreference: ResourceListSortPreference) {
+  try {
+    window.localStorage.setItem(resourceListSortStorageKey, JSON.stringify(sortPreference));
+  } catch {
+    // Sorting is only a UI preference; storage failures should not break the explorer.
+  }
+}
+
+function normalizeResourceListSortPreference(value: Partial<ResourceListSortPreference>): ResourceListSortPreference {
+  const field = value.field && resourceListSortOptions.some((option) => option.value === value.field) ? value.field : defaultResourceListSortPreference.field;
+  const direction = value.direction === 'desc' ? 'desc' : defaultResourceListSortPreference.direction;
+  return { field, direction };
+}
+
 function readResourceDetailDensityPreference(): ResourceDetailDensity {
   try {
     return window.localStorage.getItem(resourceDetailDensityStorageKey) === 'compact' ? 'compact' : 'comfortable';
@@ -3573,6 +3664,45 @@ function isResourceListShortcutTarget(target: EventTarget | null) {
   }
   const tagName = target.tagName.toLowerCase();
   return tagName === 'input' || tagName === 'select' || tagName === 'textarea' || tagName === 'button' || target.isContentEditable;
+}
+
+function sortResourceList(resources: ResourceExplorerItem[], sortPreference: ResourceListSortPreference) {
+  const normalizedSort = normalizeResourceListSortPreference(sortPreference);
+  return resources
+    .map((resource, index) => ({ resource, index }))
+    .sort((left, right) => {
+      const primary = compareResourceSortValue(left.resource, right.resource, normalizedSort.field);
+      if (primary !== 0) {
+        return normalizedSort.direction === 'desc' ? -primary : primary;
+      }
+      const fallback =
+        compareResourceText(left.resource.kind, right.resource.kind) ||
+        compareResourceText(left.resource.namespace || '', right.resource.namespace || '') ||
+        compareResourceText(left.resource.name, right.resource.name) ||
+        compareResourceText(left.resource.id, right.resource.id);
+      return fallback || left.index - right.index;
+    })
+    .map(({ resource }) => resource);
+}
+
+function compareResourceSortValue(left: ResourceExplorerItem, right: ResourceExplorerItem, field: ResourceListSortField) {
+  switch (field) {
+    case 'cluster':
+      return compareResourceText(left.clusterId, right.clusterId);
+    case 'kind':
+      return compareResourceText(left.kind, right.kind);
+    case 'namespace':
+      return compareResourceText(left.namespace || '', right.namespace || '');
+    case 'status':
+      return compareResourceText(left.status, right.status);
+    case 'name':
+    default:
+      return compareResourceText(left.name, right.name);
+  }
+}
+
+function compareResourceText(left: string, right: string) {
+  return left.localeCompare(right, undefined, { numeric: true, sensitivity: 'base' });
 }
 
 function isEditableTarget(target: EventTarget | null) {
