@@ -9,10 +9,12 @@ import type { TopologySourceMode } from '../features/topology/useTopology';
 
 interface ResourceExplorerProps {
   liveEnabled: boolean;
+  resourceFilters: ResourceViewFilters;
   selectedNodeId: string;
   snapshot: TopologySnapshot;
   sourceMode: TopologySourceMode;
   onOpenTopologyNode: (nodeId: string) => void;
+  onResourceFiltersChange: (filters: ResourceViewFilters) => void;
   onSelectNode: (nodeId: string) => void;
 }
 
@@ -67,17 +69,18 @@ const logSortOptions: Array<{ value: LogSortOrder; label: string }> = [
   { value: 'oldest', label: '오래된순' },
 ];
 
-interface ResourceViewPreset {
+interface ResourceViewPreset extends ResourceViewFilters {
   name: string;
+  updatedAt: number;
+}
+
+export interface ResourceViewFilters {
   query: string;
   cluster: string;
   namespace: string;
   kind: string;
   status: string;
-  updatedAt: number;
 }
-
-type ResourceViewFilters = Pick<ResourceViewPreset, 'query' | 'cluster' | 'namespace' | 'kind' | 'status'>;
 
 interface ResourceViewMessage {
   tone: 'success' | 'warning';
@@ -154,21 +157,29 @@ interface DetailOverviewItem {
 
 type DetailSectionTone = 'default' | 'warning' | 'error';
 
-export function ResourceExplorer({ liveEnabled, selectedNodeId, snapshot, sourceMode, onOpenTopologyNode, onSelectNode }: ResourceExplorerProps) {
-  const initialResourceViewFiltersRef = useRef<ResourceViewFilters>(readResourceViewFiltersFromUrl() || defaultResourceViewFilters());
-  const [query, setQuery] = useState(initialResourceViewFiltersRef.current.query);
-  const [cluster, setCluster] = useState(initialResourceViewFiltersRef.current.cluster);
-  const [namespace, setNamespace] = useState(initialResourceViewFiltersRef.current.namespace);
-  const [kind, setKind] = useState(initialResourceViewFiltersRef.current.kind);
-  const [status, setStatus] = useState(initialResourceViewFiltersRef.current.status);
+export function ResourceExplorer({
+  liveEnabled,
+  resourceFilters,
+  selectedNodeId,
+  snapshot,
+  sourceMode,
+  onOpenTopologyNode,
+  onResourceFiltersChange,
+  onSelectNode,
+}: ResourceExplorerProps) {
+  const resourceFiltersPropRef = useRef<ResourceViewFilters>(resourceFilters);
+  const applyingResourceFiltersRef = useRef(false);
+  const [query, setQuery] = useState(resourceFilters.query);
+  const [cluster, setCluster] = useState(resourceFilters.cluster);
+  const [namespace, setNamespace] = useState(resourceFilters.namespace);
+  const [kind, setKind] = useState(resourceFilters.kind);
+  const [status, setStatus] = useState(resourceFilters.status);
   const [resources, setResources] = useState<ResourceExplorerItem[]>(() => resourcesFromSnapshot(snapshot).items);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [viewPresets, setViewPresets] = useState<ResourceViewPreset[]>(() => readResourceViewPresets());
   const [presetName, setPresetName] = useState('');
-  const [resourceViewMessage, setResourceViewMessage] = useState<ResourceViewMessage | null>(() =>
-    readResourceViewFiltersFromUrl() ? { tone: 'success', text: '공유 링크 필터를 적용했습니다.' } : null,
-  );
+  const [resourceViewMessage, setResourceViewMessage] = useState<ResourceViewMessage | null>(null);
   const [detailFocusRequest, setDetailFocusRequest] = useState(0);
   const [resourceListDensity, setResourceListDensity] = useState<ResourceListDensity>(() => readResourceListDensityPreference());
   const resourceRowRefs = useRef<Record<string, HTMLDivElement | null>>({});
@@ -248,6 +259,30 @@ export function ResourceExplorer({ liveEnabled, selectedNodeId, snapshot, source
   const selectedResourceIndex = selectedResource ? filteredResources.findIndex((resource) => resource.id === selectedResource.id) : -1;
 
   useEffect(() => {
+    if (resourceViewFiltersEqual(resourceFiltersPropRef.current, resourceFilters)) {
+      return;
+    }
+    resourceFiltersPropRef.current = resourceFilters;
+    applyingResourceFiltersRef.current = true;
+    setQuery(resourceFilters.query);
+    setCluster(resourceFilters.cluster);
+    setNamespace(resourceFilters.namespace);
+    setKind(resourceFilters.kind);
+    setStatus(resourceFilters.status);
+    setPresetName('');
+    onSelectNode('');
+  }, [onSelectNode, resourceFilters]);
+
+  useEffect(() => {
+    if (applyingResourceFiltersRef.current) {
+      applyingResourceFiltersRef.current = false;
+      return;
+    }
+    resourceFiltersPropRef.current = currentPresetFilters;
+    onResourceFiltersChange(currentPresetFilters);
+  }, [currentPresetFilters, onResourceFiltersChange]);
+
+  useEffect(() => {
     if (selectedResource && selectedNodeId !== selectedResource.id) {
       onSelectNode(selectedResource.id);
     }
@@ -303,7 +338,7 @@ export function ResourceExplorer({ liveEnabled, selectedNodeId, snapshot, source
   };
 
   const handleCopyResourceViewLink = async () => {
-    const url = resourceViewShareUrl(currentPresetFilters);
+    const url = resourceViewShareUrl(currentPresetFilters, sourceMode);
     try {
       if (!navigator.clipboard?.writeText) {
         throw new Error('clipboard_unavailable');
@@ -451,13 +486,13 @@ export function ResourceExplorer({ liveEnabled, selectedNodeId, snapshot, source
         <div className="grid gap-2 border-b border-[rgba(60,60,67,0.1)] p-3">
           <label className="relative block">
             <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[rgba(60,60,67,0.45)]" size={16} />
-            <input className="ku-input w-full pl-9" placeholder="리소스 검색" value={query} onChange={(event) => setQuery(event.target.value)} />
+            <input className="ku-input w-full pl-9" placeholder="리소스 검색" value={query} data-testid="resource-view-query" onChange={(event) => setQuery(event.target.value)} />
           </label>
           <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
-            <ResourceSelect label="Cluster" value={cluster} values={clusters} onChange={setCluster} />
-            <ResourceSelect label="Namespace" value={namespace} values={namespaces} onChange={setNamespace} />
-            <ResourceSelect label="Kind" value={kind} values={kinds} onChange={setKind} />
-            <ResourceSelect label="Status" value={status} values={statuses} onChange={setStatus} />
+            <ResourceSelect label="Cluster" testId="resource-filter-cluster" value={cluster} values={clusters} onChange={setCluster} />
+            <ResourceSelect label="Namespace" testId="resource-filter-namespace" value={namespace} values={namespaces} onChange={setNamespace} />
+            <ResourceSelect label="Kind" testId="resource-filter-kind" value={kind} values={kinds} onChange={setKind} />
+            <ResourceSelect label="Status" testId="resource-filter-status" value={status} values={statuses} onChange={setStatus} />
           </div>
           <div className="grid gap-2 rounded-[12px] border border-[rgba(60,60,67,0.12)] bg-white/70 p-2">
             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -3100,11 +3135,11 @@ function visibleValueCount(values: Record<string, unknown>) {
   return Object.entries(values).filter(([, value]) => value !== undefined && value !== '' && (!Array.isArray(value) || value.length > 0)).length;
 }
 
-function ResourceSelect({ label, value, values, onChange }: { label: string; value: string; values: string[]; onChange: (value: string) => void }) {
+function ResourceSelect({ label, testId, value, values, onChange }: { label: string; testId: string; value: string; values: string[]; onChange: (value: string) => void }) {
   return (
     <label className="grid gap-1">
       <span className="ku-meta">{label}</span>
-      <select className="ku-select" value={value} onChange={(event) => onChange(event.target.value)}>
+      <select className="ku-select" value={value} data-testid={testId} onChange={(event) => onChange(event.target.value)}>
         <option value={allValue}>전체</option>
         {values.map((option) => (
           <option key={option} value={option}>
@@ -3204,7 +3239,7 @@ function writeResourceViewPresets(presets: ResourceViewPreset[]) {
   }
 }
 
-function defaultResourceViewFilters(): ResourceViewFilters {
+export function defaultResourceViewFilters(): ResourceViewFilters {
   return {
     query: '',
     cluster: allValue,
@@ -3214,12 +3249,9 @@ function defaultResourceViewFilters(): ResourceViewFilters {
   };
 }
 
-function readResourceViewFiltersFromUrl(): ResourceViewFilters | null {
+export function readResourceViewFiltersFromSearch(search: string): ResourceViewFilters | null {
   try {
-    if (typeof window === 'undefined') {
-      return null;
-    }
-    const params = new URLSearchParams(window.location.search);
+    const params = new URLSearchParams(search);
     const hasResourceViewParams =
       params.get('view') === 'resources' ||
       Object.values(resourceViewParamNames).some((paramName) => params.has(paramName));
@@ -3238,15 +3270,48 @@ function readResourceViewFiltersFromUrl(): ResourceViewFilters | null {
   }
 }
 
-function resourceViewShareUrl(filters: ResourceViewFilters) {
+export function appSearchHasResourceViewState(search: string) {
+  const params = new URLSearchParams(search);
+  return params.get('view') === 'resources' || Object.values(resourceViewParamNames).some((paramName) => params.has(paramName));
+}
+
+export function appendResourceViewFilterSearchParams(params: URLSearchParams, filters: ResourceViewFilters) {
+  const query = filters.query.trim().slice(0, 160);
+  if (query) {
+    params.set(resourceViewParamNames.query, query);
+  }
+  if (filters.cluster && filters.cluster !== allValue) {
+    params.set(resourceViewParamNames.cluster, filters.cluster);
+  }
+  if (filters.namespace && filters.namespace !== allValue) {
+    params.set(resourceViewParamNames.namespace, filters.namespace);
+  }
+  if (filters.kind && filters.kind !== allValue) {
+    params.set(resourceViewParamNames.kind, filters.kind);
+  }
+  if (filters.status && filters.status !== allValue) {
+    params.set(resourceViewParamNames.status, filters.status);
+  }
+}
+
+export function resourceViewFiltersEqual(left: ResourceViewFilters, right: ResourceViewFilters) {
+  return (
+    left.query === right.query &&
+    left.cluster === right.cluster &&
+    left.namespace === right.namespace &&
+    left.kind === right.kind &&
+    left.status === right.status
+  );
+}
+
+function resourceViewShareUrl(filters: ResourceViewFilters, sourceMode: TopologySourceMode) {
   const url = new URL(window.location.href);
   const params = new URLSearchParams();
   params.set('view', 'resources');
-  params.set(resourceViewParamNames.query, filters.query.slice(0, 160));
-  params.set(resourceViewParamNames.cluster, filters.cluster || allValue);
-  params.set(resourceViewParamNames.namespace, filters.namespace || allValue);
-  params.set(resourceViewParamNames.kind, filters.kind || allValue);
-  params.set(resourceViewParamNames.status, filters.status || allValue);
+  if (sourceMode !== 'upload') {
+    params.set('source', sourceMode);
+  }
+  appendResourceViewFilterSearchParams(params, filters);
   url.search = params.toString();
   url.hash = '';
   return url.toString();

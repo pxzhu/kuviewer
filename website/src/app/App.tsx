@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Boxes, GitBranch, LockKeyhole, Palette, Pause, Play, RefreshCw, SearchCode, SlidersHorizontal, Workflow } from 'lucide-react';
 import { clearAdminToken, getStoredAdminToken, isValidAdminToken } from '../features/auth/adminToken';
 import { useConnectorStatus } from '../features/status/useConnectorStatus';
@@ -8,7 +8,15 @@ import { ConnectorDiagnostics } from '../components/ConnectorDiagnostics';
 import { DetailPanel } from '../components/DetailPanel';
 import { FilterBar } from '../components/FilterBar';
 import { ResourceList } from '../components/ResourceList';
-import { ResourceExplorer } from '../components/ResourceExplorer';
+import {
+  ResourceExplorer,
+  appSearchHasResourceViewState,
+  appendResourceViewFilterSearchParams,
+  defaultResourceViewFilters,
+  readResourceViewFiltersFromSearch,
+  resourceViewFiltersEqual,
+  type ResourceViewFilters,
+} from '../components/ResourceExplorer';
 import { SourceModeBar } from '../components/SourceModeBar';
 import { StatTiles } from '../components/StatTiles';
 import { TopologyCanvas } from '../components/TopologyCanvas';
@@ -26,6 +34,13 @@ const initialFilters: TopologyFilters = {
 const sourceModeStorageKey = 'kuviewer_source_mode';
 const brandThemeStorageKey = 'kuviewer_brand_theme';
 type BrandTheme = 'yaml-flow' | 'radar';
+type ViewMode = 'topology' | 'traffic' | 'resources';
+
+interface AppUrlState {
+  viewMode: ViewMode;
+  sourceMode: TopologySourceMode;
+  resourceFilters: ResourceViewFilters;
+}
 
 export function App() {
   return <Dashboard />;
@@ -37,8 +52,9 @@ function Dashboard() {
   const [filters, setFilters] = useState(initialFilters);
   const [colorMode, setColorMode] = useState<ColorMode>('status');
   const [brandTheme, setBrandTheme] = useState<BrandTheme>(() => initialBrandTheme());
-  const [viewMode, setViewMode] = useState<'topology' | 'traffic' | 'resources'>(() => initialViewMode());
+  const [viewMode, setViewMode] = useState<ViewMode>(() => initialViewMode());
   const [sourceMode, setSourceMode] = useState<TopologySourceMode>(() => initialSourceMode());
+  const [resourceUrlFilters, setResourceUrlFilters] = useState<ResourceViewFilters>(() => initialResourceViewFilters());
   const [liveUnlocked, setLiveUnlocked] = useState(() => isValidAdminToken(getStoredAdminToken()));
   const [uploadedState, setUploadedState] = useState<UploadedTopologyState | null>(null);
   const [uploadClusterName, setUploadClusterName] = useState('uploaded-bundle');
@@ -47,6 +63,11 @@ function Dashboard() {
   const [liveSessionMessage, setLiveSessionMessage] = useState('');
   const [selectedNodeId, setSelectedNodeId] = useState('');
   const liveActive = sourceMode === 'live' && liveUnlocked;
+  const appUrlStateRef = useRef<AppUrlState>({
+    viewMode,
+    sourceMode,
+    resourceFilters: resourceUrlFilters,
+  });
 
   const { status: connectorStatus, loading: connectorLoading, error: connectorError } = useConnectorStatus(liveActive);
   const {
@@ -110,13 +131,68 @@ function Dashboard() {
       setSourceMode(nextMode);
       storeSourceMode(nextMode);
       setSelectedNodeId('');
+      writeAppUrlState({ viewMode, sourceMode: nextMode, resourceFilters: resourceUrlFilters }, 'push');
       if (nextMode !== 'live') {
         setAutoRefresh(false);
         setLiveSessionMessage('');
       }
     },
-    [setAutoRefresh],
+    [resourceUrlFilters, setAutoRefresh, viewMode],
   );
+
+  const handleViewModeChange = useCallback(
+    (nextMode: ViewMode) => {
+      setViewMode(nextMode);
+      writeAppUrlState({ viewMode: nextMode, sourceMode, resourceFilters: resourceUrlFilters }, nextMode === viewMode ? 'replace' : 'push');
+    },
+    [resourceUrlFilters, sourceMode, viewMode],
+  );
+
+  const handleResourceFiltersChange = useCallback(
+    (nextFilters: ResourceViewFilters) => {
+      setResourceUrlFilters((currentFilters) => (resourceViewFiltersEqual(currentFilters, nextFilters) ? currentFilters : nextFilters));
+      if (viewMode === 'resources') {
+        writeAppUrlState({ viewMode, sourceMode, resourceFilters: nextFilters }, 'replace');
+      }
+    },
+    [sourceMode, viewMode],
+  );
+
+  useEffect(() => {
+    appUrlStateRef.current = { viewMode, sourceMode, resourceFilters: resourceUrlFilters };
+  }, [resourceUrlFilters, sourceMode, viewMode]);
+
+  useEffect(() => {
+    const handlePopState = (event: PopStateEvent) => {
+      const nextViewMode = readViewModeFromSearch(window.location.search);
+      const nextSourceMode = readSourceModeForAppUrl(window.location.search, event.state);
+      const nextResourceFilters = readResourceViewFiltersFromSearch(window.location.search) || defaultResourceViewFilters();
+      const currentState = appUrlStateRef.current;
+
+      if (currentState.viewMode !== nextViewMode) {
+        setViewMode(nextViewMode);
+      }
+      if (currentState.sourceMode !== nextSourceMode) {
+        setSourceMode(nextSourceMode);
+        storeSourceMode(nextSourceMode);
+        setSelectedNodeId('');
+        if (nextSourceMode !== 'live') {
+          setAutoRefresh(false);
+          setLiveSessionMessage('');
+        }
+      }
+      if (!resourceViewFiltersEqual(currentState.resourceFilters, nextResourceFilters)) {
+        setResourceUrlFilters(nextResourceFilters);
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, [setAutoRefresh]);
+
+  useEffect(() => {
+    writeAppUrlState(appUrlStateRef.current, 'replace');
+  }, []);
 
   const handleUploadFiles = useCallback(async (files: File[]) => {
     setUploadError('');
@@ -125,12 +201,13 @@ function Dashboard() {
       setUploadedState(nextUploadedState);
       setSourceMode('upload');
       storeSourceMode('upload');
+      writeAppUrlState({ viewMode, sourceMode: 'upload', resourceFilters: resourceUrlFilters }, 'push');
       setFilters(initialFilters);
       setSelectedNodeId('');
     } catch (requestError) {
       setUploadError(requestError instanceof Error ? requestError.message : 'upload_parse_failed');
     }
-  }, [uploadClusterId, uploadClusterName]);
+  }, [resourceUrlFilters, uploadClusterId, uploadClusterName, viewMode]);
 
   const handleImportJson = useCallback(async (file: File) => {
     setUploadError('');
@@ -144,12 +221,13 @@ function Dashboard() {
       });
       setSourceMode('upload');
       storeSourceMode('upload');
+      writeAppUrlState({ viewMode, sourceMode: 'upload', resourceFilters: resourceUrlFilters }, 'push');
       setFilters(initialFilters);
       setSelectedNodeId('');
     } catch (requestError) {
       setUploadError(requestError instanceof Error ? requestError.message : 'topology_import_failed');
     }
-  }, []);
+  }, [resourceUrlFilters, viewMode]);
 
   const handleExportJson = useCallback(() => {
     const payload = JSON.stringify(snapshot, null, 2);
@@ -170,14 +248,16 @@ function Dashboard() {
     if (sourceMode === 'live') {
       setSourceMode('upload');
       storeSourceMode('upload');
+      writeAppUrlState({ viewMode, sourceMode: 'upload', resourceFilters: resourceUrlFilters }, 'push');
     }
-  }, [setAutoRefresh, sourceMode]);
+  }, [resourceUrlFilters, setAutoRefresh, sourceMode, viewMode]);
 
   const handleOpenTopologyNode = useCallback((nodeId: string) => {
     setFilters(initialFilters);
     setSelectedNodeId(nodeId);
     setViewMode('topology');
-  }, []);
+    writeAppUrlState({ viewMode: 'topology', sourceMode, resourceFilters: resourceUrlFilters }, 'push');
+  }, [resourceUrlFilters, sourceMode]);
 
   const handleBrandThemeChange = useCallback((nextTheme: BrandTheme) => {
     setBrandTheme(nextTheme);
@@ -242,7 +322,7 @@ function Dashboard() {
                   viewMode === 'topology' ? 'bg-[#1d1d1f] text-white shadow-sm' : 'text-[rgba(60,60,67,0.72)] hover:bg-white/80'
                 }`}
                 type="button"
-                onClick={() => setViewMode('topology')}
+                onClick={() => handleViewModeChange('topology')}
               >
                 <GitBranch size={15} aria-hidden="true" />
                 토폴로지
@@ -252,7 +332,7 @@ function Dashboard() {
                   viewMode === 'traffic' ? 'bg-[#1d1d1f] text-white shadow-sm' : 'text-[rgba(60,60,67,0.72)] hover:bg-white/80'
                 }`}
                 type="button"
-                onClick={() => setViewMode('traffic')}
+                onClick={() => handleViewModeChange('traffic')}
               >
                 <Workflow size={15} aria-hidden="true" />
                 트래픽 흐름
@@ -262,7 +342,7 @@ function Dashboard() {
                   viewMode === 'resources' ? 'bg-[#1d1d1f] text-white shadow-sm' : 'text-[rgba(60,60,67,0.72)] hover:bg-white/80'
                 }`}
                 type="button"
-                onClick={() => setViewMode('resources')}
+                onClick={() => handleViewModeChange('resources')}
               >
                 <SearchCode size={15} aria-hidden="true" />
                 리소스 탐색
@@ -357,10 +437,12 @@ function Dashboard() {
         {viewMode === 'resources' ? (
           <ResourceExplorer
             liveEnabled={liveActive}
+            resourceFilters={resourceUrlFilters}
             selectedNodeId={selectedNode?.id || ''}
             snapshot={snapshot}
             sourceMode={sourceMode}
             onOpenTopologyNode={handleOpenTopologyNode}
+            onResourceFiltersChange={handleResourceFiltersChange}
             onSelectNode={setSelectedNodeId}
           />
         ) : (
@@ -524,18 +606,102 @@ function formatLastSync(lastUpdatedAt: number | null) {
 }
 
 function initialSourceMode(): TopologySourceMode {
-  const source = new URLSearchParams(window.location.search).get('source');
-  if (source === 'live' || source === 'mock' || source === 'upload') {
+  const source = readSourceModeFromSearch(window.location.search);
+  if (source) {
     storeSourceMode(source);
     return source;
+  }
+  if (appSearchHasExplicitState(window.location.search)) {
+    return 'upload';
   }
   const storedSource = readStoredSourceMode();
   return storedSource || 'upload';
 }
 
-function initialViewMode(): 'topology' | 'traffic' | 'resources' {
-  const view = new URLSearchParams(window.location.search).get('view');
-  return view === 'resources' ? 'resources' : 'topology';
+function initialViewMode(): ViewMode {
+  return readViewModeFromSearch(window.location.search);
+}
+
+function initialResourceViewFilters(): ResourceViewFilters {
+  return readResourceViewFiltersFromSearch(window.location.search) || defaultResourceViewFilters();
+}
+
+function readViewModeFromSearch(search: string): ViewMode {
+  const view = new URLSearchParams(search).get('view');
+  if (view === 'resources' || view === 'traffic') {
+    return view;
+  }
+  return 'topology';
+}
+
+function readSourceModeForAppUrl(search: string, historyState?: unknown): TopologySourceMode {
+  const source = readSourceModeFromSearch(search);
+  if (source) {
+    return source;
+  }
+  const sourceFromHistory = readSourceModeFromHistoryState(historyState);
+  if (sourceFromHistory) {
+    return sourceFromHistory;
+  }
+  if (appSearchHasExplicitState(search)) {
+    return 'upload';
+  }
+  return readStoredSourceMode() || 'upload';
+}
+
+function readSourceModeFromSearch(search: string): TopologySourceMode | null {
+  const source = new URLSearchParams(search).get('source');
+  return source === 'live' || source === 'mock' || source === 'upload' ? source : null;
+}
+
+function readSourceModeFromHistoryState(historyState: unknown): TopologySourceMode | null {
+  if (!historyState || typeof historyState !== 'object') {
+    return null;
+  }
+  const source = (historyState as Partial<AppUrlState>).sourceMode;
+  return source === 'live' || source === 'mock' || source === 'upload' ? source : null;
+}
+
+function appSearchHasExplicitState(search: string) {
+  const params = new URLSearchParams(search);
+  return params.has('view') || params.has('source') || appSearchHasResourceViewState(search);
+}
+
+function writeAppUrlState(state: AppUrlState, mode: 'push' | 'replace') {
+  const url = new URL(window.location.href);
+  const params = new URLSearchParams();
+  if (state.viewMode === 'resources') {
+    params.set('view', 'resources');
+  } else if (state.viewMode === 'traffic') {
+    params.set('view', 'traffic');
+  }
+  if (state.sourceMode !== 'upload') {
+    params.set('source', state.sourceMode);
+  }
+  if (state.viewMode === 'resources') {
+    appendResourceViewFilterSearchParams(params, state.resourceFilters);
+  }
+
+  url.search = params.toString();
+  url.hash = '';
+  const nextPath = `${url.pathname}${url.search}${url.hash}`;
+  const currentPath = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+  const historyState = {
+    kuviewer: true,
+    viewMode: state.viewMode,
+    sourceMode: state.sourceMode,
+    resourceFilters: state.resourceFilters,
+  };
+
+  if (nextPath === currentPath) {
+    window.history.replaceState(historyState, '', nextPath);
+    return;
+  }
+  if (mode === 'push') {
+    window.history.pushState(historyState, '', nextPath);
+  } else {
+    window.history.replaceState(historyState, '', nextPath);
+  }
 }
 
 function initialBrandTheme(): BrandTheme {
