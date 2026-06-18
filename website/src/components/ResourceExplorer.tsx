@@ -141,6 +141,22 @@ interface ResourceViewTeamSyncSummary {
   timestamp: number;
 }
 
+interface ResourceViewTeamComparePreview {
+  action: 'load' | 'save';
+  incomingPresets: ResourceViewPreset[];
+  invalidCount: number;
+  mergeResult: ResourceViewMergeResult;
+  localCount: number;
+  teamCount: number;
+  newNames: string[];
+  conflictNames: string[];
+  duplicateNames: string[];
+  localOnlyNames: string[];
+  teamOnlyNames: string[];
+  folders: string[];
+  timestamp: number;
+}
+
 interface ResourceViewRenameState {
   originalName: string;
   draftName: string;
@@ -295,6 +311,7 @@ export function ResourceExplorer({
   const [resourceViewMessage, setResourceViewMessage] = useState<ResourceViewMessage | null>(null);
   const [resourceViewTransferSummary, setResourceViewTransferSummary] = useState<ResourceViewTransferSummary | null>(null);
   const [resourceViewTeamSyncSummary, setResourceViewTeamSyncSummary] = useState<ResourceViewTeamSyncSummary | null>(null);
+  const [resourceViewTeamComparePreview, setResourceViewTeamComparePreview] = useState<ResourceViewTeamComparePreview | null>(null);
   const [resourceViewConflict, setResourceViewConflict] = useState<ResourceViewConflictState | null>(null);
   const [renamingViewPreset, setRenamingViewPreset] = useState<ResourceViewRenameState | null>(null);
   const [resourceViewTeamLoading, setResourceViewTeamLoading] = useState(false);
@@ -480,6 +497,7 @@ export function ResourceExplorer({
 
   useEffect(() => {
     setResourceViewTeamSaveConfirm(false);
+    setResourceViewTeamComparePreview(null);
   }, [sourceMode, viewPresets]);
 
   const handleSaveViewPreset = () => {
@@ -644,24 +662,21 @@ export function ResourceExplorer({
       const response = await fetchResourceViewPresets();
       const teamPresets = normalizeResourceViewPresetOrders(response.items.flatMap((value, index) => validResourceViewPreset(value, index + 1)));
       const skippedCount = Math.max(0, response.items.length - teamPresets.length);
-      const mergePreview = mergeResourceViewPresets(viewPresets, teamPresets, 'incoming');
+      const comparePreview = buildResourceViewTeamComparePreview('load', viewPresets, teamPresets, skippedCount);
       setResourceViewTransferSummary(null);
-      setResourceViewTeamSyncSummary({
-        action: 'load',
-        count: teamPresets.length,
-        skippedCount,
-        conflictCount: mergePreview.conflicts.length,
-        duplicateCount: mergePreview.duplicateCount,
-        newCount: resourceViewIncomingNewCount(viewPresets, teamPresets),
-        localCount: viewPresets.length,
-        folders: resourceViewPresetFolderNames(teamPresets),
-        timestamp: Date.now(),
+      setResourceViewTeamSyncSummary(null);
+      setResourceViewConflict(null);
+      setRenamingViewPreset(null);
+      setResourceViewTeamComparePreview(comparePreview);
+      setResourceViewMessage({
+        tone: comparePreview.conflictNames.length > 0 || comparePreview.invalidCount > 0 || comparePreview.mergeResult.droppedCount > 0 ? 'warning' : 'success',
+        text: resourceViewTeamCompareMessage(comparePreview),
       });
-      handleIncomingResourceViewPresets('team', teamPresets, skippedCount);
     } catch {
       setResourceViewConflict(null);
       setRenamingViewPreset(null);
       setResourceViewTeamSyncSummary(null);
+      setResourceViewTeamComparePreview(null);
       setResourceViewMessage({ tone: 'warning', text: '팀 뷰를 불러오지 못했습니다. admin token 또는 서버 상태를 확인하세요.' });
     } finally {
       setResourceViewTeamLoading(false);
@@ -673,9 +688,50 @@ export function ResourceExplorer({
       setResourceViewMessage({ tone: 'warning', text: '팀 뷰는 Live Cluster 연결과 admin token이 활성화된 상태에서 사용할 수 있습니다.' });
       return;
     }
+    if (resourceViewTeamComparePreview?.action === 'save' && resourceViewTeamSaveConfirm) {
+      await handleConfirmTeamSavePreview();
+      return;
+    }
     if (!resourceViewTeamSaveConfirm) {
+      await handlePrepareTeamSavePreview();
+      return;
+    }
+    await handleConfirmTeamSavePreview();
+  };
+
+  const handlePrepareTeamSavePreview = async () => {
+    if (!teamResourceViewsEnabled) {
+      setResourceViewMessage({ tone: 'warning', text: '팀 뷰는 Live Cluster 연결과 admin token이 활성화된 상태에서 사용할 수 있습니다.' });
+      return;
+    }
+    setResourceViewTeamLoading(true);
+    try {
+      const response = await fetchResourceViewPresets();
+      const teamPresets = normalizeResourceViewPresetOrders(response.items.flatMap((value, index) => validResourceViewPreset(value, index + 1)));
+      const skippedCount = Math.max(0, response.items.length - teamPresets.length);
+      const comparePreview = buildResourceViewTeamComparePreview('save', viewPresets, teamPresets, skippedCount);
+      setResourceViewConflict(null);
+      setRenamingViewPreset(null);
+      setResourceViewTransferSummary(null);
+      setResourceViewTeamSyncSummary(null);
+      setResourceViewTeamComparePreview(comparePreview);
       setResourceViewTeamSaveConfirm(true);
-      setResourceViewMessage({ tone: 'warning', text: `팀 저장소를 현재 브라우저 뷰 ${viewPresets.length}개로 덮어쓰려면 한 번 더 누르세요.` });
+      setResourceViewMessage({
+        tone: comparePreview.conflictNames.length > 0 || comparePreview.teamOnlyNames.length > 0 || comparePreview.invalidCount > 0 ? 'warning' : 'success',
+        text: `${resourceViewTeamCompareMessage(comparePreview)} 저장 실행 전 한 번 더 확인하세요.`,
+      });
+    } catch {
+      setResourceViewTeamSaveConfirm(false);
+      setResourceViewTeamComparePreview(null);
+      setResourceViewMessage({ tone: 'warning', text: '팀 뷰 비교 미리보기를 불러오지 못했습니다. admin token 또는 서버 상태를 확인하세요.' });
+    } finally {
+      setResourceViewTeamLoading(false);
+    }
+  };
+
+  const handleConfirmTeamSavePreview = async () => {
+    if (!teamResourceViewsEnabled) {
+      setResourceViewMessage({ tone: 'warning', text: '팀 뷰는 Live Cluster 연결과 admin token이 활성화된 상태에서 사용할 수 있습니다.' });
       return;
     }
     setResourceViewTeamLoading(true);
@@ -700,13 +756,29 @@ export function ResourceExplorer({
         folders: resourceViewPresetFolderNames(savedPresets),
         timestamp: Date.now(),
       });
+      setResourceViewTeamComparePreview(null);
       setResourceViewMessage({ tone: 'success', text: `현재 브라우저 뷰 ${savedPresets.length}개를 팀 뷰로 저장했습니다.` });
     } catch {
       setResourceViewTeamSyncSummary(null);
+      setResourceViewTeamComparePreview(null);
       setResourceViewMessage({ tone: 'warning', text: '팀 뷰를 저장하지 못했습니다. admin token 또는 서버 상태를 확인하세요.' });
     } finally {
       setResourceViewTeamLoading(false);
     }
+  };
+
+  const handleApplyTeamLoadPreview = () => {
+    if (!resourceViewTeamComparePreview || resourceViewTeamComparePreview.action !== 'load') {
+      return;
+    }
+    setResourceViewTeamSyncSummary(resourceViewTeamSyncSummaryFromCompare(resourceViewTeamComparePreview));
+    setResourceViewTeamComparePreview(null);
+    handleIncomingResourceViewPresets('team', resourceViewTeamComparePreview.incomingPresets, resourceViewTeamComparePreview.invalidCount);
+  };
+
+  const handleDismissTeamComparePreview = () => {
+    setResourceViewTeamComparePreview(null);
+    setResourceViewTeamSaveConfirm(false);
   };
 
   const handleResetResourceFilters = () => {
@@ -1407,6 +1479,102 @@ export function ResourceExplorer({
                     Folders {resourceViewTransferSummary.folders.length}: {resourceViewTransferSummary.folders.length > 0 ? resourceViewTransferSummary.folders.join(', ') : 'none'}
                     {resourceViewTransferSummary.format ? ` · format ${resourceViewTransferSummary.format === 'items' ? '{ items }' : 'array'}` : ''}
                   </p>
+                </div>
+              </div>
+            ) : null}
+            {resourceViewTeamComparePreview ? (
+              <div className="grid gap-2 rounded-[12px] border border-[rgba(0,122,255,0.18)] bg-[rgba(0,122,255,0.055)] p-2.5" data-testid="resource-view-team-compare-preview">
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span className="inline-flex items-center gap-1 rounded-full bg-white/82 px-2 py-1 text-[10px] font-semibold text-[#0057b8]" data-testid="resource-view-team-compare-action">
+                        <GitBranch size={12} aria-hidden="true" />
+                        {resourceViewTeamCompareActionLabel(resourceViewTeamComparePreview)}
+                      </span>
+                      <span className="ku-chip" data-testid="resource-view-team-compare-local">Local {resourceViewTeamComparePreview.localCount}</span>
+                      <span className="ku-chip" data-testid="resource-view-team-compare-team">Team {resourceViewTeamComparePreview.teamCount}</span>
+                      {resourceViewTeamComparePreview.newNames.length > 0 ? (
+                        <span className="ku-chip border-[rgba(52,199,89,0.22)] bg-[rgba(52,199,89,0.1)] text-[#248a3d]" data-testid="resource-view-team-compare-new">
+                          신규 {resourceViewTeamComparePreview.newNames.length}
+                        </span>
+                      ) : null}
+                      {resourceViewTeamComparePreview.conflictNames.length > 0 ? (
+                        <span className="ku-chip border-[rgba(255,149,0,0.24)] bg-[rgba(255,149,0,0.1)] text-[#8a4d00]" data-testid="resource-view-team-compare-conflicts">
+                          변경 충돌 {resourceViewTeamComparePreview.conflictNames.length}
+                        </span>
+                      ) : null}
+                      {resourceViewTeamComparePreview.duplicateNames.length > 0 ? (
+                        <span className="ku-chip" data-testid="resource-view-team-compare-duplicates">동일 {resourceViewTeamComparePreview.duplicateNames.length}</span>
+                      ) : null}
+                      {resourceViewTeamComparePreview.action === 'load' && resourceViewTeamComparePreview.localOnlyNames.length > 0 ? (
+                        <span className="ku-chip" data-testid="resource-view-team-compare-local-only">로컬 유지 {resourceViewTeamComparePreview.localOnlyNames.length}</span>
+                      ) : null}
+                      {resourceViewTeamComparePreview.action === 'save' && resourceViewTeamComparePreview.teamOnlyNames.length > 0 ? (
+                        <span className="ku-chip border-[rgba(255,149,0,0.24)] bg-[rgba(255,149,0,0.1)] text-[#8a4d00]" data-testid="resource-view-team-compare-team-only">
+                          서버 제외 {resourceViewTeamComparePreview.teamOnlyNames.length}
+                        </span>
+                      ) : null}
+                      {resourceViewTeamComparePreview.invalidCount > 0 ? (
+                        <span className="ku-chip border-[rgba(255,149,0,0.24)] bg-[rgba(255,149,0,0.1)] text-[#8a4d00]" data-testid="resource-view-team-compare-skipped">
+                          skipped {resourceViewTeamComparePreview.invalidCount}
+                        </span>
+                      ) : null}
+                    </div>
+                    <p className="ku-meta mt-1" data-testid="resource-view-team-compare-folders">
+                      Folders {resourceViewTeamComparePreview.folders.length}: {resourceViewTeamComparePreview.folders.length > 0 ? resourceViewTeamComparePreview.folders.join(', ') : 'none'}
+                      {resourceViewTeamComparePreview.mergeResult.droppedCount > 0 ? ` · 최대 ${maxResourceViewPresets}개 제한으로 ${resourceViewTeamComparePreview.mergeResult.droppedCount}개 제외 예정` : ''}
+                    </p>
+                  </div>
+                  <button
+                    className="rounded-[8px] border border-[rgba(60,60,67,0.12)] bg-white px-2 py-1 text-xs font-semibold text-[rgba(60,60,67,0.72)] transition hover:bg-[rgba(242,242,247,0.9)]"
+                    type="button"
+                    onClick={handleDismissTeamComparePreview}
+                    data-testid="resource-view-team-compare-dismiss"
+                  >
+                    닫기
+                  </button>
+                </div>
+                <div className="grid gap-1.5 md:grid-cols-2">
+                  <ResourceViewCompareNames title={resourceViewTeamComparePreview.action === 'load' ? '팀에서 들어올 뷰' : '팀에 저장할 뷰'} names={resourceViewTeamComparePreview.newNames} testId="resource-view-team-compare-new-list" />
+                  <ResourceViewCompareNames title={resourceViewTeamComparePreview.action === 'load' ? '변경 충돌' : '서버와 다른 뷰'} names={resourceViewTeamComparePreview.conflictNames} testId="resource-view-team-compare-conflict-list" />
+                  {resourceViewTeamComparePreview.action === 'load' ? (
+                    <ResourceViewCompareNames title="로컬에만 있는 뷰" names={resourceViewTeamComparePreview.localOnlyNames} testId="resource-view-team-compare-local-list" />
+                  ) : (
+                    <ResourceViewCompareNames title="서버에서 빠질 뷰" names={resourceViewTeamComparePreview.teamOnlyNames} testId="resource-view-team-compare-team-list" />
+                  )}
+                  <ResourceViewCompareNames title="이미 동일한 뷰" names={resourceViewTeamComparePreview.duplicateNames} testId="resource-view-team-compare-duplicate-list" />
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {resourceViewTeamComparePreview.action === 'load' ? (
+                    <button
+                      className="inline-flex items-center gap-1.5 rounded-[8px] border border-[rgba(0,122,255,0.2)] bg-[rgba(0,122,255,0.08)] px-2.5 py-1.5 text-xs font-semibold text-[#0057b8] transition hover:bg-[rgba(0,122,255,0.12)]"
+                      type="button"
+                      onClick={handleApplyTeamLoadPreview}
+                      data-testid="resource-view-team-compare-apply"
+                    >
+                      <CheckCircle2 size={13} aria-hidden="true" />
+                      팀 뷰 반영
+                    </button>
+                  ) : (
+                    <button
+                      className="inline-flex items-center gap-1.5 rounded-[8px] border border-[rgba(0,122,255,0.2)] bg-[rgba(0,122,255,0.08)] px-2.5 py-1.5 text-xs font-semibold text-[#0057b8] transition hover:bg-[rgba(0,122,255,0.12)] disabled:cursor-not-allowed disabled:opacity-50"
+                      type="button"
+                      onClick={() => void handleConfirmTeamSavePreview()}
+                      disabled={resourceViewTeamLoading}
+                      data-testid="resource-view-team-compare-save"
+                    >
+                      <Upload size={13} aria-hidden="true" />
+                      팀 저장 실행
+                    </button>
+                  )}
+                  <button
+                    className="rounded-[8px] border border-[rgba(60,60,67,0.12)] bg-white px-2.5 py-1.5 text-xs font-semibold text-[rgba(60,60,67,0.72)] transition hover:bg-[rgba(242,242,247,0.9)]"
+                    type="button"
+                    onClick={handleDismissTeamComparePreview}
+                    data-testid="resource-view-team-compare-cancel"
+                  >
+                    취소
+                  </button>
                 </div>
               </div>
             ) : null}
@@ -4681,6 +4849,31 @@ function ResourceSelect({ label, testId, value, values, onChange }: { label: str
   );
 }
 
+function ResourceViewCompareNames({ title, names, testId }: { title: string; names: string[]; testId: string }) {
+  const visibleNames = names.slice(0, 3);
+  return (
+    <div className="grid gap-1 rounded-[9px] border border-[rgba(60,60,67,0.1)] bg-white/72 p-2" data-testid={testId}>
+      <p className="ku-meta">{title} · {names.length}</p>
+      {visibleNames.length > 0 ? (
+        <div className="flex flex-wrap gap-1">
+          {visibleNames.map((name) => (
+            <span key={name} className="max-w-full truncate rounded-full bg-[rgba(60,60,67,0.06)] px-1.5 py-0.5 font-mono text-[9px] font-semibold text-[rgba(60,60,67,0.64)]">
+              {name}
+            </span>
+          ))}
+          {names.length > visibleNames.length ? (
+            <span className="rounded-full bg-[rgba(60,60,67,0.06)] px-1.5 py-0.5 text-[9px] font-semibold text-[rgba(60,60,67,0.56)]">
+              +{names.length - visibleNames.length} more
+            </span>
+          ) : null}
+        </div>
+      ) : (
+        <p className="font-mono text-[10px] font-semibold text-[rgba(60,60,67,0.48)]">none</p>
+      )}
+    </div>
+  );
+}
+
 function readResourceListDensityPreference(): ResourceListDensity {
   try {
     return window.localStorage.getItem(resourceListDensityStorageKey) === 'compact' ? 'compact' : 'comfortable';
@@ -5072,6 +5265,56 @@ function mergeResourceViewPresets(existingPresets: ResourceViewPreset[], incomin
   };
 }
 
+function buildResourceViewTeamComparePreview(action: 'load' | 'save', localPresets: ResourceViewPreset[], teamPresets: ResourceViewPreset[], invalidCount: number): ResourceViewTeamComparePreview {
+  const existingPresets = action === 'load' ? localPresets : teamPresets;
+  const incomingPresets = action === 'load' ? teamPresets : localPresets;
+  const mergeResult = mergeResourceViewPresets(existingPresets, incomingPresets, 'incoming');
+  const existingByName = new Map(existingPresets.map((preset) => [preset.name, preset]));
+  const localNames = new Set(localPresets.map((preset) => preset.name));
+  const teamNames = new Set(teamPresets.map((preset) => preset.name));
+  const duplicateNames: string[] = [];
+  const newNames: string[] = [];
+
+  for (const incomingPreset of incomingPresets) {
+    const existingPreset = existingByName.get(incomingPreset.name);
+    if (!existingPreset) {
+      newNames.push(incomingPreset.name);
+    } else if (resourceViewPresetFiltersEqual(existingPreset, incomingPreset)) {
+      duplicateNames.push(incomingPreset.name);
+    }
+  }
+
+  return {
+    action,
+    incomingPresets,
+    invalidCount,
+    mergeResult,
+    localCount: localPresets.length,
+    teamCount: teamPresets.length,
+    newNames,
+    conflictNames: mergeResult.conflicts.map((conflict) => conflict.name),
+    duplicateNames,
+    localOnlyNames: localPresets.filter((preset) => !teamNames.has(preset.name)).map((preset) => preset.name),
+    teamOnlyNames: teamPresets.filter((preset) => !localNames.has(preset.name)).map((preset) => preset.name),
+    folders: resourceViewPresetFolderNames(incomingPresets),
+    timestamp: Date.now(),
+  };
+}
+
+function resourceViewTeamSyncSummaryFromCompare(preview: ResourceViewTeamComparePreview): ResourceViewTeamSyncSummary {
+  return {
+    action: preview.action,
+    count: preview.incomingPresets.length,
+    skippedCount: preview.invalidCount,
+    conflictCount: preview.conflictNames.length,
+    duplicateCount: preview.duplicateNames.length,
+    newCount: preview.newNames.length,
+    localCount: preview.localCount,
+    folders: preview.folders,
+    timestamp: Date.now(),
+  };
+}
+
 function upsertResourceViewPreset(presets: ResourceViewPreset[], preset: ResourceViewPreset) {
   return normalizeResourceViewPresetOrders([preset, ...presets.filter((existingPreset) => existingPreset.name !== preset.name)].slice(0, maxResourceViewPresets));
 }
@@ -5200,6 +5443,24 @@ function resourceViewTransferActionLabel(summary: ResourceViewTransferSummary) {
 
 function resourceViewTeamSyncActionLabel(summary: ResourceViewTeamSyncSummary) {
   return summary.action === 'load' ? 'Team load' : 'Team save';
+}
+
+function resourceViewTeamCompareActionLabel(preview: ResourceViewTeamComparePreview) {
+  return preview.action === 'load' ? 'Team load preview' : 'Team save preview';
+}
+
+function resourceViewTeamCompareMessage(preview: ResourceViewTeamComparePreview) {
+  const parts = [
+    preview.action === 'load' ? `팀 뷰 ${preview.teamCount}개를 비교했습니다` : `팀 저장 미리보기: 브라우저 뷰 ${preview.localCount}개`,
+    preview.newNames.length > 0 ? `신규 ${preview.newNames.length}개` : '',
+    preview.conflictNames.length > 0 ? `변경 충돌 ${preview.conflictNames.length}개` : '',
+    preview.duplicateNames.length > 0 ? `동일 ${preview.duplicateNames.length}개` : '',
+    preview.action === 'load' && preview.localOnlyNames.length > 0 ? `로컬 유지 ${preview.localOnlyNames.length}개` : '',
+    preview.action === 'save' && preview.teamOnlyNames.length > 0 ? `서버 제외 ${preview.teamOnlyNames.length}개` : '',
+    preview.invalidCount > 0 ? `건너뜀 ${preview.invalidCount}개` : '',
+    preview.mergeResult.droppedCount > 0 ? `최대 ${maxResourceViewPresets}개 제한으로 ${preview.mergeResult.droppedCount}개 제외 예정` : '',
+  ].filter(Boolean);
+  return `${parts.join(' · ')}.`;
 }
 
 function resourceViewSourceLabel(source: ResourceViewConflictSource) {

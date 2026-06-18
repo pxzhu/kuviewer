@@ -284,6 +284,13 @@ async function verifyResourceViewTeamSyncPolish(page) {
   await expect(page.getByTestId('resource-view-team-load')).toBeEnabled({ timeout: 10_000 });
 
   await page.getByTestId('resource-view-team-load').click();
+  await expect(page.getByTestId('resource-view-team-compare-preview')).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByTestId('resource-view-team-compare-action')).toContainText('Team load preview');
+  await expect(page.getByTestId('resource-view-team-compare-team')).toContainText('Team 1');
+  await expect(page.getByTestId('resource-view-team-compare-new')).toContainText('신규 1');
+  await expect(page.getByTestId('resource-view-team-compare-folders')).toContainText('Team QA');
+  await expect(page.getByTestId(`resource-view-preset-row-${savedViewDomId('Visual Team Incoming')}`)).toHaveCount(0);
+  await page.getByTestId('resource-view-team-compare-apply').click();
   await expect(page.getByTestId('resource-view-team-sync-summary')).toBeVisible({ timeout: 10_000 });
   await expect(page.getByTestId('resource-view-team-sync-action')).toContainText('Team load');
   await expect(page.getByTestId('resource-view-team-sync-count')).toContainText('1 views');
@@ -292,11 +299,16 @@ async function verifyResourceViewTeamSyncPolish(page) {
   await expect(page.getByTestId(`resource-view-preset-row-${savedViewDomId('Visual Team Incoming')}`)).toBeVisible({ timeout: 10_000 });
 
   await page.getByTestId('resource-view-team-save').click();
-  await expect(page.getByTestId('resource-view-message')).toContainText('한 번 더', { timeout: 10_000 });
+  await expect(page.getByTestId('resource-view-team-compare-preview')).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByTestId('resource-view-team-compare-action')).toContainText('Team save preview');
+  await expect(page.getByTestId('resource-view-team-compare-local')).toContainText('Local');
+  await expect(page.getByTestId('resource-view-team-compare-team')).toContainText('Team 1');
+  await expect(page.getByTestId('resource-view-team-compare-team-only')).toHaveCount(0);
+  await expect(page.getByTestId('resource-view-message')).toContainText('저장 실행 전 한 번 더', { timeout: 10_000 });
   await expect(page.getByTestId('resource-view-team-save')).toHaveAttribute('aria-pressed', 'true');
   await expect(page.getByTestId('resource-view-team-save')).toContainText('팀 저장 확인');
 
-  await page.getByTestId('resource-view-team-save').click();
+  await page.getByTestId('resource-view-team-compare-save').click();
   await expect(page.getByTestId('resource-view-team-sync-action')).toContainText('Team save', { timeout: 10_000 });
   await expect(page.getByTestId('resource-view-team-sync-folders')).toContainText('Team QA');
   if (!savedTeamPayload?.items?.some((preset) => preset.name === 'Visual Team Incoming' && preset.group === 'Team QA')) {
