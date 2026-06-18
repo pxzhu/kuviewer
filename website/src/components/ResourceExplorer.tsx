@@ -34,6 +34,7 @@ type EventSeverityFilter = 'all' | 'warning' | 'normal';
 type EventTimeRangeFilter = 'all' | '1h' | '6h' | '24h' | '7d';
 type LogTimeRangeFilter = EventTimeRangeFilter;
 type EventSortOrder = 'newest' | 'oldest';
+type EventExportFormat = 'csv' | 'json';
 type LogSortOrder = 'received' | 'newest' | 'oldest';
 
 const detailJumpSections: Array<{ id: DetailSectionId; label: string }> = [
@@ -86,6 +87,16 @@ interface EventListItem {
   id: string;
   event: ResourceEvent;
   index: number;
+  pinned: boolean;
+}
+
+interface EventExportRow {
+  timestamp: string;
+  type: string;
+  severity: EventSeverity;
+  reason: string;
+  source: string;
+  message: string;
   pinned: boolean;
 }
 
@@ -711,6 +722,7 @@ function ResourceExplorerDetail({
   const eventFilterSummary = eventControlSummary(eventFilter, eventSeverityFilter, eventTimeRangeFilter, eventSortOrder, pinnedEventKeys.size);
   const canRefreshEvents = liveEnabled && Boolean(resource);
   const eventsAutoRefreshActive = canRefreshEvents && eventsAutoRefreshEnabled;
+  const canExportEvents = filteredEvents.length > 0;
 
   useEffect(() => {
     writeLogDensityPreference(logDensity);
@@ -933,6 +945,15 @@ function ResourceExplorerDetail({
     setEventsAutoRefreshEnabled((current) => !current);
   };
 
+  const handleDownloadEvents = (format: EventExportFormat) => {
+    if (!canExportEvents) {
+      return;
+    }
+    const content = format === 'csv' ? eventExportCsv(filteredEvents) : eventExportJson(filteredEvents);
+    const mimeType = format === 'csv' ? 'text/csv;charset=utf-8' : 'application/json;charset=utf-8';
+    downloadTextFile(content, mimeType, eventExportFileName(resource, format));
+  };
+
   const stopLogStream = () => {
     logsStreamControllerRef.current?.abort();
     logsStreamControllerRef.current = null;
@@ -1053,15 +1074,7 @@ function ResourceExplorerDetail({
     if (lines.length === 0) {
       return;
     }
-    const blob = new Blob([`${lines.join('\n')}\n`], { type: 'text/plain;charset=utf-8' });
-    const url = window.URL.createObjectURL(blob);
-    const anchor = document.createElement('a');
-    anchor.href = url;
-    anchor.download = logDownloadFileName(resource, effectiveLogContainer, previousLogs);
-    document.body.append(anchor);
-    anchor.click();
-    anchor.remove();
-    window.setTimeout(() => window.URL.revokeObjectURL(url), 0);
+    downloadTextFile(`${lines.join('\n')}\n`, 'text/plain;charset=utf-8', logDownloadFileName(resource, effectiveLogContainer, previousLogs));
     setLogCopyStatus({ tone: 'success', message: `${lines.length}줄 다운로드 준비됨` });
   };
   const moveActiveLogMatch = (offset: number) => {
@@ -1405,26 +1418,52 @@ function ResourceExplorerDetail({
                 <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[rgba(60,60,67,0.45)]" size={15} />
                 <input className="ku-input w-full pl-9" placeholder="이벤트 필터" value={eventFilter} onChange={(event) => setEventFilter(event.target.value)} />
               </label>
-              <div className="flex items-center justify-between gap-2">
-                <span className="ku-chip">
-                  {filteredEvents.length} / {events.length}
-                </span>
-                {pinnedEventKeys.size > 0 ? <span className="ku-chip">고정 {pinnedEventKeys.size}</span> : null}
-                {eventControlsActive ? (
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="ku-chip">
+                    {filteredEvents.length} / {events.length}
+                  </span>
+                  {pinnedEventKeys.size > 0 ? <span className="ku-chip">고정 {pinnedEventKeys.size}</span> : null}
+                </div>
+                <div className="flex flex-wrap items-center justify-end gap-1.5">
                   <button
-                    className="rounded-[9px] border border-[rgba(60,60,67,0.12)] bg-white px-2.5 py-1.5 text-xs font-semibold text-[rgba(60,60,67,0.72)] transition hover:bg-[rgba(242,242,247,0.9)]"
+                    className="inline-flex items-center gap-1.5 rounded-[9px] border border-[rgba(60,60,67,0.12)] bg-white px-2.5 py-1.5 text-xs font-semibold text-[rgba(60,60,67,0.72)] transition hover:bg-[rgba(242,242,247,0.9)] disabled:cursor-not-allowed disabled:opacity-50"
                     type="button"
-                    onClick={() => {
-                      setEventFilter('');
-                      setEventSeverityFilter('all');
-                      setEventTimeRangeFilter('all');
-                      setEventSortOrder('newest');
-                      setPinnedEventKeys(new Set());
-                    }}
+                    onClick={() => handleDownloadEvents('csv')}
+                    disabled={!canExportEvents}
+                    data-testid="events-export-csv"
+                    title="현재 표시된 Events를 CSV로 다운로드"
                   >
-                    초기화
+                    <Download size={14} aria-hidden="true" />
+                    CSV
                   </button>
-                ) : null}
+                  <button
+                    className="inline-flex items-center gap-1.5 rounded-[9px] border border-[rgba(60,60,67,0.12)] bg-white px-2.5 py-1.5 text-xs font-semibold text-[rgba(60,60,67,0.72)] transition hover:bg-[rgba(242,242,247,0.9)] disabled:cursor-not-allowed disabled:opacity-50"
+                    type="button"
+                    onClick={() => handleDownloadEvents('json')}
+                    disabled={!canExportEvents}
+                    data-testid="events-export-json"
+                    title="현재 표시된 Events를 JSON으로 다운로드"
+                  >
+                    <Download size={14} aria-hidden="true" />
+                    JSON
+                  </button>
+                  {eventControlsActive ? (
+                    <button
+                      className="rounded-[9px] border border-[rgba(60,60,67,0.12)] bg-white px-2.5 py-1.5 text-xs font-semibold text-[rgba(60,60,67,0.72)] transition hover:bg-[rgba(242,242,247,0.9)]"
+                      type="button"
+                      onClick={() => {
+                        setEventFilter('');
+                        setEventSeverityFilter('all');
+                        setEventTimeRangeFilter('all');
+                        setEventSortOrder('newest');
+                        setPinnedEventKeys(new Set());
+                      }}
+                    >
+                      초기화
+                    </button>
+                  ) : null}
+                </div>
               </div>
             </div>
           ) : null}
@@ -2381,6 +2420,56 @@ function logDownloadFileName(resource: ResourceExplorerItem, container: string, 
   const mode = previousLogs ? 'previous' : 'current';
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
   return `kuviewer-logs-${namespace}-${pod}-${containerName}-${mode}-${timestamp}.log`;
+}
+
+function eventExportFileName(resource: ResourceExplorerItem, format: EventExportFormat) {
+  const namespace = safeFileSlug(resource.namespace || 'cluster', 'cluster');
+  const kind = safeFileSlug(resource.kind, 'resource');
+  const name = safeFileSlug(resource.name, 'resource');
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+  return `kuviewer-events-${namespace}-${kind}-${name}-${timestamp}.${format}`;
+}
+
+function eventExportRows(items: EventListItem[]): EventExportRow[] {
+  return items.map((item) => ({
+    timestamp: item.event.timestamp,
+    type: item.event.type,
+    severity: eventSeverity(item.event),
+    reason: item.event.reason,
+    source: item.event.source,
+    message: item.event.message,
+    pinned: item.pinned,
+  }));
+}
+
+function eventExportCsv(items: EventListItem[]) {
+  const header: Array<keyof EventExportRow> = ['timestamp', 'type', 'severity', 'reason', 'source', 'message', 'pinned'];
+  const rows = eventExportRows(items).map((row) => header.map((key) => eventCsvCell(row[key])).join(','));
+  return `${header.join(',')}\n${rows.join('\n')}\n`;
+}
+
+function eventExportJson(items: EventListItem[]) {
+  return `${JSON.stringify(eventExportRows(items), null, 2)}\n`;
+}
+
+function eventCsvCell(value: string | boolean) {
+  const text = String(value);
+  if (/[",\n\r]/.test(text)) {
+    return `"${text.replace(/"/g, '""')}"`;
+  }
+  return text;
+}
+
+function downloadTextFile(content: string, mimeType: string, fileName: string) {
+  const blob = new Blob([content], { type: mimeType });
+  const url = window.URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = fileName;
+  document.body.append(anchor);
+  anchor.click();
+  anchor.remove();
+  window.setTimeout(() => window.URL.revokeObjectURL(url), 0);
 }
 
 function safeFileSlug(value: string, fallback: string) {
