@@ -129,6 +129,18 @@ interface ResourceViewTransferSummary {
   format?: 'array' | 'items';
 }
 
+interface ResourceViewTeamSyncSummary {
+  action: 'load' | 'save';
+  count: number;
+  skippedCount: number;
+  conflictCount: number;
+  duplicateCount: number;
+  newCount: number;
+  localCount: number;
+  folders: string[];
+  timestamp: number;
+}
+
 interface ResourceViewRenameState {
   originalName: string;
   draftName: string;
@@ -282,9 +294,11 @@ export function ResourceExplorer({
   const [collapsedViewGroups, setCollapsedViewGroups] = useState<Set<string>>(() => readCollapsedResourceViewGroups());
   const [resourceViewMessage, setResourceViewMessage] = useState<ResourceViewMessage | null>(null);
   const [resourceViewTransferSummary, setResourceViewTransferSummary] = useState<ResourceViewTransferSummary | null>(null);
+  const [resourceViewTeamSyncSummary, setResourceViewTeamSyncSummary] = useState<ResourceViewTeamSyncSummary | null>(null);
   const [resourceViewConflict, setResourceViewConflict] = useState<ResourceViewConflictState | null>(null);
   const [renamingViewPreset, setRenamingViewPreset] = useState<ResourceViewRenameState | null>(null);
   const [resourceViewTeamLoading, setResourceViewTeamLoading] = useState(false);
+  const [resourceViewTeamSaveConfirm, setResourceViewTeamSaveConfirm] = useState(false);
   const [detailFocusRequest, setDetailFocusRequest] = useState(0);
   const [resourceListDensity, setResourceListDensity] = useState<ResourceListDensity>(() => readResourceListDensityPreference());
   const [resourceListSort, setResourceListSort] = useState<ResourceListSortPreference>(() => readResourceListSortPreference());
@@ -464,6 +478,10 @@ export function ResourceExplorer({
     setStatus((current) => normalizePresetFilterValue(current, statuses));
   }, [clusters, kinds, namespaces, resources.length, statuses]);
 
+  useEffect(() => {
+    setResourceViewTeamSaveConfirm(false);
+  }, [sourceMode, viewPresets]);
+
   const handleSaveViewPreset = () => {
     setResourceViewConflict(null);
     setRenamingViewPreset(null);
@@ -620,14 +638,30 @@ export function ResourceExplorer({
       setResourceViewMessage({ tone: 'warning', text: '팀 뷰는 Live Cluster 연결과 admin token이 활성화된 상태에서 사용할 수 있습니다.' });
       return;
     }
+    setResourceViewTeamSaveConfirm(false);
     setResourceViewTeamLoading(true);
     try {
       const response = await fetchResourceViewPresets();
       const teamPresets = normalizeResourceViewPresetOrders(response.items.flatMap((value, index) => validResourceViewPreset(value, index + 1)));
-      handleIncomingResourceViewPresets('team', teamPresets, Math.max(0, response.items.length - teamPresets.length));
+      const skippedCount = Math.max(0, response.items.length - teamPresets.length);
+      const mergePreview = mergeResourceViewPresets(viewPresets, teamPresets, 'incoming');
+      setResourceViewTransferSummary(null);
+      setResourceViewTeamSyncSummary({
+        action: 'load',
+        count: teamPresets.length,
+        skippedCount,
+        conflictCount: mergePreview.conflicts.length,
+        duplicateCount: mergePreview.duplicateCount,
+        newCount: resourceViewIncomingNewCount(viewPresets, teamPresets),
+        localCount: viewPresets.length,
+        folders: resourceViewPresetFolderNames(teamPresets),
+        timestamp: Date.now(),
+      });
+      handleIncomingResourceViewPresets('team', teamPresets, skippedCount);
     } catch {
       setResourceViewConflict(null);
       setRenamingViewPreset(null);
+      setResourceViewTeamSyncSummary(null);
       setResourceViewMessage({ tone: 'warning', text: '팀 뷰를 불러오지 못했습니다. admin token 또는 서버 상태를 확인하세요.' });
     } finally {
       setResourceViewTeamLoading(false);
@@ -639,16 +673,36 @@ export function ResourceExplorer({
       setResourceViewMessage({ tone: 'warning', text: '팀 뷰는 Live Cluster 연결과 admin token이 활성화된 상태에서 사용할 수 있습니다.' });
       return;
     }
+    if (!resourceViewTeamSaveConfirm) {
+      setResourceViewTeamSaveConfirm(true);
+      setResourceViewMessage({ tone: 'warning', text: `팀 저장소를 현재 브라우저 뷰 ${viewPresets.length}개로 덮어쓰려면 한 번 더 누르세요.` });
+      return;
+    }
     setResourceViewTeamLoading(true);
     try {
       setResourceViewConflict(null);
       setRenamingViewPreset(null);
+      setResourceViewTeamSaveConfirm(false);
       const response = await saveResourceViewPresets(normalizeResourceViewPresetOrders(viewPresets).map(resourceViewPresetExportRecord));
       const savedPresets = normalizeResourceViewPresetOrders(response.items.flatMap((value, index) => validResourceViewPreset(value, index + 1)));
+      const skippedCount = Math.max(0, viewPresets.length - savedPresets.length);
       setViewPresets(savedPresets);
       writeResourceViewPresets(savedPresets);
+      setResourceViewTransferSummary(null);
+      setResourceViewTeamSyncSummary({
+        action: 'save',
+        count: savedPresets.length,
+        skippedCount,
+        conflictCount: 0,
+        duplicateCount: 0,
+        newCount: 0,
+        localCount: viewPresets.length,
+        folders: resourceViewPresetFolderNames(savedPresets),
+        timestamp: Date.now(),
+      });
       setResourceViewMessage({ tone: 'success', text: `현재 브라우저 뷰 ${savedPresets.length}개를 팀 뷰로 저장했습니다.` });
     } catch {
+      setResourceViewTeamSyncSummary(null);
       setResourceViewMessage({ tone: 'warning', text: '팀 뷰를 저장하지 못했습니다. admin token 또는 서버 상태를 확인하세요.' });
     } finally {
       setResourceViewTeamLoading(false);
@@ -1267,15 +1321,20 @@ export function ResourceExplorer({
                   팀 불러오기
                 </button>
                 <button
-                  className="inline-flex items-center gap-1.5 rounded-[8px] border border-[rgba(0,122,255,0.18)] bg-white px-2.5 py-1.5 text-xs font-semibold text-[#0057b8] transition hover:bg-[rgba(0,122,255,0.08)] disabled:cursor-not-allowed disabled:opacity-50"
+                  className={`inline-flex items-center gap-1.5 rounded-[8px] border px-2.5 py-1.5 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                    resourceViewTeamSaveConfirm
+                      ? 'border-[rgba(255,149,0,0.24)] bg-[rgba(255,149,0,0.1)] text-[#8a4d00] hover:bg-[rgba(255,149,0,0.14)]'
+                      : 'border-[rgba(0,122,255,0.18)] bg-white text-[#0057b8] hover:bg-[rgba(0,122,255,0.08)]'
+                  }`}
                   type="button"
                   onClick={() => void handleSaveTeamViewPresets()}
                   disabled={!teamResourceViewsEnabled || resourceViewTeamLoading || viewPresets.length === 0}
                   data-testid="resource-view-team-save"
+                  aria-pressed={resourceViewTeamSaveConfirm}
                   title={teamResourceViewsEnabled ? '현재 브라우저 saved view를 팀 저장소에 저장' : 'Live Cluster 연결과 admin token이 필요합니다'}
                 >
                   <Upload size={13} aria-hidden="true" />
-                  팀 저장
+                  {resourceViewTeamSaveConfirm ? '팀 저장 확인' : '팀 저장'}
                 </button>
                 <button
                   className="inline-flex items-center gap-1.5 rounded-[8px] border border-[rgba(60,60,67,0.12)] bg-white px-2.5 py-1.5 text-xs font-semibold text-[rgba(60,60,67,0.72)] transition hover:bg-[rgba(242,242,247,0.9)] disabled:cursor-not-allowed disabled:opacity-50"
@@ -1347,6 +1406,55 @@ export function ResourceExplorer({
                   <p className="ku-meta" data-testid="resource-view-transfer-folders">
                     Folders {resourceViewTransferSummary.folders.length}: {resourceViewTransferSummary.folders.length > 0 ? resourceViewTransferSummary.folders.join(', ') : 'none'}
                     {resourceViewTransferSummary.format ? ` · format ${resourceViewTransferSummary.format === 'items' ? '{ items }' : 'array'}` : ''}
+                  </p>
+                </div>
+              </div>
+            ) : null}
+            {resourceViewTeamSyncSummary ? (
+              <div className="grid gap-2 rounded-[12px] border border-[rgba(52,199,89,0.18)] bg-[rgba(52,199,89,0.06)] p-2" data-testid="resource-view-team-sync-summary">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="inline-flex items-center gap-1 rounded-full bg-white/82 px-2 py-1 text-[10px] font-semibold text-[#14863d]" data-testid="resource-view-team-sync-action">
+                      <RefreshCw size={12} aria-hidden="true" />
+                      {resourceViewTeamSyncActionLabel(resourceViewTeamSyncSummary)}
+                    </span>
+                    <span className="ku-chip" data-testid="resource-view-team-sync-count">
+                      {resourceViewTeamSyncSummary.count} views
+                    </span>
+                    {resourceViewTeamSyncSummary.newCount > 0 ? (
+                      <span className="ku-chip border-[rgba(52,199,89,0.22)] bg-[rgba(52,199,89,0.1)] text-[#248a3d]" data-testid="resource-view-team-sync-new">
+                        신규 {resourceViewTeamSyncSummary.newCount}
+                      </span>
+                    ) : null}
+                    {resourceViewTeamSyncSummary.conflictCount > 0 ? (
+                      <span className="ku-chip border-[rgba(255,149,0,0.24)] bg-[rgba(255,149,0,0.1)] text-[#8a4d00]" data-testid="resource-view-team-sync-conflicts">
+                        충돌 {resourceViewTeamSyncSummary.conflictCount}
+                      </span>
+                    ) : null}
+                    {resourceViewTeamSyncSummary.duplicateCount > 0 ? (
+                      <span className="ku-chip" data-testid="resource-view-team-sync-duplicates">중복 {resourceViewTeamSyncSummary.duplicateCount}</span>
+                    ) : null}
+                    {resourceViewTeamSyncSummary.skippedCount > 0 ? (
+                      <span className="ku-chip border-[rgba(255,149,0,0.24)] bg-[rgba(255,149,0,0.1)] text-[#8a4d00]" data-testid="resource-view-team-sync-skipped">
+                        skipped {resourceViewTeamSyncSummary.skippedCount}
+                      </span>
+                    ) : null}
+                  </div>
+                  <button
+                    className="rounded-[8px] border border-[rgba(60,60,67,0.12)] bg-white px-2 py-1 text-xs font-semibold text-[rgba(60,60,67,0.72)] transition hover:bg-[rgba(242,242,247,0.9)]"
+                    type="button"
+                    onClick={() => setResourceViewTeamSyncSummary(null)}
+                    data-testid="resource-view-team-sync-dismiss"
+                  >
+                    닫기
+                  </button>
+                </div>
+                <div className="grid gap-1">
+                  <p className="ku-meta" data-testid="resource-view-team-sync-folders">
+                    Folders {resourceViewTeamSyncSummary.folders.length}: {resourceViewTeamSyncSummary.folders.length > 0 ? resourceViewTeamSyncSummary.folders.join(', ') : 'none'}
+                  </p>
+                  <p className="ku-meta" data-testid="resource-view-team-sync-meta">
+                    Local before {resourceViewTeamSyncSummary.localCount} · {formatPresetUpdatedAt(resourceViewTeamSyncSummary.timestamp)}
                   </p>
                 </div>
               </div>
@@ -5088,6 +5196,10 @@ function resourceViewTransferActionLabel(summary: ResourceViewTransferSummary) {
     return summary.scope === 'selected' ? 'Selected export' : 'All export';
   }
   return 'Import preview';
+}
+
+function resourceViewTeamSyncActionLabel(summary: ResourceViewTeamSyncSummary) {
+  return summary.action === 'load' ? 'Team load' : 'Team save';
 }
 
 function resourceViewSourceLabel(source: ResourceViewConflictSource) {
