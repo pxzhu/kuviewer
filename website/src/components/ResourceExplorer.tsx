@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Dispatch, KeyboardEvent as ReactKeyboardEvent, ReactNode, SetStateAction } from 'react';
 import { Activity, AlertTriangle, ArrowDown, ArrowUp, Bookmark, Boxes, CheckCircle2, ChevronDown, Copy, Download, FileText, GitBranch, Link2, RefreshCw, RotateCcw, Search, Tags, Trash2, Upload } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
-import { fetchResourceEvents, fetchResourceLogs, fetchResources, resourcesFromSnapshot, streamResourceLogs } from '../services/resourceApi';
+import { fetchResourceEvents, fetchResourceLogs, fetchResourceViewPresets, fetchResources, resourcesFromSnapshot, saveResourceViewPresets, streamResourceLogs } from '../services/resourceApi';
 import type { ResourceEvent, ResourceExplorerItem } from '../types/resourceExplorer';
 import type { TopologySnapshot } from '../types/topology';
 import type { TopologySourceMode } from '../features/topology/useTopology';
@@ -182,6 +182,7 @@ export function ResourceExplorer({
   const [viewPresets, setViewPresets] = useState<ResourceViewPreset[]>(() => readResourceViewPresets());
   const [presetName, setPresetName] = useState('');
   const [resourceViewMessage, setResourceViewMessage] = useState<ResourceViewMessage | null>(null);
+  const [resourceViewTeamLoading, setResourceViewTeamLoading] = useState(false);
   const [detailFocusRequest, setDetailFocusRequest] = useState(0);
   const [resourceListDensity, setResourceListDensity] = useState<ResourceListDensity>(() => readResourceListDensityPreference());
   const resourceRowRefs = useRef<Record<string, HTMLDivElement | null>>({});
@@ -237,6 +238,7 @@ export function ResourceExplorer({
     currentPresetFilters,
   );
   const savePresetLabel = matchingViewPreset || presetNameExists ? '뷰 업데이트' : '뷰 저장';
+  const teamResourceViewsEnabled = sourceMode === 'live' && liveEnabled;
   const filteredResources = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
     return resources.filter((resource) => {
@@ -385,6 +387,48 @@ export function ResourceExplorer({
     }
   };
 
+  const handleLoadTeamViewPresets = async () => {
+    if (!teamResourceViewsEnabled) {
+      setResourceViewMessage({ tone: 'warning', text: '팀 뷰는 Live Cluster 연결과 admin token이 활성화된 상태에서 사용할 수 있습니다.' });
+      return;
+    }
+    setResourceViewTeamLoading(true);
+    try {
+      const response = await fetchResourceViewPresets();
+      const teamPresets = response.items.flatMap(validResourceViewPreset);
+      const nextPresets = mergeResourceViewPresets(viewPresets, teamPresets);
+      setViewPresets(nextPresets);
+      writeResourceViewPresets(nextPresets);
+      setResourceViewMessage({
+        tone: 'success',
+        text: teamPresets.length === 0 ? '서버에 저장된 팀 뷰가 없습니다. 현재 브라우저 뷰는 유지했습니다.' : `팀 뷰 ${teamPresets.length}개를 불러와 브라우저 뷰와 병합했습니다.`,
+      });
+    } catch {
+      setResourceViewMessage({ tone: 'warning', text: '팀 뷰를 불러오지 못했습니다. admin token 또는 서버 상태를 확인하세요.' });
+    } finally {
+      setResourceViewTeamLoading(false);
+    }
+  };
+
+  const handleSaveTeamViewPresets = async () => {
+    if (!teamResourceViewsEnabled) {
+      setResourceViewMessage({ tone: 'warning', text: '팀 뷰는 Live Cluster 연결과 admin token이 활성화된 상태에서 사용할 수 있습니다.' });
+      return;
+    }
+    setResourceViewTeamLoading(true);
+    try {
+      const response = await saveResourceViewPresets(viewPresets.map(resourceViewPresetExportRecord));
+      const savedPresets = response.items.flatMap(validResourceViewPreset);
+      setViewPresets(savedPresets);
+      writeResourceViewPresets(savedPresets);
+      setResourceViewMessage({ tone: 'success', text: `현재 브라우저 뷰 ${savedPresets.length}개를 팀 뷰로 저장했습니다.` });
+    } catch {
+      setResourceViewMessage({ tone: 'warning', text: '팀 뷰를 저장하지 못했습니다. admin token 또는 서버 상태를 확인하세요.' });
+    } finally {
+      setResourceViewTeamLoading(false);
+    }
+  };
+
   const handleResetResourceFilters = () => {
     setQuery('');
     setCluster(allValue);
@@ -499,7 +543,7 @@ export function ResourceExplorer({
           <div className="grid gap-2 rounded-[12px] border border-[rgba(60,60,67,0.12)] bg-white/70 p-2">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex flex-wrap items-center gap-1.5">
-                <p className="ku-meta">저장된 뷰 · 필터만 브라우저에 저장</p>
+                <p className="ku-meta">저장된 뷰 · 필터만 브라우저/팀 저장소에 보관</p>
                 {matchingViewPreset ? (
                   <span className="inline-flex items-center gap-1 rounded-full bg-[rgba(52,199,89,0.12)] px-2 py-1 text-[10px] font-semibold text-[#14863d]">
                     <CheckCircle2 size={12} aria-hidden="true" />
@@ -542,6 +586,28 @@ export function ResourceExplorer({
                 >
                   <Upload size={13} aria-hidden="true" />
                   가져오기
+                </button>
+                <button
+                  className="inline-flex items-center gap-1.5 rounded-[8px] border border-[rgba(0,122,255,0.18)] bg-[rgba(0,122,255,0.06)] px-2.5 py-1.5 text-xs font-semibold text-[#0057b8] transition hover:bg-[rgba(0,122,255,0.1)] disabled:cursor-not-allowed disabled:opacity-50"
+                  type="button"
+                  onClick={() => void handleLoadTeamViewPresets()}
+                  disabled={!teamResourceViewsEnabled || resourceViewTeamLoading}
+                  data-testid="resource-view-team-load"
+                  title={teamResourceViewsEnabled ? '서버에 저장된 팀 Resource Explorer view 불러오기' : 'Live Cluster 연결과 admin token이 필요합니다'}
+                >
+                  <RefreshCw className={resourceViewTeamLoading ? 'animate-spin' : ''} size={13} aria-hidden="true" />
+                  팀 불러오기
+                </button>
+                <button
+                  className="inline-flex items-center gap-1.5 rounded-[8px] border border-[rgba(0,122,255,0.18)] bg-white px-2.5 py-1.5 text-xs font-semibold text-[#0057b8] transition hover:bg-[rgba(0,122,255,0.08)] disabled:cursor-not-allowed disabled:opacity-50"
+                  type="button"
+                  onClick={() => void handleSaveTeamViewPresets()}
+                  disabled={!teamResourceViewsEnabled || resourceViewTeamLoading || viewPresets.length === 0}
+                  data-testid="resource-view-team-save"
+                  title={teamResourceViewsEnabled ? '현재 브라우저 saved view를 팀 저장소에 저장' : 'Live Cluster 연결과 admin token이 필요합니다'}
+                >
+                  <Upload size={13} aria-hidden="true" />
+                  팀 저장
                 </button>
                 <button
                   className="inline-flex items-center gap-1.5 rounded-[8px] border border-[rgba(60,60,67,0.12)] bg-white px-2.5 py-1.5 text-xs font-semibold text-[rgba(60,60,67,0.72)] transition hover:bg-[rgba(242,242,247,0.9)] disabled:cursor-not-allowed disabled:opacity-50"

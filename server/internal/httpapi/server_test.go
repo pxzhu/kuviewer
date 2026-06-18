@@ -610,6 +610,172 @@ func TestResourceLogs(t *testing.T) {
 	})
 }
 
+func TestResourceViewPresetsRequireAdminBearerToken(t *testing.T) {
+	handler := NewServer(stubProvider{snapshot: testSnapshot()}, "secret-token", "", "")
+
+	for _, method := range []string{http.MethodGet, http.MethodPut} {
+		t.Run(method, func(t *testing.T) {
+			recorder := httptest.NewRecorder()
+			request := httptest.NewRequest(method, "/api/resource-views", strings.NewReader(`{"items":[]}`))
+			handler.ServeHTTP(recorder, request)
+
+			if recorder.Code != http.StatusUnauthorized {
+				t.Fatalf("status = %d, want %d", recorder.Code, http.StatusUnauthorized)
+			}
+		})
+	}
+}
+
+func TestResourceViewPresetsMemoryStore(t *testing.T) {
+	handler := NewServerWithConfig(stubProvider{snapshot: testSnapshot()}, ServerConfig{AdminToken: "secret-token"})
+
+	t.Run("empty by default", func(t *testing.T) {
+		recorder := httptest.NewRecorder()
+		request := httptest.NewRequest(http.MethodGet, "/api/resource-views", nil)
+		request.Header.Set("Authorization", "Bearer secret-token")
+		handler.ServeHTTP(recorder, request)
+
+		if recorder.Code != http.StatusOK {
+			t.Fatalf("status = %d, want %d", recorder.Code, http.StatusOK)
+		}
+		var list resourceViewPresetList
+		if err := json.NewDecoder(recorder.Body).Decode(&list); err != nil {
+			t.Fatalf("decode list: %v", err)
+		}
+		if len(list.Items) != 0 {
+			t.Fatalf("items = %+v, want empty", list.Items)
+		}
+	})
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPut, "/api/resource-views", strings.NewReader(`{
+		"items": [
+			{"name":" Pods ","query":"checkout","cluster":"","namespace":"checkout","kind":"Pod","status":"healthy","updatedAt":1000},
+			{"name":"Pods","query":"duplicate","cluster":"test","namespace":"checkout","kind":"Service","status":"warning","updatedAt":2000},
+			{"name":"Services","query":42,"cluster":"test","namespace":"","kind":"Service","status":"","updatedAt":"bad"},
+			{"name":"","query":"skip","cluster":"test","namespace":"checkout","kind":"Pod","status":"healthy","updatedAt":3000},
+			{"name":"Three","query":"","cluster":"test","namespace":"checkout","kind":"Pod","status":"healthy","updatedAt":3000},
+			{"name":"Four","query":"","cluster":"test","namespace":"checkout","kind":"Pod","status":"healthy","updatedAt":4000},
+			{"name":"Five","query":"","cluster":"test","namespace":"checkout","kind":"Pod","status":"healthy","updatedAt":5000},
+			{"name":"Six","query":"","cluster":"test","namespace":"checkout","kind":"Pod","status":"healthy","updatedAt":6000},
+			{"name":"Seven","query":"","cluster":"test","namespace":"checkout","kind":"Pod","status":"healthy","updatedAt":7000},
+			{"name":"Eight","query":"","cluster":"test","namespace":"checkout","kind":"Pod","status":"healthy","updatedAt":8000},
+			{"name":"Nine","query":"","cluster":"test","namespace":"checkout","kind":"Pod","status":"healthy","updatedAt":9000}
+		]
+	}`))
+	request.Header.Set("Authorization", "Bearer secret-token")
+	handler.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d body=%s", recorder.Code, http.StatusOK, recorder.Body.String())
+	}
+	var saved resourceViewPresetList
+	if err := json.NewDecoder(recorder.Body).Decode(&saved); err != nil {
+		t.Fatalf("decode saved: %v", err)
+	}
+	if len(saved.Items) != 8 {
+		t.Fatalf("items = %d, want 8: %+v", len(saved.Items), saved.Items)
+	}
+	if saved.Items[0].Name != "Pods" || saved.Items[0].Cluster != "all" || saved.Items[0].Query != "checkout" {
+		t.Fatalf("first item = %+v, want trimmed first Pods preset", saved.Items[0])
+	}
+	if saved.Items[1].Name != "Services" || saved.Items[1].Query != "" || saved.Items[1].Namespace != "all" || saved.Items[1].Status != "all" || saved.Items[1].UpdatedAt <= 0 {
+		t.Fatalf("second item = %+v, want normalized Services preset", saved.Items[1])
+	}
+	for _, item := range saved.Items {
+		if item.Name == "Nine" {
+			t.Fatalf("item Nine was not truncated: %+v", saved.Items)
+		}
+	}
+}
+
+func TestResourceViewPresetsFileStore(t *testing.T) {
+	viewsPath := filepath.Join(t.TempDir(), "nested", "resource-views.json")
+	handler := NewServerWithConfig(stubProvider{snapshot: testSnapshot()}, ServerConfig{
+		AdminToken:        "secret-token",
+		ResourceViewsFile: viewsPath,
+	})
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/api/resource-views", nil)
+	request.Header.Set("Authorization", "Bearer secret-token")
+	handler.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusOK)
+	}
+	var empty resourceViewPresetList
+	if err := json.NewDecoder(recorder.Body).Decode(&empty); err != nil {
+		t.Fatalf("decode empty list: %v", err)
+	}
+	if len(empty.Items) != 0 {
+		t.Fatalf("items = %+v, want empty", empty.Items)
+	}
+
+	recorder = httptest.NewRecorder()
+	request = httptest.NewRequest(http.MethodPut, "/api/resource-views", strings.NewReader(`{"items":[{"name":"Team Pods","query":"checkout","cluster":"test","namespace":"checkout","kind":"Pod","status":"healthy","updatedAt":1234}]}`))
+	request.Header.Set("Authorization", "Bearer secret-token")
+	handler.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d body=%s", recorder.Code, http.StatusOK, recorder.Body.String())
+	}
+	info, err := os.Stat(viewsPath)
+	if err != nil {
+		t.Fatalf("stat views file: %v", err)
+	}
+	if got := info.Mode().Perm(); got != 0o600 {
+		t.Fatalf("mode = %o, want 0600", got)
+	}
+
+	reloadedHandler := NewServerWithConfig(stubProvider{snapshot: testSnapshot()}, ServerConfig{
+		AdminToken:        "secret-token",
+		ResourceViewsFile: viewsPath,
+	})
+	recorder = httptest.NewRecorder()
+	request = httptest.NewRequest(http.MethodGet, "/api/resource-views", nil)
+	request.Header.Set("Authorization", "Bearer secret-token")
+	reloadedHandler.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusOK)
+	}
+	var reloaded resourceViewPresetList
+	if err := json.NewDecoder(recorder.Body).Decode(&reloaded); err != nil {
+		t.Fatalf("decode reloaded list: %v", err)
+	}
+	if len(reloaded.Items) != 1 || reloaded.Items[0].Name != "Team Pods" {
+		t.Fatalf("reloaded = %+v, want persisted Team Pods", reloaded.Items)
+	}
+}
+
+func TestResourceViewPresetsCorruptFileReturnsSafeError(t *testing.T) {
+	viewsPath := filepath.Join(t.TempDir(), "resource-views.json")
+	if err := os.WriteFile(viewsPath, []byte(`{"items":[{"name":"leaky-token-value"`), 0o600); err != nil {
+		t.Fatalf("write corrupt file: %v", err)
+	}
+	handler := NewServerWithConfig(stubProvider{snapshot: testSnapshot()}, ServerConfig{
+		AdminToken:        "secret-token",
+		ResourceViewsFile: viewsPath,
+	})
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/api/resource-views", nil)
+	request.Header.Set("Authorization", "Bearer secret-token")
+	handler.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusInternalServerError)
+	}
+	body := recorder.Body.String()
+	if !strings.Contains(body, "resource_views_unavailable") {
+		t.Fatalf("body = %q, want safe resource_views_unavailable error", body)
+	}
+	if strings.Contains(body, "leaky-token-value") {
+		t.Fatalf("body leaked corrupt file contents: %q", body)
+	}
+}
+
 func TestCORSPreflight(t *testing.T) {
 	handler := NewServer(stubProvider{snapshot: testSnapshot()}, "secret-token", "http://127.0.0.1:5174", "")
 	recorder := httptest.NewRecorder()
@@ -625,6 +791,9 @@ func TestCORSPreflight(t *testing.T) {
 	}
 	if got := recorder.Header().Get("Vary"); got != "Origin" {
 		t.Fatalf("Vary = %q, want Origin", got)
+	}
+	if got := recorder.Header().Get("Access-Control-Allow-Methods"); !strings.Contains(got, http.MethodPut) {
+		t.Fatalf("Access-Control-Allow-Methods = %q, want PUT", got)
 	}
 }
 
