@@ -645,6 +645,9 @@ func TestResourceViewPresetsMemoryStore(t *testing.T) {
 		if len(list.Items) != 0 {
 			t.Fatalf("items = %+v, want empty", list.Items)
 		}
+		if list.Metadata.Storage != "memory" || list.Metadata.Count != 0 {
+			t.Fatalf("metadata = %+v, want empty memory snapshot", list.Metadata)
+		}
 	})
 
 	recorder := httptest.NewRecorder()
@@ -675,6 +678,9 @@ func TestResourceViewPresetsMemoryStore(t *testing.T) {
 	}
 	if len(saved.Items) != 8 {
 		t.Fatalf("items = %d, want 8: %+v", len(saved.Items), saved.Items)
+	}
+	if saved.Metadata.Storage != "memory" || saved.Metadata.Count != 8 || saved.Metadata.Version <= 0 || saved.Metadata.UpdatedAt <= 0 {
+		t.Fatalf("metadata = %+v, want saved memory snapshot metadata", saved.Metadata)
 	}
 	if saved.Items[0].Name != "Pods" || saved.Items[0].Group != "Workloads" || saved.Items[0].Cluster != "all" || saved.Items[0].Query != "checkout" || saved.Items[0].Order != 1 {
 		t.Fatalf("first item = %+v, want trimmed first Pods preset", saved.Items[0])
@@ -714,6 +720,9 @@ func TestResourceViewPresetsFileStore(t *testing.T) {
 	if len(empty.Items) != 0 {
 		t.Fatalf("items = %+v, want empty", empty.Items)
 	}
+	if empty.Metadata.Storage != "file" || empty.Metadata.Count != 0 {
+		t.Fatalf("metadata = %+v, want empty file snapshot", empty.Metadata)
+	}
 
 	recorder = httptest.NewRecorder()
 	request = httptest.NewRequest(http.MethodPut, "/api/resource-views", strings.NewReader(`{"items":[{"name":"Team Pods","group":"Team","query":"checkout","cluster":"test","namespace":"checkout","kind":"Pod","status":"healthy","order":20,"updatedAt":1234}]}`))
@@ -722,6 +731,13 @@ func TestResourceViewPresetsFileStore(t *testing.T) {
 
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d body=%s", recorder.Code, http.StatusOK, recorder.Body.String())
+	}
+	var saved resourceViewPresetList
+	if err := json.NewDecoder(recorder.Body).Decode(&saved); err != nil {
+		t.Fatalf("decode saved list: %v", err)
+	}
+	if saved.Metadata.Storage != "file" || saved.Metadata.Count != 1 || saved.Metadata.Version <= 0 || saved.Metadata.UpdatedAt <= 0 {
+		t.Fatalf("saved metadata = %+v, want saved file snapshot metadata", saved.Metadata)
 	}
 	info, err := os.Stat(viewsPath)
 	if err != nil {
@@ -749,6 +765,39 @@ func TestResourceViewPresetsFileStore(t *testing.T) {
 	}
 	if len(reloaded.Items) != 1 || reloaded.Items[0].Name != "Team Pods" || reloaded.Items[0].Group != "Team" || reloaded.Items[0].Order != 1 {
 		t.Fatalf("reloaded = %+v, want persisted Team Pods", reloaded.Items)
+	}
+	if reloaded.Metadata.Storage != "file" || reloaded.Metadata.Count != 1 || reloaded.Metadata.Version != saved.Metadata.Version || reloaded.Metadata.UpdatedAt != saved.Metadata.UpdatedAt {
+		t.Fatalf("reloaded metadata = %+v, want persisted metadata %+v", reloaded.Metadata, saved.Metadata)
+	}
+}
+
+func TestResourceViewPresetsFileStoreReadsLegacyItemsPayload(t *testing.T) {
+	viewsPath := filepath.Join(t.TempDir(), "resource-views.json")
+	if err := os.WriteFile(viewsPath, []byte(`{"items":[{"name":"Legacy Pods","group":"Team","query":"legacy","cluster":"test","namespace":"default","kind":"Pod","status":"healthy","updatedAt":1234}]}`), 0o600); err != nil {
+		t.Fatalf("write legacy views file: %v", err)
+	}
+	handler := NewServerWithConfig(stubProvider{snapshot: testSnapshot()}, ServerConfig{
+		AdminToken:        "secret-token",
+		ResourceViewsFile: viewsPath,
+	})
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/api/resource-views", nil)
+	request.Header.Set("Authorization", "Bearer secret-token")
+	handler.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d body=%s", recorder.Code, http.StatusOK, recorder.Body.String())
+	}
+	var list resourceViewPresetList
+	if err := json.NewDecoder(recorder.Body).Decode(&list); err != nil {
+		t.Fatalf("decode legacy list: %v", err)
+	}
+	if len(list.Items) != 1 || list.Items[0].Name != "Legacy Pods" {
+		t.Fatalf("items = %+v, want legacy preset", list.Items)
+	}
+	if list.Metadata.Storage != "file" || list.Metadata.Count != 1 || list.Metadata.Version != 1234 || list.Metadata.UpdatedAt != 1234 {
+		t.Fatalf("metadata = %+v, want fallback metadata from legacy preset timestamp", list.Metadata)
 	}
 }
 

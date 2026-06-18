@@ -38,7 +38,20 @@ type resourceViewPreset struct {
 }
 
 type resourceViewPresetList struct {
-	Items []resourceViewPreset `json:"items"`
+	Items    []resourceViewPreset      `json:"items"`
+	Metadata resourceViewStoreMetadata `json:"metadata"`
+}
+
+type resourceViewStoreMetadata struct {
+	Version   int64  `json:"version"`
+	UpdatedAt int64  `json:"updatedAt"`
+	Count     int    `json:"count"`
+	Storage   string `json:"storage"`
+}
+
+type resourceViewSnapshot struct {
+	Items    []resourceViewPreset
+	Metadata resourceViewStoreMetadata
 }
 
 type resourceViewPresetInput struct {
@@ -54,12 +67,20 @@ type resourceViewPresetInput struct {
 }
 
 type resourceViewPresetInputList struct {
-	Items []resourceViewPresetInput `json:"items"`
+	Items    []resourceViewPresetInput      `json:"items"`
+	Metadata resourceViewStoreMetadataInput `json:"metadata"`
+}
+
+type resourceViewStoreMetadataInput struct {
+	Version   interface{} `json:"version"`
+	UpdatedAt interface{} `json:"updatedAt"`
+	Count     interface{} `json:"count"`
+	Storage   interface{} `json:"storage"`
 }
 
 type resourceViewStore interface {
-	List(context.Context) ([]resourceViewPreset, error)
-	Save(context.Context, []resourceViewPreset) ([]resourceViewPreset, error)
+	List(context.Context) (resourceViewSnapshot, error)
+	Save(context.Context, []resourceViewPreset) (resourceViewSnapshot, error)
 }
 
 func newResourceViewStore(path string) resourceViewStore {
@@ -70,21 +91,29 @@ func newResourceViewStore(path string) resourceViewStore {
 }
 
 type memoryResourceViewStore struct {
-	mu    sync.Mutex
-	items []resourceViewPreset
+	mu       sync.Mutex
+	items    []resourceViewPreset
+	metadata resourceViewStoreMetadata
 }
 
-func (s *memoryResourceViewStore) List(context.Context) ([]resourceViewPreset, error) {
+func (s *memoryResourceViewStore) List(context.Context) (resourceViewSnapshot, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return cloneResourceViewPresets(s.items), nil
+	return resourceViewSnapshot{
+		Items:    cloneResourceViewPresets(s.items),
+		Metadata: snapshotResourceViewStoreMetadata(s.metadata, len(s.items), "memory"),
+	}, nil
 }
 
-func (s *memoryResourceViewStore) Save(_ context.Context, items []resourceViewPreset) ([]resourceViewPreset, error) {
+func (s *memoryResourceViewStore) Save(_ context.Context, items []resourceViewPreset) (resourceViewSnapshot, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.items = cloneResourceViewPresets(items)
-	return cloneResourceViewPresets(s.items), nil
+	s.metadata = nextResourceViewStoreMetadata(s.metadata, len(s.items), "memory", time.Now())
+	return resourceViewSnapshot{
+		Items:    cloneResourceViewPresets(s.items),
+		Metadata: s.metadata,
+	}, nil
 }
 
 type fileResourceViewStore struct {
@@ -92,44 +121,51 @@ type fileResourceViewStore struct {
 	mu   sync.Mutex
 }
 
-func (s *fileResourceViewStore) List(context.Context) ([]resourceViewPreset, error) {
+func (s *fileResourceViewStore) List(context.Context) (resourceViewSnapshot, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	file, err := os.Open(s.path)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return []resourceViewPreset{}, nil
+			return resourceViewSnapshot{
+				Items:    []resourceViewPreset{},
+				Metadata: snapshotResourceViewStoreMetadata(resourceViewStoreMetadata{}, 0, "file"),
+			}, nil
 		}
-		return nil, fmt.Errorf("%w: read", errResourceViewsUnavailable)
+		return resourceViewSnapshot{}, fmt.Errorf("%w: read", errResourceViewsUnavailable)
 	}
 	defer file.Close()
 
-	items, err := decodeResourceViewPresetInputs(file)
+	snapshot, err := decodeResourceViewPresetSnapshot(file, "file", time.Now())
 	if err != nil {
-		return nil, fmt.Errorf("%w: decode", errResourceViewsUnavailable)
+		return resourceViewSnapshot{}, fmt.Errorf("%w: decode", errResourceViewsUnavailable)
 	}
-	return sanitizeResourceViewPresetInputs(items, time.Now()), nil
+	return snapshot, nil
 }
 
-func (s *fileResourceViewStore) Save(_ context.Context, items []resourceViewPreset) ([]resourceViewPreset, error) {
+func (s *fileResourceViewStore) Save(_ context.Context, items []resourceViewPreset) (resourceViewSnapshot, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	dir := filepath.Dir(s.path)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return nil, fmt.Errorf("%w: mkdir", errResourceViewsUnavailable)
+		return resourceViewSnapshot{}, fmt.Errorf("%w: mkdir", errResourceViewsUnavailable)
 	}
 
-	payload, err := json.MarshalIndent(resourceViewPresetList{Items: cloneResourceViewPresets(items)}, "", "  ")
+	snapshot := resourceViewSnapshot{
+		Items:    cloneResourceViewPresets(items),
+		Metadata: nextResourceViewStoreMetadata(resourceViewStoreMetadata{}, len(items), "file", time.Now()),
+	}
+	payload, err := json.MarshalIndent(resourceViewPresetList{Items: snapshot.Items, Metadata: snapshot.Metadata}, "", "  ")
 	if err != nil {
-		return nil, fmt.Errorf("%w: encode", errResourceViewsUnavailable)
+		return resourceViewSnapshot{}, fmt.Errorf("%w: encode", errResourceViewsUnavailable)
 	}
 	payload = append(payload, '\n')
 
 	tmpFile, err := os.OpenFile(filepath.Join(dir, "."+filepath.Base(s.path)+".tmp"), os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
 	if err != nil {
-		return nil, fmt.Errorf("%w: open", errResourceViewsUnavailable)
+		return resourceViewSnapshot{}, fmt.Errorf("%w: open", errResourceViewsUnavailable)
 	}
 	tmpName := tmpFile.Name()
 	ok := false
@@ -141,25 +177,46 @@ func (s *fileResourceViewStore) Save(_ context.Context, items []resourceViewPres
 
 	if _, err := tmpFile.Write(payload); err != nil {
 		_ = tmpFile.Close()
-		return nil, fmt.Errorf("%w: write", errResourceViewsUnavailable)
+		return resourceViewSnapshot{}, fmt.Errorf("%w: write", errResourceViewsUnavailable)
 	}
 	if err := tmpFile.Close(); err != nil {
-		return nil, fmt.Errorf("%w: close", errResourceViewsUnavailable)
+		return resourceViewSnapshot{}, fmt.Errorf("%w: close", errResourceViewsUnavailable)
 	}
 	if err := os.Rename(tmpName, s.path); err != nil {
-		return nil, fmt.Errorf("%w: rename", errResourceViewsUnavailable)
+		return resourceViewSnapshot{}, fmt.Errorf("%w: rename", errResourceViewsUnavailable)
 	}
 	ok = true
-	return cloneResourceViewPresets(items), nil
+	return snapshot, nil
 }
 
 func decodeResourceViewPresetInputs(reader io.Reader) ([]resourceViewPresetInput, error) {
+	snapshot, err := decodeResourceViewPresetInputSnapshot(reader)
+	if err != nil {
+		return nil, err
+	}
+	return snapshot.Items, nil
+}
+
+func decodeResourceViewPresetInputSnapshot(reader io.Reader) (resourceViewPresetInputList, error) {
 	var payload resourceViewPresetInputList
 	decoder := json.NewDecoder(reader)
 	if err := decoder.Decode(&payload); err != nil {
-		return nil, err
+		return resourceViewPresetInputList{}, err
 	}
-	return payload.Items, nil
+	return payload, nil
+}
+
+func decodeResourceViewPresetSnapshot(reader io.Reader, storage string, now time.Time) (resourceViewSnapshot, error) {
+	payload, err := decodeResourceViewPresetInputSnapshot(reader)
+	if err != nil {
+		return resourceViewSnapshot{}, err
+	}
+	items := sanitizeResourceViewPresetInputs(payload.Items, now)
+	metadata := metadataInput(payload.Metadata, items, storage)
+	return resourceViewSnapshot{
+		Items:    items,
+		Metadata: metadata,
+	}, nil
 }
 
 func sanitizeResourceViewPresetInputs(inputs []resourceViewPresetInput, now time.Time) []resourceViewPreset {
@@ -235,6 +292,87 @@ func timestampInput(value interface{}, fallback int64) int64 {
 	default:
 		return fallback
 	}
+}
+
+func intInput(value interface{}, fallback int) int {
+	switch typed := value.(type) {
+	case float64:
+		if math.IsNaN(typed) || math.IsInf(typed, 0) || typed < 0 {
+			return fallback
+		}
+		return int(typed)
+	case int:
+		if typed < 0 {
+			return fallback
+		}
+		return typed
+	case int64:
+		if typed < 0 {
+			return fallback
+		}
+		return int(typed)
+	default:
+		return fallback
+	}
+}
+
+func metadataInput(input resourceViewStoreMetadataInput, items []resourceViewPreset, storage string) resourceViewStoreMetadata {
+	fallbackUpdatedAt := maxResourceViewPresetUpdatedAt(items)
+	metadata := resourceViewStoreMetadata{
+		Version:   timestampInput(input.Version, fallbackUpdatedAt),
+		UpdatedAt: timestampInput(input.UpdatedAt, fallbackUpdatedAt),
+		Count:     intInput(input.Count, len(items)),
+		Storage:   resourceViewStoreStorageInput(input.Storage, storage),
+	}
+	return snapshotResourceViewStoreMetadata(metadata, len(items), storage)
+}
+
+func resourceViewStoreStorageInput(value interface{}, fallback string) string {
+	storage := strings.TrimSpace(stringInput(value, fallback))
+	if storage != "file" && storage != "memory" {
+		return fallback
+	}
+	return storage
+}
+
+func maxResourceViewPresetUpdatedAt(items []resourceViewPreset) int64 {
+	var updatedAt int64
+	for _, item := range items {
+		if item.UpdatedAt > updatedAt {
+			updatedAt = item.UpdatedAt
+		}
+	}
+	return updatedAt
+}
+
+func nextResourceViewStoreMetadata(current resourceViewStoreMetadata, count int, storage string, now time.Time) resourceViewStoreMetadata {
+	nowMillis := now.UnixMilli()
+	version := nowMillis
+	if current.Version >= version {
+		version = current.Version + 1
+	}
+	return resourceViewStoreMetadata{
+		Version:   version,
+		UpdatedAt: nowMillis,
+		Count:     count,
+		Storage:   storage,
+	}
+}
+
+func snapshotResourceViewStoreMetadata(metadata resourceViewStoreMetadata, count int, storage string) resourceViewStoreMetadata {
+	if metadata.Storage != "file" && metadata.Storage != "memory" {
+		metadata.Storage = storage
+	}
+	if metadata.Count != count {
+		metadata.Count = count
+	}
+	if metadata.Version < 0 {
+		metadata.Version = 0
+	}
+	if metadata.UpdatedAt < 0 {
+		metadata.UpdatedAt = 0
+	}
+	return metadata
 }
 
 func orderInput(value interface{}, fallback int64) int64 {
