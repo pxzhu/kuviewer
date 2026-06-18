@@ -1,0 +1,52 @@
+{
+  "schemaVersion": 1,
+  "name": "Kuviewer Desktop Cluster Explorer",
+  "goal": "installable-read-only-desktop-cluster-explorer",
+  "status": "packaging-spike",
+  "recommendedPackager": "tauri",
+  "fallbackPackager": "electron",
+  "targets": [
+    {
+      "platform": "macos",
+      "artifact": "dmg"
+    },
+    {
+      "platform": "windows",
+      "artifact": "exe"
+    }
+  ],
+  "connectionModes": [
+    {
+      "id": "remote-api",
+      "description": "Connect the desktop shell to an existing Kuviewer server URL with the same admin-token flow as the web app."
+    },
+    {
+      "id": "local-sidecar",
+      "description": "Future option: run the Go read-only API server as a local sidecar and point the desktop shell at localhost."
+    }
+  ],
+  "security": {
+    "readOnly": true,
+    "noBrowserKubeCredentialEntry": true,
+    "noSecretValues": true,
+    "noKubeconfigPersistence": true,
+    "noAdminTokenPersistence": true,
+    "noOperationalActions": [
+      "exec",
+      "port-forward",
+      "restart",
+      "scale",
+      "delete",
+      "apply",
+      "edit"
+    ]
+  },
+  "phaseOrder": [
+    "packaging-spec",
+    "tauri-scaffold",
+    "local-sidecar-evaluation",
+    "macos-dmg-build",
+    "windows-exe-build",
+    "signing-and-release"
+  ]
+}

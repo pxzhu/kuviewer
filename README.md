@@ -31,6 +31,12 @@ Kuviewer is a Kubernetes topology viewer focused on visualizing clusters, namesp
 - Responsive graph stage keeps zoom/pan/drag inside the topology canvas and stores manual node positions per source
 - Touch devices use an SVG topology renderer with pinch, wheel/trackpad, drag pan, zoom buttons, fit, and reset while keeping React Flow unmounted for mobile stability
 
+## Desktop Packaging Goal
+
+Kuviewer also tracks an installable read-only desktop cluster explorer path for users who want a local app that can connect to a Kuviewer server and inspect the connected cluster. The current spike is documented in [desktop/README.md](desktop/README.md), with a machine-checked target spec in [desktop/packaging-spec.json](desktop/packaging-spec.json).
+
+The default packaging direction is Tauri first, with Electron as a fallback only if needed. Initial release targets are macOS `.dmg` and Windows `.exe`. The desktop shell must stay read-only and must not persist kubeconfigs, admin tokens, cloud credentials, private keys, Secret values, Events, or logs during the spike.
+
 The Flow view is intended to feel closer to real request movement than a generic resource graph. It derives paths such as:
 
 ```text
