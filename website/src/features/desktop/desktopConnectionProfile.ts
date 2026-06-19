@@ -9,6 +9,11 @@ export interface DesktopSidecarProfile {
   source: string;
 }
 
+export interface DesktopSidecarStatus {
+  serverUrl: string;
+  source: string;
+}
+
 const desktopConnectionProfileStorageKey = 'kuviewer_desktop_connection_profile';
 const desktopConnectionProfileChangedEvent = 'kuviewer-desktop-connection-profile-changed';
 const maxServerUrlLength = 220;

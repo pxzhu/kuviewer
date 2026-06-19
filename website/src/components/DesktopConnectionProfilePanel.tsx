@@ -3,19 +3,23 @@ import { AlertTriangle, CheckCircle2, ServerCog, Unplug } from 'lucide-react';
 import {
   clearDesktopConnectionProfile,
   type DesktopConnectionProfile,
+  type DesktopSidecarStatus,
   normalizeDesktopServerUrl,
   storeDesktopConnectionProfile,
 } from '../features/desktop/desktopConnectionProfile';
 
 interface DesktopConnectionProfilePanelProps {
   profile: DesktopConnectionProfile | null;
+  sidecarProfile: DesktopSidecarStatus | null;
   onProfileChange: (profile: DesktopConnectionProfile | null) => void;
+  onUseSidecar: () => void;
 }
 
-export function DesktopConnectionProfilePanel({ profile, onProfileChange }: DesktopConnectionProfilePanelProps) {
+export function DesktopConnectionProfilePanel({ profile, sidecarProfile, onProfileChange, onUseSidecar }: DesktopConnectionProfilePanelProps) {
   const [serverUrl, setServerUrl] = useState(profile?.serverUrl || '');
   const [error, setError] = useState('');
   const [savedMessage, setSavedMessage] = useState('');
+  const sidecarActive = Boolean(profile && sidecarProfile && profile.serverUrl === sidecarProfile.serverUrl);
 
   useEffect(() => {
     setServerUrl(profile?.serverUrl || '');
@@ -78,6 +82,24 @@ export function DesktopConnectionProfilePanel({ profile, onProfileChange }: Desk
             profile 없음
           </span>
         )}
+        {sidecarProfile ? (
+          <span
+            className={`ku-chip max-w-full ${
+              sidecarActive
+                ? 'border-[rgba(52,199,89,0.22)] bg-[rgba(52,199,89,0.1)] text-[#248a3d]'
+                : 'border-[rgba(0,122,255,0.18)] bg-[rgba(0,122,255,0.08)] text-[#0066cc]'
+            }`}
+            title={`${sidecarProfile.serverUrl} · ${sidecarProfile.source}`}
+          >
+            <ServerCog size={13} aria-hidden="true" />
+            <span className="truncate">local sidecar {sidecarProfile.source}</span>
+          </span>
+        ) : (
+          <span className="ku-chip max-w-full">
+            <Unplug size={13} aria-hidden="true" />
+            local sidecar 없음
+          </span>
+        )}
         {error ? (
           <span className="ku-chip border-[rgba(255,149,0,0.24)] bg-[rgba(255,149,0,0.12)] text-[#b05f00]">
             <AlertTriangle size={13} aria-hidden="true" />
@@ -91,6 +113,16 @@ export function DesktopConnectionProfilePanel({ profile, onProfileChange }: Desk
         ) : null}
         <button className="ku-control-primary" data-testid="desktop-save-profile" type="button" onClick={handleSave}>
           저장
+        </button>
+        <button
+          className="ku-control"
+          data-testid="desktop-use-sidecar-profile"
+          type="button"
+          disabled={!sidecarProfile || sidecarActive}
+          onClick={onUseSidecar}
+          title={sidecarProfile ? sidecarProfile.serverUrl : 'local sidecar profile 없음'}
+        >
+          로컬 sidecar 사용
         </button>
         <button className="ku-control" data-testid="desktop-clear-profile" type="button" disabled={!profile && !serverUrl} onClick={handleClear}>
           비우기

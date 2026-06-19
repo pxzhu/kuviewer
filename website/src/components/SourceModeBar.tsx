@@ -13,7 +13,7 @@ import {
   UploadCloud,
 } from 'lucide-react';
 import { clearAdminToken, getStoredAdminToken, storeAdminToken } from '../features/auth/adminToken';
-import type { DesktopConnectionProfile } from '../features/desktop/desktopConnectionProfile';
+import type { DesktopConnectionProfile, DesktopSidecarStatus } from '../features/desktop/desktopConnectionProfile';
 import type { TopologySourceMode } from '../features/topology/useTopology';
 import type { UploadedTopologyState } from '../features/upload/parseKubernetesFiles';
 import { fetchConnectorStatusWithToken } from '../services/statusApi';
@@ -22,6 +22,7 @@ import { DesktopConnectionProfilePanel } from './DesktopConnectionProfilePanel';
 interface SourceModeBarProps {
   desktopConnectionAvailable: boolean;
   desktopConnectionProfile: DesktopConnectionProfile | null;
+  desktopSidecarProfile: DesktopSidecarStatus | null;
   mode: TopologySourceMode;
   liveUnlocked: boolean;
   uploadClusterId: string;
@@ -37,6 +38,7 @@ interface SourceModeBarProps {
   onImportJson: (file: File) => void;
   onExportJson: () => void;
   onDesktopConnectionProfileChange: (profile: DesktopConnectionProfile | null) => void;
+  onUseDesktopSidecar: () => void;
   onLiveUnlock: () => void;
   onLiveLock: () => void;
 }
@@ -50,6 +52,7 @@ const modeOptions: Array<{ mode: TopologySourceMode; label: string; icon: typeof
 export function SourceModeBar({
   desktopConnectionAvailable,
   desktopConnectionProfile,
+  desktopSidecarProfile,
   mode,
   liveUnlocked,
   uploadClusterId,
@@ -65,6 +68,7 @@ export function SourceModeBar({
   onImportJson,
   onExportJson,
   onDesktopConnectionProfileChange,
+  onUseDesktopSidecar,
   onLiveUnlock,
   onLiveLock,
 }: SourceModeBarProps) {
@@ -231,7 +235,12 @@ export function SourceModeBar({
       ) : null}
 
       {desktopConnectionAvailable ? (
-        <DesktopConnectionProfilePanel profile={desktopConnectionProfile} onProfileChange={onDesktopConnectionProfileChange} />
+        <DesktopConnectionProfilePanel
+          profile={desktopConnectionProfile}
+          sidecarProfile={desktopSidecarProfile}
+          onProfileChange={onDesktopConnectionProfileChange}
+          onUseSidecar={onUseDesktopSidecar}
+        />
       ) : null}
 
       <input
