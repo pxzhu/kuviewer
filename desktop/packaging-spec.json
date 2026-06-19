@@ -2,9 +2,17 @@
   "schemaVersion": 1,
   "name": "Kuviewer Desktop Cluster Explorer",
   "goal": "installable-read-only-desktop-cluster-explorer",
-  "status": "packaging-spike",
+  "status": "tauri-scaffold",
   "recommendedPackager": "tauri",
   "fallbackPackager": "electron",
+  "tauri": {
+    "packagePath": "desktop/package.json",
+    "configPath": "desktop/src-tauri/tauri.conf.json",
+    "cargoManifestPath": "desktop/src-tauri/Cargo.toml",
+    "capabilityPath": "desktop/src-tauri/capabilities/desktop-readonly.json",
+    "frontendDist": "../../website/dist",
+    "devUrl": "http://127.0.0.1:5174/kuviewer/"
+  },
   "targets": [
     {
       "platform": "macos",
