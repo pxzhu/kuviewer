@@ -12,6 +12,25 @@ The recommended packaging path is Tauri first, with Electron kept as a fallback 
 - Start with remote API connection to an existing Kuviewer server.
 - Evaluate a local Go sidecar only after the shell scaffold is stable.
 
+## Scaffold
+
+The current scaffold lives in `desktop/src-tauri` and points at the existing `website` app:
+
+- dev URL: `http://127.0.0.1:5174/kuviewer/`
+- production frontend dist: `../../website/dist`
+- bundle targets: `dmg` and `nsis`
+- capability: `desktop-readonly`
+
+Install desktop dependencies only when actively working on desktop packaging:
+
+```bash
+cd desktop
+npm install
+npm run tauri:dev
+```
+
+The first real installer build should happen in a later dedicated packaging task after dependency install, icon generation, platform prerequisites, and code signing decisions are handled.
+
 ## Security Defaults
 
 - Do not ask users to paste kubeconfigs into the browser UI.
@@ -27,4 +46,4 @@ Run the packaging spec check from the repository root:
 node scripts/check-desktop-packaging-spec.mjs
 ```
 
-The check keeps the spike honest by verifying the target artifacts, read-only security defaults, and package phase ordering.
+The check keeps the scaffold honest by verifying the target artifacts, read-only security defaults, Tauri config, Rust manifest, package scripts, and capability permissions.

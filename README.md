@@ -33,9 +33,9 @@ Kuviewer is a Kubernetes topology viewer focused on visualizing clusters, namesp
 
 ## Desktop Packaging Goal
 
-Kuviewer also tracks an installable read-only desktop cluster explorer path for users who want a local app that can connect to a Kuviewer server and inspect the connected cluster. The current spike is documented in [desktop/README.md](desktop/README.md), with a machine-checked target spec in [desktop/packaging-spec.json](desktop/packaging-spec.json).
+Kuviewer also tracks an installable read-only desktop cluster explorer path for users who want a local app that can connect to a Kuviewer server and inspect the connected cluster. The current Tauri-first scaffold is documented in [desktop/README.md](desktop/README.md), with a machine-checked target spec in [desktop/packaging-spec.json](desktop/packaging-spec.json).
 
-The default packaging direction is Tauri first, with Electron as a fallback only if needed. Initial release targets are macOS `.dmg` and Windows `.exe`. The desktop shell must stay read-only and must not persist kubeconfigs, admin tokens, cloud credentials, private keys, Secret values, Events, or logs during the spike.
+The default packaging direction is Tauri first, with Electron as a fallback only if needed. Initial release targets are macOS `.dmg` and Windows `.exe`. The scaffold points at the existing Vite UI and keeps a `desktop-readonly` capability with no shell or filesystem permissions. The desktop shell must stay read-only and must not persist kubeconfigs, admin tokens, cloud credentials, private keys, Secret values, Events, or logs during the scaffold phase.
 
 The Flow view is intended to feel closer to real request movement than a generic resource graph. It derives paths such as:
 
