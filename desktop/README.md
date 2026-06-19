@@ -129,6 +129,35 @@ APPLE_SIGNING_IDENTITY="Developer ID Application: Example" node scripts/configur
 WINDOWS_CERTIFICATE_THUMBPRINT=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA node scripts/configure-desktop-signing.mjs --windows --dry-run
 ```
 
+## Local Sidecar Evaluation
+
+The local sidecar path is evaluated but not enabled in the Tauri runtime yet. The goal is to bundle the existing Go read-only API server as a localhost-only sidecar for users who want a desktop app that can inspect the connected cluster without a separate hosted Kuviewer server.
+
+Current boundary:
+
+- Sidecar binary build script exists, but generated binaries are ignored by git.
+- Tauri `externalBin` is not enabled yet.
+- The desktop capability still avoids shell permissions.
+- Browser-side kubeconfig entry remains out of scope.
+- Future runtime launch must use a generated per-launch admin token stored in memory only.
+- Secret values, kubeconfigs, cloud credentials, Events, logs, and admin tokens must not be persisted.
+- Operational actions remain out of scope.
+
+Build plan dry-run:
+
+```bash
+node scripts/build-desktop-sidecar.mjs --target aarch64-apple-darwin --dry-run
+node scripts/build-desktop-sidecar.mjs --list-targets
+```
+
+Local binary smoke builds can target a temporary directory so the repository stays clean:
+
+```bash
+node scripts/build-desktop-sidecar.mjs --target aarch64-apple-darwin --out-dir /tmp/kuviewer-sidecar-smoke
+```
+
+The candidate Tauri external binary base name is `binaries/kuviewer-sidecar`. Runtime launch, shell permission review, fixed loopback port handling, lifecycle management, and token handoff are intentionally left for the next implementation step.
+
 ## Verified Dry Runs
 
 The first unsigned macOS package dry-run completed on 2026-06-19 through GitHub Actions run `27800527207`.

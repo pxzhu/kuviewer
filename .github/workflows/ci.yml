@@ -42,6 +42,9 @@ jobs:
       - name: Desktop packaging spec check
         run: node scripts/check-desktop-packaging-spec.mjs
 
+      - name: Desktop sidecar build plan check
+        run: node scripts/build-desktop-sidecar.mjs --target aarch64-apple-darwin --dry-run
+
       - name: Setup Go
         uses: actions/setup-go@v5
         with:

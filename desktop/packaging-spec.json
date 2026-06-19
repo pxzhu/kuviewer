@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "name": "Kuviewer Desktop Cluster Explorer",
   "goal": "installable-read-only-desktop-cluster-explorer",
-  "status": "desktop-signing-notarization",
+  "status": "desktop-local-sidecar-evaluation",
   "recommendedPackager": "tauri",
   "fallbackPackager": "electron",
   "tauri": {
@@ -30,7 +30,7 @@
     },
     {
       "id": "local-sidecar",
-      "description": "Future option: run the Go read-only API server as a local sidecar and point the desktop shell at localhost."
+      "description": "Evaluated candidate: bundle the Go read-only API server as a localhost-only Tauri sidecar, with runtime launch and shell permissions deferred to a later implementation step."
     }
   ],
   "remoteConnectionProfile": {
@@ -60,6 +60,57 @@
     "artifactNamePattern": "kuviewer-{platform}-{artifact}-{version}",
     "ciWorkspaceOnly": true,
     "noCredentialPersistence": true
+  },
+  "localSidecar": {
+    "status": "evaluated-scaffold",
+    "enabledInTauriConfig": false,
+    "capabilityChangeDeferred": true,
+    "requiresShellPluginLater": true,
+    "buildScript": "scripts/build-desktop-sidecar.mjs",
+    "sourcePackage": "server/cmd/kuviewer-server",
+    "outputDir": "desktop/src-tauri/binaries",
+    "binaryBaseName": "kuviewer-sidecar",
+    "tauriExternalBinCandidate": "binaries/kuviewer-sidecar",
+    "gitIgnoredOutput": true,
+    "targets": [
+      {
+        "targetTriple": "aarch64-apple-darwin",
+        "goos": "darwin",
+        "goarch": "arm64"
+      },
+      {
+        "targetTriple": "x86_64-apple-darwin",
+        "goos": "darwin",
+        "goarch": "amd64"
+      },
+      {
+        "targetTriple": "x86_64-pc-windows-msvc",
+        "goos": "windows",
+        "goarch": "amd64"
+      },
+      {
+        "targetTriple": "aarch64-pc-windows-msvc",
+        "goos": "windows",
+        "goarch": "arm64"
+      }
+    ],
+    "runtime": {
+      "launchMode": "future-rust-managed-sidecar",
+      "listenAddr": "127.0.0.1:18086",
+      "adminToken": "generated-per-launch-memory-only",
+      "serverSource": "kubernetes",
+      "staticDir": "disabled-for-sidecar-api",
+      "resourceViewsStore": "runtime-memory-unless-user-configured-later"
+    },
+    "security": {
+      "loopbackOnly": true,
+      "noBrowserKubeCredentialEntry": true,
+      "noKubeconfigPersistence": true,
+      "noAdminTokenPersistence": true,
+      "noSecretValues": true,
+      "noOperationalActions": true,
+      "noCommittedBinaries": true
+    }
   },
   "buildPrerequisites": [
     {
