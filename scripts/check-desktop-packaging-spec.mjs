@@ -18,8 +18,8 @@ function requireCondition(condition, message) {
 requireCondition(spec.schemaVersion === 1, 'schemaVersion must be 1');
 requireCondition(spec.goal === 'installable-read-only-desktop-cluster-explorer', 'goal must describe the installable read-only desktop explorer');
 requireCondition(
-  ['packaging-spike', 'tauri-scaffold', 'macos-dmg-dry-run', 'windows-exe-dry-run', 'desktop-remote-profile-ux'].includes(spec.status),
-  'status must be packaging-spike, tauri-scaffold, macos-dmg-dry-run, windows-exe-dry-run, or desktop-remote-profile-ux'
+  ['packaging-spike', 'tauri-scaffold', 'macos-dmg-dry-run', 'windows-exe-dry-run', 'desktop-remote-profile-ux', 'desktop-release-versioning'].includes(spec.status),
+  'status must be packaging-spike, tauri-scaffold, macos-dmg-dry-run, windows-exe-dry-run, desktop-remote-profile-ux, or desktop-release-versioning'
 );
 requireCondition(spec.recommendedPackager === 'tauri', 'recommendedPackager must be tauri for the first packaging spike');
 requireCondition(spec.fallbackPackager === 'electron', 'fallbackPackager must be electron');
@@ -49,14 +49,16 @@ const phases = Array.isArray(spec.phaseOrder) ? spec.phaseOrder : [];
 requireCondition(phases[0] === 'packaging-spec', 'phaseOrder must start with packaging-spec');
 requireCondition(phases.includes('tauri-scaffold'), 'phaseOrder must include tauri-scaffold');
 requireCondition(phases.includes('remote-connection-profile'), 'phaseOrder must include remote-connection-profile');
+requireCondition(phases.includes('release-versioning'), 'phaseOrder must include release-versioning');
 requireCondition(phases.includes('macos-dmg-build'), 'phaseOrder must include macos-dmg-build');
 requireCondition(phases.includes('windows-exe-build'), 'phaseOrder must include windows-exe-build');
 
 await validateBuildPrerequisites(spec);
 await validateRemoteConnectionProfile(spec);
+await validateReleaseVersioning(spec);
 validateDryRuns(spec);
 
-if (['tauri-scaffold', 'macos-dmg-dry-run', 'windows-exe-dry-run', 'desktop-remote-profile-ux'].includes(spec.status)) {
+if (['tauri-scaffold', 'macos-dmg-dry-run', 'windows-exe-dry-run', 'desktop-remote-profile-ux', 'desktop-release-versioning'].includes(spec.status)) {
   await validateTauriScaffold(spec.tauri || {});
 }
 
@@ -224,6 +226,7 @@ async function validateBuildPrerequisites(spec) {
   requireCondition(prerequisitesDoc.includes('Windows host or CI runner'), 'desktop build prerequisites doc must mention Windows host or CI runner');
   requireCondition(prerequisitesDoc.includes('Do not commit certificates'), 'desktop build prerequisites doc must state signing material is not committed');
   requireCondition(prerequisitesDoc.includes('node scripts/generate-desktop-icons.mjs'), 'desktop build prerequisites doc must mention icon generation');
+  requireCondition(prerequisitesDoc.includes('node scripts/set-desktop-package-version.mjs'), 'desktop build prerequisites doc must mention release versioning');
   requireCondition(iconReadme.includes('icon.icns'), 'desktop icons README must describe icon.icns');
   requireCondition(iconReadme.includes('icon.ico'), 'desktop icons README must describe icon.ico');
 }
@@ -267,6 +270,62 @@ async function validateRemoteConnectionProfile(spec) {
   const desktopReadme = await readTextFile('desktop/README.md', 'desktop README');
   requireCondition(desktopReadme.includes('Remote Server Profile'), 'desktop README must document the remote server profile');
   requireCondition(desktopReadme.includes('KUVIEWER_CORS_ORIGIN'), 'desktop README must document CORS expectations for remote server profiles');
+}
+
+async function validateReleaseVersioning(spec) {
+  const releaseVersioning = spec.releaseVersioning || {};
+  requireCondition(releaseVersioning.status === 'scaffolded', 'releaseVersioning.status must be scaffolded');
+  requireCondition(releaseVersioning.versionScript === 'scripts/set-desktop-package-version.mjs', 'releaseVersioning.versionScript must point at set-desktop-package-version');
+  requireCondition(releaseVersioning.workflowInput === 'package_version', 'releaseVersioning.workflowInput must be package_version');
+  requireCondition(releaseVersioning.tagPrefix === 'v', 'releaseVersioning.tagPrefix must be v');
+  requireCondition(releaseVersioning.fallbackVersion === '0.1.0', 'releaseVersioning.fallbackVersion must stay 0.1.0 until desktop packages are intentionally bumped');
+  requireCondition(releaseVersioning.artifactNamePattern === 'kuviewer-{platform}-{artifact}-{version}', 'releaseVersioning artifactNamePattern must include version');
+  requireCondition(releaseVersioning.ciWorkspaceOnly === true, 'releaseVersioning.ciWorkspaceOnly must be true');
+  requireCondition(releaseVersioning.noCredentialPersistence === true, 'releaseVersioning.noCredentialPersistence must be true');
+
+  const sourceFiles = new Set(Array.isArray(releaseVersioning.sourceFiles) ? releaseVersioning.sourceFiles : []);
+  for (const sourceFile of ['desktop/package.json', 'desktop/src-tauri/Cargo.toml', 'desktop/src-tauri/tauri.conf.json']) {
+    requireCondition(sourceFiles.has(sourceFile), `releaseVersioning.sourceFiles must include ${sourceFile}`);
+  }
+
+  const versionScript = await readTextFile(releaseVersioning.versionScript, 'desktop package version script');
+  for (const marker of [
+    'KUVIEWER_DESKTOP_VERSION',
+    'GITHUB_REF_NAME',
+    'GITHUB_OUTPUT',
+    'desktop/package.json',
+    'desktop/src-tauri/Cargo.toml',
+    'desktop/src-tauri/tauri.conf.json',
+    '--check',
+    '--dry-run',
+  ]) {
+    requireCondition(versionScript.includes(marker), `desktop package version script must include ${marker}`);
+  }
+
+  const fallbackVersion = releaseVersioning.fallbackVersion;
+  const desktopPackage = await readJsonFile('desktop/package.json', 'desktop package.json');
+  const tauriConfig = await readJsonFile('desktop/src-tauri/tauri.conf.json', 'desktop tauri config');
+  const cargoToml = await readTextFile('desktop/src-tauri/Cargo.toml', 'desktop Cargo.toml');
+  requireCondition(desktopPackage?.version === fallbackVersion, `desktop package.json version must default to ${fallbackVersion}`);
+  requireCondition(tauriConfig?.version === fallbackVersion, `tauri config version must default to ${fallbackVersion}`);
+  requireCondition(readCargoPackageVersion(cargoToml) === fallbackVersion, `Cargo.toml package version must default to ${fallbackVersion}`);
+
+  const workflow = await readTextFile(spec.signing?.workflowPath, 'desktop package workflow');
+  for (const marker of [
+    'package_version',
+    'scripts/set-desktop-package-version.mjs',
+    'KUVIEWER_DESKTOP_VERSION',
+    '--github-output',
+    '${{ steps.desktop-version.outputs.version }}',
+    'kuviewer-macos-dmg-${{ steps.desktop-version.outputs.version }}',
+    'kuviewer-windows-exe-${{ steps.desktop-version.outputs.version }}',
+  ]) {
+    requireCondition(workflow.includes(marker), `desktop package workflow must include ${marker}`);
+  }
+
+  const desktopReadme = await readTextFile('desktop/README.md', 'desktop README');
+  requireCondition(desktopReadme.includes('Release Versioning'), 'desktop README must document release versioning');
+  requireCondition(desktopReadme.includes('package_version'), 'desktop README must document package_version input');
 }
 
 function validateDryRuns(spec) {
@@ -316,6 +375,27 @@ function validateDryRuns(spec) {
   requireCondition(windowsDryRun.artifactId === 7741029893, 'Windows dry-run artifact id must match the uploaded artifact');
   requireCondition(windowsDryRun.artifactSizeBytes === 5777828, 'Windows dry-run artifact size must match the uploaded artifact');
   requireCondition(windowsDryRun.artifactZipSha256 === '904285edb5307f1426f386ef340d413c81623e41ad57a835f0ea303c778970c4', 'Windows dry-run artifact digest must match the uploaded artifact');
+}
+
+function readCargoPackageVersion(text) {
+  const lines = text.split('\n');
+  let inPackage = false;
+  for (const line of lines) {
+    if (/^\[package\]\s*$/.test(line)) {
+      inPackage = true;
+      continue;
+    }
+    if (inPackage && /^\[/.test(line)) {
+      return '';
+    }
+    if (inPackage) {
+      const match = line.match(/^version\s*=\s*"([^"]+)"\s*$/);
+      if (match) {
+        return match[1];
+      }
+    }
+  }
+  return '';
 }
 
 async function readJsonFile(relativePath, label) {

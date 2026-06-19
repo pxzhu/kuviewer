@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "name": "Kuviewer Desktop Cluster Explorer",
   "goal": "installable-read-only-desktop-cluster-explorer",
-  "status": "desktop-remote-profile-ux",
+  "status": "desktop-release-versioning",
   "recommendedPackager": "tauri",
   "fallbackPackager": "electron",
   "tauri": {
@@ -45,6 +45,21 @@
     "noKubeconfigPersistence": true,
     "noSecretValues": true,
     "requiresServerCors": true
+  },
+  "releaseVersioning": {
+    "status": "scaffolded",
+    "versionScript": "scripts/set-desktop-package-version.mjs",
+    "sourceFiles": [
+      "desktop/package.json",
+      "desktop/src-tauri/Cargo.toml",
+      "desktop/src-tauri/tauri.conf.json"
+    ],
+    "workflowInput": "package_version",
+    "tagPrefix": "v",
+    "fallbackVersion": "0.1.0",
+    "artifactNamePattern": "kuviewer-{platform}-{artifact}-{version}",
+    "ciWorkspaceOnly": true,
+    "noCredentialPersistence": true
   },
   "buildPrerequisites": [
     {
@@ -223,6 +238,7 @@
     "packaging-spec",
     "tauri-scaffold",
     "remote-connection-profile",
+    "release-versioning",
     "local-sidecar-evaluation",
     "macos-dmg-build",
     "windows-exe-build",

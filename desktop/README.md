@@ -56,6 +56,28 @@ Changing or clearing the remote server profile clears the current admin token an
 
 The remote server must allow the desktop app origin through `KUVIEWER_CORS_ORIGIN` when the API is not same-origin. The profile accepts `https` server URLs for remote hosts and `http` only for loopback hosts such as `127.0.0.1` or `localhost`; Kubernetes credential handling stays on the server side.
 
+## Release Versioning
+
+Desktop source files keep `0.1.0` as the checked-in fallback version until a desktop package release is intentionally cut. The manual `desktop-package` workflow resolves the package version at build time and updates only the CI workspace before Tauri builds installers.
+
+Resolution order:
+
+1. workflow `package_version` input
+2. `KUVIEWER_DESKTOP_VERSION`
+3. `GITHUB_REF_NAME` with a leading `v` stripped
+4. fallback `0.1.0`
+
+The resolved version is written consistently to `desktop/package.json`, `desktop/src-tauri/tauri.conf.json`, and `desktop/src-tauri/Cargo.toml` for that package build. Uploaded workflow artifacts include the version in their artifact names, for example `kuviewer-macos-dmg-0.1.76` and `kuviewer-windows-exe-0.1.76`; generated installer filenames still follow Tauri platform conventions.
+
+Local version checks can be run from the repository root:
+
+```bash
+node scripts/set-desktop-package-version.mjs --version 0.1.0 --check
+node scripts/set-desktop-package-version.mjs --version 0.1.76 --dry-run
+```
+
+Do not commit accidental local version bumps unless the repository is intentionally moving to a new desktop package baseline.
+
 ## Validation
 
 Run the packaging spec check from the repository root:
