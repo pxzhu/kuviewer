@@ -2,7 +2,7 @@
 
 This document defines the first credential boundary for a future installable Kuviewer desktop app that connects directly to a Kubernetes API server through the local sidecar.
 
-The current implementation includes a safe runtime metadata prototype plus native OS credential store helpers. It can expose desktop Kubernetes profile metadata through native Tauri commands and can store/delete bearer-token material in macOS Keychain or Windows Credential Manager without returning the token to browser JavaScript. Sidecar restart from the selected stored credential remains future work.
+The current implementation includes a safe runtime metadata prototype plus native OS credential store helpers. It can expose desktop Kubernetes profile metadata through native Tauri commands and can store/delete bearer-token material in macOS Keychain or Windows Credential Manager without returning the token to browser JavaScript. Selecting a profile with a stored credential restarts the local sidecar in Kubernetes mode through a runtime token file.
 
 ## Goals
 
@@ -68,6 +68,8 @@ When the user selects a keychain-backed Kubernetes profile:
 
 Desktop runtime code should avoid `KUVIEWER_KUBE_BEARER_TOKEN` for keychain-backed profiles because process environment values are easier to inspect than private temp files.
 
+The current runtime token file policy is `0600-temp-dir-delete-on-sidecar-stop`: Rust creates a private temp directory, writes the token file with owner-only permissions where supported, and deletes that file when the sidecar stops, restarts, or the app closes.
+
 ## Runtime Metadata Prototype
 
 The current desktop shell exposes only safe profile metadata through native Tauri commands:
@@ -101,6 +103,12 @@ Current native backing:
 
 Deleting a credential through `desktop_delete_kubernetes_profile_credential` removes only the native secret material and leaves safe profile metadata in memory for the current desktop session.
 
+## Sidecar Runtime Integration
+
+When `desktop_select_kubernetes_profile` selects a profile whose native credential is available, Rust reads the token from the OS store, writes a runtime temp token file, stops the current sidecar, and starts a new localhost sidecar with `KUVIEWER_SOURCE=kubernetes`, `KUVIEWER_KUBE_API_SERVER`, and `KUVIEWER_KUBE_TOKEN_FILE`. The returned metadata status becomes `sidecar-kubernetes-active`.
+
+The UI then re-reads `desktop_sidecar_profile`, stores only the per-launch admin token in `sessionStorage`, switches to live mode, and keeps the Kubernetes token out of browser state. If the native credential is deleted while active, Rust stops the Kubernetes sidecar, cleans the runtime token file, and falls back to the default local sidecar profile.
+
 ## Security Rules
 
 - Browser `localStorage` remains URL/profile metadata only.
@@ -114,15 +122,15 @@ Deleting a credential through `desktop_delete_kubernetes_profile_credential` rem
 
 ## First Runtime Scope
 
-The first implementation should accept:
+The first implementation accepts:
 
 - Kubernetes API server URL
 - bearer token
-- optional CA bundle
-- optional insecure-skip flag only when explicitly accepted by the user
 
 The following should remain future work:
 
+- optional CA bundle
+- optional insecure-skip flag only when explicitly accepted by the user
 - client certificate/private key auth
 - cloud provider login helpers
 - OIDC refresh token storage
@@ -138,4 +146,5 @@ The repository check should verify:
 - desktop docs mention macOS Keychain and Windows Credential Manager
 - keychain-backed runtime uses token file handoff rather than browser token persistence
 - native OS credential store helpers exist for write, read-check, and delete without returning secrets to the browser
+- selected keychain profiles restart the sidecar with `KUVIEWER_KUBE_TOKEN_FILE`
 - generated credentials, temp files, kubeconfigs, private keys, Secret values, Events, and logs are not committed

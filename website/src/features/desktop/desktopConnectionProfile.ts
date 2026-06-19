@@ -7,11 +7,13 @@ export interface DesktopSidecarProfile {
   serverUrl: string;
   adminToken: string;
   source: string;
+  kubernetesProfileId?: string;
 }
 
 export interface DesktopSidecarStatus {
   serverUrl: string;
   source: string;
+  kubernetesProfileId?: string;
 }
 
 export interface DesktopKubernetesProfile {
@@ -132,6 +134,8 @@ export async function getDesktopSidecarProfile(): Promise<DesktopSidecarProfile 
     serverUrl: normalizeDesktopServerUrl(profile.serverUrl),
     adminToken,
     source: profile.source.trim() || 'unknown',
+    kubernetesProfileId:
+      typeof profile.kubernetesProfileId === 'string' && profile.kubernetesProfileId.trim() ? profile.kubernetesProfileId.trim() : undefined,
   };
 }
 

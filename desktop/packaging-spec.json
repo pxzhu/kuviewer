@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "name": "Kuviewer Desktop Cluster Explorer",
   "goal": "installable-read-only-desktop-cluster-explorer",
-  "status": "desktop-os-credential-store",
+  "status": "desktop-keychain-sidecar-runtime",
   "recommendedPackager": "tauri",
   "fallbackPackager": "electron",
   "tauri": {
@@ -133,7 +133,7 @@
     }
   },
   "credentialStorageDesign": {
-    "status": "os-store-read-write-scaffolded",
+    "status": "sidecar-runtime-scaffolded",
     "documentPath": "desktop/KEYCHAIN_CREDENTIAL_DESIGN.md",
     "firstRuntimeScope": "bearer-token-only",
     "browserCredentialEntry": false,
@@ -154,11 +154,14 @@
       "deleteCredentialCommand": "desktop_delete_kubernetes_profile_credential",
       "uiPanel": "DesktopKubernetesProfilePanel",
       "secretReadWriteImplemented": true,
-      "sidecarRestartImplemented": false,
+      "sidecarRestartImplemented": true,
       "browserReceivesSecrets": false,
       "credentialAvailableField": "credentialAvailable",
+      "activeProfileStatus": "sidecar-kubernetes-active",
       "importTokenFileEnv": "KUVIEWER_DESKTOP_KUBE_TOKEN_FILE",
       "importTokenFileFlagEnv": "KUVIEWER_DESKTOP_KUBE_IMPORT_TOKEN_FILE",
+      "runtimeTokenFileEnv": "KUVIEWER_KUBE_TOKEN_FILE",
+      "runtimeTokenFilePolicy": "0600-temp-dir-delete-on-sidecar-stop",
       "envMetadataFixture": [
         "KUVIEWER_DESKTOP_KUBE_API_SERVER",
         "KUVIEWER_DESKTOP_KUBE_PROFILE_ID",
@@ -354,6 +357,7 @@
     "keychain-credential-design",
     "keychain-profile-runtime",
     "os-credential-store",
+    "keychain-sidecar-runtime",
     "macos-dmg-build",
     "windows-exe-build",
     "signing-and-release"

@@ -90,7 +90,7 @@ export function DesktopKubernetesProfilePanel({
         </div>
       ) : (
         <p className="text-xs font-semibold text-[rgba(60,60,67,0.58)]">
-          keychain-backed bearer-token profile은 native metadata와 OS credential store helper까지 준비됐고, 선택 profile로 sidecar를 재시작하는 흐름은 다음 단계입니다.
+          keychain-backed bearer-token profile은 native metadata만 브라우저에 표시하고, 저장된 credential이 있으면 선택 시 local sidecar를 Kubernetes source로 재시작합니다.
         </p>
       )}
     </div>

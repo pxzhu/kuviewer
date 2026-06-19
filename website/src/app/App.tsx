@@ -131,6 +131,7 @@ function Dashboard() {
         setDesktopSidecarProfile({
           serverUrl: sidecarProfile.serverUrl,
           source: sidecarProfile.source,
+          kubernetesProfileId: sidecarProfile.kubernetesProfileId,
         });
 
         const currentProfile = getDesktopConnectionProfile();
@@ -368,6 +369,7 @@ function Dashboard() {
       setDesktopSidecarProfile({
         serverUrl: sidecarProfile.serverUrl,
         source: sidecarProfile.source,
+        kubernetesProfileId: sidecarProfile.kubernetesProfileId,
       });
       storeAdminToken(sidecarProfile.adminToken);
       setDesktopConnectionProfile(storeDesktopConnectionProfile(sidecarProfile.serverUrl));
@@ -396,13 +398,38 @@ function Dashboard() {
         currentProfiles.map((profile) => ({
           ...profile,
           selected: profile.id === selectedProfile.id,
+          status: profile.id === selectedProfile.id ? selectedProfile.status : profile.status,
         })),
       );
+      if (selectedProfile.status === 'sidecar-kubernetes-active') {
+        const sidecarProfile = await getDesktopSidecarProfile();
+        if (!sidecarProfile) {
+          setDesktopKubernetesProfileMessage('kubernetes sidecar profile 읽기 실패');
+          return;
+        }
+        setDesktopSidecarProfile({
+          serverUrl: sidecarProfile.serverUrl,
+          source: sidecarProfile.source,
+          kubernetesProfileId: sidecarProfile.kubernetesProfileId,
+        });
+        storeAdminToken(sidecarProfile.adminToken);
+        setDesktopConnectionProfile(storeDesktopConnectionProfile(sidecarProfile.serverUrl));
+        setLiveUnlocked(true);
+        setSourceMode('live');
+        storeSourceMode('live');
+        setSelectedNodeId('');
+        setAutoRefresh(false);
+        setLiveSessionMessage(`desktop local sidecar 연결됨 · ${sidecarProfile.source} source`);
+        writeAppUrlState({ viewMode, sourceMode: 'live', resourceFilters: resourceUrlFilters }, 'push');
+        setDesktopKubernetesProfileMessage(`${selectedProfile.displayName} 연결됨 · token은 native/runtime file 경로만 사용`);
+        return;
+      }
+
       setDesktopKubernetesProfileMessage(`${selectedProfile.displayName} 선택됨 · secret은 native store에만 보관`);
     } catch {
       setDesktopKubernetesProfileMessage('keychain profile 선택 실패');
     }
-  }, []);
+  }, [resourceUrlFilters, setAutoRefresh, viewMode]);
 
   const handleDesktopKubernetesProfileCredentialDelete = useCallback(async (profileId: string) => {
     try {
@@ -415,11 +442,25 @@ function Dashboard() {
       setDesktopKubernetesProfiles((currentProfiles) =>
         currentProfiles.map((profile) => (profile.id === updatedProfile.id ? updatedProfile : profile)),
       );
+      if (desktopSidecarProfile?.kubernetesProfileId === updatedProfile.id) {
+        clearAdminToken();
+        setLiveUnlocked(false);
+        setAutoRefresh(false);
+        const sidecarProfile = await getDesktopSidecarProfile();
+        if (sidecarProfile) {
+          setDesktopSidecarProfile({
+            serverUrl: sidecarProfile.serverUrl,
+            source: sidecarProfile.source,
+            kubernetesProfileId: sidecarProfile.kubernetesProfileId,
+          });
+        }
+        setLiveSessionMessage('desktop keychain credential 삭제됨 · live token 재확인 필요');
+      }
       setDesktopKubernetesProfileMessage(`${updatedProfile.displayName} credential 삭제됨`);
     } catch {
       setDesktopKubernetesProfileMessage('credential 삭제 실패');
     }
-  }, []);
+  }, [desktopSidecarProfile?.kubernetesProfileId, setAutoRefresh]);
 
   const handleOpenTopologyNode = useCallback((nodeId: string) => {
     setFilters(initialFilters);

@@ -67,11 +67,13 @@ The desktop UI can show the detected local sidecar source next to the remote ser
 
 Direct desktop-to-cluster credentials are specified in [KEYCHAIN_CREDENTIAL_DESIGN.md](KEYCHAIN_CREDENTIAL_DESIGN.md). The design requires macOS Keychain and Windows Credential Manager for secret material, while browser `localStorage` may hold only safe profile ids/display metadata.
 
-The first runtime implementation should support bearer-token profiles through `KUVIEWER_KUBE_TOKEN_FILE` and optional CA files, not browser-side kubeconfig import. Runtime token/CA temp files must be outside the repository, owner-only where supported, and deleted when the sidecar stops.
+The first runtime implementation supports bearer-token profiles through `KUVIEWER_KUBE_TOKEN_FILE`, not browser-side kubeconfig import. Runtime token temp files must be outside the repository, owner-only where supported, and deleted when the sidecar stops.
 
 The current prototype adds safe metadata commands `desktop_kubernetes_profiles` and `desktop_select_kubernetes_profile`, plus `desktop_delete_kubernetes_profile_credential` for native credential removal. For metadata smoke testing, use `KUVIEWER_DESKTOP_KUBE_API_SERVER`, optional `KUVIEWER_DESKTOP_KUBE_PROFILE_ID`, and optional `KUVIEWER_DESKTOP_KUBE_PROFILE_NAME` as metadata-only inputs. Do not put bearer tokens, kubeconfig YAML, private keys, cloud credentials, or Secret values in those variables.
 
 For native OS store smoke, set `KUVIEWER_DESKTOP_KUBE_TOKEN_FILE` to a local token file path and `KUVIEWER_DESKTOP_KUBE_IMPORT_TOKEN_FILE=1` before startup. Rust reads the file, writes the token to macOS Keychain or Windows Credential Manager, and returns only safe metadata such as `credentialAvailable` to the UI. Keep token files outside the repository and delete local smoke files afterward.
+
+Selecting a stored profile restarts the local sidecar with `KUVIEWER_SOURCE=kubernetes`, `KUVIEWER_KUBE_API_SERVER`, and `KUVIEWER_KUBE_TOKEN_FILE`, then returns `sidecar-kubernetes-active` metadata to the UI. Runtime token files use `0600-temp-dir-delete-on-sidecar-stop`, so they should be outside the repository and cleaned on sidecar stop/restart.
 
 ## Icon Assets
 
