@@ -18,8 +18,8 @@ function requireCondition(condition, message) {
 requireCondition(spec.schemaVersion === 1, 'schemaVersion must be 1');
 requireCondition(spec.goal === 'installable-read-only-desktop-cluster-explorer', 'goal must describe the installable read-only desktop explorer');
 requireCondition(
-  ['packaging-spike', 'tauri-scaffold', 'macos-dmg-dry-run', 'windows-exe-dry-run', 'desktop-remote-profile-ux', 'desktop-release-versioning'].includes(spec.status),
-  'status must be packaging-spike, tauri-scaffold, macos-dmg-dry-run, windows-exe-dry-run, desktop-remote-profile-ux, or desktop-release-versioning'
+  ['packaging-spike', 'tauri-scaffold', 'macos-dmg-dry-run', 'windows-exe-dry-run', 'desktop-remote-profile-ux', 'desktop-release-versioning', 'desktop-signing-notarization'].includes(spec.status),
+  'status must be packaging-spike, tauri-scaffold, macos-dmg-dry-run, windows-exe-dry-run, desktop-remote-profile-ux, desktop-release-versioning, or desktop-signing-notarization'
 );
 requireCondition(spec.recommendedPackager === 'tauri', 'recommendedPackager must be tauri for the first packaging spike');
 requireCondition(spec.fallbackPackager === 'electron', 'fallbackPackager must be electron');
@@ -58,7 +58,7 @@ await validateRemoteConnectionProfile(spec);
 await validateReleaseVersioning(spec);
 validateDryRuns(spec);
 
-if (['tauri-scaffold', 'macos-dmg-dry-run', 'windows-exe-dry-run', 'desktop-remote-profile-ux', 'desktop-release-versioning'].includes(spec.status)) {
+if (['tauri-scaffold', 'macos-dmg-dry-run', 'windows-exe-dry-run', 'desktop-remote-profile-ux', 'desktop-release-versioning', 'desktop-signing-notarization'].includes(spec.status)) {
   await validateTauriScaffold(spec.tauri || {});
 }
 
@@ -191,15 +191,20 @@ async function validateBuildPrerequisites(spec) {
   await validateIcoFile('desktop/src-tauri/icons/icon.ico', 'generated Windows icon.ico');
 
   const signing = spec.signing || {};
-  requireCondition(signing.status === 'ci-scaffolded', 'signing.status must be ci-scaffolded once the manual workflow exists');
+  requireCondition(signing.status === 'ci-enabled', 'signing.status must be ci-enabled once the signed workflow path exists');
   requireCondition(signing.noCertificatesInRepo === true, 'signing.noCertificatesInRepo must be true');
   requireCondition(signing.noPrivateKeysInRepo === true, 'signing.noPrivateKeysInRepo must be true');
   requireCondition(signing.workflowPath === '.github/workflows/desktop-package.yml', 'signing.workflowPath must point at desktop-package workflow');
+  requireCondition(signing.signingConfigScript === 'scripts/configure-desktop-signing.mjs', 'signing.signingConfigScript must point at configure-desktop-signing');
   requireCondition(signing.manualOnly === true, 'signing.manualOnly must be true');
   requireCondition(signing.unsignedBuildDefault === true, 'signing.unsignedBuildDefault must be true');
   requireCondition(signing.signedBuildRequiresSecrets === true, 'signing.signedBuildRequiresSecrets must be true');
-  requireCondition(typeof signing.macos === 'string' && signing.macos.includes('CI secrets'), 'signing.macos must reference CI secrets or local keychain handling');
-  requireCondition(typeof signing.windows === 'string' && signing.windows.includes('CI secrets'), 'signing.windows must reference CI secrets handling');
+  requireCondition(typeof signing.macos === 'string' && signing.macos.includes('temporary GitHub runner keychain'), 'signing.macos must reference temporary runner keychain handling');
+  requireCondition(signing.macosMode === 'temporary-keychain-p12', 'signing.macosMode must be temporary-keychain-p12');
+  requireCondition(signing.macosNotarizationMode === 'apple-id-env', 'signing.macosNotarizationMode must be apple-id-env');
+  requireCondition(typeof signing.windows === 'string' && signing.windows.includes('CurrentUser certificate store'), 'signing.windows must reference CurrentUser certificate store handling');
+  requireCondition(signing.windowsMode === 'current-user-pfx-thumbprint', 'signing.windowsMode must be current-user-pfx-thumbprint');
+  requireCondition(signing.windowsTimestampUrlDefault === 'http://timestamp.digicert.com', 'signing.windowsTimestampUrlDefault must be http://timestamp.digicert.com');
   for (const secretName of ['APPLE_CERTIFICATE_BASE64', 'APPLE_CERTIFICATE_PASSWORD', 'APPLE_SIGNING_IDENTITY', 'APPLE_ID', 'APPLE_PASSWORD', 'APPLE_TEAM_ID']) {
     requireCondition(Array.isArray(signing.macosSecretNames) && signing.macosSecretNames.includes(secretName), `signing.macosSecretNames must include ${secretName}`);
   }
@@ -215,6 +220,42 @@ async function validateBuildPrerequisites(spec) {
   requireCondition(workflow.includes('npm run tauri:build -- --bundles nsis'), 'desktop package workflow must build nsis bundles');
   requireCondition(workflow.includes('${{ secrets.APPLE_CERTIFICATE_BASE64 }}'), 'desktop package workflow must read macOS signing secrets by name');
   requireCondition(workflow.includes('${{ secrets.WINDOWS_CERTIFICATE_BASE64 }}'), 'desktop package workflow must read Windows signing secrets by name');
+  for (const marker of [
+    'Import macOS signing certificate',
+    'Configure macOS signing',
+    'Build signed and notarized macOS dmg',
+    'Clean macOS signing keychain',
+    'security create-keychain',
+    'security import',
+    'APPLE_ID',
+    'APPLE_PASSWORD',
+    'APPLE_TEAM_ID',
+    'Import Windows signing certificate',
+    'Configure Windows signing',
+    'Build signed Windows exe',
+    'Clean Windows signing certificate',
+    'Import-PfxCertificate',
+    'WINDOWS_CERTIFICATE_THUMBPRINT',
+    'scripts/configure-desktop-signing.mjs --macos',
+    'scripts/configure-desktop-signing.mjs --windows',
+  ]) {
+    requireCondition(workflow.includes(marker), `desktop package workflow must include ${marker}`);
+  }
+
+  const signingConfigScript = await readTextFile(signing.signingConfigScript, 'desktop signing config script');
+  for (const marker of [
+    'APPLE_SIGNING_IDENTITY',
+    'WINDOWS_CERTIFICATE_THUMBPRINT',
+    'WINDOWS_TIMESTAMP_URL',
+    'WINDOWS_DIGEST_ALGORITHM',
+    'certificateThumbprint',
+    'signingIdentity',
+    '--macos',
+    '--windows',
+    '--dry-run',
+  ]) {
+    requireCondition(signingConfigScript.includes(marker), `desktop signing config script must include ${marker}`);
+  }
 
   const desktopReadme = await readTextFile('desktop/README.md', 'desktop README');
   const prerequisitesDoc = await readTextFile('desktop/BUILD_PREREQUISITES.md', 'desktop build prerequisites doc');
@@ -227,6 +268,7 @@ async function validateBuildPrerequisites(spec) {
   requireCondition(prerequisitesDoc.includes('Do not commit certificates'), 'desktop build prerequisites doc must state signing material is not committed');
   requireCondition(prerequisitesDoc.includes('node scripts/generate-desktop-icons.mjs'), 'desktop build prerequisites doc must mention icon generation');
   requireCondition(prerequisitesDoc.includes('node scripts/set-desktop-package-version.mjs'), 'desktop build prerequisites doc must mention release versioning');
+  requireCondition(prerequisitesDoc.includes('node scripts/configure-desktop-signing.mjs'), 'desktop build prerequisites doc must mention signing config');
   requireCondition(iconReadme.includes('icon.icns'), 'desktop icons README must describe icon.icns');
   requireCondition(iconReadme.includes('icon.ico'), 'desktop icons README must describe icon.ico');
 }

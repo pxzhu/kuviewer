@@ -95,9 +95,39 @@ GitHub Actions includes a `desktop-package` workflow for installer experiments:
 - manual `workflow_dispatch` only
 - unsigned macOS `.dmg` build by default
 - optional Windows `.exe` build
-- signing secret validation only when the `signed` input is enabled
+- signed macOS `.dmg` build with Apple Developer ID certificate import and Apple notarization credentials when `signed` is enabled
+- signed Windows NSIS `.exe` build with CurrentUser certificate-store import when `signed` is enabled
 
 The workflow references secret names only. Certificate files, private keys, passwords, kubeconfigs, admin tokens, cloud credentials, Secret values, Events, and logs must remain outside the repository.
+
+## Signing And Notarization
+
+Signed desktop package builds remain manual and secret-gated. Leave `signed` disabled for unsigned smoke builds.
+
+Required macOS secrets:
+
+- `APPLE_CERTIFICATE_BASE64`: base64-encoded Developer ID `.p12`
+- `APPLE_CERTIFICATE_PASSWORD`
+- `APPLE_SIGNING_IDENTITY`
+- `APPLE_ID`
+- `APPLE_PASSWORD`
+- `APPLE_TEAM_ID`
+
+When `signed` is enabled, the macOS job imports the `.p12` into a temporary GitHub runner keychain, configures the CI workspace Tauri config with the signing identity, runs the Tauri DMG build with Apple notarization environment variables, and deletes the temporary keychain afterward.
+
+Required Windows secrets:
+
+- `WINDOWS_CERTIFICATE_BASE64`: base64-encoded PFX
+- `WINDOWS_CERTIFICATE_PASSWORD`
+
+When `signed` is enabled, the Windows job imports the PFX into `Cert:\CurrentUser\My`, writes the imported certificate thumbprint into the CI workspace Tauri config, runs the Tauri NSIS build, and removes the certificate from the runner store afterward. `WINDOWS_TIMESTAMP_URL` can be set as a repository variable; if omitted, the workflow uses `http://timestamp.digicert.com`.
+
+The helper script is intentionally CI-workspace only:
+
+```bash
+APPLE_SIGNING_IDENTITY="Developer ID Application: Example" node scripts/configure-desktop-signing.mjs --macos --dry-run
+WINDOWS_CERTIFICATE_THUMBPRINT=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA node scripts/configure-desktop-signing.mjs --windows --dry-run
+```
 
 ## Verified Dry Runs
 

@@ -69,10 +69,17 @@ The generator uses macOS `sips` for resizing and writes ICNS/ICO containers dire
 
 Signing is secret-gated in the manual desktop packaging workflow and unsigned builds remain the default. Do not commit certificates, signing identities, password files, PFX files, private key material, kubeconfigs, admin tokens, cloud credentials, Secret values, Events, or logs.
 
-Future signing should use local keychains or CI secrets:
+Signed CI builds use temporary runner storage only:
 
-- macOS: Apple Developer ID certificate and notarization credentials.
-- Windows: Windows code-signing certificate on a Windows runner or from CI secrets.
+- macOS: `APPLE_CERTIFICATE_BASE64`, `APPLE_CERTIFICATE_PASSWORD`, `APPLE_SIGNING_IDENTITY`, `APPLE_ID`, `APPLE_PASSWORD`, and `APPLE_TEAM_ID` are required when `signed` is enabled. The workflow imports the Developer ID `.p12` into a temporary keychain, passes Apple notarization env vars to the Tauri build, and deletes the temporary keychain afterward.
+- Windows: `WINDOWS_CERTIFICATE_BASE64` and `WINDOWS_CERTIFICATE_PASSWORD` are required when `signed` is enabled. The workflow imports the PFX into the CurrentUser certificate store, injects the thumbprint into the CI workspace Tauri config, and removes the certificate afterward. Optional repository variable `WINDOWS_TIMESTAMP_URL` overrides the default timestamp server.
+
+Signing config is generated only in the local or CI workspace:
+
+```bash
+APPLE_SIGNING_IDENTITY="Developer ID Application: Example" node scripts/configure-desktop-signing.mjs --macos --dry-run
+WINDOWS_CERTIFICATE_THUMBPRINT=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA node scripts/configure-desktop-signing.mjs --windows --dry-run
+```
 
 Unsigned local test builds are acceptable for packaging development. Public installer release should wait until signing and notarization are explicitly configured and tested.
 

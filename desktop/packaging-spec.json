@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "name": "Kuviewer Desktop Cluster Explorer",
   "goal": "installable-read-only-desktop-cluster-explorer",
-  "status": "desktop-release-versioning",
+  "status": "desktop-signing-notarization",
   "recommendedPackager": "tauri",
   "fallbackPackager": "electron",
   "tauri": {
@@ -156,14 +156,17 @@
     "noCroppedCandidateImages": true
   },
   "signing": {
-    "status": "ci-scaffolded",
+    "status": "ci-enabled",
     "noCertificatesInRepo": true,
     "noPrivateKeysInRepo": true,
     "workflowPath": ".github/workflows/desktop-package.yml",
+    "signingConfigScript": "scripts/configure-desktop-signing.mjs",
     "manualOnly": true,
     "unsignedBuildDefault": true,
     "signedBuildRequiresSecrets": true,
-    "macos": "Use an Apple Developer ID certificate and notarization credentials from the local keychain or CI secrets only.",
+    "macos": "Import an Apple Developer ID .p12 from CI secrets into a temporary GitHub runner keychain, sign with the configured identity, and pass Apple notarization credentials through CI secrets only.",
+    "macosMode": "temporary-keychain-p12",
+    "macosNotarizationMode": "apple-id-env",
     "macosSecretNames": [
       "APPLE_CERTIFICATE_BASE64",
       "APPLE_CERTIFICATE_PASSWORD",
@@ -172,7 +175,9 @@
       "APPLE_PASSWORD",
       "APPLE_TEAM_ID"
     ],
-    "windows": "Use a Windows code-signing certificate from a Windows runner or CI secrets only.",
+    "windows": "Import a Windows PFX from CI secrets into the CurrentUser certificate store, inject the certificate thumbprint into the CI workspace Tauri config, and remove the certificate after packaging.",
+    "windowsMode": "current-user-pfx-thumbprint",
+    "windowsTimestampUrlDefault": "http://timestamp.digicert.com",
     "windowsSecretNames": [
       "WINDOWS_CERTIFICATE_BASE64",
       "WINDOWS_CERTIFICATE_PASSWORD"

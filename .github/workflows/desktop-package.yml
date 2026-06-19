@@ -14,7 +14,7 @@ on:
         default: false
         type: boolean
       signed:
-        description: Validate signing secrets before packaging
+        description: Build with code signing and macOS notarization secrets
         required: true
         default: false
         type: boolean
@@ -86,7 +86,7 @@ jobs:
         run: node scripts/set-desktop-package-version.mjs --github-output
 
       - name: Validate macOS signing secrets
-        if: inputs.signed
+        if: ${{ inputs.signed }}
         env:
           APPLE_CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
@@ -102,9 +102,58 @@ jobs:
           test -n "$APPLE_PASSWORD"
           test -n "$APPLE_TEAM_ID"
 
-      - name: Build macOS dmg
+      - name: Import macOS signing certificate
+        if: ${{ inputs.signed }}
+        shell: bash
+        env:
+          APPLE_CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+        run: |
+          KEYCHAIN_PATH="$RUNNER_TEMP/kuviewer-signing.keychain-db"
+          KEYCHAIN_PASSWORD="$(openssl rand -hex 32)"
+          CERTIFICATE_PATH="$RUNNER_TEMP/kuviewer-apple-certificate.p12"
+
+          printf '%s' "$APPLE_CERTIFICATE_BASE64" | base64 --decode > "$CERTIFICATE_PATH"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security import "$CERTIFICATE_PATH" -P "$APPLE_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH" -T /usr/bin/codesign -T /usr/bin/security
+          security list-keychains -d user -s "$KEYCHAIN_PATH" $(security list-keychains -d user | sed 's/[ "]//g')
+          security default-keychain -s "$KEYCHAIN_PATH"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          rm -f "$CERTIFICATE_PATH"
+
+          echo "KUVIEWER_MACOS_KEYCHAIN_PATH=$KEYCHAIN_PATH" >> "$GITHUB_ENV"
+
+      - name: Configure macOS signing
+        if: ${{ inputs.signed }}
+        env:
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+        run: node scripts/configure-desktop-signing.mjs --macos
+
+      - name: Build unsigned macOS dmg
+        if: ${{ !inputs.signed }}
         working-directory: desktop
         run: npm run tauri:build -- --bundles dmg
+
+      - name: Build signed and notarized macOS dmg
+        if: ${{ inputs.signed }}
+        working-directory: desktop
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+        run: npm run tauri:build -- --bundles dmg
+
+      - name: Clean macOS signing keychain
+        if: ${{ always() && inputs.signed }}
+        shell: bash
+        run: |
+          if [ -n "${KUVIEWER_MACOS_KEYCHAIN_PATH:-}" ]; then
+            security delete-keychain "$KUVIEWER_MACOS_KEYCHAIN_PATH" || true
+          fi
+          rm -f "$RUNNER_TEMP/kuviewer-apple-certificate.p12"
 
       - name: Upload macOS artifact
         uses: actions/upload-artifact@v4
@@ -149,7 +198,7 @@ jobs:
         run: node scripts/set-desktop-package-version.mjs --github-output
 
       - name: Validate Windows signing secrets
-        if: inputs.signed
+        if: ${{ inputs.signed }}
         shell: bash
         env:
           WINDOWS_CERTIFICATE_BASE64: ${{ secrets.WINDOWS_CERTIFICATE_BASE64 }}
@@ -158,9 +207,49 @@ jobs:
           test -n "$WINDOWS_CERTIFICATE_BASE64"
           test -n "$WINDOWS_CERTIFICATE_PASSWORD"
 
-      - name: Build Windows exe
+      - name: Import Windows signing certificate
+        if: ${{ inputs.signed }}
+        shell: pwsh
+        env:
+          WINDOWS_CERTIFICATE_BASE64: ${{ secrets.WINDOWS_CERTIFICATE_BASE64 }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+        run: |
+          $certificatePath = Join-Path $env:RUNNER_TEMP "kuviewer-windows-certificate.pfx"
+          [IO.File]::WriteAllBytes($certificatePath, [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE_BASE64))
+          $securePassword = ConvertTo-SecureString -String $env:WINDOWS_CERTIFICATE_PASSWORD -Force -AsPlainText
+          $certificate = Import-PfxCertificate -FilePath $certificatePath -CertStoreLocation Cert:\CurrentUser\My -Password $securePassword
+          if (-not $certificate.Thumbprint) {
+            throw "Imported Windows signing certificate did not expose a thumbprint"
+          }
+          "WINDOWS_CERTIFICATE_THUMBPRINT=$($certificate.Thumbprint)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          Remove-Item -Force $certificatePath
+
+      - name: Configure Windows signing
+        if: ${{ inputs.signed }}
+        env:
+          WINDOWS_TIMESTAMP_URL: ${{ vars.WINDOWS_TIMESTAMP_URL }}
+        run: node scripts/configure-desktop-signing.mjs --windows
+
+      - name: Build unsigned Windows exe
+        if: ${{ !inputs.signed }}
         working-directory: desktop
         run: npm run tauri:build -- --bundles nsis
+
+      - name: Build signed Windows exe
+        if: ${{ inputs.signed }}
+        working-directory: desktop
+        run: npm run tauri:build -- --bundles nsis
+
+      - name: Clean Windows signing certificate
+        if: ${{ always() && inputs.signed }}
+        shell: pwsh
+        run: |
+          if ($env:WINDOWS_CERTIFICATE_THUMBPRINT) {
+            Get-ChildItem Cert:\CurrentUser\My |
+              Where-Object { $_.Thumbprint -eq $env:WINDOWS_CERTIFICATE_THUMBPRINT } |
+              Remove-Item -Force
+          }
+          Remove-Item -Force -ErrorAction SilentlyContinue (Join-Path $env:RUNNER_TEMP "kuviewer-windows-certificate.pfx")
 
       - name: Upload Windows artifact
         uses: actions/upload-artifact@v4
