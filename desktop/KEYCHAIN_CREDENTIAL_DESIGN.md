@@ -2,7 +2,7 @@
 
 This document defines the first credential boundary for a future installable Kuviewer desktop app that connects directly to a Kubernetes API server through the local sidecar.
 
-The current implementation does not store Kubernetes credentials yet. This design is the guardrail for that future runtime work.
+The current implementation includes a safe runtime metadata prototype. It can expose desktop Kubernetes profile metadata through native Tauri commands, but it still does not store, read, or hand off Kubernetes credentials from macOS Keychain or Windows Credential Manager.
 
 ## Goals
 
@@ -68,6 +68,21 @@ When the user selects a keychain-backed Kubernetes profile:
 
 Desktop runtime code should avoid `KUVIEWER_KUBE_BEARER_TOKEN` for keychain-backed profiles because process environment values are easier to inspect than private temp files.
 
+## Runtime Metadata Prototype
+
+The current desktop shell exposes only safe profile metadata through native Tauri commands:
+
+- `desktop_kubernetes_profiles`: returns profile id, display name, API server URL, auth type, credential store label, selected state, and status.
+- `desktop_select_kubernetes_profile`: marks a known metadata profile as selected and returns the same safe metadata shape.
+
+For local smoke testing, Rust may create one metadata-only profile from these safe environment variables:
+
+- `KUVIEWER_DESKTOP_KUBE_API_SERVER`
+- `KUVIEWER_DESKTOP_KUBE_PROFILE_ID`
+- `KUVIEWER_DESKTOP_KUBE_PROFILE_NAME`
+
+Those variables must not contain bearer tokens, kubeconfig content, client keys, cloud credentials, or Secret values. The prototype labels this fixture as `runtime-env-metadata-fixture` and keeps OS credential read/write and sidecar restart as future work.
+
 ## Security Rules
 
 - Browser `localStorage` remains URL/profile metadata only.
@@ -105,4 +120,3 @@ The repository check should verify:
 - desktop docs mention macOS Keychain and Windows Credential Manager
 - keychain-backed runtime uses token file handoff rather than browser token persistence
 - generated credentials, temp files, kubeconfigs, private keys, Secret values, Events, and logs are not committed
-

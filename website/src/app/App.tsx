@@ -3,11 +3,14 @@ import { Boxes, GitBranch, LockKeyhole, Palette, Pause, Play, RefreshCw, SearchC
 import { clearAdminToken, getStoredAdminToken, isValidAdminToken, storeAdminToken } from '../features/auth/adminToken';
 import {
   getDesktopConnectionProfile,
+  getDesktopKubernetesProfiles,
   getDesktopSidecarProfile,
   isDesktopRuntime,
+  selectDesktopKubernetesProfile,
   storeDesktopConnectionProfile,
   subscribeDesktopConnectionProfile,
   type DesktopConnectionProfile,
+  type DesktopKubernetesProfile,
   type DesktopSidecarStatus,
 } from '../features/desktop/desktopConnectionProfile';
 import { useConnectorStatus } from '../features/status/useConnectorStatus';
@@ -66,6 +69,8 @@ function Dashboard() {
   const [resourceUrlFilters, setResourceUrlFilters] = useState<ResourceViewFilters>(() => initialResourceViewFilters());
   const [desktopConnectionAvailable] = useState(() => isDesktopRuntime());
   const [desktopConnectionProfile, setDesktopConnectionProfile] = useState<DesktopConnectionProfile | null>(() => getDesktopConnectionProfile());
+  const [desktopKubernetesProfiles, setDesktopKubernetesProfiles] = useState<DesktopKubernetesProfile[]>([]);
+  const [desktopKubernetesProfileMessage, setDesktopKubernetesProfileMessage] = useState('');
   const [desktopSidecarProfile, setDesktopSidecarProfile] = useState<DesktopSidecarStatus | null>(null);
   const [liveUnlocked, setLiveUnlocked] = useState(() => isValidAdminToken(getStoredAdminToken()));
   const [uploadedState, setUploadedState] = useState<UploadedTopologyState | null>(null);
@@ -142,6 +147,32 @@ function Dashboard() {
         if (!cancelled) {
           setDesktopSidecarProfile(null);
           setLiveSessionMessage('desktop local sidecar 시작 안 됨 · remote profile 사용 가능');
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [desktopConnectionAvailable]);
+
+  useEffect(() => {
+    if (!desktopConnectionAvailable) {
+      return;
+    }
+
+    let cancelled = false;
+    void getDesktopKubernetesProfiles()
+      .then((profiles) => {
+        if (cancelled) {
+          return;
+        }
+        setDesktopKubernetesProfiles(profiles);
+        setDesktopKubernetesProfileMessage(profiles.length > 0 ? 'keychain metadata 준비됨' : 'keychain profile 없음');
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setDesktopKubernetesProfiles([]);
+          setDesktopKubernetesProfileMessage('keychain metadata 읽기 실패');
         }
       });
 
@@ -352,6 +383,26 @@ function Dashboard() {
     }
   }, [resourceUrlFilters, setAutoRefresh, viewMode]);
 
+  const handleDesktopKubernetesProfileSelect = useCallback(async (profileId: string) => {
+    try {
+      const selectedProfile = await selectDesktopKubernetesProfile(profileId);
+      if (!selectedProfile) {
+        setDesktopKubernetesProfileMessage('keychain profile 선택 실패');
+        return;
+      }
+
+      setDesktopKubernetesProfiles((currentProfiles) =>
+        currentProfiles.map((profile) => ({
+          ...profile,
+          selected: profile.id === selectedProfile.id,
+        })),
+      );
+      setDesktopKubernetesProfileMessage(`${selectedProfile.displayName} 선택됨 · secret은 native store에만 보관`);
+    } catch {
+      setDesktopKubernetesProfileMessage('keychain profile 선택 실패');
+    }
+  }, []);
+
   const handleOpenTopologyNode = useCallback((nodeId: string) => {
     setFilters(initialFilters);
     setSelectedNodeId(nodeId);
@@ -501,6 +552,8 @@ function Dashboard() {
           canExport={snapshot.nodes.length > 0 || snapshot.edges.length > 0}
           desktopConnectionAvailable={desktopConnectionAvailable}
           desktopConnectionProfile={desktopConnectionProfile}
+          desktopKubernetesProfileMessage={desktopKubernetesProfileMessage}
+          desktopKubernetesProfiles={desktopKubernetesProfiles}
           desktopSidecarProfile={desktopSidecarProfile}
           liveSessionMessage={liveSessionMessage}
           liveUnlocked={liveUnlocked}
@@ -510,6 +563,7 @@ function Dashboard() {
           uploadedState={uploadedState}
           uploadError={uploadError}
           onDesktopConnectionProfileChange={handleDesktopConnectionProfileChange}
+          onDesktopKubernetesProfileSelect={handleDesktopKubernetesProfileSelect}
           onExportJson={handleExportJson}
           onImportJson={handleImportJson}
           onLiveLock={handleLiveLock}

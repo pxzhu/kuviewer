@@ -17,10 +17,24 @@ struct DesktopSidecarProfile {
     source: String,
 }
 
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DesktopKubernetesProfileMetadata {
+    id: String,
+    display_name: String,
+    api_server: String,
+    auth_type: String,
+    credential_store: String,
+    selected: bool,
+    status: String,
+}
+
 #[derive(Default)]
 struct DesktopSidecarState {
     child: Mutex<Option<CommandChild>>,
     profile: Mutex<Option<DesktopSidecarProfile>>,
+    kubernetes_profiles: Mutex<Vec<DesktopKubernetesProfileMetadata>>,
+    selected_kubernetes_profile_id: Mutex<Option<String>>,
 }
 
 #[tauri::command]
@@ -28,12 +42,64 @@ fn desktop_sidecar_profile(state: State<'_, DesktopSidecarState>) -> Option<Desk
     state.profile.lock().ok().and_then(|profile| profile.clone())
 }
 
+#[tauri::command]
+fn desktop_kubernetes_profiles(state: State<'_, DesktopSidecarState>) -> Vec<DesktopKubernetesProfileMetadata> {
+    let selected_id = state
+        .selected_kubernetes_profile_id
+        .lock()
+        .ok()
+        .and_then(|selected| selected.clone());
+
+    state
+        .kubernetes_profiles
+        .lock()
+        .map(|profiles| {
+            profiles
+                .iter()
+                .map(|profile| profile_with_selected(profile, selected_id.as_deref()))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+#[tauri::command]
+fn desktop_select_kubernetes_profile(
+    profile_id: String,
+    state: State<'_, DesktopSidecarState>,
+) -> Result<DesktopKubernetesProfileMetadata, String> {
+    let profile_id = profile_id.trim();
+    if profile_id.is_empty() {
+        return Err("desktop_kubernetes_profile_required".to_string());
+    }
+
+    let profile = {
+        let profiles = state
+            .kubernetes_profiles
+            .lock()
+            .map_err(|_| "desktop_kubernetes_profiles_unavailable".to_string())?;
+        profiles.iter().find(|profile| profile.id == profile_id).cloned()
+    }
+    .ok_or_else(|| "desktop_kubernetes_profile_not_found".to_string())?;
+
+    let mut selected_profile = profile.clone();
+    selected_profile.selected = true;
+    if let Ok(mut selected_id) = state.selected_kubernetes_profile_id.lock() {
+        *selected_id = Some(profile.id);
+    }
+    Ok(selected_profile)
+}
+
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .manage(DesktopSidecarState::default())
-        .invoke_handler(tauri::generate_handler![desktop_sidecar_profile])
+        .invoke_handler(tauri::generate_handler![
+            desktop_sidecar_profile,
+            desktop_kubernetes_profiles,
+            desktop_select_kubernetes_profile
+        ])
         .setup(|app| {
+            initialize_desktop_kubernetes_profiles(app.handle());
             if let Err(error) = start_desktop_sidecar(app.handle()) {
                 eprintln!("kuviewer desktop sidecar not started: {error}");
             }
@@ -107,6 +173,54 @@ fn start_desktop_sidecar(app: &tauri::AppHandle) -> Result<(), Box<dyn std::erro
     });
 
     Ok(())
+}
+
+fn initialize_desktop_kubernetes_profiles(app: &tauri::AppHandle) {
+    let profiles = load_desktop_kubernetes_profiles_from_env();
+    let selected_profile_id = profiles.first().map(|profile| profile.id.clone());
+    let state = app.state::<DesktopSidecarState>();
+    if let Ok(mut stored_profiles) = state.kubernetes_profiles.lock() {
+        *stored_profiles = profiles;
+    }
+    if let Ok(mut selected) = state.selected_kubernetes_profile_id.lock() {
+        *selected = selected_profile_id;
+    }
+}
+
+fn load_desktop_kubernetes_profiles_from_env() -> Vec<DesktopKubernetesProfileMetadata> {
+    let Some(api_server) = read_safe_env("KUVIEWER_DESKTOP_KUBE_API_SERVER") else {
+        return Vec::new();
+    };
+
+    let id =
+        read_safe_env("KUVIEWER_DESKTOP_KUBE_PROFILE_ID").unwrap_or_else(|| "env-bearer-profile".to_string());
+    let display_name = read_safe_env("KUVIEWER_DESKTOP_KUBE_PROFILE_NAME")
+        .unwrap_or_else(|| "Environment bearer profile".to_string());
+    vec![DesktopKubernetesProfileMetadata {
+        id,
+        display_name,
+        api_server,
+        auth_type: "bearer-token".to_string(),
+        credential_store: "runtime-env-metadata-fixture".to_string(),
+        selected: true,
+        status: "metadata-only".to_string(),
+    }]
+}
+
+fn read_safe_env(name: &str) -> Option<String> {
+    std::env::var(name)
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+}
+
+fn profile_with_selected(
+    profile: &DesktopKubernetesProfileMetadata,
+    selected_id: Option<&str>,
+) -> DesktopKubernetesProfileMetadata {
+    let mut next_profile = profile.clone();
+    next_profile.selected = selected_id.is_some_and(|id| id == profile.id);
+    next_profile
 }
 
 fn stop_desktop_sidecar(app: &tauri::AppHandle) {
