@@ -41,6 +41,7 @@ interface SourceModeBarProps {
   onImportJson: (file: File) => void;
   onExportJson: () => void;
   onDesktopConnectionProfileChange: (profile: DesktopConnectionProfile | null) => void;
+  onDesktopKubernetesProfileCredentialDelete: (profileId: string) => void;
   onDesktopKubernetesProfileSelect: (profileId: string) => void;
   onUseDesktopSidecar: () => void;
   onLiveUnlock: () => void;
@@ -74,6 +75,7 @@ export function SourceModeBar({
   onImportJson,
   onExportJson,
   onDesktopConnectionProfileChange,
+  onDesktopKubernetesProfileCredentialDelete,
   onDesktopKubernetesProfileSelect,
   onUseDesktopSidecar,
   onLiveUnlock,
@@ -252,6 +254,7 @@ export function SourceModeBar({
           <DesktopKubernetesProfilePanel
             message={desktopKubernetesProfileMessage}
             profiles={desktopKubernetesProfiles}
+            onDeleteCredential={onDesktopKubernetesProfileCredentialDelete}
             onSelectProfile={onDesktopKubernetesProfileSelect}
           />
         </>
