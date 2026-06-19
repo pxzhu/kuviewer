@@ -69,6 +69,8 @@ Direct desktop-to-cluster credentials are specified in [KEYCHAIN_CREDENTIAL_DESI
 
 The first runtime implementation should support bearer-token profiles through `KUVIEWER_KUBE_TOKEN_FILE` and optional CA files, not browser-side kubeconfig import. Runtime token/CA temp files must be outside the repository, owner-only where supported, and deleted when the sidecar stops.
 
+The current prototype adds safe metadata commands only: `desktop_kubernetes_profiles` and `desktop_select_kubernetes_profile`. For smoke testing, use `KUVIEWER_DESKTOP_KUBE_API_SERVER`, optional `KUVIEWER_DESKTOP_KUBE_PROFILE_ID`, and optional `KUVIEWER_DESKTOP_KUBE_PROFILE_NAME` as metadata-only inputs. Do not put bearer tokens, kubeconfig YAML, private keys, cloud credentials, or Secret values in those variables.
+
 ## Icon Assets
 
 The current source icons are the transparent YAML Flow app icons already used by the web app:

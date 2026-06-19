@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "name": "Kuviewer Desktop Cluster Explorer",
   "goal": "installable-read-only-desktop-cluster-explorer",
-  "status": "desktop-keychain-credential-design",
+  "status": "desktop-keychain-profile-runtime",
   "recommendedPackager": "tauri",
   "fallbackPackager": "electron",
   "tauri": {
@@ -133,7 +133,7 @@
     }
   },
   "credentialStorageDesign": {
-    "status": "design-scaffolded",
+    "status": "runtime-metadata-prototype",
     "documentPath": "desktop/KEYCHAIN_CREDENTIAL_DESIGN.md",
     "firstRuntimeScope": "bearer-token-only",
     "browserCredentialEntry": false,
@@ -147,7 +147,20 @@
     "tempFilePolicy": "0600-runtime-delete-on-exit",
     "noKubeconfigPersistence": true,
     "noSecretValues": true,
-    "noOperationalActions": true
+    "noOperationalActions": true,
+    "runtimePrototype": {
+      "metadataCommand": "desktop_kubernetes_profiles",
+      "selectCommand": "desktop_select_kubernetes_profile",
+      "uiPanel": "DesktopKubernetesProfilePanel",
+      "secretReadWriteImplemented": false,
+      "sidecarRestartImplemented": false,
+      "browserReceivesSecrets": false,
+      "envMetadataFixture": [
+        "KUVIEWER_DESKTOP_KUBE_API_SERVER",
+        "KUVIEWER_DESKTOP_KUBE_PROFILE_ID",
+        "KUVIEWER_DESKTOP_KUBE_PROFILE_NAME"
+      ]
+    }
   },
   "buildPrerequisites": [
     {
@@ -335,6 +348,7 @@
     "local-sidecar-evaluation",
     "local-sidecar-runtime",
     "keychain-credential-design",
+    "keychain-profile-runtime",
     "macos-dmg-build",
     "windows-exe-build",
     "signing-and-release"

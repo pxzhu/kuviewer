@@ -171,6 +171,8 @@ The next direct-cluster desktop path is documented in [KEYCHAIN_CREDENTIAL_DESIG
 
 The first runtime scope is bearer-token Kubernetes profiles. Rust should read the selected OS credential, create private runtime temp files, pass `KUVIEWER_KUBE_TOKEN_FILE` / optional `KUVIEWER_KUBE_CA_FILE` to the localhost sidecar, and delete those temp files on shutdown. Browser `localStorage` remains safe profile metadata only, and operational actions remain out of scope.
 
+The current runtime prototype stops before secret handling. It exposes safe metadata through `desktop_kubernetes_profiles` and `desktop_select_kubernetes_profile`, and the UI renders that metadata in `DesktopKubernetesProfilePanel`. Local smoke tests can provide metadata only with `KUVIEWER_DESKTOP_KUBE_API_SERVER`, optional `KUVIEWER_DESKTOP_KUBE_PROFILE_ID`, and optional `KUVIEWER_DESKTOP_KUBE_PROFILE_NAME`. Bearer tokens, kubeconfig bodies, private keys, cloud credentials, and Secret values must not be passed through those variables or browser state.
+
 ## Verified Dry Runs
 
 The first unsigned macOS package dry-run completed on 2026-06-19 through GitHub Actions run `27800527207`.

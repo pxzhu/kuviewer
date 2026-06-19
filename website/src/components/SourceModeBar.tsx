@@ -13,15 +13,18 @@ import {
   UploadCloud,
 } from 'lucide-react';
 import { clearAdminToken, getStoredAdminToken, storeAdminToken } from '../features/auth/adminToken';
-import type { DesktopConnectionProfile, DesktopSidecarStatus } from '../features/desktop/desktopConnectionProfile';
+import type { DesktopConnectionProfile, DesktopKubernetesProfile, DesktopSidecarStatus } from '../features/desktop/desktopConnectionProfile';
 import type { TopologySourceMode } from '../features/topology/useTopology';
 import type { UploadedTopologyState } from '../features/upload/parseKubernetesFiles';
 import { fetchConnectorStatusWithToken } from '../services/statusApi';
 import { DesktopConnectionProfilePanel } from './DesktopConnectionProfilePanel';
+import { DesktopKubernetesProfilePanel } from './DesktopKubernetesProfilePanel';
 
 interface SourceModeBarProps {
   desktopConnectionAvailable: boolean;
   desktopConnectionProfile: DesktopConnectionProfile | null;
+  desktopKubernetesProfileMessage: string;
+  desktopKubernetesProfiles: DesktopKubernetesProfile[];
   desktopSidecarProfile: DesktopSidecarStatus | null;
   mode: TopologySourceMode;
   liveUnlocked: boolean;
@@ -38,6 +41,7 @@ interface SourceModeBarProps {
   onImportJson: (file: File) => void;
   onExportJson: () => void;
   onDesktopConnectionProfileChange: (profile: DesktopConnectionProfile | null) => void;
+  onDesktopKubernetesProfileSelect: (profileId: string) => void;
   onUseDesktopSidecar: () => void;
   onLiveUnlock: () => void;
   onLiveLock: () => void;
@@ -52,6 +56,8 @@ const modeOptions: Array<{ mode: TopologySourceMode; label: string; icon: typeof
 export function SourceModeBar({
   desktopConnectionAvailable,
   desktopConnectionProfile,
+  desktopKubernetesProfileMessage,
+  desktopKubernetesProfiles,
   desktopSidecarProfile,
   mode,
   liveUnlocked,
@@ -68,6 +74,7 @@ export function SourceModeBar({
   onImportJson,
   onExportJson,
   onDesktopConnectionProfileChange,
+  onDesktopKubernetesProfileSelect,
   onUseDesktopSidecar,
   onLiveUnlock,
   onLiveLock,
@@ -235,12 +242,19 @@ export function SourceModeBar({
       ) : null}
 
       {desktopConnectionAvailable ? (
-        <DesktopConnectionProfilePanel
-          profile={desktopConnectionProfile}
-          sidecarProfile={desktopSidecarProfile}
-          onProfileChange={onDesktopConnectionProfileChange}
-          onUseSidecar={onUseDesktopSidecar}
-        />
+        <>
+          <DesktopConnectionProfilePanel
+            profile={desktopConnectionProfile}
+            sidecarProfile={desktopSidecarProfile}
+            onProfileChange={onDesktopConnectionProfileChange}
+            onUseSidecar={onUseDesktopSidecar}
+          />
+          <DesktopKubernetesProfilePanel
+            message={desktopKubernetesProfileMessage}
+            profiles={desktopKubernetesProfiles}
+            onSelectProfile={onDesktopKubernetesProfileSelect}
+          />
+        </>
       ) : null}
 
       <input
