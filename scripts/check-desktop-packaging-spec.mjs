@@ -18,8 +18,8 @@ function requireCondition(condition, message) {
 requireCondition(spec.schemaVersion === 1, 'schemaVersion must be 1');
 requireCondition(spec.goal === 'installable-read-only-desktop-cluster-explorer', 'goal must describe the installable read-only desktop explorer');
 requireCondition(
-  ['packaging-spike', 'tauri-scaffold', 'macos-dmg-dry-run', 'windows-exe-dry-run', 'desktop-remote-profile-ux', 'desktop-release-versioning', 'desktop-signing-notarization'].includes(spec.status),
-  'status must be packaging-spike, tauri-scaffold, macos-dmg-dry-run, windows-exe-dry-run, desktop-remote-profile-ux, desktop-release-versioning, or desktop-signing-notarization'
+  ['packaging-spike', 'tauri-scaffold', 'macos-dmg-dry-run', 'windows-exe-dry-run', 'desktop-remote-profile-ux', 'desktop-release-versioning', 'desktop-signing-notarization', 'desktop-local-sidecar-evaluation'].includes(spec.status),
+  'status must be packaging-spike, tauri-scaffold, macos-dmg-dry-run, windows-exe-dry-run, desktop-remote-profile-ux, desktop-release-versioning, desktop-signing-notarization, or desktop-local-sidecar-evaluation'
 );
 requireCondition(spec.recommendedPackager === 'tauri', 'recommendedPackager must be tauri for the first packaging spike');
 requireCondition(spec.fallbackPackager === 'electron', 'fallbackPackager must be electron');
@@ -56,9 +56,10 @@ requireCondition(phases.includes('windows-exe-build'), 'phaseOrder must include 
 await validateBuildPrerequisites(spec);
 await validateRemoteConnectionProfile(spec);
 await validateReleaseVersioning(spec);
+await validateLocalSidecar(spec);
 validateDryRuns(spec);
 
-if (['tauri-scaffold', 'macos-dmg-dry-run', 'windows-exe-dry-run', 'desktop-remote-profile-ux', 'desktop-release-versioning', 'desktop-signing-notarization'].includes(spec.status)) {
+if (['tauri-scaffold', 'macos-dmg-dry-run', 'windows-exe-dry-run', 'desktop-remote-profile-ux', 'desktop-release-versioning', 'desktop-signing-notarization', 'desktop-local-sidecar-evaluation'].includes(spec.status)) {
   await validateTauriScaffold(spec.tauri || {});
 }
 
@@ -368,6 +369,88 @@ async function validateReleaseVersioning(spec) {
   const desktopReadme = await readTextFile('desktop/README.md', 'desktop README');
   requireCondition(desktopReadme.includes('Release Versioning'), 'desktop README must document release versioning');
   requireCondition(desktopReadme.includes('package_version'), 'desktop README must document package_version input');
+}
+
+async function validateLocalSidecar(spec) {
+  const localSidecar = spec.localSidecar || {};
+  requireCondition(localSidecar.status === 'evaluated-scaffold', 'localSidecar.status must be evaluated-scaffold');
+  requireCondition(localSidecar.enabledInTauriConfig === false, 'localSidecar.enabledInTauriConfig must stay false until runtime launch is implemented');
+  requireCondition(localSidecar.capabilityChangeDeferred === true, 'localSidecar.capabilityChangeDeferred must be true');
+  requireCondition(localSidecar.requiresShellPluginLater === true, 'localSidecar.requiresShellPluginLater must be true');
+  requireCondition(localSidecar.buildScript === 'scripts/build-desktop-sidecar.mjs', 'localSidecar.buildScript must point at build-desktop-sidecar');
+  requireCondition(localSidecar.sourcePackage === 'server/cmd/kuviewer-server', 'localSidecar.sourcePackage must be server/cmd/kuviewer-server');
+  requireCondition(localSidecar.outputDir === 'desktop/src-tauri/binaries', 'localSidecar.outputDir must be desktop/src-tauri/binaries');
+  requireCondition(localSidecar.binaryBaseName === 'kuviewer-sidecar', 'localSidecar.binaryBaseName must be kuviewer-sidecar');
+  requireCondition(localSidecar.tauriExternalBinCandidate === 'binaries/kuviewer-sidecar', 'localSidecar.tauriExternalBinCandidate must be binaries/kuviewer-sidecar');
+  requireCondition(localSidecar.gitIgnoredOutput === true, 'localSidecar.gitIgnoredOutput must be true');
+
+  const targetMap = new Map((Array.isArray(localSidecar.targets) ? localSidecar.targets : []).map((target) => [target.targetTriple, target]));
+  const expectedTargets = [
+    ['aarch64-apple-darwin', 'darwin', 'arm64'],
+    ['x86_64-apple-darwin', 'darwin', 'amd64'],
+    ['x86_64-pc-windows-msvc', 'windows', 'amd64'],
+    ['aarch64-pc-windows-msvc', 'windows', 'arm64'],
+  ];
+  for (const [targetTriple, goos, goarch] of expectedTargets) {
+    const target = targetMap.get(targetTriple);
+    requireCondition(Boolean(target), `localSidecar.targets must include ${targetTriple}`);
+    if (target) {
+      requireCondition(target.goos === goos, `localSidecar target ${targetTriple} goos must be ${goos}`);
+      requireCondition(target.goarch === goarch, `localSidecar target ${targetTriple} goarch must be ${goarch}`);
+    }
+  }
+
+  const runtime = localSidecar.runtime || {};
+  requireCondition(runtime.launchMode === 'future-rust-managed-sidecar', 'localSidecar.runtime.launchMode must be future-rust-managed-sidecar');
+  requireCondition(runtime.listenAddr === '127.0.0.1:18086', 'localSidecar.runtime.listenAddr must be 127.0.0.1:18086');
+  requireCondition(runtime.adminToken === 'generated-per-launch-memory-only', 'localSidecar.runtime.adminToken must be generated-per-launch-memory-only');
+  requireCondition(runtime.serverSource === 'kubernetes', 'localSidecar.runtime.serverSource must be kubernetes');
+  requireCondition(runtime.staticDir === 'disabled-for-sidecar-api', 'localSidecar.runtime.staticDir must be disabled-for-sidecar-api');
+  requireCondition(runtime.resourceViewsStore === 'runtime-memory-unless-user-configured-later', 'localSidecar.runtime.resourceViewsStore must be runtime-memory-unless-user-configured-later');
+
+  const sidecarSecurity = localSidecar.security || {};
+  requireCondition(sidecarSecurity.loopbackOnly === true, 'localSidecar.security.loopbackOnly must be true');
+  requireCondition(sidecarSecurity.noBrowserKubeCredentialEntry === true, 'localSidecar.security.noBrowserKubeCredentialEntry must be true');
+  requireCondition(sidecarSecurity.noKubeconfigPersistence === true, 'localSidecar.security.noKubeconfigPersistence must be true');
+  requireCondition(sidecarSecurity.noAdminTokenPersistence === true, 'localSidecar.security.noAdminTokenPersistence must be true');
+  requireCondition(sidecarSecurity.noSecretValues === true, 'localSidecar.security.noSecretValues must be true');
+  requireCondition(sidecarSecurity.noOperationalActions === true, 'localSidecar.security.noOperationalActions must be true');
+  requireCondition(sidecarSecurity.noCommittedBinaries === true, 'localSidecar.security.noCommittedBinaries must be true');
+
+  const sidecarBuildScript = await readTextFile(localSidecar.buildScript, 'desktop sidecar build script');
+  for (const marker of [
+    'server/cmd/kuviewer-server',
+    'desktop/src-tauri/binaries',
+    'kuviewer-sidecar',
+    'tauriExternalBinCandidate',
+    'GOOS',
+    'GOARCH',
+    'CGO_ENABLED',
+    '--target',
+    '--dry-run',
+    '--list-targets',
+    'aarch64-apple-darwin',
+    'x86_64-pc-windows-msvc',
+  ]) {
+    requireCondition(sidecarBuildScript.includes(marker), `desktop sidecar build script must include ${marker}`);
+  }
+
+  const tauriConfig = await readJsonFile(spec.tauri?.configPath, 'tauri.configPath');
+  requireCondition(!JSON.stringify(tauriConfig?.bundle || {}).includes('externalBin'), 'tauri config must not enable externalBin until sidecar runtime is implemented');
+
+  const capability = await readJsonFile(spec.tauri?.capabilityPath, 'tauri.capabilityPath');
+  requireCondition(!JSON.stringify(capability).includes('shell:'), 'desktop capability must not enable shell sidecar permission during evaluation');
+
+  const gitignore = await readTextFile('.gitignore', '.gitignore');
+  requireCondition(gitignore.includes('desktop/src-tauri/binaries/'), '.gitignore must exclude generated sidecar binaries');
+
+  const ciWorkflow = await readTextFile('.github/workflows/ci.yml', 'ci workflow');
+  requireCondition(ciWorkflow.includes('node scripts/build-desktop-sidecar.mjs --target aarch64-apple-darwin --dry-run'), 'ci workflow must dry-run the sidecar build plan');
+
+  const desktopReadme = await readTextFile('desktop/README.md', 'desktop README');
+  const prerequisitesDoc = await readTextFile('desktop/BUILD_PREREQUISITES.md', 'desktop build prerequisites doc');
+  requireCondition(desktopReadme.includes('Local Sidecar Evaluation'), 'desktop README must document local sidecar evaluation');
+  requireCondition(prerequisitesDoc.includes('node scripts/build-desktop-sidecar.mjs'), 'desktop build prerequisites doc must mention sidecar build script');
 }
 
 function validateDryRuns(spec) {

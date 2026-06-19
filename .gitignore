@@ -1,6 +1,7 @@
 node_modules/
 dist/
 website/artifacts/
+desktop/src-tauri/binaries/
 .env
 .env.*
 !.env.example

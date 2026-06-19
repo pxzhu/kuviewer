@@ -40,6 +40,25 @@ node scripts/set-desktop-package-version.mjs --version 0.1.0 --check
 
 The manual `desktop-package` workflow accepts a `package_version` input and otherwise derives the version from a `v*` tag ref or falls back to `0.1.0`. The workflow mutates only its build workspace before packaging so release artifact names and Tauri installer metadata match the selected version. Do not commit certificates, private keys, credentials, kubeconfigs, admin tokens, Secret values, Events, logs, or accidental local version bumps.
 
+## Local Sidecar Candidate
+
+The Go API server can be built as a candidate desktop sidecar binary, but the Tauri runtime does not launch it yet. Generated sidecar binaries live under `desktop/src-tauri/binaries` by default and are ignored by git.
+
+Dry-run the build plan:
+
+```bash
+node scripts/build-desktop-sidecar.mjs --target aarch64-apple-darwin --dry-run
+node scripts/build-desktop-sidecar.mjs --list-targets
+```
+
+Build to a temporary directory for local smoke testing:
+
+```bash
+node scripts/build-desktop-sidecar.mjs --target aarch64-apple-darwin --out-dir /tmp/kuviewer-sidecar-smoke
+```
+
+Future runtime integration must keep the sidecar loopback-only, generate the admin token per launch in memory, avoid browser-side kubeconfig entry, and keep shell permissions scoped to sidecar startup only after a separate review.
+
 ## Icon Assets
 
 The current source icons are the transparent YAML Flow app icons already used by the web app:
