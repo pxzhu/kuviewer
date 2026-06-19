@@ -1,0 +1,148 @@
+name: desktop-package
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_macos:
+        description: Build unsigned macOS dmg
+        required: true
+        default: true
+        type: boolean
+      build_windows:
+        description: Build unsigned Windows exe
+        required: true
+        default: false
+        type: boolean
+      signed:
+        description: Validate signing secrets before packaging
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  validate-desktop:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Desktop packaging spec check
+        run: node scripts/check-desktop-packaging-spec.mjs
+
+  macos-dmg:
+    if: inputs.build_macos
+    needs: validate-desktop
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: website/package-lock.json
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install frontend dependencies
+        working-directory: website
+        run: npm ci
+
+      - name: Install desktop dependencies
+        working-directory: desktop
+        run: npm install
+
+      - name: Verify generated icons
+        run: node scripts/check-desktop-packaging-spec.mjs
+
+      - name: Validate macOS signing secrets
+        if: inputs.signed
+        env:
+          APPLE_CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          test -n "$APPLE_CERTIFICATE_BASE64"
+          test -n "$APPLE_CERTIFICATE_PASSWORD"
+          test -n "$APPLE_SIGNING_IDENTITY"
+          test -n "$APPLE_ID"
+          test -n "$APPLE_PASSWORD"
+          test -n "$APPLE_TEAM_ID"
+
+      - name: Build macOS dmg
+        working-directory: desktop
+        run: npm run tauri:build -- --bundles dmg
+
+      - name: Upload macOS artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: kuviewer-macos-dmg
+          path: desktop/src-tauri/target/release/bundle/dmg/*
+          if-no-files-found: error
+
+  windows-exe:
+    if: inputs.build_windows
+    needs: validate-desktop
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: website/package-lock.json
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install frontend dependencies
+        working-directory: website
+        run: npm ci
+
+      - name: Install desktop dependencies
+        working-directory: desktop
+        run: npm install
+
+      - name: Verify generated icons
+        run: node scripts/check-desktop-packaging-spec.mjs
+
+      - name: Validate Windows signing secrets
+        if: inputs.signed
+        shell: bash
+        env:
+          WINDOWS_CERTIFICATE_BASE64: ${{ secrets.WINDOWS_CERTIFICATE_BASE64 }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+        run: |
+          test -n "$WINDOWS_CERTIFICATE_BASE64"
+          test -n "$WINDOWS_CERTIFICATE_PASSWORD"
+
+      - name: Build Windows exe
+        working-directory: desktop
+        run: npm run tauri:build -- --bundles nsis
+
+      - name: Upload Windows artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: kuviewer-windows-exe
+          path: desktop/src-tauri/target/release/bundle/nsis/*
+          if-no-files-found: error

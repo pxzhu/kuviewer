@@ -66,7 +66,14 @@
     }
   ],
   "icons": {
+    "generationScript": "scripts/generate-desktop-icons.mjs",
     "sourceAssets": [
+      {
+        "id": "yaml-flow-source",
+        "path": "website/public/images/brand/kuviewer-icon-yaml-flow.png",
+        "size": "512x512",
+        "transparent": true
+      },
       {
         "id": "favicon-32",
         "path": "website/public/favicon-32x32.png",
@@ -86,18 +93,62 @@
         "transparent": true
       }
     ],
-    "generatedArtifactsDeferred": [
-      "desktop/src-tauri/icons/icon.icns",
-      "desktop/src-tauri/icons/icon.ico"
+    "generatedAssets": [
+      {
+        "path": "desktop/src-tauri/icons/32x32.png",
+        "size": "32x32",
+        "format": "png"
+      },
+      {
+        "path": "desktop/src-tauri/icons/128x128.png",
+        "size": "128x128",
+        "format": "png"
+      },
+      {
+        "path": "desktop/src-tauri/icons/128x128@2x.png",
+        "size": "256x256",
+        "format": "png"
+      },
+      {
+        "path": "desktop/src-tauri/icons/icon.png",
+        "size": "256x256",
+        "format": "png"
+      },
+      {
+        "path": "desktop/src-tauri/icons/icon.icns",
+        "format": "icns",
+        "platform": "macos"
+      },
+      {
+        "path": "desktop/src-tauri/icons/icon.ico",
+        "format": "ico",
+        "platform": "windows"
+      }
     ],
     "noCroppedCandidateImages": true
   },
   "signing": {
-    "status": "deferred",
+    "status": "ci-scaffolded",
     "noCertificatesInRepo": true,
     "noPrivateKeysInRepo": true,
+    "workflowPath": ".github/workflows/desktop-package.yml",
+    "manualOnly": true,
+    "unsignedBuildDefault": true,
+    "signedBuildRequiresSecrets": true,
     "macos": "Use an Apple Developer ID certificate and notarization credentials from the local keychain or CI secrets only.",
-    "windows": "Use a Windows code-signing certificate from a Windows runner or CI secrets only."
+    "macosSecretNames": [
+      "APPLE_CERTIFICATE_BASE64",
+      "APPLE_CERTIFICATE_PASSWORD",
+      "APPLE_SIGNING_IDENTITY",
+      "APPLE_ID",
+      "APPLE_PASSWORD",
+      "APPLE_TEAM_ID"
+    ],
+    "windows": "Use a Windows code-signing certificate from a Windows runner or CI secrets only.",
+    "windowsSecretNames": [
+      "WINDOWS_CERTIFICATE_BASE64",
+      "WINDOWS_CERTIFICATE_PASSWORD"
+    ]
   },
   "security": {
     "readOnly": true,

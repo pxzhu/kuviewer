@@ -19,6 +19,7 @@ The current scaffold lives in `desktop/src-tauri` and points at the existing `we
 - dev URL: `http://127.0.0.1:5174/kuviewer/`
 - production frontend dist: `../../website/dist`
 - bundle targets: `dmg` and `nsis`
+- bundle icons: `desktop/src-tauri/icons`
 - capability: `desktop-readonly`
 
 Install desktop dependencies only when actively working on desktop packaging:
@@ -29,15 +30,15 @@ npm install
 npm run tauri:dev
 ```
 
-The first real installer build should happen in a later dedicated packaging task after dependency install, icon generation, platform prerequisites, and code signing decisions are handled.
+The first real installer build should happen through the manual `desktop-package` workflow or a local packaging task after dependency install and platform prerequisites are available.
 
 Build prerequisites, icon source policy, and signing boundaries are tracked in [BUILD_PREREQUISITES.md](BUILD_PREREQUISITES.md). The short version is:
 
 - Node.js/npm and Rust/Cargo are required for local Tauri builds.
 - macOS `.dmg` builds need Xcode Command Line Tools on macOS.
 - Windows `.exe` builds need a Windows host or CI runner for the NSIS target.
-- Current icon sources are the transparent YAML Flow PNGs under `website/public`.
-- Generated `.icns` / `.ico` assets and signing setup are deferred.
+- Desktop icons are generated from the transparent YAML Flow PNG and committed under `desktop/src-tauri/icons`.
+- Signing is secret-gated in the manual desktop package workflow; unsigned builds are the default.
 - Certificates, private keys, kubeconfigs, admin tokens, cloud credentials, Secret values, Events, and logs must never be committed.
 
 ## Security Defaults
@@ -56,3 +57,14 @@ node scripts/check-desktop-packaging-spec.mjs
 ```
 
 The check keeps the scaffold honest by verifying the target artifacts, read-only security defaults, Tauri config, Rust manifest, package scripts, and capability permissions.
+
+## Manual Package Workflow
+
+GitHub Actions includes a `desktop-package` workflow for installer experiments:
+
+- manual `workflow_dispatch` only
+- unsigned macOS `.dmg` build by default
+- optional Windows `.exe` build
+- signing secret validation only when the `signed` input is enabled
+
+The workflow references secret names only. Certificate files, private keys, passwords, kubeconfigs, admin tokens, cloud credentials, Secret values, Events, and logs must remain outside the repository.
