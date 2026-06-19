@@ -63,7 +63,7 @@ Future signing should use local keychains or CI secrets:
 
 Unsigned local test builds are acceptable for packaging development. Public installer release should wait until signing and notarization are explicitly configured and tested.
 
-## Verified Dry Run
+## Verified Dry Runs
 
 An unsigned macOS `.dmg` dry-run succeeded on 2026-06-19 through the manual `desktop-package` workflow:
 
@@ -73,3 +73,12 @@ An unsigned macOS `.dmg` dry-run succeeded on 2026-06-19 through the manual `des
 - artifact size: `7,125,256` bytes
 
 This confirms the scaffold can produce a macOS DMG on GitHub-hosted macOS runners. The artifact remains unsigned.
+
+An unsigned Windows `.exe` dry-run also succeeded on 2026-06-19 through the same manual workflow:
+
+- run id: `27803179419`
+- output: `Kuviewer_0.1.0_x64-setup.exe`
+- artifact: `kuviewer-windows-exe`
+- artifact size: `5,777,828` bytes
+
+This confirms the scaffold can produce a Windows NSIS installer on GitHub-hosted Windows runners. The artifact remains unsigned.

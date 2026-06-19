@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "name": "Kuviewer Desktop Cluster Explorer",
   "goal": "installable-read-only-desktop-cluster-explorer",
-  "status": "macos-dmg-dry-run",
+  "status": "windows-exe-dry-run",
   "recommendedPackager": "tauri",
   "fallbackPackager": "electron",
   "tauri": {
@@ -169,6 +169,25 @@
       "artifactId": 7740045761,
       "artifactSizeBytes": 7125256,
       "artifactZipSha256": "3a663ab3e3cba2bd12e14cf692cf699f5ee862f15f4cb80d4840ff98dad173ec"
+    },
+    {
+      "id": "windows-exe-unsigned-2026-06-19",
+      "platform": "windows",
+      "artifact": "exe",
+      "signed": false,
+      "workflow": "desktop-package",
+      "workflowRunId": 27803179419,
+      "workflowRunUrl": "https://github.com/pxzhu/kuviewer/actions/runs/27803179419",
+      "ref": "main",
+      "commit": "b754c549ee2a2766c7f2d32257e4ee66a426aeb2",
+      "conclusion": "success",
+      "startedAt": "2026-06-19T03:16:45Z",
+      "completedAt": "2026-06-19T03:23:53Z",
+      "outputFile": "Kuviewer_0.1.0_x64-setup.exe",
+      "artifactName": "kuviewer-windows-exe",
+      "artifactId": 7741029893,
+      "artifactSizeBytes": 5777828,
+      "artifactZipSha256": "904285edb5307f1426f386ef340d413c81623e41ad57a835f0ea303c778970c4"
     }
   ],
   "security": {

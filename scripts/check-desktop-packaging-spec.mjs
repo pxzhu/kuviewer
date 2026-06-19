@@ -17,7 +17,10 @@ function requireCondition(condition, message) {
 
 requireCondition(spec.schemaVersion === 1, 'schemaVersion must be 1');
 requireCondition(spec.goal === 'installable-read-only-desktop-cluster-explorer', 'goal must describe the installable read-only desktop explorer');
-requireCondition(['packaging-spike', 'tauri-scaffold', 'macos-dmg-dry-run'].includes(spec.status), 'status must be packaging-spike, tauri-scaffold, or macos-dmg-dry-run');
+requireCondition(
+  ['packaging-spike', 'tauri-scaffold', 'macos-dmg-dry-run', 'windows-exe-dry-run'].includes(spec.status),
+  'status must be packaging-spike, tauri-scaffold, macos-dmg-dry-run, or windows-exe-dry-run'
+);
 requireCondition(spec.recommendedPackager === 'tauri', 'recommendedPackager must be tauri for the first packaging spike');
 requireCondition(spec.fallbackPackager === 'electron', 'fallbackPackager must be electron');
 
@@ -51,7 +54,7 @@ requireCondition(phases.includes('windows-exe-build'), 'phaseOrder must include 
 await validateBuildPrerequisites(spec);
 validateDryRuns(spec);
 
-if (['tauri-scaffold', 'macos-dmg-dry-run'].includes(spec.status)) {
+if (['tauri-scaffold', 'macos-dmg-dry-run', 'windows-exe-dry-run'].includes(spec.status)) {
   await validateTauriScaffold(spec.tauri || {});
 }
 
@@ -224,29 +227,52 @@ async function validateBuildPrerequisites(spec) {
 }
 
 function validateDryRuns(spec) {
-  if (spec.status !== 'macos-dmg-dry-run') {
+  if (!['macos-dmg-dry-run', 'windows-exe-dry-run'].includes(spec.status)) {
     return;
   }
   const dryRuns = Array.isArray(spec.dryRuns) ? spec.dryRuns : [];
   const macosDryRun = dryRuns.find((dryRun) => dryRun.id === 'macos-dmg-unsigned-2026-06-19');
   requireCondition(Boolean(macosDryRun), 'dryRuns must include macos-dmg-unsigned-2026-06-19');
-  if (!macosDryRun) {
+  if (macosDryRun) {
+    requireCondition(macosDryRun.platform === 'macos', 'macOS dry-run platform must be macos');
+    requireCondition(macosDryRun.artifact === 'dmg', 'macOS dry-run artifact must be dmg');
+    requireCondition(macosDryRun.signed === false, 'macOS dry-run must be unsigned');
+    requireCondition(macosDryRun.workflow === 'desktop-package', 'macOS dry-run workflow must be desktop-package');
+    requireCondition(macosDryRun.workflowRunId === 27800527207, 'macOS dry-run workflowRunId must match the verified run');
+    requireCondition(macosDryRun.workflowRunUrl === 'https://github.com/pxzhu/kuviewer/actions/runs/27800527207', 'macOS dry-run workflowRunUrl must match the verified run');
+    requireCondition(macosDryRun.ref === 'main', 'macOS dry-run ref must be main');
+    requireCondition(macosDryRun.commit === 'd525971d7415a6053eb8f45d92f5a3573654e3cd', 'macOS dry-run commit must match the verified commit');
+    requireCondition(macosDryRun.conclusion === 'success', 'macOS dry-run conclusion must be success');
+    requireCondition(macosDryRun.outputFile === 'Kuviewer_0.1.0_aarch64.dmg', 'macOS dry-run output file must match the generated dmg');
+    requireCondition(macosDryRun.artifactName === 'kuviewer-macos-dmg', 'macOS dry-run artifact name must be kuviewer-macos-dmg');
+    requireCondition(macosDryRun.artifactId === 7740045761, 'macOS dry-run artifact id must match the uploaded artifact');
+    requireCondition(macosDryRun.artifactSizeBytes === 7125256, 'macOS dry-run artifact size must match the uploaded artifact');
+    requireCondition(macosDryRun.artifactZipSha256 === '3a663ab3e3cba2bd12e14cf692cf699f5ee862f15f4cb80d4840ff98dad173ec', 'macOS dry-run artifact digest must match the uploaded artifact');
+  }
+
+  if (spec.status !== 'windows-exe-dry-run') {
     return;
   }
-  requireCondition(macosDryRun.platform === 'macos', 'macOS dry-run platform must be macos');
-  requireCondition(macosDryRun.artifact === 'dmg', 'macOS dry-run artifact must be dmg');
-  requireCondition(macosDryRun.signed === false, 'macOS dry-run must be unsigned');
-  requireCondition(macosDryRun.workflow === 'desktop-package', 'macOS dry-run workflow must be desktop-package');
-  requireCondition(macosDryRun.workflowRunId === 27800527207, 'macOS dry-run workflowRunId must match the verified run');
-  requireCondition(macosDryRun.workflowRunUrl === 'https://github.com/pxzhu/kuviewer/actions/runs/27800527207', 'macOS dry-run workflowRunUrl must match the verified run');
-  requireCondition(macosDryRun.ref === 'main', 'macOS dry-run ref must be main');
-  requireCondition(macosDryRun.commit === 'd525971d7415a6053eb8f45d92f5a3573654e3cd', 'macOS dry-run commit must match the verified commit');
-  requireCondition(macosDryRun.conclusion === 'success', 'macOS dry-run conclusion must be success');
-  requireCondition(macosDryRun.outputFile === 'Kuviewer_0.1.0_aarch64.dmg', 'macOS dry-run output file must match the generated dmg');
-  requireCondition(macosDryRun.artifactName === 'kuviewer-macos-dmg', 'macOS dry-run artifact name must be kuviewer-macos-dmg');
-  requireCondition(macosDryRun.artifactId === 7740045761, 'macOS dry-run artifact id must match the uploaded artifact');
-  requireCondition(macosDryRun.artifactSizeBytes === 7125256, 'macOS dry-run artifact size must match the uploaded artifact');
-  requireCondition(macosDryRun.artifactZipSha256 === '3a663ab3e3cba2bd12e14cf692cf699f5ee862f15f4cb80d4840ff98dad173ec', 'macOS dry-run artifact digest must match the uploaded artifact');
+
+  const windowsDryRun = dryRuns.find((dryRun) => dryRun.id === 'windows-exe-unsigned-2026-06-19');
+  requireCondition(Boolean(windowsDryRun), 'dryRuns must include windows-exe-unsigned-2026-06-19');
+  if (!windowsDryRun) {
+    return;
+  }
+  requireCondition(windowsDryRun.platform === 'windows', 'Windows dry-run platform must be windows');
+  requireCondition(windowsDryRun.artifact === 'exe', 'Windows dry-run artifact must be exe');
+  requireCondition(windowsDryRun.signed === false, 'Windows dry-run must be unsigned');
+  requireCondition(windowsDryRun.workflow === 'desktop-package', 'Windows dry-run workflow must be desktop-package');
+  requireCondition(windowsDryRun.workflowRunId === 27803179419, 'Windows dry-run workflowRunId must match the verified run');
+  requireCondition(windowsDryRun.workflowRunUrl === 'https://github.com/pxzhu/kuviewer/actions/runs/27803179419', 'Windows dry-run workflowRunUrl must match the verified run');
+  requireCondition(windowsDryRun.ref === 'main', 'Windows dry-run ref must be main');
+  requireCondition(windowsDryRun.commit === 'b754c549ee2a2766c7f2d32257e4ee66a426aeb2', 'Windows dry-run commit must match the verified commit');
+  requireCondition(windowsDryRun.conclusion === 'success', 'Windows dry-run conclusion must be success');
+  requireCondition(windowsDryRun.outputFile === 'Kuviewer_0.1.0_x64-setup.exe', 'Windows dry-run output file must match the generated exe');
+  requireCondition(windowsDryRun.artifactName === 'kuviewer-windows-exe', 'Windows dry-run artifact name must be kuviewer-windows-exe');
+  requireCondition(windowsDryRun.artifactId === 7741029893, 'Windows dry-run artifact id must match the uploaded artifact');
+  requireCondition(windowsDryRun.artifactSizeBytes === 5777828, 'Windows dry-run artifact size must match the uploaded artifact');
+  requireCondition(windowsDryRun.artifactZipSha256 === '904285edb5307f1426f386ef340d413c81623e41ad57a835f0ea303c778970c4', 'Windows dry-run artifact digest must match the uploaded artifact');
 }
 
 async function readJsonFile(relativePath, label) {
