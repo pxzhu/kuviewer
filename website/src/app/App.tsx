@@ -8,6 +8,7 @@ import {
   storeDesktopConnectionProfile,
   subscribeDesktopConnectionProfile,
   type DesktopConnectionProfile,
+  type DesktopSidecarStatus,
 } from '../features/desktop/desktopConnectionProfile';
 import { useConnectorStatus } from '../features/status/useConnectorStatus';
 import { type ColorMode, type TopologyFilters, type TopologySourceMode, useTopology } from '../features/topology/useTopology';
@@ -65,6 +66,7 @@ function Dashboard() {
   const [resourceUrlFilters, setResourceUrlFilters] = useState<ResourceViewFilters>(() => initialResourceViewFilters());
   const [desktopConnectionAvailable] = useState(() => isDesktopRuntime());
   const [desktopConnectionProfile, setDesktopConnectionProfile] = useState<DesktopConnectionProfile | null>(() => getDesktopConnectionProfile());
+  const [desktopSidecarProfile, setDesktopSidecarProfile] = useState<DesktopSidecarStatus | null>(null);
   const [liveUnlocked, setLiveUnlocked] = useState(() => isValidAdminToken(getStoredAdminToken()));
   const [uploadedState, setUploadedState] = useState<UploadedTopologyState | null>(null);
   const [uploadClusterName, setUploadClusterName] = useState('uploaded-bundle');
@@ -120,6 +122,11 @@ function Dashboard() {
           return;
         }
 
+        setDesktopSidecarProfile({
+          serverUrl: sidecarProfile.serverUrl,
+          source: sidecarProfile.source,
+        });
+
         const currentProfile = getDesktopConnectionProfile();
         if (currentProfile && currentProfile.serverUrl !== sidecarProfile.serverUrl) {
           setLiveSessionMessage('desktop local sidecar 대기 · remote profile 사용 중');
@@ -133,6 +140,7 @@ function Dashboard() {
       })
       .catch(() => {
         if (!cancelled) {
+          setDesktopSidecarProfile(null);
           setLiveSessionMessage('desktop local sidecar 시작 안 됨 · remote profile 사용 가능');
         }
       });
@@ -316,6 +324,34 @@ function Dashboard() {
     [setAutoRefresh],
   );
 
+  const handleUseDesktopSidecar = useCallback(async () => {
+    try {
+      const sidecarProfile = await getDesktopSidecarProfile();
+      if (!sidecarProfile) {
+        setDesktopSidecarProfile(null);
+        setLiveSessionMessage('desktop local sidecar 없음');
+        return;
+      }
+
+      setDesktopSidecarProfile({
+        serverUrl: sidecarProfile.serverUrl,
+        source: sidecarProfile.source,
+      });
+      storeAdminToken(sidecarProfile.adminToken);
+      setDesktopConnectionProfile(storeDesktopConnectionProfile(sidecarProfile.serverUrl));
+      setLiveUnlocked(true);
+      setSourceMode('live');
+      storeSourceMode('live');
+      setSelectedNodeId('');
+      setAutoRefresh(false);
+      setLiveSessionMessage(`desktop local sidecar 연결됨 · ${sidecarProfile.source} source`);
+      writeAppUrlState({ viewMode, sourceMode: 'live', resourceFilters: resourceUrlFilters }, 'push');
+    } catch {
+      setDesktopSidecarProfile(null);
+      setLiveSessionMessage('desktop local sidecar profile 읽기 실패');
+    }
+  }, [resourceUrlFilters, setAutoRefresh, viewMode]);
+
   const handleOpenTopologyNode = useCallback((nodeId: string) => {
     setFilters(initialFilters);
     setSelectedNodeId(nodeId);
@@ -465,6 +501,7 @@ function Dashboard() {
           canExport={snapshot.nodes.length > 0 || snapshot.edges.length > 0}
           desktopConnectionAvailable={desktopConnectionAvailable}
           desktopConnectionProfile={desktopConnectionProfile}
+          desktopSidecarProfile={desktopSidecarProfile}
           liveSessionMessage={liveSessionMessage}
           liveUnlocked={liveUnlocked}
           mode={sourceMode}
@@ -481,6 +518,7 @@ function Dashboard() {
             setLiveSessionMessage('');
           }}
           onModeChange={handleSourceModeChange}
+          onUseDesktopSidecar={handleUseDesktopSidecar}
           onUploadClusterIdChange={setUploadClusterId}
           onUploadClusterNameChange={setUploadClusterName}
           onUploadFiles={handleUploadFiles}

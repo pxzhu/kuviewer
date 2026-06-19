@@ -109,6 +109,14 @@
       "staticDir": "disabled-for-sidecar-api",
       "resourceViewsStore": "runtime-memory-unless-user-configured-later"
     },
+    "profileUx": {
+      "status": "scaffolded",
+      "displaysSidecarSource": true,
+      "explicitUseSidecarButton": true,
+      "remoteProfileCanOverrideLocal": true,
+      "tokenRequeryOnSwitch": true,
+      "noTokenPropDrilling": true
+    },
     "security": {
       "loopbackOnly": true,
       "noBrowserKubeCredentialEntry": true,

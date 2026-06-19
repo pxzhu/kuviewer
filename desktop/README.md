@@ -163,6 +163,8 @@ node scripts/build-desktop-sidecar.mjs --target aarch64-apple-darwin --out-dir /
 
 Remote server profile remains available. If the user has already selected a different remote server URL, the desktop app does not overwrite that profile with the sidecar URL; clearing the remote profile allows the local sidecar profile to take over on the next launch.
 
+The desktop server profile panel also displays the detected local sidecar source and exposes a `로컬 sidecar 사용` action. That action explicitly replaces the selected remote URL with the local sidecar URL, re-reads the per-launch token through the Tauri command, stores it in `sessionStorage`, and switches the app to live mode. The UI passes only the safe sidecar URL/source descriptor into the panel; the token is not stored as profile metadata.
+
 ## Verified Dry Runs
 
 The first unsigned macOS package dry-run completed on 2026-06-19 through GitHub Actions run `27800527207`.

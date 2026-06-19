@@ -61,6 +61,8 @@ The sidecar binds to `127.0.0.1:18086` and receives a per-launch admin token gen
 
 Default sidecar source is `mock` for installer smoke builds. Use `KUVIEWER_DESKTOP_SIDECAR_SOURCE=kubernetes` only when the packaging environment has a safe Kubernetes credential source configured outside the browser. Use `KUVIEWER_DESKTOP_DISABLE_SIDECAR=1` for remote-profile-only testing. Do not commit generated sidecar binaries, kubeconfigs, admin tokens, Secret values, Events, or logs.
 
+The desktop UI can show the detected local sidecar source next to the remote server URL profile and includes an explicit local-sidecar switch action. That switch re-queries the Tauri sidecar profile command for the current per-launch token and keeps the token session-only.
+
 ## Icon Assets
 
 The current source icons are the transparent YAML Flow app icons already used by the web app:

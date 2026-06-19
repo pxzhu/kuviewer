@@ -307,10 +307,12 @@ async function validateRemoteConnectionProfile(spec) {
   requireCondition(profilePanel.includes('Desktop server profile'), 'desktop connection profile panel must expose the server profile control');
   requireCondition(profilePanel.includes('storeDesktopConnectionProfile'), 'desktop connection profile panel must save through the profile helper');
   requireCondition(profilePanel.includes('clearDesktopConnectionProfile'), 'desktop connection profile panel must clear through the profile helper');
+  requireCondition(profilePanel.includes('desktop-use-sidecar-profile'), 'desktop connection profile panel must expose the local sidecar switch action');
 
   const app = await readTextFile('website/src/app/App.tsx', 'app shell');
   requireCondition(app.includes('handleDesktopConnectionProfileChange'), 'app shell must handle desktop profile changes');
   requireCondition(app.includes('clearAdminToken();'), 'app shell must clear the admin token when the desktop profile changes');
+  requireCondition(app.includes('handleUseDesktopSidecar'), 'app shell must handle explicit local sidecar profile switching');
 
   const topologyApi = await readTextFile('website/src/services/topologyApi.ts', 'topology API service');
   requireCondition(topologyApi.includes('getDesktopConnectionProfile'), 'topology API service must prefer the desktop connection profile');
@@ -423,6 +425,14 @@ async function validateLocalSidecar(spec) {
   requireCondition(runtime.staticDir === 'disabled-for-sidecar-api', 'localSidecar.runtime.staticDir must be disabled-for-sidecar-api');
   requireCondition(runtime.resourceViewsStore === 'runtime-memory-unless-user-configured-later', 'localSidecar.runtime.resourceViewsStore must be runtime-memory-unless-user-configured-later');
 
+  const profileUx = localSidecar.profileUx || {};
+  requireCondition(profileUx.status === 'scaffolded', 'localSidecar.profileUx.status must be scaffolded');
+  requireCondition(profileUx.displaysSidecarSource === true, 'localSidecar.profileUx.displaysSidecarSource must be true');
+  requireCondition(profileUx.explicitUseSidecarButton === true, 'localSidecar.profileUx.explicitUseSidecarButton must be true');
+  requireCondition(profileUx.remoteProfileCanOverrideLocal === true, 'localSidecar.profileUx.remoteProfileCanOverrideLocal must be true');
+  requireCondition(profileUx.tokenRequeryOnSwitch === true, 'localSidecar.profileUx.tokenRequeryOnSwitch must be true');
+  requireCondition(profileUx.noTokenPropDrilling === true, 'localSidecar.profileUx.noTokenPropDrilling must be true');
+
   const sidecarSecurity = localSidecar.security || {};
   requireCondition(sidecarSecurity.loopbackOnly === true, 'localSidecar.security.loopbackOnly must be true');
   requireCondition(sidecarSecurity.noBrowserKubeCredentialEntry === true, 'localSidecar.security.noBrowserKubeCredentialEntry must be true');
@@ -484,13 +494,18 @@ async function validateLocalSidecar(spec) {
   }
 
   const profileModule = await readTextFile('website/src/features/desktop/desktopConnectionProfile.ts', 'desktop connection profile frontend module');
-  for (const marker of ['desktop_sidecar_profile', '__TAURI__', 'normalizeDesktopServerUrl', 'adminToken']) {
+  for (const marker of ['desktop_sidecar_profile', '__TAURI__', 'normalizeDesktopServerUrl', 'adminToken', 'DesktopSidecarStatus']) {
     requireCondition(profileModule.includes(marker), `desktop connection profile module must include ${marker}`);
   }
 
   const app = await readTextFile('website/src/app/App.tsx', 'app shell');
-  for (const marker of ['getDesktopSidecarProfile', 'storeAdminToken', 'storeDesktopConnectionProfile']) {
+  for (const marker of ['getDesktopSidecarProfile', 'storeAdminToken', 'storeDesktopConnectionProfile', 'handleUseDesktopSidecar', 'setDesktopSidecarProfile']) {
     requireCondition(app.includes(marker), `app shell must include ${marker}`);
+  }
+
+  const profilePanel = await readTextFile('website/src/components/DesktopConnectionProfilePanel.tsx', 'desktop connection profile UI panel');
+  for (const marker of ['sidecarProfile', 'desktop-use-sidecar-profile', '로컬 sidecar 사용']) {
+    requireCondition(profilePanel.includes(marker), `desktop connection profile panel must include ${marker}`);
   }
 
   requireCondition(desktopReadme.includes('Local Sidecar Runtime'), 'desktop README must document local sidecar runtime');
