@@ -62,3 +62,14 @@ Future signing should use local keychains or CI secrets:
 - Windows: Windows code-signing certificate on a Windows runner or from CI secrets.
 
 Unsigned local test builds are acceptable for packaging development. Public installer release should wait until signing and notarization are explicitly configured and tested.
+
+## Verified Dry Run
+
+An unsigned macOS `.dmg` dry-run succeeded on 2026-06-19 through the manual `desktop-package` workflow:
+
+- run id: `27800527207`
+- output: `Kuviewer_0.1.0_aarch64.dmg`
+- artifact: `kuviewer-macos-dmg`
+- artifact size: `7,125,256` bytes
+
+This confirms the scaffold can produce a macOS DMG on GitHub-hosted macOS runners. The artifact remains unsigned.

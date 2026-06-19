@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "name": "Kuviewer Desktop Cluster Explorer",
   "goal": "installable-read-only-desktop-cluster-explorer",
-  "status": "tauri-scaffold",
+  "status": "macos-dmg-dry-run",
   "recommendedPackager": "tauri",
   "fallbackPackager": "electron",
   "tauri": {
@@ -150,6 +150,27 @@
       "WINDOWS_CERTIFICATE_PASSWORD"
     ]
   },
+  "dryRuns": [
+    {
+      "id": "macos-dmg-unsigned-2026-06-19",
+      "platform": "macos",
+      "artifact": "dmg",
+      "signed": false,
+      "workflow": "desktop-package",
+      "workflowRunId": 27800527207,
+      "workflowRunUrl": "https://github.com/pxzhu/kuviewer/actions/runs/27800527207",
+      "ref": "main",
+      "commit": "d525971d7415a6053eb8f45d92f5a3573654e3cd",
+      "conclusion": "success",
+      "startedAt": "2026-06-19T01:52:03Z",
+      "completedAt": "2026-06-19T01:55:20Z",
+      "outputFile": "Kuviewer_0.1.0_aarch64.dmg",
+      "artifactName": "kuviewer-macos-dmg",
+      "artifactId": 7740045761,
+      "artifactSizeBytes": 7125256,
+      "artifactZipSha256": "3a663ab3e3cba2bd12e14cf692cf699f5ee862f15f4cb80d4840ff98dad173ec"
+    }
+  ],
   "security": {
     "readOnly": true,
     "noBrowserKubeCredentialEntry": true,
