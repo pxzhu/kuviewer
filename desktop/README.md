@@ -10,7 +10,7 @@ The recommended packaging path is Tauri first, with Electron kept as a fallback 
 - Keep the desktop app read-only: resource inventory, topology, relations, Events, and Pod logs.
 - Keep upload/mock mode available without a server.
 - Start with remote API connection to an existing Kuviewer server.
-- Evaluate a local Go sidecar only after the shell scaffold is stable.
+- Launch a local Go sidecar from the Tauri runtime for localhost-only read-only API access.
 
 ## Scaffold
 
@@ -129,17 +129,22 @@ APPLE_SIGNING_IDENTITY="Developer ID Application: Example" node scripts/configur
 WINDOWS_CERTIFICATE_THUMBPRINT=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA node scripts/configure-desktop-signing.mjs --windows --dry-run
 ```
 
-## Local Sidecar Evaluation
+## Local Sidecar Runtime
 
-The local sidecar path is evaluated but not enabled in the Tauri runtime yet. The goal is to bundle the existing Go read-only API server as a localhost-only sidecar for users who want a desktop app that can inspect the connected cluster without a separate hosted Kuviewer server.
+The local sidecar path bundles the existing Go read-only API server as a localhost-only Tauri sidecar for users who want a desktop app that can inspect a connected cluster without a separate hosted Kuviewer server. Tauri builds the sidecar binary before dev/build packaging and registers it as the external binary base name `binaries/kuviewer-sidecar`.
 
-Current boundary:
+Runtime boundary:
 
-- Sidecar binary build script exists, but generated binaries are ignored by git.
-- Tauri `externalBin` is not enabled yet.
-- The desktop capability still avoids shell permissions.
+- Generated sidecar binaries are ignored by git.
+- Tauri `externalBin` is enabled for `binaries/kuviewer-sidecar`.
+- The Rust runtime launches the sidecar; frontend JavaScript still has no shell permission.
+- The sidecar binds to `127.0.0.1:18086`.
+- A per-launch admin token is generated in memory and exposed to the UI only through the `desktop_sidecar_profile` Tauri command.
+- The browser stores that token in `sessionStorage`, not `localStorage`.
+- Default sidecar source is `mock` so unsigned package smoke runs do not require cluster credentials.
+- `KUVIEWER_DESKTOP_SIDECAR_SOURCE=kubernetes` can opt into the Kubernetes provider when a safe credential source is configured outside the browser.
+- `KUVIEWER_DESKTOP_DISABLE_SIDECAR=1` disables local sidecar startup for remote-only testing.
 - Browser-side kubeconfig entry remains out of scope.
-- Future runtime launch must use a generated per-launch admin token stored in memory only.
 - Secret values, kubeconfigs, cloud credentials, Events, logs, and admin tokens must not be persisted.
 - Operational actions remain out of scope.
 
@@ -156,7 +161,7 @@ Local binary smoke builds can target a temporary directory so the repository sta
 node scripts/build-desktop-sidecar.mjs --target aarch64-apple-darwin --out-dir /tmp/kuviewer-sidecar-smoke
 ```
 
-The candidate Tauri external binary base name is `binaries/kuviewer-sidecar`. Runtime launch, shell permission review, fixed loopback port handling, lifecycle management, and token handoff are intentionally left for the next implementation step.
+Remote server profile remains available. If the user has already selected a different remote server URL, the desktop app does not overwrite that profile with the sidecar URL; clearing the remote profile allows the local sidecar profile to take over on the next launch.
 
 ## Verified Dry Runs
 

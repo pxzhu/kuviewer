@@ -3,13 +3,27 @@ export interface DesktopConnectionProfile {
   updatedAt: number;
 }
 
+export interface DesktopSidecarProfile {
+  serverUrl: string;
+  adminToken: string;
+  source: string;
+}
+
 const desktopConnectionProfileStorageKey = 'kuviewer_desktop_connection_profile';
 const desktopConnectionProfileChangedEvent = 'kuviewer-desktop-connection-profile-changed';
 const maxServerUrlLength = 220;
 
+type TauriInvoke = <Response>(command: string, args?: Record<string, unknown>) => Promise<Response>;
+
 type DesktopWindow = Window & {
-  __TAURI__?: unknown;
-  __TAURI_INTERNALS__?: unknown;
+  __TAURI__?: {
+    core?: {
+      invoke?: TauriInvoke;
+    };
+  };
+  __TAURI_INTERNALS__?: {
+    invoke?: TauriInvoke;
+  };
 };
 
 export function isDesktopRuntime() {
@@ -78,6 +92,33 @@ export function subscribeDesktopConnectionProfile(listener: () => void) {
   };
 }
 
+export async function getDesktopSidecarProfile(): Promise<DesktopSidecarProfile | null> {
+  if (!isDesktopRuntime()) {
+    return null;
+  }
+
+  const invoke = getTauriInvoke();
+  if (!invoke) {
+    return null;
+  }
+
+  const profile = await invoke<Partial<DesktopSidecarProfile> | null>('desktop_sidecar_profile');
+  if (!profile || typeof profile.serverUrl !== 'string' || typeof profile.adminToken !== 'string' || typeof profile.source !== 'string') {
+    return null;
+  }
+
+  const adminToken = profile.adminToken.trim();
+  if (!adminToken) {
+    return null;
+  }
+
+  return {
+    serverUrl: normalizeDesktopServerUrl(profile.serverUrl),
+    adminToken,
+    source: profile.source.trim() || 'unknown',
+  };
+}
+
 export function normalizeDesktopServerUrl(value: string) {
   const input = value.trim();
   if (!input) {
@@ -114,6 +155,11 @@ export function normalizeDesktopServerUrl(value: string) {
 function isLoopbackHostname(hostname: string) {
   const normalizedHostname = hostname.toLowerCase();
   return normalizedHostname === 'localhost' || normalizedHostname === '127.0.0.1' || normalizedHostname === '::1' || normalizedHostname === '[::1]' || normalizedHostname.endsWith('.localhost');
+}
+
+function getTauriInvoke(): TauriInvoke | null {
+  const desktopWindow = window as DesktopWindow;
+  return desktopWindow.__TAURI__?.core?.invoke || desktopWindow.__TAURI_INTERNALS__?.invoke || null;
 }
 
 function dispatchDesktopConnectionProfileChanged() {

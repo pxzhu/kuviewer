@@ -25,7 +25,7 @@ npm install
 npm run tauri:build
 ```
 
-The Tauri config builds the existing `website` app before packaging. The desktop shell remains read-only and must not request browser-side kube credentials.
+The Tauri config builds the existing `website` app and the Go sidecar binary before packaging. The desktop shell remains read-only and must not request browser-side kube credentials.
 
 Remote server profile UX is runtime-only. It stores only the selected Kuviewer server URL in browser `localStorage`; admin tokens remain session-only, and profile changes clear the current token. Remote hosts should use `https`; plain `http` is limited to loopback development servers. Remote servers that are not same-origin must set `KUVIEWER_CORS_ORIGIN` for the desktop app origin.
 
@@ -40,9 +40,9 @@ node scripts/set-desktop-package-version.mjs --version 0.1.0 --check
 
 The manual `desktop-package` workflow accepts a `package_version` input and otherwise derives the version from a `v*` tag ref or falls back to `0.1.0`. The workflow mutates only its build workspace before packaging so release artifact names and Tauri installer metadata match the selected version. Do not commit certificates, private keys, credentials, kubeconfigs, admin tokens, Secret values, Events, logs, or accidental local version bumps.
 
-## Local Sidecar Candidate
+## Local Sidecar Runtime
 
-The Go API server can be built as a candidate desktop sidecar binary, but the Tauri runtime does not launch it yet. Generated sidecar binaries live under `desktop/src-tauri/binaries` by default and are ignored by git.
+The Go API server is built as a desktop sidecar binary and launched by the Rust Tauri runtime. Generated sidecar binaries live under `desktop/src-tauri/binaries` by default and are ignored by git.
 
 Dry-run the build plan:
 
@@ -57,7 +57,9 @@ Build to a temporary directory for local smoke testing:
 node scripts/build-desktop-sidecar.mjs --target aarch64-apple-darwin --out-dir /tmp/kuviewer-sidecar-smoke
 ```
 
-Future runtime integration must keep the sidecar loopback-only, generate the admin token per launch in memory, avoid browser-side kubeconfig entry, and keep shell permissions scoped to sidecar startup only after a separate review.
+The sidecar binds to `127.0.0.1:18086` and receives a per-launch admin token generated in memory by the Tauri runtime. The UI reads only the sidecar URL, source, and token through the `desktop_sidecar_profile` Tauri command, then stores the token in `sessionStorage`. Frontend JavaScript still does not receive shell permissions.
+
+Default sidecar source is `mock` for installer smoke builds. Use `KUVIEWER_DESKTOP_SIDECAR_SOURCE=kubernetes` only when the packaging environment has a safe Kubernetes credential source configured outside the browser. Use `KUVIEWER_DESKTOP_DISABLE_SIDECAR=1` for remote-profile-only testing. Do not commit generated sidecar binaries, kubeconfigs, admin tokens, Secret values, Events, or logs.
 
 ## Icon Assets
 
