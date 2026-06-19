@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Boxes, GitBranch, LockKeyhole, Palette, Pause, Play, RefreshCw, SearchCode, SlidersHorizontal, Workflow } from 'lucide-react';
 import { clearAdminToken, getStoredAdminToken, isValidAdminToken, storeAdminToken } from '../features/auth/adminToken';
 import {
+  deleteDesktopKubernetesProfileCredential,
   getDesktopConnectionProfile,
   getDesktopKubernetesProfiles,
   getDesktopSidecarProfile,
@@ -403,6 +404,23 @@ function Dashboard() {
     }
   }, []);
 
+  const handleDesktopKubernetesProfileCredentialDelete = useCallback(async (profileId: string) => {
+    try {
+      const updatedProfile = await deleteDesktopKubernetesProfileCredential(profileId);
+      if (!updatedProfile) {
+        setDesktopKubernetesProfileMessage('credential 삭제 실패');
+        return;
+      }
+
+      setDesktopKubernetesProfiles((currentProfiles) =>
+        currentProfiles.map((profile) => (profile.id === updatedProfile.id ? updatedProfile : profile)),
+      );
+      setDesktopKubernetesProfileMessage(`${updatedProfile.displayName} credential 삭제됨`);
+    } catch {
+      setDesktopKubernetesProfileMessage('credential 삭제 실패');
+    }
+  }, []);
+
   const handleOpenTopologyNode = useCallback((nodeId: string) => {
     setFilters(initialFilters);
     setSelectedNodeId(nodeId);
@@ -563,6 +581,7 @@ function Dashboard() {
           uploadedState={uploadedState}
           uploadError={uploadError}
           onDesktopConnectionProfileChange={handleDesktopConnectionProfileChange}
+          onDesktopKubernetesProfileCredentialDelete={handleDesktopKubernetesProfileCredentialDelete}
           onDesktopKubernetesProfileSelect={handleDesktopKubernetesProfileSelect}
           onExportJson={handleExportJson}
           onImportJson={handleImportJson}

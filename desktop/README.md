@@ -171,7 +171,9 @@ The next direct-cluster desktop path is documented in [KEYCHAIN_CREDENTIAL_DESIG
 
 The first runtime scope is bearer-token Kubernetes profiles. Rust should read the selected OS credential, create private runtime temp files, pass `KUVIEWER_KUBE_TOKEN_FILE` / optional `KUVIEWER_KUBE_CA_FILE` to the localhost sidecar, and delete those temp files on shutdown. Browser `localStorage` remains safe profile metadata only, and operational actions remain out of scope.
 
-The current runtime prototype stops before secret handling. It exposes safe metadata through `desktop_kubernetes_profiles` and `desktop_select_kubernetes_profile`, and the UI renders that metadata in `DesktopKubernetesProfilePanel`. Local smoke tests can provide metadata only with `KUVIEWER_DESKTOP_KUBE_API_SERVER`, optional `KUVIEWER_DESKTOP_KUBE_PROFILE_ID`, and optional `KUVIEWER_DESKTOP_KUBE_PROFILE_NAME`. Bearer tokens, kubeconfig bodies, private keys, cloud credentials, and Secret values must not be passed through those variables or browser state.
+The current runtime prototype exposes safe metadata through `desktop_kubernetes_profiles` and `desktop_select_kubernetes_profile`, and the UI renders that metadata in `DesktopKubernetesProfilePanel`. It can also delete stored native credentials with `desktop_delete_kubernetes_profile_credential`. Local smoke tests can provide metadata only with `KUVIEWER_DESKTOP_KUBE_API_SERVER`, optional `KUVIEWER_DESKTOP_KUBE_PROFILE_ID`, and optional `KUVIEWER_DESKTOP_KUBE_PROFILE_NAME`.
+
+For native secret import smoke, Rust can read a local token file and write it to macOS Keychain or Windows Credential Manager when `KUVIEWER_DESKTOP_KUBE_TOKEN_FILE` and `KUVIEWER_DESKTOP_KUBE_IMPORT_TOKEN_FILE=1` are set before startup. The token file content is never sent to browser JavaScript; the UI sees only safe metadata such as `credentialAvailable`. Sidecar restart from the selected stored credential remains future work. Bearer tokens, kubeconfig bodies, private keys, cloud credentials, and Secret values must not be passed through browser state.
 
 ## Verified Dry Runs
 

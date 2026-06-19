@@ -20,6 +20,7 @@ export interface DesktopKubernetesProfile {
   apiServer: string;
   authType: string;
   credentialStore: string;
+  credentialAvailable: boolean;
   selected: boolean;
   status: string;
 }
@@ -165,6 +166,20 @@ export async function selectDesktopKubernetesProfile(profileId: string): Promise
   return parseDesktopKubernetesProfile(profile);
 }
 
+export async function deleteDesktopKubernetesProfileCredential(profileId: string): Promise<DesktopKubernetesProfile | null> {
+  if (!isDesktopRuntime()) {
+    return null;
+  }
+
+  const invoke = getTauriInvoke();
+  if (!invoke) {
+    return null;
+  }
+
+  const profile = await invoke<unknown>('desktop_delete_kubernetes_profile_credential', { profileId });
+  return parseDesktopKubernetesProfile(profile);
+}
+
 export function normalizeDesktopServerUrl(value: string) {
   const input = value.trim();
   if (!input) {
@@ -209,6 +224,7 @@ function parseDesktopKubernetesProfile(value: unknown): DesktopKubernetesProfile
     typeof profile.apiServer !== 'string' ||
     typeof profile.authType !== 'string' ||
     typeof profile.credentialStore !== 'string' ||
+    typeof profile.credentialAvailable !== 'boolean' ||
     typeof profile.selected !== 'boolean' ||
     typeof profile.status !== 'string'
   ) {
@@ -221,6 +237,7 @@ function parseDesktopKubernetesProfile(value: unknown): DesktopKubernetesProfile
       apiServer: normalizeDesktopServerUrl(profile.apiServer),
       authType: profile.authType,
       credentialStore: profile.credentialStore,
+      credentialAvailable: profile.credentialAvailable,
       selected: profile.selected,
       status: profile.status,
     };

@@ -2,7 +2,7 @@
 
 This document defines the first credential boundary for a future installable Kuviewer desktop app that connects directly to a Kubernetes API server through the local sidecar.
 
-The current implementation includes a safe runtime metadata prototype. It can expose desktop Kubernetes profile metadata through native Tauri commands, but it still does not store, read, or hand off Kubernetes credentials from macOS Keychain or Windows Credential Manager.
+The current implementation includes a safe runtime metadata prototype plus native OS credential store helpers. It can expose desktop Kubernetes profile metadata through native Tauri commands and can store/delete bearer-token material in macOS Keychain or Windows Credential Manager without returning the token to browser JavaScript. Sidecar restart from the selected stored credential remains future work.
 
 ## Goals
 
@@ -74,6 +74,7 @@ The current desktop shell exposes only safe profile metadata through native Taur
 
 - `desktop_kubernetes_profiles`: returns profile id, display name, API server URL, auth type, credential store label, selected state, and status.
 - `desktop_select_kubernetes_profile`: marks a known metadata profile as selected and returns the same safe metadata shape.
+- `desktop_delete_kubernetes_profile_credential`: deletes the native credential for a known profile id and returns updated safe metadata.
 
 For local smoke testing, Rust may create one metadata-only profile from these safe environment variables:
 
@@ -81,7 +82,24 @@ For local smoke testing, Rust may create one metadata-only profile from these sa
 - `KUVIEWER_DESKTOP_KUBE_PROFILE_ID`
 - `KUVIEWER_DESKTOP_KUBE_PROFILE_NAME`
 
-Those variables must not contain bearer tokens, kubeconfig content, client keys, cloud credentials, or Secret values. The prototype labels this fixture as `runtime-env-metadata-fixture` and keeps OS credential read/write and sidecar restart as future work.
+Those variables must not contain bearer tokens, kubeconfig content, client keys, cloud credentials, or Secret values. The prototype labels this fixture as `runtime-env-metadata-fixture` until a native credential is present.
+
+## OS Credential Store Runtime
+
+The desktop runtime can import a bearer token from a local token file into the OS credential store when all of these are set before app startup:
+
+- `KUVIEWER_DESKTOP_KUBE_API_SERVER`
+- `KUVIEWER_DESKTOP_KUBE_TOKEN_FILE`
+- `KUVIEWER_DESKTOP_KUBE_IMPORT_TOKEN_FILE=1`
+
+Optional metadata remains `KUVIEWER_DESKTOP_KUBE_PROFILE_ID` and `KUVIEWER_DESKTOP_KUBE_PROFILE_NAME`. The token file path is read only by Rust, capped at 64 KiB, trimmed, and then stored natively. The browser receives only `credentialAvailable: true`, `credentialStore`, and safe status text. It never receives the token, token file content, kubeconfig body, client key, cloud credential, or Secret value.
+
+Current native backing:
+
+- macOS: Security.framework generic password item under service `com.kuviewer.desktop.kubernetes`.
+- Windows: Credential Manager generic credential under target `com.kuviewer.desktop.kubernetes/{profileId}`.
+
+Deleting a credential through `desktop_delete_kubernetes_profile_credential` removes only the native secret material and leaves safe profile metadata in memory for the current desktop session.
 
 ## Security Rules
 
@@ -119,4 +137,5 @@ The repository check should verify:
 - the browser profile module does not handle kubeconfig content
 - desktop docs mention macOS Keychain and Windows Credential Manager
 - keychain-backed runtime uses token file handoff rather than browser token persistence
+- native OS credential store helpers exist for write, read-check, and delete without returning secrets to the browser
 - generated credentials, temp files, kubeconfigs, private keys, Secret values, Events, and logs are not committed

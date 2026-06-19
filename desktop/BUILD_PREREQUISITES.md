@@ -69,7 +69,9 @@ Direct desktop-to-cluster credentials are specified in [KEYCHAIN_CREDENTIAL_DESI
 
 The first runtime implementation should support bearer-token profiles through `KUVIEWER_KUBE_TOKEN_FILE` and optional CA files, not browser-side kubeconfig import. Runtime token/CA temp files must be outside the repository, owner-only where supported, and deleted when the sidecar stops.
 
-The current prototype adds safe metadata commands only: `desktop_kubernetes_profiles` and `desktop_select_kubernetes_profile`. For smoke testing, use `KUVIEWER_DESKTOP_KUBE_API_SERVER`, optional `KUVIEWER_DESKTOP_KUBE_PROFILE_ID`, and optional `KUVIEWER_DESKTOP_KUBE_PROFILE_NAME` as metadata-only inputs. Do not put bearer tokens, kubeconfig YAML, private keys, cloud credentials, or Secret values in those variables.
+The current prototype adds safe metadata commands `desktop_kubernetes_profiles` and `desktop_select_kubernetes_profile`, plus `desktop_delete_kubernetes_profile_credential` for native credential removal. For metadata smoke testing, use `KUVIEWER_DESKTOP_KUBE_API_SERVER`, optional `KUVIEWER_DESKTOP_KUBE_PROFILE_ID`, and optional `KUVIEWER_DESKTOP_KUBE_PROFILE_NAME` as metadata-only inputs. Do not put bearer tokens, kubeconfig YAML, private keys, cloud credentials, or Secret values in those variables.
+
+For native OS store smoke, set `KUVIEWER_DESKTOP_KUBE_TOKEN_FILE` to a local token file path and `KUVIEWER_DESKTOP_KUBE_IMPORT_TOKEN_FILE=1` before startup. Rust reads the file, writes the token to macOS Keychain or Windows Credential Manager, and returns only safe metadata such as `credentialAvailable` to the UI. Keep token files outside the repository and delete local smoke files afterward.
 
 ## Icon Assets
 
