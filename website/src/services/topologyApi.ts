@@ -1,11 +1,21 @@
 import type { TopologySnapshot } from '../types/topology';
 import { getStoredAdminToken } from '../features/auth/adminToken';
+import { getDesktopConnectionProfile } from '../features/desktop/desktopConnectionProfile';
 
 export function getTopologyApiBaseUrl() {
+  const desktopProfile = getDesktopConnectionProfile();
+  if (desktopProfile) {
+    return desktopProfile.serverUrl;
+  }
+
   const configuredBaseUrl = import.meta.env.VITE_API_BASE_URL?.trim();
 
   if (configuredBaseUrl) {
     return configuredBaseUrl;
+  }
+
+  if (import.meta.env.PROD && isDesktopDocumentOrigin()) {
+    return '';
   }
 
   if (import.meta.env.PROD) {
@@ -34,4 +44,8 @@ export async function fetchTopologySnapshot(signal?: AbortSignal): Promise<Topol
   }
 
   return response.json() as Promise<TopologySnapshot>;
+}
+
+function isDesktopDocumentOrigin() {
+  return window.location.protocol === 'tauri:' || window.location.hostname === 'tauri.localhost';
 }

@@ -18,8 +18,8 @@ function requireCondition(condition, message) {
 requireCondition(spec.schemaVersion === 1, 'schemaVersion must be 1');
 requireCondition(spec.goal === 'installable-read-only-desktop-cluster-explorer', 'goal must describe the installable read-only desktop explorer');
 requireCondition(
-  ['packaging-spike', 'tauri-scaffold', 'macos-dmg-dry-run', 'windows-exe-dry-run'].includes(spec.status),
-  'status must be packaging-spike, tauri-scaffold, macos-dmg-dry-run, or windows-exe-dry-run'
+  ['packaging-spike', 'tauri-scaffold', 'macos-dmg-dry-run', 'windows-exe-dry-run', 'desktop-remote-profile-ux'].includes(spec.status),
+  'status must be packaging-spike, tauri-scaffold, macos-dmg-dry-run, windows-exe-dry-run, or desktop-remote-profile-ux'
 );
 requireCondition(spec.recommendedPackager === 'tauri', 'recommendedPackager must be tauri for the first packaging spike');
 requireCondition(spec.fallbackPackager === 'electron', 'fallbackPackager must be electron');
@@ -48,13 +48,15 @@ for (const action of ['exec', 'port-forward', 'restart', 'scale', 'delete', 'app
 const phases = Array.isArray(spec.phaseOrder) ? spec.phaseOrder : [];
 requireCondition(phases[0] === 'packaging-spec', 'phaseOrder must start with packaging-spec');
 requireCondition(phases.includes('tauri-scaffold'), 'phaseOrder must include tauri-scaffold');
+requireCondition(phases.includes('remote-connection-profile'), 'phaseOrder must include remote-connection-profile');
 requireCondition(phases.includes('macos-dmg-build'), 'phaseOrder must include macos-dmg-build');
 requireCondition(phases.includes('windows-exe-build'), 'phaseOrder must include windows-exe-build');
 
 await validateBuildPrerequisites(spec);
+await validateRemoteConnectionProfile(spec);
 validateDryRuns(spec);
 
-if (['tauri-scaffold', 'macos-dmg-dry-run', 'windows-exe-dry-run'].includes(spec.status)) {
+if (['tauri-scaffold', 'macos-dmg-dry-run', 'windows-exe-dry-run', 'desktop-remote-profile-ux'].includes(spec.status)) {
   await validateTauriScaffold(spec.tauri || {});
 }
 
@@ -224,6 +226,47 @@ async function validateBuildPrerequisites(spec) {
   requireCondition(prerequisitesDoc.includes('node scripts/generate-desktop-icons.mjs'), 'desktop build prerequisites doc must mention icon generation');
   requireCondition(iconReadme.includes('icon.icns'), 'desktop icons README must describe icon.icns');
   requireCondition(iconReadme.includes('icon.ico'), 'desktop icons README must describe icon.ico');
+}
+
+async function validateRemoteConnectionProfile(spec) {
+  const profile = spec.remoteConnectionProfile || {};
+  requireCondition(profile.status === 'scaffolded', 'remoteConnectionProfile.status must be scaffolded');
+  requireCondition(profile.runtimeOnly === true, 'remoteConnectionProfile.runtimeOnly must be true');
+  requireCondition(profile.storage === 'localStorage-url-only', 'remoteConnectionProfile.storage must be localStorage-url-only');
+  requireCondition(profile.storageKey === 'kuviewer_desktop_connection_profile', 'remoteConnectionProfile.storageKey must match the frontend storage key');
+  requireCondition(Array.isArray(profile.allowedProtocols) && profile.allowedProtocols.includes('https') && profile.allowedProtocols.includes('http'), 'remoteConnectionProfile.allowedProtocols must include https and http');
+  requireCondition(profile.httpLoopbackOnly === true, 'remoteConnectionProfile.httpLoopbackOnly must be true');
+  requireCondition(profile.adminTokenStorage === 'sessionStorage', 'remoteConnectionProfile.adminTokenStorage must be sessionStorage');
+  requireCondition(profile.clearsAdminTokenOnChange === true, 'remoteConnectionProfile must clear admin token when the server profile changes');
+  requireCondition(profile.noKubeconfigPersistence === true, 'remoteConnectionProfile must not persist kubeconfigs');
+  requireCondition(profile.noSecretValues === true, 'remoteConnectionProfile must not store Secret values');
+  requireCondition(profile.requiresServerCors === true, 'remoteConnectionProfile must document server CORS requirements');
+
+  const profileModule = await readTextFile('website/src/features/desktop/desktopConnectionProfile.ts', 'desktop connection profile frontend module');
+  requireCondition(profileModule.includes('kuviewer_desktop_connection_profile'), 'desktop connection profile module must use the configured storage key');
+  requireCondition(profileModule.includes('localStorage'), 'desktop connection profile module may store only URL profile metadata in localStorage');
+  requireCondition(profileModule.includes('https:') && profileModule.includes('http:'), 'desktop connection profile module must restrict URLs to http/https');
+  requireCondition(profileModule.includes('isLoopbackHostname'), 'desktop connection profile module must restrict plain HTTP to loopback hosts');
+  requireCondition(!profileModule.includes('kubeconfig'), 'desktop connection profile module must not handle kubeconfigs');
+
+  const profilePanel = await readTextFile('website/src/components/DesktopConnectionProfilePanel.tsx', 'desktop connection profile UI panel');
+  requireCondition(profilePanel.includes('Desktop server profile'), 'desktop connection profile panel must expose the server profile control');
+  requireCondition(profilePanel.includes('storeDesktopConnectionProfile'), 'desktop connection profile panel must save through the profile helper');
+  requireCondition(profilePanel.includes('clearDesktopConnectionProfile'), 'desktop connection profile panel must clear through the profile helper');
+
+  const app = await readTextFile('website/src/app/App.tsx', 'app shell');
+  requireCondition(app.includes('handleDesktopConnectionProfileChange'), 'app shell must handle desktop profile changes');
+  requireCondition(app.includes('clearAdminToken();'), 'app shell must clear the admin token when the desktop profile changes');
+
+  const topologyApi = await readTextFile('website/src/services/topologyApi.ts', 'topology API service');
+  requireCondition(topologyApi.includes('getDesktopConnectionProfile'), 'topology API service must prefer the desktop connection profile');
+
+  const tauriConfig = await readJsonFile(spec.tauri?.configPath, 'tauri.configPath');
+  requireCondition(tauriConfig?.app?.security?.csp?.includes('http://localhost:*'), 'tauri CSP must allow localhost HTTP for local Kuviewer servers');
+
+  const desktopReadme = await readTextFile('desktop/README.md', 'desktop README');
+  requireCondition(desktopReadme.includes('Remote Server Profile'), 'desktop README must document the remote server profile');
+  requireCondition(desktopReadme.includes('KUVIEWER_CORS_ORIGIN'), 'desktop README must document CORS expectations for remote server profiles');
 }
 
 function validateDryRuns(spec) {

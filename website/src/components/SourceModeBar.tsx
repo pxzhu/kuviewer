@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   AlertTriangle,
   Boxes,
@@ -13,11 +13,15 @@ import {
   UploadCloud,
 } from 'lucide-react';
 import { clearAdminToken, getStoredAdminToken, storeAdminToken } from '../features/auth/adminToken';
+import type { DesktopConnectionProfile } from '../features/desktop/desktopConnectionProfile';
 import type { TopologySourceMode } from '../features/topology/useTopology';
 import type { UploadedTopologyState } from '../features/upload/parseKubernetesFiles';
 import { fetchConnectorStatusWithToken } from '../services/statusApi';
+import { DesktopConnectionProfilePanel } from './DesktopConnectionProfilePanel';
 
 interface SourceModeBarProps {
+  desktopConnectionAvailable: boolean;
+  desktopConnectionProfile: DesktopConnectionProfile | null;
   mode: TopologySourceMode;
   liveUnlocked: boolean;
   uploadClusterId: string;
@@ -32,6 +36,7 @@ interface SourceModeBarProps {
   onUploadFiles: (files: File[]) => void;
   onImportJson: (file: File) => void;
   onExportJson: () => void;
+  onDesktopConnectionProfileChange: (profile: DesktopConnectionProfile | null) => void;
   onLiveUnlock: () => void;
   onLiveLock: () => void;
 }
@@ -43,6 +48,8 @@ const modeOptions: Array<{ mode: TopologySourceMode; label: string; icon: typeof
 ];
 
 export function SourceModeBar({
+  desktopConnectionAvailable,
+  desktopConnectionProfile,
   mode,
   liveUnlocked,
   uploadClusterId,
@@ -57,6 +64,7 @@ export function SourceModeBar({
   onUploadFiles,
   onImportJson,
   onExportJson,
+  onDesktopConnectionProfileChange,
   onLiveUnlock,
   onLiveLock,
 }: SourceModeBarProps) {
@@ -66,6 +74,11 @@ export function SourceModeBar({
   const [checkingToken, setCheckingToken] = useState(false);
   const [tokenError, setTokenError] = useState('');
   const [warningsOpen, setWarningsOpen] = useState(false);
+
+  useEffect(() => {
+    setToken(getStoredAdminToken());
+    setTokenError('');
+  }, [desktopConnectionProfile?.serverUrl]);
 
   const handleLiveUnlock = async () => {
     const trimmedToken = token.trim();
@@ -215,6 +228,10 @@ export function SourceModeBar({
             onToggle={() => setWarningsOpen((current) => !current)}
           />
         </div>
+      ) : null}
+
+      {desktopConnectionAvailable ? (
+        <DesktopConnectionProfilePanel profile={desktopConnectionProfile} onProfileChange={onDesktopConnectionProfileChange} />
       ) : null}
 
       <input

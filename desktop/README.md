@@ -46,7 +46,15 @@ Build prerequisites, icon source policy, and signing boundaries are tracked in [
 - Do not ask users to paste kubeconfigs into the browser UI.
 - Do not persist kubeconfigs, admin tokens, cloud credentials, private keys, Secret values, Events, or logs in the app bundle.
 - Do not add operational actions such as exec, port-forward, restart, scale, delete, apply, or edit in the packaging spike.
-- Treat desktop connection settings as UI/session state until a dedicated keychain-backed design is implemented.
+- Treat desktop connection settings as URL-only UI profile state until a dedicated keychain-backed design is implemented.
+
+## Remote Server Profile
+
+The desktop shell can store a single remote Kuviewer server URL profile at runtime. The profile is URL-only metadata under browser `localStorage` key `kuviewer_desktop_connection_profile`; it does not store admin tokens, kubeconfigs, cloud credentials, Secret values, Events, or logs.
+
+Changing or clearing the remote server profile clears the current admin token and locks live mode, so the user must enter a token for the selected server again. The admin token continues to use `sessionStorage` only.
+
+The remote server must allow the desktop app origin through `KUVIEWER_CORS_ORIGIN` when the API is not same-origin. The profile accepts `https` server URLs for remote hosts and `http` only for loopback hosts such as `127.0.0.1` or `localhost`; Kubernetes credential handling stays on the server side.
 
 ## Validation
 

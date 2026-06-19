@@ -27,6 +27,8 @@ npm run tauri:build
 
 The Tauri config builds the existing `website` app before packaging. The desktop shell remains read-only and must not request browser-side kube credentials.
 
+Remote server profile UX is runtime-only. It stores only the selected Kuviewer server URL in browser `localStorage`; admin tokens remain session-only, and profile changes clear the current token. Remote hosts should use `https`; plain `http` is limited to loopback development servers. Remote servers that are not same-origin must set `KUVIEWER_CORS_ORIGIN` for the desktop app origin.
+
 ## Icon Assets
 
 The current source icons are the transparent YAML Flow app icons already used by the web app:
