@@ -31,6 +31,15 @@ npm run tauri:dev
 
 The first real installer build should happen in a later dedicated packaging task after dependency install, icon generation, platform prerequisites, and code signing decisions are handled.
 
+Build prerequisites, icon source policy, and signing boundaries are tracked in [BUILD_PREREQUISITES.md](BUILD_PREREQUISITES.md). The short version is:
+
+- Node.js/npm and Rust/Cargo are required for local Tauri builds.
+- macOS `.dmg` builds need Xcode Command Line Tools on macOS.
+- Windows `.exe` builds need a Windows host or CI runner for the NSIS target.
+- Current icon sources are the transparent YAML Flow PNGs under `website/public`.
+- Generated `.icns` / `.ico` assets and signing setup are deferred.
+- Certificates, private keys, kubeconfigs, admin tokens, cloud credentials, Secret values, Events, and logs must never be committed.
+
 ## Security Defaults
 
 - Do not ask users to paste kubeconfigs into the browser UI.

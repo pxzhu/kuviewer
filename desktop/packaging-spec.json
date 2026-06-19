@@ -33,6 +33,72 @@
       "description": "Future option: run the Go read-only API server as a local sidecar and point the desktop shell at localhost."
     }
   ],
+  "buildPrerequisites": [
+    {
+      "id": "node",
+      "requiredFor": ["macos", "windows"],
+      "purpose": "Run the existing Vite frontend build before Tauri bundles the app."
+    },
+    {
+      "id": "npm",
+      "requiredFor": ["macos", "windows"],
+      "purpose": "Install website and desktop package dependencies."
+    },
+    {
+      "id": "rust",
+      "requiredFor": ["macos", "windows"],
+      "purpose": "Compile the Tauri shell."
+    },
+    {
+      "id": "cargo",
+      "requiredFor": ["macos", "windows"],
+      "purpose": "Run the Rust build and package commands used by Tauri."
+    },
+    {
+      "id": "xcode-command-line-tools",
+      "requiredFor": ["macos"],
+      "purpose": "Provide the macOS linker and native build tools for .dmg generation."
+    },
+    {
+      "id": "windows-runner",
+      "requiredFor": ["windows"],
+      "purpose": "Build the Windows NSIS .exe on a Windows host or CI runner."
+    }
+  ],
+  "icons": {
+    "sourceAssets": [
+      {
+        "id": "favicon-32",
+        "path": "website/public/favicon-32x32.png",
+        "size": "32x32",
+        "transparent": true
+      },
+      {
+        "id": "favicon-192",
+        "path": "website/public/favicon-192x192.png",
+        "size": "192x192",
+        "transparent": true
+      },
+      {
+        "id": "apple-touch-icon",
+        "path": "website/public/apple-touch-icon.png",
+        "size": "180x180",
+        "transparent": true
+      }
+    ],
+    "generatedArtifactsDeferred": [
+      "desktop/src-tauri/icons/icon.icns",
+      "desktop/src-tauri/icons/icon.ico"
+    ],
+    "noCroppedCandidateImages": true
+  },
+  "signing": {
+    "status": "deferred",
+    "noCertificatesInRepo": true,
+    "noPrivateKeysInRepo": true,
+    "macos": "Use an Apple Developer ID certificate and notarization credentials from the local keychain or CI secrets only.",
+    "windows": "Use a Windows code-signing certificate from a Windows runner or CI secrets only."
+  },
   "security": {
     "readOnly": true,
     "noBrowserKubeCredentialEntry": true,
