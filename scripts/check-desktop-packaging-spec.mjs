@@ -1,7 +1,9 @@
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const repoRoot = process.cwd();
+const scriptDir = path.dirname(fileURLToPath(import.meta.url));
+const repoRoot = path.resolve(scriptDir, '..');
 const specPath = path.join(repoRoot, 'desktop', 'packaging-spec.json');
 const spec = JSON.parse(await readFile(specPath, 'utf8'));
 
@@ -70,6 +72,7 @@ async function validateTauriScaffold(tauri) {
 
   requireCondition(desktopPackage?.scripts?.['tauri:dev']?.includes('tauri dev'), 'desktop package must expose tauri:dev');
   requireCondition(desktopPackage?.scripts?.['tauri:build']?.includes('tauri build'), 'desktop package must expose tauri:build');
+  requireCondition(desktopPackage?.scripts?.['icons:generate'] === 'node ../scripts/generate-desktop-icons.mjs', 'desktop package must expose icons:generate');
   requireCondition(desktopPackage?.devDependencies?.['@tauri-apps/cli'], 'desktop package must declare @tauri-apps/cli');
 
   requireCondition(tauriConfig?.identifier === 'com.kuviewer.desktop', 'tauri config identifier must be com.kuviewer.desktop');
@@ -80,6 +83,10 @@ async function validateTauriScaffold(tauri) {
   const bundleTargets = new Set(Array.isArray(tauriConfig?.bundle?.targets) ? tauriConfig.bundle.targets : []);
   requireCondition(bundleTargets.has('dmg'), 'tauri bundle targets must include dmg');
   requireCondition(bundleTargets.has('nsis'), 'tauri bundle targets must include nsis for Windows exe installers');
+  const bundleIcons = new Set(Array.isArray(tauriConfig?.bundle?.icon) ? tauriConfig.bundle.icon : []);
+  for (const icon of ['icons/32x32.png', 'icons/128x128.png', 'icons/128x128@2x.png', 'icons/icon.icns', 'icons/icon.ico']) {
+    requireCondition(bundleIcons.has(icon), `tauri bundle icons must include ${icon}`);
+  }
 
   const mainWindow = Array.isArray(tauriConfig?.app?.windows) ? tauriConfig.app.windows.find((window) => window.label === 'main') : undefined;
   requireCondition(Boolean(mainWindow), 'tauri config must define a main window');
@@ -119,10 +126,16 @@ async function validateBuildPrerequisites(spec) {
 
   const iconSources = Array.isArray(spec.icons?.sourceAssets) ? spec.icons.sourceAssets : [];
   const iconSourcePaths = new Set(iconSources.map((asset) => asset.path));
-  for (const iconPath of ['website/public/favicon-32x32.png', 'website/public/favicon-192x192.png', 'website/public/apple-touch-icon.png']) {
+  for (const iconPath of [
+    'website/public/images/brand/kuviewer-icon-yaml-flow.png',
+    'website/public/favicon-32x32.png',
+    'website/public/favicon-192x192.png',
+    'website/public/apple-touch-icon.png',
+  ]) {
     requireCondition(iconSourcePaths.has(iconPath), `icons.sourceAssets must include ${iconPath}`);
   }
   const expectedSizes = new Map([
+    ['website/public/images/brand/kuviewer-icon-yaml-flow.png', '512x512'],
     ['website/public/favicon-32x32.png', '32x32'],
     ['website/public/favicon-192x192.png', '192x192'],
     ['website/public/apple-touch-icon.png', '180x180'],
@@ -136,16 +149,64 @@ async function validateBuildPrerequisites(spec) {
     }
   }
   requireCondition(spec.icons?.noCroppedCandidateImages === true, 'icons.noCroppedCandidateImages must be true');
-  const deferredIconArtifacts = new Set(Array.isArray(spec.icons?.generatedArtifactsDeferred) ? spec.icons.generatedArtifactsDeferred : []);
-  requireCondition(deferredIconArtifacts.has('desktop/src-tauri/icons/icon.icns'), 'icons.generatedArtifactsDeferred must include icon.icns');
-  requireCondition(deferredIconArtifacts.has('desktop/src-tauri/icons/icon.ico'), 'icons.generatedArtifactsDeferred must include icon.ico');
+  requireCondition(spec.icons?.generationScript === 'scripts/generate-desktop-icons.mjs', 'icons.generationScript must point at scripts/generate-desktop-icons.mjs');
+  await readTextFile(spec.icons?.generationScript, 'desktop icon generation script');
+
+  const generatedAssets = Array.isArray(spec.icons?.generatedAssets) ? spec.icons.generatedAssets : [];
+  const generatedAssetPaths = new Set(generatedAssets.map((asset) => asset.path));
+  for (const iconPath of [
+    'desktop/src-tauri/icons/32x32.png',
+    'desktop/src-tauri/icons/128x128.png',
+    'desktop/src-tauri/icons/128x128@2x.png',
+    'desktop/src-tauri/icons/icon.png',
+    'desktop/src-tauri/icons/icon.icns',
+    'desktop/src-tauri/icons/icon.ico',
+  ]) {
+    requireCondition(generatedAssetPaths.has(iconPath), `icons.generatedAssets must include ${iconPath}`);
+  }
+
+  const expectedGeneratedPngSizes = new Map([
+    ['desktop/src-tauri/icons/32x32.png', '32x32'],
+    ['desktop/src-tauri/icons/128x128.png', '128x128'],
+    ['desktop/src-tauri/icons/128x128@2x.png', '256x256'],
+    ['desktop/src-tauri/icons/icon.png', '256x256'],
+  ]);
+  for (const asset of generatedAssets) {
+    if (expectedGeneratedPngSizes.has(asset.path)) {
+      requireCondition(asset.format === 'png', `generated icon ${asset.path} must declare png format`);
+      requireCondition(asset.size === expectedGeneratedPngSizes.get(asset.path), `generated icon ${asset.path} must declare size ${expectedGeneratedPngSizes.get(asset.path)}`);
+      const dimensions = await readPngDimensions(asset.path, `generated icon ${asset.path}`);
+      requireCondition(formatDimensions(dimensions) === expectedGeneratedPngSizes.get(asset.path), `generated icon ${asset.path} must be ${expectedGeneratedPngSizes.get(asset.path)}`);
+    }
+  }
+  await validateIcnsFile('desktop/src-tauri/icons/icon.icns', 'generated macOS icon.icns');
+  await validateIcoFile('desktop/src-tauri/icons/icon.ico', 'generated Windows icon.ico');
 
   const signing = spec.signing || {};
-  requireCondition(signing.status === 'deferred', 'signing.status must be deferred until CI/local signing is configured');
+  requireCondition(signing.status === 'ci-scaffolded', 'signing.status must be ci-scaffolded once the manual workflow exists');
   requireCondition(signing.noCertificatesInRepo === true, 'signing.noCertificatesInRepo must be true');
   requireCondition(signing.noPrivateKeysInRepo === true, 'signing.noPrivateKeysInRepo must be true');
+  requireCondition(signing.workflowPath === '.github/workflows/desktop-package.yml', 'signing.workflowPath must point at desktop-package workflow');
+  requireCondition(signing.manualOnly === true, 'signing.manualOnly must be true');
+  requireCondition(signing.unsignedBuildDefault === true, 'signing.unsignedBuildDefault must be true');
+  requireCondition(signing.signedBuildRequiresSecrets === true, 'signing.signedBuildRequiresSecrets must be true');
   requireCondition(typeof signing.macos === 'string' && signing.macos.includes('CI secrets'), 'signing.macos must reference CI secrets or local keychain handling');
   requireCondition(typeof signing.windows === 'string' && signing.windows.includes('CI secrets'), 'signing.windows must reference CI secrets handling');
+  for (const secretName of ['APPLE_CERTIFICATE_BASE64', 'APPLE_CERTIFICATE_PASSWORD', 'APPLE_SIGNING_IDENTITY', 'APPLE_ID', 'APPLE_PASSWORD', 'APPLE_TEAM_ID']) {
+    requireCondition(Array.isArray(signing.macosSecretNames) && signing.macosSecretNames.includes(secretName), `signing.macosSecretNames must include ${secretName}`);
+  }
+  for (const secretName of ['WINDOWS_CERTIFICATE_BASE64', 'WINDOWS_CERTIFICATE_PASSWORD']) {
+    requireCondition(Array.isArray(signing.windowsSecretNames) && signing.windowsSecretNames.includes(secretName), `signing.windowsSecretNames must include ${secretName}`);
+  }
+
+  const workflow = await readTextFile(signing.workflowPath, 'desktop package workflow');
+  requireCondition(workflow.includes('workflow_dispatch'), 'desktop package workflow must be manual');
+  requireCondition(workflow.includes('macos-latest'), 'desktop package workflow must include a macOS job');
+  requireCondition(workflow.includes('windows-latest'), 'desktop package workflow must include a Windows job');
+  requireCondition(workflow.includes('npm run tauri:build -- --bundles dmg'), 'desktop package workflow must build dmg bundles');
+  requireCondition(workflow.includes('npm run tauri:build -- --bundles nsis'), 'desktop package workflow must build nsis bundles');
+  requireCondition(workflow.includes('${{ secrets.APPLE_CERTIFICATE_BASE64 }}'), 'desktop package workflow must read macOS signing secrets by name');
+  requireCondition(workflow.includes('${{ secrets.WINDOWS_CERTIFICATE_BASE64 }}'), 'desktop package workflow must read Windows signing secrets by name');
 
   const desktopReadme = await readTextFile('desktop/README.md', 'desktop README');
   const prerequisitesDoc = await readTextFile('desktop/BUILD_PREREQUISITES.md', 'desktop build prerequisites doc');
@@ -156,6 +217,7 @@ async function validateBuildPrerequisites(spec) {
   requireCondition(prerequisitesDoc.includes('Xcode Command Line Tools'), 'desktop build prerequisites doc must mention Xcode Command Line Tools');
   requireCondition(prerequisitesDoc.includes('Windows host or CI runner'), 'desktop build prerequisites doc must mention Windows host or CI runner');
   requireCondition(prerequisitesDoc.includes('Do not commit certificates'), 'desktop build prerequisites doc must state signing material is not committed');
+  requireCondition(prerequisitesDoc.includes('node scripts/generate-desktop-icons.mjs'), 'desktop build prerequisites doc must mention icon generation');
   requireCondition(iconReadme.includes('icon.icns'), 'desktop icons README must describe icon.icns');
   requireCondition(iconReadme.includes('icon.ico'), 'desktop icons README must describe icon.ico');
 }
@@ -220,4 +282,25 @@ function formatDimensions(dimensions) {
     return '';
   }
   return `${dimensions.width}x${dimensions.height}`;
+}
+
+async function validateIcnsFile(relativePath, label) {
+  const file = await readBinaryFile(relativePath, label);
+  if (!file) {
+    return;
+  }
+  requireCondition(file.length > 8, `${label} must not be empty`);
+  requireCondition(file.subarray(0, 4).toString('ascii') === 'icns', `${label} must have icns signature`);
+  requireCondition(file.readUInt32BE(4) === file.length, `${label} length header must match file size`);
+}
+
+async function validateIcoFile(relativePath, label) {
+  const file = await readBinaryFile(relativePath, label);
+  if (!file) {
+    return;
+  }
+  requireCondition(file.length > 22, `${label} must not be empty`);
+  requireCondition(file.readUInt16LE(0) === 0, `${label} reserved header must be 0`);
+  requireCondition(file.readUInt16LE(2) === 1, `${label} type header must be icon`);
+  requireCondition(file.readUInt16LE(4) >= 1, `${label} must contain at least one image`);
 }

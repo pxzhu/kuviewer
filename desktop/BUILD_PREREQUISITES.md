@@ -35,20 +35,30 @@ The current source icons are the transparent YAML Flow app icons already used by
 - `website/public/favicon-192x192.png`
 - `website/public/apple-touch-icon.png`
 
-Platform-specific generated assets are deferred to a later packaging task:
+Platform-specific generated assets are committed under `desktop/src-tauri/icons` and are derived from the public app icon:
 
+- `desktop/src-tauri/icons/32x32.png`
+- `desktop/src-tauri/icons/128x128.png`
+- `desktop/src-tauri/icons/128x128@2x.png`
+- `desktop/src-tauri/icons/icon.png`
 - `desktop/src-tauri/icons/icon.icns`
 - `desktop/src-tauri/icons/icon.ico`
 
-Generated `.icns` and `.ico` files may be committed later if they are derived from the public app icon. Do not use cropped candidate thumbnails or screenshots as desktop icons.
+Regenerate them from the repository root with:
+
+```bash
+node scripts/generate-desktop-icons.mjs
+```
+
+The generator uses macOS `sips` for resizing and writes ICNS/ICO containers directly, so run it on macOS. Do not use cropped candidate thumbnails or screenshots as desktop icons.
 
 ## Signing Policy
 
-Signing is intentionally deferred. Do not commit certificates, signing identities, password files, PFX files, private key material, kubeconfigs, admin tokens, cloud credentials, Secret values, Events, or logs.
+Signing is secret-gated in the manual desktop packaging workflow and unsigned builds remain the default. Do not commit certificates, signing identities, password files, PFX files, private key material, kubeconfigs, admin tokens, cloud credentials, Secret values, Events, or logs.
 
 Future signing should use local keychains or CI secrets:
 
 - macOS: Apple Developer ID certificate and notarization credentials.
 - Windows: Windows code-signing certificate on a Windows runner or from CI secrets.
 
-Unsigned local test builds are acceptable for packaging development. Public installer release should wait until signing and notarization are explicitly configured.
+Unsigned local test builds are acceptable for packaging development. Public installer release should wait until signing and notarization are explicitly configured and tested.

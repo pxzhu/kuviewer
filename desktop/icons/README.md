@@ -1,13 +1,19 @@
 # Desktop Icon Artifacts
 
-Platform icon generation is deferred. Use the transparent YAML Flow source icons from `website/public` when generating desktop assets:
+Platform icon generation uses the transparent YAML Flow source icon from `website/public/images/brand/kuviewer-icon-yaml-flow.png`.
 
-- `favicon-32x32.png`
-- `favicon-192x192.png`
-- `apple-touch-icon.png`
+Regenerate the committed desktop icons from the repository root:
 
-Expected future outputs:
+```bash
+node scripts/generate-desktop-icons.mjs
+```
 
+Committed outputs:
+
+- `32x32.png`
+- `128x128.png`
+- `128x128@2x.png`
+- `icon.png`
 - `icon.icns` for macOS `.dmg`
 - `icon.ico` for Windows `.exe`
 

@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "check": "node ../scripts/check-desktop-packaging-spec.mjs",
+    "icons:generate": "node ../scripts/generate-desktop-icons.mjs",
     "tauri:dev": "tauri dev --config src-tauri/tauri.conf.json",
     "tauri:build": "tauri build --config src-tauri/tauri.conf.json"
   },

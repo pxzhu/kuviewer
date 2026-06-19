@@ -29,6 +29,13 @@
   "bundle": {
     "active": true,
     "targets": ["dmg", "nsis"],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
     "category": "DeveloperTool",
     "shortDescription": "Read-only Kubernetes cluster explorer",
     "longDescription": "Kuviewer desktop shell for read-only Kubernetes topology, resource, event, and log exploration."
