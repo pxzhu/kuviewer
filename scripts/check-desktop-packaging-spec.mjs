@@ -31,6 +31,7 @@ requireCondition(
     'desktop-keychain-credential-design',
     'desktop-keychain-profile-runtime',
     'desktop-os-credential-store',
+    'desktop-keychain-sidecar-runtime',
   ].includes(spec.status),
   'status must be a known desktop packaging milestone'
 );
@@ -67,6 +68,7 @@ requireCondition(phases.includes('release-versioning'), 'phaseOrder must include
 requireCondition(phases.includes('keychain-credential-design'), 'phaseOrder must include keychain-credential-design');
 requireCondition(phases.includes('keychain-profile-runtime'), 'phaseOrder must include keychain-profile-runtime');
 requireCondition(phases.includes('os-credential-store'), 'phaseOrder must include os-credential-store');
+requireCondition(phases.includes('keychain-sidecar-runtime'), 'phaseOrder must include keychain-sidecar-runtime');
 requireCondition(phases.includes('macos-dmg-build'), 'phaseOrder must include macos-dmg-build');
 requireCondition(phases.includes('windows-exe-build'), 'phaseOrder must include windows-exe-build');
 
@@ -90,6 +92,7 @@ if (
     'desktop-keychain-credential-design',
     'desktop-keychain-profile-runtime',
     'desktop-os-credential-store',
+    'desktop-keychain-sidecar-runtime',
   ].includes(spec.status)
 ) {
   await validateTauriScaffold(spec.tauri || {});
@@ -547,7 +550,7 @@ async function validateLocalSidecar(spec) {
 
 async function validateCredentialStorageDesign(spec) {
   const design = spec.credentialStorageDesign || {};
-  requireCondition(design.status === 'os-store-read-write-scaffolded', 'credentialStorageDesign.status must be os-store-read-write-scaffolded');
+  requireCondition(design.status === 'sidecar-runtime-scaffolded', 'credentialStorageDesign.status must be sidecar-runtime-scaffolded');
   requireCondition(design.documentPath === 'desktop/KEYCHAIN_CREDENTIAL_DESIGN.md', 'credentialStorageDesign.documentPath must point at the keychain credential design doc');
   requireCondition(design.firstRuntimeScope === 'bearer-token-only', 'credentialStorageDesign.firstRuntimeScope must be bearer-token-only');
   requireCondition(design.browserCredentialEntry === false, 'credentialStorageDesign.browserCredentialEntry must be false');
@@ -570,11 +573,14 @@ async function validateCredentialStorageDesign(spec) {
   requireCondition(runtimePrototype.deleteCredentialCommand === 'desktop_delete_kubernetes_profile_credential', 'credentialStorageDesign.runtimePrototype.deleteCredentialCommand must be desktop_delete_kubernetes_profile_credential');
   requireCondition(runtimePrototype.uiPanel === 'DesktopKubernetesProfilePanel', 'credentialStorageDesign.runtimePrototype.uiPanel must be DesktopKubernetesProfilePanel');
   requireCondition(runtimePrototype.secretReadWriteImplemented === true, 'credentialStorageDesign.runtimePrototype.secretReadWriteImplemented must be true once native OS store helpers exist');
-  requireCondition(runtimePrototype.sidecarRestartImplemented === false, 'credentialStorageDesign.runtimePrototype.sidecarRestartImplemented must stay false until selecting a profile restarts the sidecar');
+  requireCondition(runtimePrototype.sidecarRestartImplemented === true, 'credentialStorageDesign.runtimePrototype.sidecarRestartImplemented must be true once selecting a stored credential restarts the sidecar');
   requireCondition(runtimePrototype.browserReceivesSecrets === false, 'credentialStorageDesign.runtimePrototype.browserReceivesSecrets must be false');
   requireCondition(runtimePrototype.credentialAvailableField === 'credentialAvailable', 'credentialStorageDesign.runtimePrototype.credentialAvailableField must be credentialAvailable');
+  requireCondition(runtimePrototype.activeProfileStatus === 'sidecar-kubernetes-active', 'credentialStorageDesign.runtimePrototype.activeProfileStatus must be sidecar-kubernetes-active');
   requireCondition(runtimePrototype.importTokenFileEnv === 'KUVIEWER_DESKTOP_KUBE_TOKEN_FILE', 'credentialStorageDesign.runtimePrototype.importTokenFileEnv must be KUVIEWER_DESKTOP_KUBE_TOKEN_FILE');
   requireCondition(runtimePrototype.importTokenFileFlagEnv === 'KUVIEWER_DESKTOP_KUBE_IMPORT_TOKEN_FILE', 'credentialStorageDesign.runtimePrototype.importTokenFileFlagEnv must be KUVIEWER_DESKTOP_KUBE_IMPORT_TOKEN_FILE');
+  requireCondition(runtimePrototype.runtimeTokenFileEnv === 'KUVIEWER_KUBE_TOKEN_FILE', 'credentialStorageDesign.runtimePrototype.runtimeTokenFileEnv must be KUVIEWER_KUBE_TOKEN_FILE');
+  requireCondition(runtimePrototype.runtimeTokenFilePolicy === '0600-temp-dir-delete-on-sidecar-stop', 'credentialStorageDesign.runtimePrototype.runtimeTokenFilePolicy must be 0600-temp-dir-delete-on-sidecar-stop');
   const fixtureEnv = new Set(Array.isArray(runtimePrototype.envMetadataFixture) ? runtimePrototype.envMetadataFixture : []);
   for (const envName of ['KUVIEWER_DESKTOP_KUBE_API_SERVER', 'KUVIEWER_DESKTOP_KUBE_PROFILE_ID', 'KUVIEWER_DESKTOP_KUBE_PROFILE_NAME']) {
     requireCondition(fixtureEnv.has(envName), `credentialStorageDesign.runtimePrototype.envMetadataFixture must include ${envName}`);
@@ -600,6 +606,8 @@ async function validateCredentialStorageDesign(spec) {
     'KUVIEWER_DESKTOP_KUBE_PROFILE_NAME',
     'KUVIEWER_DESKTOP_KUBE_TOKEN_FILE',
     'KUVIEWER_DESKTOP_KUBE_IMPORT_TOKEN_FILE',
+    'sidecar-kubernetes-active',
+    '0600-temp-dir-delete-on-sidecar-stop',
   ]) {
     requireCondition(designDoc.includes(marker), `desktop keychain credential design doc must include ${marker}`);
   }
@@ -615,6 +623,12 @@ async function validateCredentialStorageDesign(spec) {
     'write_bearer_token',
     'has_bearer_token',
     'delete_bearer_token',
+    'read_bearer_token',
+    'restart_desktop_sidecar_for_kubernetes_profile',
+    'write_runtime_kubernetes_token_file',
+    'cleanup_runtime_files',
+    'KUVIEWER_KUBE_TOKEN_FILE',
+    'sidecar-kubernetes-active',
     'SecKeychainAddGenericPassword',
     'CredWriteW',
     'KUVIEWER_DESKTOP_KUBE_API_SERVER',
@@ -656,6 +670,11 @@ async function validateCredentialStorageDesign(spec) {
 
   const sourceModeBar = await readTextFile('website/src/components/SourceModeBar.tsx', 'source mode bar');
   requireCondition(sourceModeBar.includes('DesktopKubernetesProfilePanel'), 'source mode bar must render DesktopKubernetesProfilePanel in desktop runtime');
+
+  const app = await readTextFile('website/src/app/App.tsx', 'app shell');
+  for (const marker of ['sidecar-kubernetes-active', 'getDesktopSidecarProfile', 'storeAdminToken', 'storeSourceMode', 'token은 native/runtime file 경로만 사용']) {
+    requireCondition(app.includes(marker), `app shell must include ${marker}`);
+  }
 }
 
 function validateDryRuns(spec) {
