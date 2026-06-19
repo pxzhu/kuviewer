@@ -68,3 +68,17 @@ GitHub Actions includes a `desktop-package` workflow for installer experiments:
 - signing secret validation only when the `signed` input is enabled
 
 The workflow references secret names only. Certificate files, private keys, passwords, kubeconfigs, admin tokens, cloud credentials, Secret values, Events, and logs must remain outside the repository.
+
+## Verified Dry Run
+
+The first unsigned macOS package dry-run completed on 2026-06-19 through GitHub Actions run `27800527207`.
+
+- workflow: `desktop-package`
+- ref: `main`
+- commit: `d525971d7415a6053eb8f45d92f5a3573654e3cd`
+- output: `Kuviewer_0.1.0_aarch64.dmg`
+- uploaded artifact: `kuviewer-macos-dmg`
+- uploaded artifact size: `7,125,256` bytes
+- signing: disabled
+
+The dry-run record is also stored in [packaging-spec.json](packaging-spec.json). The artifact is an unsigned build for packaging validation, not a public signed release.
