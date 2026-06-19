@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "name": "Kuviewer Desktop Cluster Explorer",
   "goal": "installable-read-only-desktop-cluster-explorer",
-  "status": "desktop-local-sidecar-runtime",
+  "status": "desktop-keychain-credential-design",
   "recommendedPackager": "tauri",
   "fallbackPackager": "electron",
   "tauri": {
@@ -31,6 +31,10 @@
     {
       "id": "local-sidecar",
       "description": "Bundle the Go read-only API server as a localhost-only Tauri sidecar launched by Rust, with a per-launch admin token handed to the UI through a Tauri command."
+    },
+    {
+      "id": "local-kubernetes-keychain",
+      "description": "Future direct Kubernetes desktop mode where Rust reads credentials from the OS credential store and starts the localhost sidecar without exposing kubeconfig content to browser JavaScript."
     }
   ],
   "remoteConnectionProfile": {
@@ -127,6 +131,23 @@
       "noCommittedBinaries": true,
       "noJavascriptShellPermission": true
     }
+  },
+  "credentialStorageDesign": {
+    "status": "design-scaffolded",
+    "documentPath": "desktop/KEYCHAIN_CREDENTIAL_DESIGN.md",
+    "firstRuntimeScope": "bearer-token-only",
+    "browserCredentialEntry": false,
+    "browserCredentialPersistence": false,
+    "frontendMetadataOnly": true,
+    "safeMetadataStorage": "localStorage-profile-id-display-only",
+    "osCredentialStores": ["macos-keychain", "windows-credential-manager"],
+    "secretProfileMaterial": ["bearer-token", "ca-bundle"],
+    "tokenTransport": "KUVIEWER_KUBE_TOKEN_FILE",
+    "avoidBearerTokenEnvForDesktop": true,
+    "tempFilePolicy": "0600-runtime-delete-on-exit",
+    "noKubeconfigPersistence": true,
+    "noSecretValues": true,
+    "noOperationalActions": true
   },
   "buildPrerequisites": [
     {
@@ -313,6 +334,7 @@
     "release-versioning",
     "local-sidecar-evaluation",
     "local-sidecar-runtime",
+    "keychain-credential-design",
     "macos-dmg-build",
     "windows-exe-build",
     "signing-and-release"

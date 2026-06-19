@@ -46,7 +46,7 @@ Build prerequisites, icon source policy, and signing boundaries are tracked in [
 - Do not ask users to paste kubeconfigs into the browser UI.
 - Do not persist kubeconfigs, admin tokens, cloud credentials, private keys, Secret values, Events, or logs in the app bundle.
 - Do not add operational actions such as exec, port-forward, restart, scale, delete, apply, or edit in the packaging spike.
-- Treat desktop connection settings as URL-only UI profile state until a dedicated keychain-backed design is implemented.
+- Treat desktop connection settings as URL-only UI profile state until the dedicated keychain-backed runtime is implemented.
 
 ## Remote Server Profile
 
@@ -164,6 +164,12 @@ node scripts/build-desktop-sidecar.mjs --target aarch64-apple-darwin --out-dir /
 Remote server profile remains available. If the user has already selected a different remote server URL, the desktop app does not overwrite that profile with the sidecar URL; clearing the remote profile allows the local sidecar profile to take over on the next launch.
 
 The desktop server profile panel also displays the detected local sidecar source and exposes a `로컬 sidecar 사용` action. That action explicitly replaces the selected remote URL with the local sidecar URL, re-reads the per-launch token through the Tauri command, stores it in `sessionStorage`, and switches the app to live mode. The UI passes only the safe sidecar URL/source descriptor into the panel; the token is not stored as profile metadata.
+
+## Keychain Credential Design
+
+The next direct-cluster desktop path is documented in [KEYCHAIN_CREDENTIAL_DESIGN.md](KEYCHAIN_CREDENTIAL_DESIGN.md). It keeps Kubernetes credentials out of browser JavaScript and stores secret material only in macOS Keychain or Windows Credential Manager.
+
+The first runtime scope is bearer-token Kubernetes profiles. Rust should read the selected OS credential, create private runtime temp files, pass `KUVIEWER_KUBE_TOKEN_FILE` / optional `KUVIEWER_KUBE_CA_FILE` to the localhost sidecar, and delete those temp files on shutdown. Browser `localStorage` remains safe profile metadata only, and operational actions remain out of scope.
 
 ## Verified Dry Runs
 

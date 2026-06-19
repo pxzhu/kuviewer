@@ -63,6 +63,12 @@ Default sidecar source is `mock` for installer smoke builds. Use `KUVIEWER_DESKT
 
 The desktop UI can show the detected local sidecar source next to the remote server URL profile and includes an explicit local-sidecar switch action. That switch re-queries the Tauri sidecar profile command for the current per-launch token and keeps the token session-only.
 
+## Keychain Credential Design
+
+Direct desktop-to-cluster credentials are specified in [KEYCHAIN_CREDENTIAL_DESIGN.md](KEYCHAIN_CREDENTIAL_DESIGN.md). The design requires macOS Keychain and Windows Credential Manager for secret material, while browser `localStorage` may hold only safe profile ids/display metadata.
+
+The first runtime implementation should support bearer-token profiles through `KUVIEWER_KUBE_TOKEN_FILE` and optional CA files, not browser-side kubeconfig import. Runtime token/CA temp files must be outside the repository, owner-only where supported, and deleted when the sidecar stops.
+
 ## Icon Assets
 
 The current source icons are the transparent YAML Flow app icons already used by the web app:

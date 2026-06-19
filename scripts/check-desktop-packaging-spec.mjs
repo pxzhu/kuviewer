@@ -18,8 +18,8 @@ function requireCondition(condition, message) {
 requireCondition(spec.schemaVersion === 1, 'schemaVersion must be 1');
 requireCondition(spec.goal === 'installable-read-only-desktop-cluster-explorer', 'goal must describe the installable read-only desktop explorer');
 requireCondition(
-  ['packaging-spike', 'tauri-scaffold', 'macos-dmg-dry-run', 'windows-exe-dry-run', 'desktop-remote-profile-ux', 'desktop-release-versioning', 'desktop-signing-notarization', 'desktop-local-sidecar-evaluation', 'desktop-local-sidecar-runtime'].includes(spec.status),
-  'status must be packaging-spike, tauri-scaffold, macos-dmg-dry-run, windows-exe-dry-run, desktop-remote-profile-ux, desktop-release-versioning, desktop-signing-notarization, desktop-local-sidecar-evaluation, or desktop-local-sidecar-runtime'
+  ['packaging-spike', 'tauri-scaffold', 'macos-dmg-dry-run', 'windows-exe-dry-run', 'desktop-remote-profile-ux', 'desktop-release-versioning', 'desktop-signing-notarization', 'desktop-local-sidecar-evaluation', 'desktop-local-sidecar-runtime', 'desktop-keychain-credential-design'].includes(spec.status),
+  'status must be packaging-spike, tauri-scaffold, macos-dmg-dry-run, windows-exe-dry-run, desktop-remote-profile-ux, desktop-release-versioning, desktop-signing-notarization, desktop-local-sidecar-evaluation, desktop-local-sidecar-runtime, or desktop-keychain-credential-design'
 );
 requireCondition(spec.recommendedPackager === 'tauri', 'recommendedPackager must be tauri for the first packaging spike');
 requireCondition(spec.fallbackPackager === 'electron', 'fallbackPackager must be electron');
@@ -32,6 +32,7 @@ requireCondition(targetArtifacts.has('windows:exe'), 'targets must include windo
 const connectionModes = new Set((Array.isArray(spec.connectionModes) ? spec.connectionModes : []).map((mode) => mode.id));
 requireCondition(connectionModes.has('remote-api'), 'connectionModes must include remote-api');
 requireCondition(connectionModes.has('local-sidecar'), 'connectionModes must include local-sidecar as a future evaluation path');
+requireCondition(connectionModes.has('local-kubernetes-keychain'), 'connectionModes must include local-kubernetes-keychain as the desktop credential design path');
 
 const security = spec.security || {};
 requireCondition(security.readOnly === true, 'security.readOnly must be true');
@@ -50,6 +51,7 @@ requireCondition(phases[0] === 'packaging-spec', 'phaseOrder must start with pac
 requireCondition(phases.includes('tauri-scaffold'), 'phaseOrder must include tauri-scaffold');
 requireCondition(phases.includes('remote-connection-profile'), 'phaseOrder must include remote-connection-profile');
 requireCondition(phases.includes('release-versioning'), 'phaseOrder must include release-versioning');
+requireCondition(phases.includes('keychain-credential-design'), 'phaseOrder must include keychain-credential-design');
 requireCondition(phases.includes('macos-dmg-build'), 'phaseOrder must include macos-dmg-build');
 requireCondition(phases.includes('windows-exe-build'), 'phaseOrder must include windows-exe-build');
 
@@ -57,9 +59,10 @@ await validateBuildPrerequisites(spec);
 await validateRemoteConnectionProfile(spec);
 await validateReleaseVersioning(spec);
 await validateLocalSidecar(spec);
+await validateCredentialStorageDesign(spec);
 validateDryRuns(spec);
 
-if (['tauri-scaffold', 'macos-dmg-dry-run', 'windows-exe-dry-run', 'desktop-remote-profile-ux', 'desktop-release-versioning', 'desktop-signing-notarization', 'desktop-local-sidecar-evaluation', 'desktop-local-sidecar-runtime'].includes(spec.status)) {
+if (['tauri-scaffold', 'macos-dmg-dry-run', 'windows-exe-dry-run', 'desktop-remote-profile-ux', 'desktop-release-versioning', 'desktop-signing-notarization', 'desktop-local-sidecar-evaluation', 'desktop-local-sidecar-runtime', 'desktop-keychain-credential-design'].includes(spec.status)) {
   await validateTauriScaffold(spec.tauri || {});
 }
 
@@ -511,6 +514,58 @@ async function validateLocalSidecar(spec) {
   requireCondition(desktopReadme.includes('Local Sidecar Runtime'), 'desktop README must document local sidecar runtime');
   requireCondition(prerequisitesDoc.includes('node scripts/build-desktop-sidecar.mjs'), 'desktop build prerequisites doc must mention sidecar build script');
   requireCondition(prerequisitesDoc.includes('KUVIEWER_DESKTOP_SIDECAR_SOURCE'), 'desktop build prerequisites doc must mention the sidecar source override');
+}
+
+async function validateCredentialStorageDesign(spec) {
+  const design = spec.credentialStorageDesign || {};
+  requireCondition(design.status === 'design-scaffolded', 'credentialStorageDesign.status must be design-scaffolded');
+  requireCondition(design.documentPath === 'desktop/KEYCHAIN_CREDENTIAL_DESIGN.md', 'credentialStorageDesign.documentPath must point at the keychain credential design doc');
+  requireCondition(design.firstRuntimeScope === 'bearer-token-only', 'credentialStorageDesign.firstRuntimeScope must be bearer-token-only');
+  requireCondition(design.browserCredentialEntry === false, 'credentialStorageDesign.browserCredentialEntry must be false');
+  requireCondition(design.browserCredentialPersistence === false, 'credentialStorageDesign.browserCredentialPersistence must be false');
+  requireCondition(design.frontendMetadataOnly === true, 'credentialStorageDesign.frontendMetadataOnly must be true');
+  requireCondition(design.safeMetadataStorage === 'localStorage-profile-id-display-only', 'credentialStorageDesign.safeMetadataStorage must be localStorage-profile-id-display-only');
+  requireCondition(Array.isArray(design.osCredentialStores) && design.osCredentialStores.includes('macos-keychain'), 'credentialStorageDesign.osCredentialStores must include macos-keychain');
+  requireCondition(Array.isArray(design.osCredentialStores) && design.osCredentialStores.includes('windows-credential-manager'), 'credentialStorageDesign.osCredentialStores must include windows-credential-manager');
+  requireCondition(Array.isArray(design.secretProfileMaterial) && design.secretProfileMaterial.includes('bearer-token'), 'credentialStorageDesign.secretProfileMaterial must include bearer-token');
+  requireCondition(design.tokenTransport === 'KUVIEWER_KUBE_TOKEN_FILE', 'credentialStorageDesign.tokenTransport must use KUVIEWER_KUBE_TOKEN_FILE');
+  requireCondition(design.avoidBearerTokenEnvForDesktop === true, 'credentialStorageDesign.avoidBearerTokenEnvForDesktop must be true');
+  requireCondition(design.tempFilePolicy === '0600-runtime-delete-on-exit', 'credentialStorageDesign.tempFilePolicy must be 0600-runtime-delete-on-exit');
+  requireCondition(design.noKubeconfigPersistence === true, 'credentialStorageDesign.noKubeconfigPersistence must be true');
+  requireCondition(design.noSecretValues === true, 'credentialStorageDesign.noSecretValues must be true');
+  requireCondition(design.noOperationalActions === true, 'credentialStorageDesign.noOperationalActions must be true');
+
+  const designDoc = await readTextFile(design.documentPath, 'desktop keychain credential design doc');
+  for (const marker of [
+    'macOS: Keychain',
+    'Windows: Credential Manager',
+    'KUVIEWER_KUBE_TOKEN_FILE',
+    '0600',
+    'localStorage',
+    'browser-side kubeconfig',
+    'No exec',
+    'Secret values remain hidden',
+    'bearer-token Kubernetes profiles',
+  ]) {
+    requireCondition(designDoc.includes(marker), `desktop keychain credential design doc must include ${marker}`);
+  }
+  requireCondition(!designDoc.includes('KUVIEWER_KUBE_BEARER_TOKEN=<'), 'desktop keychain credential design must not recommend bearer token env handoff');
+
+  const desktopReadme = await readTextFile('desktop/README.md', 'desktop README');
+  const prerequisitesDoc = await readTextFile('desktop/BUILD_PREREQUISITES.md', 'desktop build prerequisites doc');
+  const handoff = await readTextFile('CODEX_HANDOFF.md', 'Codex handoff');
+  for (const [label, text] of [
+    ['desktop README', desktopReadme],
+    ['desktop build prerequisites doc', prerequisitesDoc],
+    ['Codex handoff', handoff],
+  ]) {
+    requireCondition(text.includes('KEYCHAIN_CREDENTIAL_DESIGN.md'), `${label} must reference KEYCHAIN_CREDENTIAL_DESIGN.md`);
+    requireCondition(text.includes('macOS Keychain'), `${label} must mention macOS Keychain`);
+    requireCondition(text.includes('Windows Credential Manager'), `${label} must mention Windows Credential Manager`);
+  }
+
+  const profileModule = await readTextFile('website/src/features/desktop/desktopConnectionProfile.ts', 'desktop connection profile frontend module');
+  requireCondition(!profileModule.includes('kubeconfig'), 'desktop frontend profile module must not handle kubeconfig content');
 }
 
 function validateDryRuns(spec) {
