@@ -29,6 +29,17 @@ The Tauri config builds the existing `website` app before packaging. The desktop
 
 Remote server profile UX is runtime-only. It stores only the selected Kuviewer server URL in browser `localStorage`; admin tokens remain session-only, and profile changes clear the current token. Remote hosts should use `https`; plain `http` is limited to loopback development servers. Remote servers that are not same-origin must set `KUVIEWER_CORS_ORIGIN` for the desktop app origin.
 
+## Package Versioning
+
+The checked-in desktop package baseline remains `0.1.0`. For local or CI packaging, resolve a package version from the repository root before running Tauri:
+
+```bash
+node scripts/set-desktop-package-version.mjs --version 0.1.76 --dry-run
+node scripts/set-desktop-package-version.mjs --version 0.1.0 --check
+```
+
+The manual `desktop-package` workflow accepts a `package_version` input and otherwise derives the version from a `v*` tag ref or falls back to `0.1.0`. The workflow mutates only its build workspace before packaging so release artifact names and Tauri installer metadata match the selected version. Do not commit certificates, private keys, credentials, kubeconfigs, admin tokens, Secret values, Events, logs, or accidental local version bumps.
+
 ## Icon Assets
 
 The current source icons are the transparent YAML Flow app icons already used by the web app:

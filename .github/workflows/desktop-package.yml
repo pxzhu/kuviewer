@@ -18,6 +18,11 @@ on:
         required: true
         default: false
         type: boolean
+      package_version:
+        description: Desktop package version without leading v; defaults to v* ref or 0.1.0
+        required: false
+        default: ''
+        type: string
 
 permissions:
   contents: read
@@ -36,6 +41,11 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 24
+
+      - name: Validate desktop package version input
+        env:
+          KUVIEWER_DESKTOP_VERSION: ${{ inputs.package_version }}
+        run: node scripts/set-desktop-package-version.mjs --print
 
       - name: Desktop packaging spec check
         run: node scripts/check-desktop-packaging-spec.mjs
@@ -69,6 +79,12 @@ jobs:
       - name: Verify generated icons
         run: node scripts/check-desktop-packaging-spec.mjs
 
+      - name: Resolve desktop package version
+        id: desktop-version
+        env:
+          KUVIEWER_DESKTOP_VERSION: ${{ inputs.package_version }}
+        run: node scripts/set-desktop-package-version.mjs --github-output
+
       - name: Validate macOS signing secrets
         if: inputs.signed
         env:
@@ -93,7 +109,7 @@ jobs:
       - name: Upload macOS artifact
         uses: actions/upload-artifact@v4
         with:
-          name: kuviewer-macos-dmg
+          name: kuviewer-macos-dmg-${{ steps.desktop-version.outputs.version }}
           path: desktop/src-tauri/target/release/bundle/dmg/*
           if-no-files-found: error
 
@@ -126,6 +142,12 @@ jobs:
       - name: Verify generated icons
         run: node scripts/check-desktop-packaging-spec.mjs
 
+      - name: Resolve desktop package version
+        id: desktop-version
+        env:
+          KUVIEWER_DESKTOP_VERSION: ${{ inputs.package_version }}
+        run: node scripts/set-desktop-package-version.mjs --github-output
+
       - name: Validate Windows signing secrets
         if: inputs.signed
         shell: bash
@@ -143,6 +165,6 @@ jobs:
       - name: Upload Windows artifact
         uses: actions/upload-artifact@v4
         with:
-          name: kuviewer-windows-exe
+          name: kuviewer-windows-exe-${{ steps.desktop-version.outputs.version }}
           path: desktop/src-tauri/target/release/bundle/nsis/*
           if-no-files-found: error
