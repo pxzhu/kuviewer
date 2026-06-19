@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Boxes, GitBranch, LockKeyhole, Palette, Pause, Play, RefreshCw, SearchCode, SlidersHorizontal, Workflow } from 'lucide-react';
 import { clearAdminToken, getStoredAdminToken, isValidAdminToken } from '../features/auth/adminToken';
+import {
+  getDesktopConnectionProfile,
+  isDesktopRuntime,
+  subscribeDesktopConnectionProfile,
+  type DesktopConnectionProfile,
+} from '../features/desktop/desktopConnectionProfile';
 import { useConnectorStatus } from '../features/status/useConnectorStatus';
 import { type ColorMode, type TopologyFilters, type TopologySourceMode, useTopology } from '../features/topology/useTopology';
 import { importTopologySnapshot, parseKubernetesFiles, type UploadedTopologyState } from '../features/upload/parseKubernetesFiles';
@@ -55,6 +61,8 @@ function Dashboard() {
   const [viewMode, setViewMode] = useState<ViewMode>(() => initialViewMode());
   const [sourceMode, setSourceMode] = useState<TopologySourceMode>(() => initialSourceMode());
   const [resourceUrlFilters, setResourceUrlFilters] = useState<ResourceViewFilters>(() => initialResourceViewFilters());
+  const [desktopConnectionAvailable] = useState(() => isDesktopRuntime());
+  const [desktopConnectionProfile, setDesktopConnectionProfile] = useState<DesktopConnectionProfile | null>(() => getDesktopConnectionProfile());
   const [liveUnlocked, setLiveUnlocked] = useState(() => isValidAdminToken(getStoredAdminToken()));
   const [uploadedState, setUploadedState] = useState<UploadedTopologyState | null>(null);
   const [uploadClusterName, setUploadClusterName] = useState('uploaded-bundle');
@@ -88,6 +96,15 @@ function Dashboard() {
     refreshIntervalMs,
     source,
   } = useTopology(filters, sourceMode, uploadedState?.snapshot || null, liveUnlocked);
+
+  useEffect(() => {
+    if (!desktopConnectionAvailable) {
+      return;
+    }
+    return subscribeDesktopConnectionProfile(() => {
+      setDesktopConnectionProfile(getDesktopConnectionProfile());
+    });
+  }, [desktopConnectionAvailable]);
 
   useEffect(() => {
     if (sourceMode === 'live' && (connectorError.endsWith(':401') || error.endsWith(':401'))) {
@@ -252,6 +269,17 @@ function Dashboard() {
     }
   }, [resourceUrlFilters, setAutoRefresh, sourceMode, viewMode]);
 
+  const handleDesktopConnectionProfileChange = useCallback(
+    (profile: DesktopConnectionProfile | null) => {
+      setDesktopConnectionProfile(profile);
+      clearAdminToken();
+      setLiveUnlocked(false);
+      setAutoRefresh(false);
+      setLiveSessionMessage(profile ? 'desktop server 변경됨 · token 재입력 필요' : 'desktop server profile 없음');
+    },
+    [setAutoRefresh],
+  );
+
   const handleOpenTopologyNode = useCallback((nodeId: string) => {
     setFilters(initialFilters);
     setSelectedNodeId(nodeId);
@@ -399,6 +427,8 @@ function Dashboard() {
       <div className="mx-auto grid max-w-[1760px] gap-3 px-3 py-3 sm:px-4 lg:gap-4 lg:px-6 lg:py-4">
         <SourceModeBar
           canExport={snapshot.nodes.length > 0 || snapshot.edges.length > 0}
+          desktopConnectionAvailable={desktopConnectionAvailable}
+          desktopConnectionProfile={desktopConnectionProfile}
           liveSessionMessage={liveSessionMessage}
           liveUnlocked={liveUnlocked}
           mode={sourceMode}
@@ -406,6 +436,7 @@ function Dashboard() {
           uploadClusterName={uploadClusterName}
           uploadedState={uploadedState}
           uploadError={uploadError}
+          onDesktopConnectionProfileChange={handleDesktopConnectionProfileChange}
           onExportJson={handleExportJson}
           onImportJson={handleImportJson}
           onLiveLock={handleLiveLock}
