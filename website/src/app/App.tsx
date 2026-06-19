@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Boxes, GitBranch, LockKeyhole, Palette, Pause, Play, RefreshCw, SearchCode, SlidersHorizontal, Workflow } from 'lucide-react';
-import { clearAdminToken, getStoredAdminToken, isValidAdminToken } from '../features/auth/adminToken';
+import { clearAdminToken, getStoredAdminToken, isValidAdminToken, storeAdminToken } from '../features/auth/adminToken';
 import {
   getDesktopConnectionProfile,
+  getDesktopSidecarProfile,
   isDesktopRuntime,
+  storeDesktopConnectionProfile,
   subscribeDesktopConnectionProfile,
   type DesktopConnectionProfile,
 } from '../features/desktop/desktopConnectionProfile';
@@ -104,6 +106,40 @@ function Dashboard() {
     return subscribeDesktopConnectionProfile(() => {
       setDesktopConnectionProfile(getDesktopConnectionProfile());
     });
+  }, [desktopConnectionAvailable]);
+
+  useEffect(() => {
+    if (!desktopConnectionAvailable) {
+      return;
+    }
+
+    let cancelled = false;
+    void getDesktopSidecarProfile()
+      .then((sidecarProfile) => {
+        if (cancelled || !sidecarProfile) {
+          return;
+        }
+
+        const currentProfile = getDesktopConnectionProfile();
+        if (currentProfile && currentProfile.serverUrl !== sidecarProfile.serverUrl) {
+          setLiveSessionMessage('desktop local sidecar 대기 · remote profile 사용 중');
+          return;
+        }
+
+        storeAdminToken(sidecarProfile.adminToken);
+        setDesktopConnectionProfile(storeDesktopConnectionProfile(sidecarProfile.serverUrl));
+        setLiveUnlocked(true);
+        setLiveSessionMessage(`desktop local sidecar 연결됨 · ${sidecarProfile.source} source`);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setLiveSessionMessage('desktop local sidecar 시작 안 됨 · remote profile 사용 가능');
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, [desktopConnectionAvailable]);
 
   useEffect(() => {
