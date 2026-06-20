@@ -107,6 +107,13 @@ interface ResourceViewPreset extends ResourceViewFilters {
   updatedAt: number;
 }
 
+interface ActiveResourceFilterChip {
+  id: keyof ResourceViewFilters;
+  label: string;
+  value: string;
+  testId: string;
+}
+
 export interface ResourceViewFilters {
   query: string;
   cluster: string;
@@ -400,6 +407,16 @@ export function ResourceExplorer({
     },
     currentPresetFilters,
   );
+  const activeResourceFilterChips = useMemo<ActiveResourceFilterChip[]>(() => {
+    const trimmedQuery = query.trim();
+    return [
+      trimmedQuery ? { id: 'query', label: 'Search', value: trimmedQuery, testId: 'resource-active-filter-query' } : null,
+      cluster !== allValue ? { id: 'cluster', label: 'Cluster', value: cluster, testId: 'resource-active-filter-cluster' } : null,
+      namespace !== allValue ? { id: 'namespace', label: 'Namespace', value: namespace, testId: 'resource-active-filter-namespace' } : null,
+      kind !== allValue ? { id: 'kind', label: 'Kind', value: kind, testId: 'resource-active-filter-kind' } : null,
+      status !== allValue ? { id: 'status', label: 'Status', value: status, testId: 'resource-active-filter-status' } : null,
+    ].filter((chip): chip is ActiveResourceFilterChip => chip !== null);
+  }, [cluster, kind, namespace, query, status]);
   const savePresetLabel = matchingViewPreset || presetNameExists ? '뷰 업데이트' : '뷰 저장';
   const teamResourceViewsEnabled = sourceMode === 'live' && liveEnabled;
   const filteredResources = useMemo(() => {
@@ -806,6 +823,21 @@ export function ResourceExplorer({
     setPresetGroup(defaultResourceViewGroup);
     setResourceViewMessage(null);
     onSelectNode('');
+  };
+  const handleClearActiveResourceFilter = (filterId: keyof ResourceViewFilters) => {
+    setRenamingViewPreset(null);
+    setResourceViewMessage(null);
+    if (filterId === 'query') {
+      setQuery('');
+    } else if (filterId === 'cluster') {
+      setCluster(allValue);
+    } else if (filterId === 'namespace') {
+      setNamespace(allValue);
+    } else if (filterId === 'kind') {
+      setKind(allValue);
+    } else if (filterId === 'status') {
+      setStatus(allValue);
+    }
   };
   const handleIncomingResourceViewPresets = (source: ResourceViewConflictSource, incomingPresets: ResourceViewPreset[], invalidCount: number) => {
     setRenamingViewPreset(null);
@@ -1331,7 +1363,12 @@ export function ResourceExplorer({
                   ))}
                 </div>
               </div>
-              <span className="ku-chip">{loading ? '로딩 중' : `${filteredResources.length} / ${resources.length}`}</span>
+              <span className="ku-chip" data-testid="resource-result-count">{loading ? '로딩 중' : `결과 ${filteredResources.length} / 전체 ${resources.length}`}</span>
+              {activeResourceFilterChips.length > 0 ? (
+                <span className="ku-chip border-[rgba(0,122,255,0.22)] bg-[rgba(0,122,255,0.08)] text-[#0057b8]" data-testid="resource-active-filter-count">
+                  필터 {activeResourceFilterChips.length}
+                </span>
+              ) : null}
             </div>
           </div>
           {error ? <p className="mt-2 text-xs font-semibold text-[#b26a00]">API 오류: {error}</p> : null}
@@ -1347,6 +1384,50 @@ export function ResourceExplorer({
             <ResourceSelect label="Namespace" testId="resource-filter-namespace" value={namespace} values={namespaces} onChange={setNamespace} />
             <ResourceSelect label="Kind" testId="resource-filter-kind" value={kind} values={kinds} onChange={setKind} />
             <ResourceSelect label="Status" testId="resource-filter-status" value={status} values={statuses} onChange={setStatus} />
+          </div>
+          <div
+            className="flex flex-wrap items-center justify-between gap-2 rounded-[12px] border border-[rgba(60,60,67,0.1)] bg-[rgba(248,248,252,0.72)] p-2"
+            data-testid="resource-active-filters"
+          >
+            <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
+              {activeResourceFilterChips.length > 0 ? (
+                activeResourceFilterChips.map((chip) => (
+                  <span
+                    key={chip.id}
+                    className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-[rgba(0,122,255,0.18)] bg-white px-2 py-1 text-[10px] font-semibold text-[#0057b8] shadow-sm"
+                    data-testid={chip.testId}
+                  >
+                    <span className="min-w-0 truncate">
+                      {chip.label}: {chip.value}
+                    </span>
+                    <button
+                      className="rounded-full p-0.5 text-[#0057b8] transition hover:bg-[rgba(0,122,255,0.1)]"
+                      type="button"
+                      onClick={() => handleClearActiveResourceFilter(chip.id)}
+                      aria-label={`${chip.label} 필터 지우기`}
+                      data-testid={`${chip.testId}-clear`}
+                    >
+                      <X size={11} aria-hidden="true" />
+                    </button>
+                  </span>
+                ))
+              ) : (
+                <span className="inline-flex items-center rounded-full bg-[rgba(60,60,67,0.06)] px-2 py-1 text-[10px] font-semibold text-[rgba(60,60,67,0.58)]" data-testid="resource-active-filter-empty">
+                  모든 리소스
+                </span>
+              )}
+            </div>
+            {activeResourceFilterChips.length > 0 ? (
+              <button
+                className="inline-flex items-center gap-1 rounded-[8px] border border-[rgba(60,60,67,0.12)] bg-white px-2.5 py-1.5 text-xs font-semibold text-[rgba(60,60,67,0.72)] transition hover:bg-[rgba(242,242,247,0.9)]"
+                type="button"
+                onClick={handleResetResourceFilters}
+                data-testid="resource-active-filter-clear-all"
+              >
+                <RotateCcw size={13} aria-hidden="true" />
+                Clear all
+              </button>
+            ) : null}
           </div>
           <div className="grid gap-2 rounded-[12px] border border-[rgba(60,60,67,0.12)] bg-white/70 p-2">
             <div className="flex flex-wrap items-center justify-between gap-2">
