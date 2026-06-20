@@ -75,6 +75,14 @@ For native OS store smoke, set `KUVIEWER_DESKTOP_KUBE_TOKEN_FILE` to a local tok
 
 Selecting a stored profile restarts the local sidecar with `KUVIEWER_SOURCE=kubernetes`, `KUVIEWER_KUBE_API_SERVER`, and `KUVIEWER_KUBE_TOKEN_FILE`, then returns `sidecar-kubernetes-active` metadata to the UI. Runtime token files use `0600-temp-dir-delete-on-sidecar-stop`, so they should be outside the repository and cleaned on sidecar stop/restart.
 
+The automated runtime smoke uses a stubbed Tauri bridge rather than a real OS credential store. After building the frontend and starting preview, run:
+
+```bash
+node scripts/smoke-desktop-keychain-runtime.mjs --url http://127.0.0.1:4174/kuviewer/
+```
+
+The smoke verifies `desktop_kubernetes_profiles`, stored profile selection, session-only sidecar token handoff, live mode switching, and active credential deletion fallback. It must not create macOS Keychain or Windows Credential Manager entries.
+
 ## Icon Assets
 
 The current source icons are the transparent YAML Flow app icons already used by the web app:

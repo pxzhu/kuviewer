@@ -177,6 +177,8 @@ For native secret import smoke, Rust can read a local token file and write it to
 
 Selecting a profile with a stored credential restarts the local sidecar with `KUVIEWER_SOURCE=kubernetes`, `KUVIEWER_KUBE_API_SERVER`, and `KUVIEWER_KUBE_TOKEN_FILE`. The returned profile status becomes `sidecar-kubernetes-active`, and the UI switches to live mode using only the sidecar URL/source descriptor plus the per-launch sidecar admin token in `sessionStorage`. Runtime token files follow `0600-temp-dir-delete-on-sidecar-stop`: they are written outside the repository and deleted when the sidecar stops or restarts. Deleting the active native credential stops the Kubernetes sidecar, clears the live token, deletes runtime token files, and falls back to the default local sidecar. Bearer tokens, kubeconfig bodies, private keys, cloud credentials, and Secret values must not be passed through browser state.
 
+`scripts/smoke-desktop-keychain-runtime.mjs` automates the safe UI/runtime handoff path with a stubbed Tauri bridge. It verifies `desktop_kubernetes_profiles`, `desktop_select_kubernetes_profile`, `desktop_sidecar_profile`, `desktop_delete_kubernetes_profile_credential`, session-only token storage, live mode switching, and active credential delete fallback without touching a real macOS Keychain or Windows Credential Manager item.
+
 ## Verified Dry Runs
 
 The first unsigned macOS package dry-run completed on 2026-06-19 through GitHub Actions run `27800527207`.
