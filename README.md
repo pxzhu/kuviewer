@@ -453,6 +453,21 @@ SERVER_SSH_KNOWN_HOSTS
 
 Deploy SSH preflight uses the same required secrets and does not require a registry or extra credential. It validates the SSH port range, pins the SSH host key with `StrictHostKeyChecking=yes`, checks remote `git`, `curl`, `gzip`, Docker/Compose availability, verifies `DEPLOY_PATH` and `/tmp` writability, and confirms `deploy/standalone/.env` when an existing checkout is already present. When `SERVER_SSH_KNOWN_HOSTS` is set, the workflow writes that pinned public host key data directly to `known_hosts`. Otherwise, host key scan retries run six times, scan `ed25519`, `ecdsa`, then `rsa` sequentially, accept non-empty scan output even when one scan command exits non-zero, and include an IPv4 keyscan fallback without disabling strict host key checking. Runner-side image archives and temporary SSH material are removed in an always-run cleanup step.
 
+To prepare the optional host key pin without printing the key body in logs:
+
+```bash
+node scripts/prepare-deploy-known-hosts.mjs --host <server-host> --port <server-port> --out /tmp/kuviewer-known-hosts
+gh secret set SERVER_SSH_KNOWN_HOSTS < /tmp/kuviewer-known-hosts
+```
+
+The helper also supports validating an existing known_hosts file and setting the repository secret directly:
+
+```bash
+node scripts/prepare-deploy-known-hosts.mjs --from-file /tmp/kuviewer-known-hosts --set-secret
+```
+
+If both the workflow keyscan fallback and the helper cannot collect host keys, SSH is not reachable from that network path; verify the server SSH service, port, DNS/IP, and firewall before rerunning the tag deploy.
+
 Deploy rollback is local to the server. Before loading the new `kuviewer:local` image, the workflow preserves the existing image as `kuviewer:rollback-${GITHUB_RUN_ID}` when one exists. If the new compose rollout does not pass the bounded `/healthz` retry loop, the workflow retags that preserved image back to `kuviewer:local`, recreates compose, checks health again, and still fails the GitHub Actions run so the failed release is visible. The server writes safe deploy metadata to `$DEPLOY_PATH/.kuviewer/deploy-state.json`, including run id, ref, sha, timestamps, image ids, result, and rollback result. It does not print raw container logs, `.env` content, tokens, kubeconfigs, private keys, cloud credentials, or Secret values.
 
 Optional repository variables, shown with example values:
