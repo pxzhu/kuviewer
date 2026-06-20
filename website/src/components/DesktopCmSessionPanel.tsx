@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Activity, CheckCircle2, KeyRound, Pencil, Play, Plus, ServerCog, ShieldCheck, Square, Trash2, Unplug } from 'lucide-react';
+import { Activity, CheckCircle2, KeyRound, Pencil, Play, Plus, Search, ServerCog, ShieldCheck, Square, Trash2, Unplug, XCircle } from 'lucide-react';
 import {
   desktopCmDefaultRemoteApiHost,
   desktopCmDefaultRemoteApiPort,
@@ -55,6 +55,14 @@ export function DesktopCmSessionPanel({
   const [deleteConfirmId, setDeleteConfirmId] = useState('');
   const [credentialDeleteConfirmId, setCredentialDeleteConfirmId] = useState('');
   const [keyFilePaths, setKeyFilePaths] = useState<Record<string, string>>({});
+  const [sessionSearchQuery, setSessionSearchQuery] = useState('');
+  const normalizedSessionSearchQuery = normalizeSearchValue(sessionSearchQuery);
+  const visibleSessions = useMemo(
+    () => sessions.filter((session) => matchesCmSessionSearch(session, normalizedSessionSearchQuery)),
+    [normalizedSessionSearchQuery, sessions],
+  );
+  const selectedRuntimeActive = Boolean(selectedSession && runtimeProfile?.sessionId === selectedSession.id);
+  const selectedRuntimeStatus = selectedRuntimeActive ? runtimeProfile?.status || selectedSession?.runtimeStatus || 'runtime-active' : selectedSession?.runtimeStatus || 'stopped';
 
   useEffect(() => {
     if (form.id && !sessions.some((session) => session.id === form.id)) {
@@ -338,9 +346,102 @@ export function DesktopCmSessionPanel({
         </div>
       </div>
 
+      <div
+        className="grid gap-2 rounded-[10px] border border-[rgba(60,60,67,0.1)] bg-white/70 px-3 py-2 md:grid-cols-[minmax(0,1fr)_auto] md:items-center"
+        data-testid="desktop-cm-session-summary"
+      >
+        {selectedSession ? (
+          <>
+            <div className="grid min-w-0 gap-1">
+              <div className="flex min-w-0 flex-wrap items-center gap-2">
+                <span className="ku-meta">Selected CM session</span>
+                <span className="ku-chip max-w-full border-[rgba(52,199,89,0.22)] bg-[rgba(52,199,89,0.1)] text-[#248a3d]" data-testid="desktop-cm-session-summary-name">
+                  <CheckCircle2 size={13} aria-hidden="true" />
+                  <span className="truncate">{selectedSession.name}</span>
+                </span>
+                <span
+                  className={`ku-chip max-w-full ${
+                    selectedSession.credentialAvailable ? 'border-[rgba(52,199,89,0.22)] bg-[rgba(52,199,89,0.1)] text-[#248a3d]' : 'border-[rgba(255,149,0,0.24)] bg-[rgba(255,149,0,0.12)] text-[#8a4d00]'
+                  }`}
+                  data-testid="desktop-cm-session-summary-credential"
+                >
+                  <KeyRound size={13} aria-hidden="true" />
+                  {selectedSession.credentialAvailable ? 'credential ready' : 'credential 필요'}
+                </span>
+                <span className={`ku-chip max-w-full ${cmRuntimeStatusClass(selectedRuntimeStatus)}`} data-testid="desktop-cm-session-summary-runtime">
+                  <Activity size={13} aria-hidden="true" />
+                  {formatRuntimeStatus(selectedRuntimeStatus)}
+                </span>
+                {selectedRuntimeActive && runtimeProfile ? (
+                  <span className={`ku-chip max-w-full ${runtimeProfile.healthStatus === 'healthy' ? 'border-[rgba(52,199,89,0.22)] bg-[rgba(52,199,89,0.1)] text-[#248a3d]' : 'border-[rgba(255,149,0,0.24)] bg-[rgba(255,149,0,0.12)] text-[#b05f00]'}`} data-testid="desktop-cm-session-summary-health">
+                    <Activity size={13} aria-hidden="true" />
+                    {formatRuntimeHealthStatus(runtimeProfile.healthStatus)}
+                  </span>
+                ) : null}
+              </div>
+              <div className="flex min-w-0 flex-wrap items-center gap-2 text-xs font-semibold text-[rgba(60,60,67,0.62)]">
+                <span className="truncate font-mono" title={`${selectedSession.user}@${selectedSession.host}:${selectedSession.port}`}>
+                  {selectedSession.user}@{selectedSession.host}:{selectedSession.port}
+                </span>
+                <span className="truncate font-mono">
+                  API {selectedSession.remoteApiHost}:{selectedSession.remoteApiPort}
+                </span>
+                <span className="truncate">
+                  {selectedSession.lastCheckAt ? `last check ${formatTimestamp(selectedSession.lastCheckAt)}` : formatCmSessionCheckStatus(selectedSession.lastCheckStatus)}
+                </span>
+              </div>
+            </div>
+            {selectedRuntimeActive && runtimeProfile ? (
+              <div className="min-w-0 text-xs font-semibold text-[rgba(60,60,67,0.62)]" data-testid="desktop-cm-session-summary-runtime-url">
+                <p className="truncate font-mono" title={runtimeProfile.serverUrl}>{runtimeProfile.serverUrl}</p>
+                <p className="truncate">
+                  {runtimeProfile.lastHealthAt ? `health ${formatTimestamp(runtimeProfile.lastHealthAt)}` : 'health 미확인'}
+                  {runtimeProfile.lastHealthMessage ? ` · ${runtimeProfile.lastHealthMessage}` : ''}
+                </p>
+              </div>
+            ) : (
+              <div className="text-xs font-semibold text-[rgba(60,60,67,0.58)]">
+                runtime은 credential이 준비된 세션에서만 시작됩니다.
+              </div>
+            )}
+          </>
+        ) : (
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <span className="ku-meta">Selected CM session</span>
+            <span className="ku-chip">
+              <Unplug size={13} aria-hidden="true" />
+              선택된 세션 없음
+            </span>
+          </div>
+        )}
+      </div>
+
       {sessions.length > 0 ? (
-        <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
-          {sessions.map((session) => (
+        <div className="flex min-w-0 flex-wrap items-center gap-2" data-testid="desktop-cm-session-search-bar">
+          <label className="relative min-w-[220px] flex-1">
+            <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[rgba(60,60,67,0.48)]" size={15} aria-hidden="true" />
+            <input
+              className="ku-field h-9 w-full pl-9 pr-3"
+              data-testid="desktop-cm-session-search"
+              placeholder="세션 검색"
+              value={sessionSearchQuery}
+              onChange={(event) => setSessionSearchQuery(event.target.value)}
+            />
+          </label>
+          <button className="ku-control h-9" data-testid="desktop-cm-session-search-clear" type="button" disabled={!sessionSearchQuery} onClick={() => setSessionSearchQuery('')}>
+            <XCircle size={14} aria-hidden="true" />
+            초기화
+          </button>
+          <span className="ku-chip" data-testid="desktop-cm-session-search-count">
+            결과 {visibleSessions.length} / 전체 {sessions.length}
+          </span>
+        </div>
+      ) : null}
+
+      {sessions.length > 0 ? (
+        visibleSessions.length > 0 ? (
+          <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+            {visibleSessions.map((session) => (
             <div
               key={session.id}
               className={`grid min-w-0 gap-2 rounded-[8px] border px-3 py-2 text-left transition ${
@@ -519,8 +620,13 @@ export function DesktopCmSessionPanel({
                 </button>
               </div>
             </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        ) : (
+          <p className="rounded-[8px] border border-[rgba(60,60,67,0.1)] bg-white/70 px-3 py-2 text-xs font-semibold text-[rgba(60,60,67,0.58)]" data-testid="desktop-cm-session-search-empty">
+            일치하는 CM/SSH session 없음
+          </p>
+        )
       ) : (
         <p className="text-xs font-semibold text-[rgba(60,60,67,0.58)]">
           CM/SSH 세션은 설치형 앱에서만 관리됩니다. private key는 Rust가 OS credential store에 저장하고 브라우저에는 safe metadata만 표시합니다.
@@ -609,6 +715,21 @@ function formatCmSessionCheckStatus(status: string) {
   }
 }
 
+function formatRuntimeStatus(status: string) {
+  switch (status) {
+    case 'runtime-active':
+      return 'runtime active';
+    case 'runtime-unhealthy':
+      return 'runtime health 실패';
+    case 'runtime-lost':
+      return 'runtime 끊김';
+    case 'stopped':
+      return 'runtime stopped';
+    default:
+      return status || 'runtime stopped';
+  }
+}
+
 function formatRuntimeHealthStatus(status: string) {
   switch (status) {
     case 'healthy':
@@ -620,4 +741,54 @@ function formatRuntimeHealthStatus(status: string) {
     default:
       return status || 'health 미확인';
   }
+}
+
+function normalizeSearchValue(value: string) {
+  return value.trim().toLowerCase();
+}
+
+function matchesCmSessionSearch(session: DesktopCmSession, normalizedQuery: string) {
+  if (!normalizedQuery) {
+    return true;
+  }
+
+  const searchText = [
+    session.name,
+    session.host,
+    session.port,
+    session.user,
+    session.remoteApiHost,
+    session.remoteApiPort,
+    session.status,
+    session.runtimeStatus,
+    session.description || '',
+    session.credentialAvailable ? 'credential ready' : 'credential missing',
+    formatCmSessionCheckStatus(session.lastCheckStatus),
+    formatRuntimeStatus(session.runtimeStatus),
+  ]
+    .join(' ')
+    .toLowerCase();
+
+  return searchText.includes(normalizedQuery);
+}
+
+function cmRuntimeStatusClass(status: string) {
+  if (status === 'runtime-active') {
+    return 'border-[rgba(0,122,255,0.18)] bg-[rgba(0,122,255,0.08)] text-[#0066cc]';
+  }
+  if (status === 'runtime-unhealthy' || status === 'runtime-lost') {
+    return 'border-[rgba(255,149,0,0.24)] bg-[rgba(255,149,0,0.12)] text-[#b05f00]';
+  }
+  return 'border-[rgba(142,142,147,0.2)] bg-[rgba(142,142,147,0.1)] text-[#636366]';
+}
+
+function formatTimestamp(timestamp?: number) {
+  if (!timestamp) {
+    return '';
+  }
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) {
+    return '';
+  }
+  return date.toLocaleTimeString();
 }
