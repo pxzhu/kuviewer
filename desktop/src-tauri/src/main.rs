@@ -480,7 +480,7 @@ fn initialize_desktop_cm_sessions(app: &tauri::AppHandle) {
     }
     if let Ok(mut selected) = state.selected_cm_session_id.lock() {
         *selected = selected_session_id;
-    }
+    };
 }
 
 fn load_desktop_cm_sessions_from_env() -> Vec<DesktopCmSessionMetadata> {
