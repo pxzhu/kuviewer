@@ -189,6 +189,7 @@ async function verifyResourceExplorer(page) {
   await expect(page.getByRole('heading', { name: '리소스 탐색' })).toBeVisible({ timeout: 10_000 });
   await verifyResourceListSorting(page);
   await verifyResourceListColumns(page);
+  await verifyResourceActiveFilterChips(page);
   await verifyResourceBulkActions(page);
   await verifyResourceKeyboardMultiSelect(page);
   await verifyResourceViewRename(page);
@@ -435,6 +436,36 @@ async function verifyResourceViewSearch(page) {
   await page.getByTestId('resource-view-search-clear').click();
   await expect(page.getByTestId('resource-view-search-count')).toHaveCount(0);
   await expect(page.getByTestId(`resource-view-preset-row-${duplicateId}`)).toBeVisible({ timeout: 10_000 });
+}
+
+async function verifyResourceActiveFilterChips(page) {
+  const kindSelect = page.getByTestId('resource-filter-kind');
+  const availableKinds = await kindSelect.locator('option').evaluateAll((options) => options.map((option) => option.value));
+  const targetKind = availableKinds.includes('Pod') ? 'Pod' : availableKinds.find((value) => value && value !== 'all');
+  if (!targetKind) {
+    throw new Error('resource kind filter had no selectable value');
+  }
+
+  await page.getByTestId('resource-view-query').fill('checkout');
+  await kindSelect.selectOption(targetKind);
+  await expect(page.getByTestId('resource-active-filters')).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByTestId('resource-active-filter-query')).toContainText('Search: checkout', { timeout: 10_000 });
+  await expect(page.getByTestId('resource-active-filter-kind')).toContainText(`Kind: ${targetKind}`, { timeout: 10_000 });
+  await expect(page.getByTestId('resource-active-filter-count')).toContainText('필터 2', { timeout: 10_000 });
+  await expect(page.getByTestId('resource-result-count')).toContainText('결과', { timeout: 10_000 });
+
+  await page.getByTestId('resource-active-filter-query-clear').click();
+  await expect(page.getByTestId('resource-view-query')).toHaveValue('');
+  await expect(page.getByTestId('resource-active-filter-query')).toHaveCount(0);
+  await expect(page.getByTestId('resource-active-filter-kind')).toContainText(`Kind: ${targetKind}`, { timeout: 10_000 });
+  await expect(page.getByTestId('resource-active-filter-count')).toContainText('필터 1', { timeout: 10_000 });
+
+  await page.getByTestId('resource-active-filter-clear-all').click();
+  await expect(page.getByTestId('resource-view-query')).toHaveValue('');
+  await expect(kindSelect).toHaveValue('all');
+  await expect(page.getByTestId('resource-active-filter-empty')).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByTestId('resource-active-filter-clear-all')).toHaveCount(0);
+  await expect(page.getByTestId('resource-active-filter-count')).toHaveCount(0);
 }
 
 async function verifyResourceViewReorder(page) {
