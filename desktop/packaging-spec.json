@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "name": "Kuviewer Desktop CM Session Explorer",
   "goal": "desktop-cm-session-prototype",
-  "status": "desktop-cm-session-layout-import-export",
+  "status": "desktop-cm-session-layout-conflict-preview",
   "recommendedPackager": "tauri",
   "fallbackPackager": "electron",
   "tauri": {
@@ -71,7 +71,7 @@
     "noOperationalActions": true
   },
   "cmSshSessionManager": {
-    "status": "session-layout-import-export",
+    "status": "session-layout-conflict-preview",
     "desktopOnly": true,
     "webExposed": false,
     "storage": "tauri-state-safe-metadata-with-os-credential-store-and-session-runtime",
@@ -285,9 +285,33 @@
       "viewPreferenceFields": ["sessionId", "group", "favorite", "updatedAt", "collapsedGroups"],
       "acceptsBundleItemsShape": true,
       "acceptsPlainArray": true,
-      "updatesSameNamePreset": true,
+      "updatesSameNamePresetAfterConflictResolution": true,
+      "detectsSameNameConflicts": true,
       "prunesUnknownSessionIds": true,
       "skipsEmptyImportedLayouts": true,
+      "noSessionExportImportSchemaChange": true,
+      "noTauriSchemaChange": true,
+      "noSessionSearch": true,
+      "noDiagnosticFilters": true,
+      "noEndpointMetadata": true,
+      "noCredentialPayload": true,
+      "noRuntimeProfile": true,
+      "noDiagnosticHistory": true,
+      "noToken": true,
+      "noKubeconfig": true,
+      "noSecretValues": true,
+      "noEventsOrLogs": true
+    },
+    "sessionLayoutConflictPreview": {
+      "desktopOnly": true,
+      "uiOnly": true,
+      "stateStorage": "memory-only",
+      "trigger": "same-name-different-layout-import",
+      "actions": ["incoming", "keep-current", "rename-incoming"],
+      "noAutoOverwrite": true,
+      "newLayoutsImportedImmediately": true,
+      "identicalLayoutsSkipped": true,
+      "noLocalStorageUntilAction": true,
       "noSessionExportImportSchemaChange": true,
       "noTauriSchemaChange": true,
       "noSessionSearch": true,
@@ -307,7 +331,7 @@
       "desktop-use-sidecar-profile"
     ],
     "next": [
-      "Desktop CM session layout conflict preview"
+      "Desktop CM session layout per-row conflict actions"
     ]
   },
   "remoteConnectionProfile": {
@@ -567,6 +591,7 @@
     "desktop-cm-session-groups-favorites",
     "desktop-cm-session-bulk-actions",
     "desktop-cm-session-saved-layouts",
-    "desktop-cm-session-layout-import-export"
+    "desktop-cm-session-layout-import-export",
+    "desktop-cm-session-layout-conflict-preview"
   ]
 }
