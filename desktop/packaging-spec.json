@@ -27,7 +27,10 @@
     "staticCheck": "scripts/check-deploy-workflow.mjs",
     "preflightBeforeBuild": true,
     "strictHostKeyChecking": true,
+    "optionalPinnedKnownHostsSecret": "SERVER_SSH_KNOWN_HOSTS",
     "hostKeyScanAttempts": 6,
+    "keyscanTimeoutSeconds": 10,
+    "keyscanTypes": ["ed25519", "ecdsa", "rsa"],
     "acceptNonEmptyKeyscanOutput": true,
     "ipv4KeyscanFallback": true,
     "serverPortRangeValidation": true,
@@ -40,7 +43,8 @@
     "safeDeployStatePath": "$DEPLOY_PATH/.kuviewer/deploy-state.json",
     "noRawLogDump": true,
     "runnerCleanupAlways": true,
-    "noNewSecrets": true,
+    "noNewRequiredSecrets": true,
+    "optionalPinnedKnownHostsOnly": true,
     "noSecretValueLogging": true
   },
   "connectionModes": [
