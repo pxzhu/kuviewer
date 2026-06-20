@@ -17,6 +17,9 @@ requireIncludes(deployWorkflow, 'Validate required secrets', 'deploy workflow mu
 requireIncludes(deployWorkflow, 'SERVER_PORT must be numeric', 'deploy workflow must validate numeric SERVER_PORT');
 requireIncludes(deployWorkflow, 'SERVER_PORT must be between 1 and 65535', 'deploy workflow must validate SERVER_PORT range');
 requireIncludes(deployWorkflow, 'Prepare SSH key', 'deploy workflow must prepare SSH key before preflight');
+requireIncludes(deployWorkflow, 'SERVER_SSH_KEY_VALUE: ${{ secrets.SERVER_SSH_KEY }}', 'deploy workflow must pass SSH key through step env to avoid multiline command echo');
+requireIncludes(deployWorkflow, 'printf \'%s\\n\' "$SERVER_SSH_KEY_VALUE"', 'deploy workflow must write SSH key from step env');
+requireNotIncludes(deployWorkflow, 'printf \'%s\\n\' "${{ secrets.SERVER_SSH_KEY }}"', 'deploy workflow must not interpolate multiline SSH key directly in the shell command');
 requireIncludes(deployWorkflow, 'secrets.SERVER_SSH_KNOWN_HOSTS', 'deploy workflow must support optional pinned known_hosts secret');
 requireIncludes(deployWorkflow, 'vars.SERVER_SSH_KNOWN_HOSTS', 'deploy workflow must support optional pinned known_hosts repository variable');
 requireIncludes(deployWorkflow, 'ssh-tcp-reachable', 'deploy workflow must report safe SSH TCP reachability');
@@ -84,6 +87,9 @@ requireIncludes(deployPreflightWorkflow, 'SERVER_SSH_KNOWN_HOSTS secret present'
 requireIncludes(deployPreflightWorkflow, 'SERVER_SSH_KNOWN_HOSTS variable present', 'deploy preflight workflow must report known_hosts variable presence safely');
 requireIncludes(deployPreflightWorkflow, 'SERVER_SSH_KNOWN_HOSTS not set; keyscan fallback will be used', 'deploy preflight workflow must report known_hosts fallback safely');
 requireIncludes(deployPreflightWorkflow, 'ssh-tcp-reachable', 'deploy preflight workflow must report safe SSH TCP reachability');
+requireIncludes(deployPreflightWorkflow, 'SERVER_SSH_KEY_VALUE: ${{ secrets.SERVER_SSH_KEY }}', 'deploy preflight workflow must pass SSH key through step env to avoid multiline command echo');
+requireIncludes(deployPreflightWorkflow, 'printf \'%s\\n\' "$SERVER_SSH_KEY_VALUE"', 'deploy preflight workflow must write SSH key from step env');
+requireNotIncludes(deployPreflightWorkflow, 'printf \'%s\\n\' "${{ secrets.SERVER_SSH_KEY }}"', 'deploy preflight workflow must not interpolate multiline SSH key directly in the shell command');
 requireIncludes(deployPreflightWorkflow, 'ssh-tcp-unreachable; verify SERVER_FHOST/SERVER_PORT firewall and SSH service', 'deploy preflight workflow must fail fast on SSH TCP reachability errors');
 requireIncludes(deployPreflightWorkflow, ':</dev/tcp/"$0"/"$1"', 'deploy preflight workflow must use a TCP socket probe before keyscan');
 requireIncludes(deployPreflightWorkflow, 'ssh-banner-received', 'deploy preflight workflow must report safe SSH banner success');
@@ -110,6 +116,9 @@ requireIncludes(deployKnownHostsBootstrapWorkflow, 'actions: write', 'known_host
 requireIncludes(deployKnownHostsBootstrapWorkflow, 'deploy-known-hosts-bootstrap-only', 'known_hosts bootstrap workflow must report bootstrap-only scope');
 requireIncludes(deployKnownHostsBootstrapWorkflow, 'no image build, upload, compose rollout, rollback, or server mutation will run', 'known_hosts bootstrap workflow must document no deploy side effects');
 requireIncludes(deployKnownHostsBootstrapWorkflow, 'SERVER_PORT must be numeric', 'known_hosts bootstrap workflow must validate SERVER_PORT');
+requireIncludes(deployKnownHostsBootstrapWorkflow, 'SERVER_SSH_KEY_VALUE: ${{ secrets.SERVER_SSH_KEY }}', 'known_hosts bootstrap workflow must pass SSH key through step env to avoid multiline command echo');
+requireIncludes(deployKnownHostsBootstrapWorkflow, 'printf \'%s\\n\' "$SERVER_SSH_KEY_VALUE"', 'known_hosts bootstrap workflow must write SSH key from step env');
+requireNotIncludes(deployKnownHostsBootstrapWorkflow, 'printf \'%s\\n\' "${{ secrets.SERVER_SSH_KEY }}"', 'known_hosts bootstrap workflow must not interpolate multiline SSH key directly in the shell command');
 requireIncludes(deployKnownHostsBootstrapWorkflow, 'ssh-tcp-reachable', 'known_hosts bootstrap workflow must probe SSH TCP reachability');
 requireIncludes(deployKnownHostsBootstrapWorkflow, 'ssh-banner-received', 'known_hosts bootstrap workflow must report safe SSH banner success');
 requireIncludes(deployKnownHostsBootstrapWorkflow, 'ssh-banner-timeout; TCP opened but SSH banner was not received', 'known_hosts bootstrap workflow must fail fast when TCP opens but SSH banner is unavailable');
@@ -171,6 +180,7 @@ requireCondition(deployWorkflowPolicy.runnerCleanupAlways === true, 'deployWorkf
 requireCondition(deployWorkflowPolicy.noNewRequiredSecrets === true, 'deployWorkflowPolicy.noNewRequiredSecrets must be true');
 requireCondition(deployWorkflowPolicy.optionalPinnedKnownHostsOnly === true, 'deployWorkflowPolicy.optionalPinnedKnownHostsOnly must be true');
 requireCondition(deployWorkflowPolicy.noSecretValueLogging === true, 'deployWorkflowPolicy.noSecretValueLogging must be true');
+requireCondition(deployWorkflowPolicy.sshKeyViaStepEnv === true, 'deployWorkflowPolicy.sshKeyViaStepEnv must be true');
 requireCondition(deployWorkflowPolicy.knownHostsBootstrapManualOnly === true, 'deployWorkflowPolicy.knownHostsBootstrapManualOnly must be true');
 requireCondition(deployWorkflowPolicy.knownHostsBootstrapTofuRequiresAcknowledgement === true, 'deployWorkflowPolicy.knownHostsBootstrapTofuRequiresAcknowledgement must be true');
 const keyscanTypes = new Set(Array.isArray(deployWorkflowPolicy.keyscanTypes) ? deployWorkflowPolicy.keyscanTypes : []);

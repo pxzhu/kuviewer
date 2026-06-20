@@ -54,7 +54,8 @@
     "optionalPinnedKnownHostsOnly": true,
     "noSecretValueLogging": true,
     "knownHostsBootstrapManualOnly": true,
-    "knownHostsBootstrapTofuRequiresAcknowledgement": true
+    "knownHostsBootstrapTofuRequiresAcknowledgement": true,
+    "sshKeyViaStepEnv": true
   },
   "connectionModes": [
     {

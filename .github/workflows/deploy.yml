@@ -79,11 +79,13 @@ jobs:
 
       - name: Prepare SSH key
         shell: bash
+        env:
+          SERVER_SSH_KEY_VALUE: ${{ secrets.SERVER_SSH_KEY }}
         run: |
           set -euo pipefail
           mkdir -p ~/.ssh
           chmod 700 ~/.ssh
-          printf '%s\n' "${{ secrets.SERVER_SSH_KEY }}" > ~/.ssh/deploy_key.pem
+          printf '%s\n' "$SERVER_SSH_KEY_VALUE" > ~/.ssh/deploy_key.pem
           chmod 600 ~/.ssh/deploy_key.pem
           : > ~/.ssh/known_hosts
           if timeout 10 bash -c ':</dev/tcp/"$0"/"$1"' "${{ secrets.SERVER_FHOST }}" "${{ secrets.SERVER_PORT }}" 2>/dev/null; then
