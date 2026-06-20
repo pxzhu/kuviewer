@@ -176,7 +176,7 @@ https://kuviewer.example.com/
    - Desktop CM diagnostic saved filters는 완료됐다.
    - Desktop CM session connection profile polish는 완료됐다.
    - Desktop CM session duplicate/clone polish는 완료됐다. 세션 복제는 desktop-only clone draft로 동작하며 safe editable metadata만 복사하고 credential/runtime/diagnostic history는 복제하지 않는다.
-   - Desktop deploy SSH preflight hardening은 완료됐다. 태그 배포는 Docker build 전에 SSH/host key/remote git-curl-gzip-Docker-compose/deploy path/.env/tmp write preflight를 실행하고, strict host key checking과 upload retry, always cleanup을 사용한다.
+   - Desktop deploy SSH preflight hardening은 완료됐다. 태그 배포는 Docker build 전에 SSH/host key/remote git-curl-gzip-Docker-compose/deploy path/.env/tmp write preflight를 실행하고, strict host key checking과 upload retry, always cleanup을 사용한다. Host key scan은 6회 재시도, non-empty scan output 허용, IPv4 keyscan fallback을 사용한다.
    - Desktop deploy rollback/observability hardening은 완료됐다. 태그 배포는 새 이미지 적용 전 기존 `kuviewer:local`을 per-run rollback tag로 보존하고, 새 rollout health 실패 시 직전 이미지로 compose를 되돌리며, raw log/secret 없이 `$DEPLOY_PATH/.kuviewer/deploy-state.json`에 safe deploy metadata만 기록한다.
    - Desktop CM session grouping/favorites는 완료됐다. 설치형/Tauri CM/SSH session panel은 safe localStorage UI preference인 `kuviewer_desktop_cm_session_view_preferences`로 session id, group, favorite, updatedAt, collapsed groups만 저장하며 Tauri command payload와 session export/import JSON schema는 변경하지 않는다.
    - Desktop CM session bulk actions는 완료됐다. 설치형/Tauri CM/SSH session panel은 memory-only bulk selection으로 visible/group selection, selected safe-metadata export, group move, favorite set/unset, inline two-step selected delete를 제공하며 selection 상태는 localStorage/sessionStorage/export/import/Tauri payload에 저장하지 않는다.
