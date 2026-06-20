@@ -58,6 +58,20 @@ interface DesktopCmSessionLayoutImportSummary {
   invalid: number;
 }
 
+interface DesktopCmSessionLayoutImportConflict {
+  name: string;
+  current: DesktopCmSessionLayoutPreset;
+  incoming: DesktopCmSessionLayoutPreset;
+}
+
+interface DesktopCmSessionLayoutImportConflictPreview {
+  fileName: string;
+  imported: number;
+  skipped: number;
+  invalid: number;
+  conflicts: DesktopCmSessionLayoutImportConflict[];
+}
+
 interface DesktopCmDiagnosticFilterPreset {
   name: string;
   diagnosticStage: CmDiagnosticStageFilter;
@@ -144,6 +158,7 @@ export function DesktopCmSessionPanel({
   const [bulkDeleteConfirm, setBulkDeleteConfirm] = useState(false);
   const [importSummary, setImportSummary] = useState<DesktopCmSessionImportSummary | null>(null);
   const [sessionLayoutImportSummary, setSessionLayoutImportSummary] = useState<DesktopCmSessionLayoutImportSummary | null>(null);
+  const [sessionLayoutImportConflicts, setSessionLayoutImportConflicts] = useState<DesktopCmSessionLayoutImportConflictPreview | null>(null);
   const [cloneDraftSourceName, setCloneDraftSourceName] = useState('');
   const importInputRef = useRef<HTMLInputElement | null>(null);
   const sessionLayoutImportInputRef = useRef<HTMLInputElement | null>(null);
@@ -478,6 +493,7 @@ export function DesktopCmSessionPanel({
   };
 
   const handleSaveSessionLayoutPreset = () => {
+    setSessionLayoutImportConflicts(null);
     const presetName = normalizeDesktopCmSessionLayoutPresetName(sessionLayoutPresetName || `Layout ${sessionLayoutPresets.length + 1}`);
     const preset: DesktopCmSessionLayoutPreset = {
       name: presetName,
@@ -494,6 +510,7 @@ export function DesktopCmSessionPanel({
   };
 
   const handleApplySessionLayoutPreset = (preset: DesktopCmSessionLayoutPreset) => {
+    setSessionLayoutImportConflicts(null);
     const nextPreferences = pruneDesktopCmSessionViewPreferences(preset.viewPreferences, sessions);
     setSessionViewPreferences(nextPreferences);
     writeDesktopCmSessionViewPreferences(nextPreferences);
@@ -502,6 +519,7 @@ export function DesktopCmSessionPanel({
   };
 
   const handleDeleteSessionLayoutPreset = (presetName: string) => {
+    setSessionLayoutImportConflicts(null);
     setSessionLayoutPresets((current) => {
       const nextPresets = current.filter((preset) => preset.name !== presetName);
       writeDesktopCmSessionLayoutPresets(nextPresets);
@@ -526,27 +544,35 @@ export function DesktopCmSessionPanel({
       return;
     }
     setError('');
+    setSessionLayoutImportConflicts(null);
     setBusyAction('import-session-layouts');
     try {
       const parsed = parseDesktopCmSessionLayoutImportBundle(JSON.parse(await file.text()), sessions);
-      const existingPresetNames = new Set(sessionLayoutPresets.map((preset) => preset.name.toLowerCase()));
+      const existingPresetByName = new Map(sessionLayoutPresets.map((preset) => [preset.name.toLowerCase(), preset]));
+      const incomingPresets: DesktopCmSessionLayoutPreset[] = [];
+      const conflicts: DesktopCmSessionLayoutImportConflict[] = [];
       let imported = 0;
-      let updated = 0;
+      let skipped = parsed.skipped;
       for (const preset of parsed.items) {
-        if (existingPresetNames.has(preset.name.toLowerCase())) {
-          updated += 1;
-        } else {
+        const existingPreset = existingPresetByName.get(preset.name.toLowerCase());
+        if (!existingPreset) {
+          incomingPresets.push(preset);
           imported += 1;
+        } else if (desktopCmSessionLayoutEqual(existingPreset.viewPreferences, preset.viewPreferences)) {
+          skipped += 1;
+        } else {
+          conflicts.push({ name: preset.name, current: existingPreset, incoming: preset });
         }
       }
-      const incomingPresetNames = new Set(parsed.items.map((preset) => preset.name.toLowerCase()));
-      const nextPresets = normalizeDesktopCmSessionLayoutPresets([
-        ...parsed.items,
-        ...sessionLayoutPresets.filter((preset) => !incomingPresetNames.has(preset.name.toLowerCase())),
-      ]);
-      setSessionLayoutPresets(nextPresets);
-      writeDesktopCmSessionLayoutPresets(nextPresets);
-      setSessionLayoutImportSummary({ fileName: file.name, imported, updated, skipped: parsed.skipped, invalid: parsed.invalid });
+      if (incomingPresets.length > 0) {
+        const nextPresets = normalizeDesktopCmSessionLayoutPresets([...incomingPresets, ...sessionLayoutPresets]);
+        setSessionLayoutPresets(nextPresets);
+        writeDesktopCmSessionLayoutPresets(nextPresets);
+      }
+      setSessionLayoutImportSummary({ fileName: file.name, imported, updated: 0, skipped, invalid: parsed.invalid });
+      if (conflicts.length > 0) {
+        setSessionLayoutImportConflicts({ fileName: file.name, imported, skipped, invalid: parsed.invalid, conflicts });
+      }
     } catch (requestError) {
       setError(formatCmSessionError(requestError instanceof Error ? requestError.message : 'desktop_cm_session_layout_import_failed'));
     } finally {
@@ -555,6 +581,60 @@ export function DesktopCmSessionPanel({
         sessionLayoutImportInputRef.current.value = '';
       }
     }
+  };
+
+  const handleResolveSessionLayoutImportConflicts = (mode: 'incoming' | 'current' | 'rename') => {
+    if (!sessionLayoutImportConflicts) {
+      return;
+    }
+    if (mode === 'current') {
+      setSessionLayoutImportSummary({
+        fileName: sessionLayoutImportConflicts.fileName,
+        imported: sessionLayoutImportConflicts.imported,
+        updated: 0,
+        skipped: sessionLayoutImportConflicts.skipped + sessionLayoutImportConflicts.conflicts.length,
+        invalid: sessionLayoutImportConflicts.invalid,
+      });
+      setSessionLayoutImportConflicts(null);
+      return;
+    }
+
+    if (mode === 'incoming') {
+      const conflictNames = new Set(sessionLayoutImportConflicts.conflicts.map((conflict) => conflict.name.toLowerCase()));
+      const nextPresets = normalizeDesktopCmSessionLayoutPresets([
+        ...sessionLayoutImportConflicts.conflicts.map((conflict) => conflict.incoming),
+        ...sessionLayoutPresets.filter((preset) => !conflictNames.has(preset.name.toLowerCase())),
+      ]);
+      setSessionLayoutPresets(nextPresets);
+      writeDesktopCmSessionLayoutPresets(nextPresets);
+      setSessionLayoutImportSummary({
+        fileName: sessionLayoutImportConflicts.fileName,
+        imported: sessionLayoutImportConflicts.imported,
+        updated: sessionLayoutImportConflicts.conflicts.length,
+        skipped: sessionLayoutImportConflicts.skipped,
+        invalid: sessionLayoutImportConflicts.invalid,
+      });
+      setSessionLayoutImportConflicts(null);
+      return;
+    }
+
+    const existingNames = new Set(sessionLayoutPresets.map((preset) => preset.name.toLowerCase()));
+    const renamedPresets = sessionLayoutImportConflicts.conflicts.map((conflict) => {
+      const name = buildDesktopCmSessionLayoutImportName(conflict.incoming.name, existingNames);
+      existingNames.add(name.toLowerCase());
+      return { ...conflict.incoming, name, updatedAt: Date.now() };
+    });
+    const nextPresets = normalizeDesktopCmSessionLayoutPresets([...renamedPresets, ...sessionLayoutPresets]);
+    setSessionLayoutPresets(nextPresets);
+    writeDesktopCmSessionLayoutPresets(nextPresets);
+    setSessionLayoutImportSummary({
+      fileName: sessionLayoutImportConflicts.fileName,
+      imported: sessionLayoutImportConflicts.imported + renamedPresets.length,
+      updated: 0,
+      skipped: sessionLayoutImportConflicts.skipped,
+      invalid: sessionLayoutImportConflicts.invalid,
+    });
+    setSessionLayoutImportConflicts(null);
   };
 
   const handleSetSessionGroup = (sessionId: string, group: string) => {
@@ -1195,6 +1275,59 @@ export function DesktopCmSessionPanel({
                 />
               </label>
             </div>
+            {sessionLayoutImportConflicts ? (
+              <div
+                className="grid gap-2 rounded-[10px] border border-[rgba(255,149,0,0.22)] bg-[rgba(255,149,0,0.08)] px-3 py-2"
+                data-testid="desktop-cm-session-layout-conflict-preview"
+              >
+                <div className="flex min-w-0 flex-wrap items-center gap-2">
+                  <span className="ku-chip border-[rgba(255,149,0,0.24)] bg-white/65 text-[#9a5a00]">
+                    layout conflict preview · {sessionLayoutImportConflicts.fileName} · {sessionLayoutImportConflicts.conflicts.length} conflict
+                    {sessionLayoutImportConflicts.conflicts.length === 1 ? '' : 's'}
+                  </span>
+                  <button
+                    className="ku-control h-8 text-xs"
+                    data-testid="desktop-cm-session-layout-conflict-use-incoming"
+                    type="button"
+                    onClick={() => handleResolveSessionLayoutImportConflicts('incoming')}
+                  >
+                    incoming 우선
+                  </button>
+                  <button
+                    className="ku-control h-8 text-xs"
+                    data-testid="desktop-cm-session-layout-conflict-keep-current"
+                    type="button"
+                    onClick={() => handleResolveSessionLayoutImportConflicts('current')}
+                  >
+                    현재 유지
+                  </button>
+                  <button
+                    className="ku-control h-8 text-xs"
+                    data-testid="desktop-cm-session-layout-conflict-rename-incoming"
+                    type="button"
+                    onClick={() => handleResolveSessionLayoutImportConflicts('rename')}
+                  >
+                    이름 바꿔 둘 다 보관
+                  </button>
+                </div>
+                <div className="grid gap-1">
+                  {sessionLayoutImportConflicts.conflicts.map((conflict) => (
+                    <div
+                      key={conflict.name}
+                      className="grid gap-1 rounded-[8px] border border-[rgba(60,60,67,0.08)] bg-white/64 px-2 py-1 text-xs font-semibold text-[rgba(60,60,67,0.72)]"
+                      data-testid={`desktop-cm-session-layout-conflict-${slugifyTestId(conflict.name)}`}
+                    >
+                      <span className="truncate text-[rgba(60,60,67,0.86)]">{conflict.name}</span>
+                      <span className="font-mono">현재 · {formatDesktopCmSessionLayoutSummary(conflict.current.viewPreferences)}</span>
+                      <span className="font-mono">incoming · {formatDesktopCmSessionLayoutSummary(conflict.incoming.viewPreferences)}</span>
+                    </div>
+                  ))}
+                </div>
+                <p className="text-xs font-semibold text-[rgba(60,60,67,0.58)]">
+                  same-name layout은 선택 전까지 덮어쓰지 않음 · conflict preview는 브라우저 메모리에만 유지
+                </p>
+              </div>
+            ) : null}
             {sessionLayoutPresets.length > 0 ? (
               <div className="flex min-w-0 flex-wrap items-center gap-2" data-testid="desktop-cm-session-layout-list">
                 {sessionLayoutPresets.map((preset) => {
@@ -2032,6 +2165,19 @@ function normalizeDesktopCmSessionLayoutPresets(value: unknown): DesktopCmSessio
 function normalizeDesktopCmSessionLayoutPresetName(value: string) {
   const normalized = value.trim().replace(/\s+/g, ' ').slice(0, maxDesktopCmSessionLayoutPresetNameLength);
   return normalized || 'Session layout';
+}
+
+function buildDesktopCmSessionLayoutImportName(baseName: string, existingNames: Set<string>) {
+  const normalizedBase = normalizeDesktopCmSessionLayoutPresetName(baseName);
+  for (let index = 1; index <= maxDesktopCmSessionLayoutPresets + 1; index += 1) {
+    const suffix = index === 1 ? ' import' : ` import ${index}`;
+    const candidateBase = normalizedBase.slice(0, Math.max(1, maxDesktopCmSessionLayoutPresetNameLength - suffix.length)).trim();
+    const candidateName = normalizeDesktopCmSessionLayoutPresetName(`${candidateBase}${suffix}`);
+    if (!existingNames.has(candidateName.toLowerCase())) {
+      return candidateName;
+    }
+  }
+  return normalizeDesktopCmSessionLayoutPresetName(`Imported layout ${Date.now()}`);
 }
 
 function desktopCmSessionLayoutEqual(left: DesktopCmSessionViewPreferences, right: DesktopCmSessionViewPreferences) {

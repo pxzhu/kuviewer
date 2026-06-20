@@ -44,6 +44,7 @@ requireCondition(
     'desktop-cm-session-bulk-actions',
     'desktop-cm-session-saved-layouts',
     'desktop-cm-session-layout-import-export',
+    'desktop-cm-session-layout-conflict-preview',
   ].includes(spec.status),
   'status must be a known desktop packaging milestone'
 );
@@ -92,6 +93,7 @@ requireCondition(phases.includes('desktop-cm-session-groups-favorites'), 'phaseO
 requireCondition(phases.includes('desktop-cm-session-bulk-actions'), 'phaseOrder must include desktop-cm-session-bulk-actions');
 requireCondition(phases.includes('desktop-cm-session-saved-layouts'), 'phaseOrder must include desktop-cm-session-saved-layouts');
 requireCondition(phases.includes('desktop-cm-session-layout-import-export'), 'phaseOrder must include desktop-cm-session-layout-import-export');
+requireCondition(phases.includes('desktop-cm-session-layout-conflict-preview'), 'phaseOrder must include desktop-cm-session-layout-conflict-preview');
 
 await validateBuildPrerequisites(spec);
 await validateDesktopDistributionPolicy(spec);
@@ -126,6 +128,7 @@ if (
     'desktop-cm-session-bulk-actions',
     'desktop-cm-session-saved-layouts',
     'desktop-cm-session-layout-import-export',
+    'desktop-cm-session-layout-conflict-preview',
   ].includes(spec.status)
 ) {
   await validateTauriScaffold(spec.tauri || {});
@@ -739,6 +742,7 @@ async function validateCmSshSessionManager(spec) {
       'session-bulk-actions',
       'session-saved-layouts',
       'session-layout-import-export',
+      'session-layout-conflict-preview',
     ].includes(manager.status),
     'cmSshSessionManager.status must be a known CM/SSH session manager milestone'
   );
@@ -971,7 +975,8 @@ async function validateCmSshSessionManager(spec) {
   for (const flag of [
     'acceptsBundleItemsShape',
     'acceptsPlainArray',
-    'updatesSameNamePreset',
+    'updatesSameNamePresetAfterConflictResolution',
+    'detectsSameNameConflicts',
     'prunesUnknownSessionIds',
     'skipsEmptyImportedLayouts',
     'noSessionExportImportSchemaChange',
@@ -988,6 +993,35 @@ async function validateCmSshSessionManager(spec) {
     'noEventsOrLogs',
   ]) {
     requireCondition(sessionLayoutImportExport[flag] === true, `cmSshSessionManager.sessionLayoutImportExport.${flag} must be true`);
+  }
+  const sessionLayoutConflictPreview = manager.sessionLayoutConflictPreview || {};
+  requireCondition(sessionLayoutConflictPreview.desktopOnly === true, 'cmSshSessionManager.sessionLayoutConflictPreview.desktopOnly must be true');
+  requireCondition(sessionLayoutConflictPreview.uiOnly === true, 'cmSshSessionManager.sessionLayoutConflictPreview.uiOnly must be true');
+  requireCondition(sessionLayoutConflictPreview.stateStorage === 'memory-only', 'cmSshSessionManager.sessionLayoutConflictPreview.stateStorage must be memory-only');
+  requireCondition(sessionLayoutConflictPreview.trigger === 'same-name-different-layout-import', 'cmSshSessionManager.sessionLayoutConflictPreview.trigger must be same-name-different-layout-import');
+  const conflictActions = new Set(Array.isArray(sessionLayoutConflictPreview.actions) ? sessionLayoutConflictPreview.actions : []);
+  for (const action of ['incoming', 'keep-current', 'rename-incoming']) {
+    requireCondition(conflictActions.has(action), `cmSshSessionManager.sessionLayoutConflictPreview.actions must include ${action}`);
+  }
+  for (const flag of [
+    'noAutoOverwrite',
+    'newLayoutsImportedImmediately',
+    'identicalLayoutsSkipped',
+    'noLocalStorageUntilAction',
+    'noSessionExportImportSchemaChange',
+    'noTauriSchemaChange',
+    'noSessionSearch',
+    'noDiagnosticFilters',
+    'noEndpointMetadata',
+    'noCredentialPayload',
+    'noRuntimeProfile',
+    'noDiagnosticHistory',
+    'noToken',
+    'noKubeconfig',
+    'noSecretValues',
+    'noEventsOrLogs',
+  ]) {
+    requireCondition(sessionLayoutConflictPreview[flag] === true, `cmSshSessionManager.sessionLayoutConflictPreview.${flag} must be true`);
   }
   const hiddenPrototypeUi = new Set(Array.isArray(manager.hiddenPrototypeUi) ? manager.hiddenPrototypeUi : []);
   for (const marker of ['DesktopConnectionProfilePanel', 'DesktopKubernetesProfilePanel', 'desktop-use-sidecar-profile']) {
@@ -1013,6 +1047,10 @@ async function validateCmSshSessionManager(spec) {
     'desktop-cm-session-layout-delete-',
     'desktop-cm-session-layout-export',
     'desktop-cm-session-layout-import',
+    'desktop-cm-session-layout-conflict-preview',
+    'desktop-cm-session-layout-conflict-use-incoming',
+    'desktop-cm-session-layout-conflict-keep-current',
+    'desktop-cm-session-layout-conflict-rename-incoming',
     'kuviewer.desktop.cmSessionLayouts',
   ]) {
     requireCondition(desktopCmSessionPanel.includes(marker), `DesktopCmSessionPanel must include ${marker}`);
@@ -1158,6 +1196,10 @@ async function validateCmSshSessionManager(spec) {
     'desktop-cm-session-layout-export',
     'desktop-cm-session-layout-import',
     'desktop-cm-session-layout-import-summary',
+    'desktop-cm-session-layout-conflict-preview',
+    'desktop-cm-session-layout-conflict-use-incoming',
+    'desktop-cm-session-layout-conflict-keep-current',
+    'desktop-cm-session-layout-conflict-rename-incoming',
     'kuviewer.desktop.cmSessions',
     'kuviewer.desktop.cmSessionLayouts',
   ]) {
@@ -1244,6 +1286,11 @@ async function validateCmSshSessionManager(spec) {
     'desktop CM session layout export bundle must include the layout kind',
     'desktop CM session layout export must not include session endpoint metadata',
     'desktop CM session layout import must report layout updates',
+    'desktop CM session layout conflict preview must not overwrite same-name layouts before resolution',
+    'desktop CM session layout conflict keep current must not overwrite current layout',
+    'desktop CM session layout conflict incoming must update existing layout',
+    'desktop CM session layout conflict rename must keep both layouts',
+    'desktop CM session layout conflict resolution must keep conflict state memory-only',
     'desktop CM session layout import must prune unknown session ids',
     'desktop CM session export must not include layout import/export metadata',
   ]) {
@@ -1282,6 +1329,7 @@ async function validateCmSshSessionManager(spec) {
     requireCondition(text.includes('bulk actions') || text.includes('bulk selection'), `${label} must document desktop CM session bulk actions`);
     requireCondition(text.includes('session saved layouts') || text.includes('saved session layouts'), `${label} must document desktop CM session saved layouts`);
     requireCondition(text.includes('layout import/export') || text.includes('session layout import/export'), `${label} must document desktop CM session layout import/export`);
+    requireCondition(text.includes('layout conflict preview'), `${label} must document desktop CM session layout conflict preview`);
     requireCondition(text.includes('export/import') || text.includes('session export'), `${label} must document desktop CM session export/import`);
     requireCondition(text.includes('web app must not expose SSH'), `${label} must document that the web app must not expose SSH`);
   }
