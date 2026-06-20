@@ -224,16 +224,76 @@ jobs:
           DEPLOY_PATH='${{ env.DEPLOY_PATH }}'
           REPO_URL='https://github.com/${{ github.repository }}.git'
           DEPLOY_REF='${{ steps.ref.outputs.ref }}'
+          DEPLOY_SHA='${{ github.sha }}'
+          GITHUB_RUN_ID='${{ github.run_id }}'
           HEALTH_URL='${{ env.HEALTH_URL }}'
           IMAGE_TAR='${{ env.REMOTE_IMAGE_TAR }}'
+          ROLLBACK_IMAGE="kuviewer:rollback-${GITHUB_RUN_ID}"
+          STARTED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          DEPLOY_RESULT="failed"
+          ROLLBACK_ATTEMPTED="false"
+          ROLLBACK_RESULT="not-attempted"
+          PREVIOUS_IMAGE_ID=""
+          NEW_IMAGE_ID=""
+
+          json_escape() {
+            local value="$1"
+            value="${value//\\/\\\\}"
+            value="${value//\"/\\\"}"
+            value="${value//$'\n'/ }"
+            value="${value//$'\r'/ }"
+            printf '%s' "$value"
+          }
+
+          write_deploy_state() {
+            local finished_at
+            finished_at="$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || true)"
+            mkdir -p "$DEPLOY_PATH/.kuviewer" 2>/dev/null || return 0
+            cat > "$DEPLOY_PATH/.kuviewer/deploy-state.json" <<STATE || return 0
+          {
+            "runId": "$(json_escape "$GITHUB_RUN_ID")",
+            "ref": "$(json_escape "$DEPLOY_REF")",
+            "sha": "$(json_escape "$DEPLOY_SHA")",
+            "startedAt": "$(json_escape "$STARTED_AT")",
+            "finishedAt": "$(json_escape "$finished_at")",
+            "previousImageId": "$(json_escape "$PREVIOUS_IMAGE_ID")",
+            "newImageId": "$(json_escape "$NEW_IMAGE_ID")",
+            "result": "$(json_escape "$DEPLOY_RESULT")",
+            "rollbackAttempted": $ROLLBACK_ATTEMPTED,
+            "rollbackResult": "$(json_escape "$ROLLBACK_RESULT")"
+          }
+          STATE
+            echo "deploy-state-written result=${DEPLOY_RESULT} rollback=${ROLLBACK_RESULT}"
+          }
+
+          cleanup() {
+            rm -f "$IMAGE_TAR"
+            write_deploy_state
+          }
+
+          check_health() {
+            local attempt status
+            for attempt in 1 2 3 4 5 6 7 8 9 10 11 12; do
+              status="$(curl -fsS -o /dev/null -w '%{http_code}' "$HEALTH_URL" 2>/dev/null || true)"
+              if [ "$status" = "200" ]; then
+                echo "deploy-health-ok attempt=${attempt}/12"
+                return 0
+              fi
+              echo "deploy-health-wait attempt=${attempt}/12 status=${status:-curl-failed}"
+              sleep 5
+            done
+            echo "deploy-health-failed"
+            return 1
+          }
 
           if docker info >/dev/null 2>&1; then
-            DOCKER='docker'
+            DOCKER=(docker)
           else
-            DOCKER='sudo -n docker'
+            DOCKER=(sudo -n docker)
           fi
 
-          trap 'rm -f "$IMAGE_TAR"' EXIT
+          trap cleanup EXIT
+          echo "deploy-start run=${GITHUB_RUN_ID} ref=${DEPLOY_REF}"
 
           if [ ! -d "$DEPLOY_PATH/.git" ]; then
             mkdir -p "$DEPLOY_PATH"
@@ -248,9 +308,45 @@ jobs:
           test -f deploy/standalone/.env
           test -f "$IMAGE_TAR"
 
-          sh -c "gzip -dc '$IMAGE_TAR' | $DOCKER load"
-          sh -c "$DOCKER compose --env-file deploy/standalone/.env -f deploy/standalone/docker-compose.yml up -d --force-recreate --remove-orphans"
-          curl -fsS "$HEALTH_URL"
+          if PREVIOUS_IMAGE_ID="$("${DOCKER[@]}" image inspect kuviewer:local --format '{{.Id}}' 2>/dev/null)"; then
+            "${DOCKER[@]}" image tag kuviewer:local "$ROLLBACK_IMAGE"
+            ROLLBACK_RESULT="available"
+            echo "deploy-rollback-image-ready"
+          else
+            PREVIOUS_IMAGE_ID=""
+            ROLLBACK_RESULT="unavailable"
+            echo "deploy-rollback-image-unavailable"
+          fi
+
+          gzip -dc "$IMAGE_TAR" | "${DOCKER[@]}" load
+          NEW_IMAGE_ID="$("${DOCKER[@]}" image inspect kuviewer:local --format '{{.Id}}' 2>/dev/null || true)"
+          "${DOCKER[@]}" compose --env-file deploy/standalone/.env -f deploy/standalone/docker-compose.yml up -d --force-recreate --remove-orphans
+
+          if check_health; then
+            DEPLOY_RESULT="success"
+            ROLLBACK_RESULT="not-needed"
+            exit 0
+          fi
+
+          DEPLOY_RESULT="failed"
+          if [ -n "$PREVIOUS_IMAGE_ID" ]; then
+            ROLLBACK_ATTEMPTED="true"
+            ROLLBACK_RESULT="failed"
+            echo "deploy-rollback-start"
+            "${DOCKER[@]}" image tag "$ROLLBACK_IMAGE" kuviewer:local
+            "${DOCKER[@]}" compose --env-file deploy/standalone/.env -f deploy/standalone/docker-compose.yml up -d --force-recreate --remove-orphans
+            if check_health; then
+              ROLLBACK_RESULT="success"
+              echo "deploy-rollback-ok"
+            else
+              echo "deploy-rollback-failed"
+            fi
+          else
+            ROLLBACK_RESULT="skipped"
+            echo "deploy-rollback-skipped"
+          fi
+
+          exit 1
           REMOTE_DEPLOY
 
       - name: Cleanup deploy runner secrets and artifacts

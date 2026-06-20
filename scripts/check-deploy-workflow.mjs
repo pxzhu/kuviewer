@@ -21,9 +21,21 @@ requireIncludes(deployWorkflow, 'compose version >/dev/null', 'deploy preflight 
 requireIncludes(deployWorkflow, 'DEPLOY_PATH must be absolute', 'deploy preflight must validate DEPLOY_PATH');
 requireIncludes(deployWorkflow, 'test -f "$DEPLOY_PATH/deploy/standalone/.env"', 'deploy preflight must verify existing standalone .env');
 requireIncludes(deployWorkflow, 'SCP upload attempt', 'deploy workflow must retry SCP uploads');
+requireIncludes(deployWorkflow, 'ROLLBACK_IMAGE="kuviewer:rollback-${GITHUB_RUN_ID}"', 'deploy workflow must define a per-run rollback image tag');
+requireIncludes(deployWorkflow, 'deploy-rollback-image-ready', 'deploy workflow must preserve the previous image for rollback');
+requireIncludes(deployWorkflow, 'deploy-rollback-start', 'deploy workflow must attempt rollback after failed health checks');
+requireIncludes(deployWorkflow, 'deploy-rollback-ok', 'deploy workflow must report safe rollback success');
+requireIncludes(deployWorkflow, 'check_health()', 'deploy workflow must use a bounded health retry function');
+requireIncludes(deployWorkflow, 'deploy-health-wait', 'deploy workflow must report safe health retry markers');
+requireIncludes(deployWorkflow, 'deploy-health-failed', 'deploy workflow must report safe health failure markers');
+requireIncludes(deployWorkflow, '$DEPLOY_PATH/.kuviewer/deploy-state.json', 'deploy workflow must write safe deploy-state metadata');
+requireIncludes(deployWorkflow, 'deploy-state-written', 'deploy workflow must report safe deploy-state writes');
 requireIncludes(deployWorkflow, 'Cleanup deploy runner secrets and artifacts', 'deploy workflow must clean runner secrets and artifacts');
 requireIncludes(deployWorkflow, 'if: always()', 'deploy cleanup must run even after failures');
 requireIncludes(deployWorkflow, 'rm -f "${IMAGE_TAR}" ~/.ssh/deploy_key.pem ~/.ssh/known_hosts', 'deploy cleanup must remove image tar and SSH material');
+requireNotIncludes(deployWorkflow, 'docker compose logs', 'deploy workflow must not dump raw compose logs');
+requireNotIncludes(deployWorkflow, 'cat deploy/standalone/.env', 'deploy workflow must not print standalone env files');
+requireNotIncludes(deployWorkflow, 'cat .env', 'deploy workflow must not print env files');
 
 for (const marker of [
   'BatchMode=yes',
@@ -46,13 +58,19 @@ requireIncludes(ciWorkflow, 'Deploy workflow preflight check', 'CI must run depl
 requireIncludes(ciWorkflow, 'node scripts/check-deploy-workflow.mjs', 'CI must execute deploy workflow checker');
 
 const deployWorkflowPolicy = packagingSpec.deployWorkflowPolicy || {};
-requireCondition(deployWorkflowPolicy.status === 'ssh-preflight-hardened', 'deployWorkflowPolicy.status must be ssh-preflight-hardened');
+requireCondition(deployWorkflowPolicy.status === 'rollback-observability-hardened', 'deployWorkflowPolicy.status must be rollback-observability-hardened');
 requireCondition(deployWorkflowPolicy.workflowPath === '.github/workflows/deploy.yml', 'deployWorkflowPolicy.workflowPath must point to deploy workflow');
 requireCondition(deployWorkflowPolicy.staticCheck === 'scripts/check-deploy-workflow.mjs', 'deployWorkflowPolicy.staticCheck must point to this script');
 requireCondition(deployWorkflowPolicy.preflightBeforeBuild === true, 'deployWorkflowPolicy.preflightBeforeBuild must be true');
 requireCondition(deployWorkflowPolicy.strictHostKeyChecking === true, 'deployWorkflowPolicy.strictHostKeyChecking must be true');
 requireCondition(deployWorkflowPolicy.serverPortRangeValidation === true, 'deployWorkflowPolicy.serverPortRangeValidation must be true');
 requireCondition(deployWorkflowPolicy.uploadRetryAttempts === 3, 'deployWorkflowPolicy.uploadRetryAttempts must be 3');
+requireCondition(deployWorkflowPolicy.rollbackImageTag === 'kuviewer:rollback-${GITHUB_RUN_ID}', 'deployWorkflowPolicy.rollbackImageTag must document the per-run rollback tag');
+requireCondition(deployWorkflowPolicy.healthRetryAttempts === 12, 'deployWorkflowPolicy.healthRetryAttempts must be 12');
+requireCondition(deployWorkflowPolicy.safeDeployStatePath === '$DEPLOY_PATH/.kuviewer/deploy-state.json', 'deployWorkflowPolicy.safeDeployStatePath must document the safe deploy-state path');
+requireCondition(deployWorkflowPolicy.rollbackOnHealthFailure === true, 'deployWorkflowPolicy.rollbackOnHealthFailure must be true');
+requireCondition(deployWorkflowPolicy.rollbackFailureKeepsWorkflowFailed === true, 'deployWorkflowPolicy.rollbackFailureKeepsWorkflowFailed must be true');
+requireCondition(deployWorkflowPolicy.noRawLogDump === true, 'deployWorkflowPolicy.noRawLogDump must be true');
 requireCondition(deployWorkflowPolicy.runnerCleanupAlways === true, 'deployWorkflowPolicy.runnerCleanupAlways must be true');
 requireCondition(deployWorkflowPolicy.noNewSecrets === true, 'deployWorkflowPolicy.noNewSecrets must be true');
 requireCondition(deployWorkflowPolicy.noSecretValueLogging === true, 'deployWorkflowPolicy.noSecretValueLogging must be true');
