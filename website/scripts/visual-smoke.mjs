@@ -210,8 +210,34 @@ async function verifyResourceExplorer(page) {
   await expect(page.getByRole('heading', { name: 'Events' })).toBeVisible({ timeout: 10_000 });
   await expect(page.getByRole('heading', { name: 'Logs' })).toBeVisible({ timeout: 10_000 });
   await verifyResourceDetailSectionControls(page);
+  await verifyResourceSafePreviewSearch(page);
   await expect(page.getByText('표시할 이벤트가 없습니다')).toBeVisible({ timeout: 10_000 });
   await expect(page.getByText(/Secret value 숨김/)).toBeVisible({ timeout: 10_000 });
+}
+
+async function verifyResourceSafePreviewSearch(page) {
+  const firstSafeRow = page.getByTestId('resource-key-value-row-safe').first();
+  await expect(firstSafeRow).toBeVisible({ timeout: 10_000 });
+  const firstSafeKey = await firstSafeRow.locator('span').first().getAttribute('title');
+  const query = (firstSafeKey || '').trim().slice(0, 6);
+  if (!query) {
+    throw new Error('safe preview search fixture has no key text');
+  }
+
+  await page.getByTestId('safe-preview-search-input').fill(query);
+  await expect(page.getByTestId('safe-preview-search-count')).toContainText(/matches/, { timeout: 10_000 });
+  await expect(page.locator('[data-testid="active-key-value-search-match"]').first()).toBeVisible({ timeout: 10_000 });
+
+  await page.getByTestId('safe-preview-search-next').click();
+  await expect(page.getByTestId('safe-preview-search-status')).toContainText(/검색 결과/, { timeout: 10_000 });
+  await page.getByTestId('safe-preview-search-prev').click();
+  await expect(page.getByTestId('safe-preview-search-status')).toContainText(/검색 결과/, { timeout: 10_000 });
+
+  await page.getByTestId('safe-preview-search-input').fill('zz-no-safe-preview-match');
+  await expect(page.getByTestId('resource-key-value-empty-safe')).toContainText('일치하는 Safe Preview 항목 없음', { timeout: 10_000 });
+  await page.getByTestId('safe-preview-search-clear').click();
+  await expect(page.getByTestId('safe-preview-search-count')).toContainText(/items/, { timeout: 10_000 });
+  await expect(page.getByTestId('resource-key-value-row-safe').first()).toBeVisible({ timeout: 10_000 });
 }
 
 async function verifyResourceDetailSectionControls(page) {
