@@ -27,9 +27,35 @@ export interface DesktopKubernetesProfile {
   status: string;
 }
 
+export interface DesktopCmSession {
+  id: string;
+  name: string;
+  host: string;
+  port: number;
+  user: string;
+  authType: string;
+  status: string;
+  updatedAt: number;
+  selected: boolean;
+  description?: string;
+}
+
+export interface DesktopCmSessionInput {
+  id?: string;
+  name: string;
+  host: string;
+  port: number;
+  user: string;
+  description?: string;
+}
+
 const desktopConnectionProfileStorageKey = 'kuviewer_desktop_connection_profile';
 const desktopConnectionProfileChangedEvent = 'kuviewer-desktop-connection-profile-changed';
 const maxServerUrlLength = 220;
+const maxCmSessionNameLength = 60;
+const maxCmSessionHostLength = 180;
+const maxCmSessionUserLength = 80;
+const maxCmSessionDescriptionLength = 160;
 
 type TauriInvoke = <Response>(command: string, args?: Record<string, unknown>) => Promise<Response>;
 
@@ -184,6 +210,70 @@ export async function deleteDesktopKubernetesProfileCredential(profileId: string
   return parseDesktopKubernetesProfile(profile);
 }
 
+export async function getDesktopCmSessions(): Promise<DesktopCmSession[]> {
+  if (!isDesktopRuntime()) {
+    return [];
+  }
+
+  const invoke = getTauriInvoke();
+  if (!invoke) {
+    return [];
+  }
+
+  const sessions = await invoke<unknown[]>('desktop_cm_sessions');
+  if (!Array.isArray(sessions)) {
+    return [];
+  }
+  return sessions.map(parseDesktopCmSession).filter((session): session is DesktopCmSession => Boolean(session));
+}
+
+export async function saveDesktopCmSession(input: DesktopCmSessionInput): Promise<DesktopCmSession | null> {
+  if (!isDesktopRuntime()) {
+    return null;
+  }
+
+  const invoke = getTauriInvoke();
+  if (!invoke) {
+    return null;
+  }
+
+  const session = await invoke<unknown>('desktop_save_cm_session', {
+    session: normalizeDesktopCmSessionInput(input),
+  });
+  return parseDesktopCmSession(session);
+}
+
+export async function selectDesktopCmSession(sessionId: string): Promise<DesktopCmSession | null> {
+  if (!isDesktopRuntime()) {
+    return null;
+  }
+
+  const invoke = getTauriInvoke();
+  if (!invoke) {
+    return null;
+  }
+
+  const session = await invoke<unknown>('desktop_select_cm_session', { sessionId: normalizeDesktopCmSessionId(sessionId) });
+  return parseDesktopCmSession(session);
+}
+
+export async function deleteDesktopCmSession(sessionId: string): Promise<DesktopCmSession[]> {
+  if (!isDesktopRuntime()) {
+    return [];
+  }
+
+  const invoke = getTauriInvoke();
+  if (!invoke) {
+    return [];
+  }
+
+  const sessions = await invoke<unknown[]>('desktop_delete_cm_session', { sessionId: normalizeDesktopCmSessionId(sessionId) });
+  if (!Array.isArray(sessions)) {
+    return [];
+  }
+  return sessions.map(parseDesktopCmSession).filter((session): session is DesktopCmSession => Boolean(session));
+}
+
 export function normalizeDesktopServerUrl(value: string) {
   const input = value.trim();
   if (!input) {
@@ -217,6 +307,53 @@ export function normalizeDesktopServerUrl(value: string) {
   return `${parsedUrl.origin}${parsedUrl.pathname === '/' ? '' : parsedUrl.pathname}`;
 }
 
+export function normalizeDesktopCmSessionInput(input: DesktopCmSessionInput): DesktopCmSessionInput {
+  const name = normalizeBoundedText(input.name, maxCmSessionNameLength, 'desktop_cm_session_name');
+  const host = normalizeDesktopCmSessionHost(input.host);
+  const user = normalizeDesktopCmSessionUser(input.user);
+  const port = normalizeDesktopCmSessionPort(input.port);
+  const id = input.id?.trim() ? normalizeDesktopCmSessionId(input.id) : undefined;
+  const description = input.description?.trim()
+    ? normalizeBoundedText(input.description, maxCmSessionDescriptionLength, 'desktop_cm_session_description')
+    : undefined;
+  return { id, name, host, port, user, description };
+}
+
+export function normalizeDesktopCmSessionHost(value: string) {
+  const host = normalizeBoundedText(value, maxCmSessionHostLength, 'desktop_cm_session_host').toLowerCase();
+  if (host.includes('://') || host.includes('/') || host.includes('?') || host.includes('#') || host.includes('@') || host.includes(':')) {
+    throw new Error('desktop_cm_session_host_invalid');
+  }
+  if (!/^[a-z0-9][a-z0-9.-]*$/.test(host) && !/^\d{1,3}(\.\d{1,3}){3}$/.test(host)) {
+    throw new Error('desktop_cm_session_host_invalid');
+  }
+  return host;
+}
+
+export function normalizeDesktopCmSessionUser(value: string) {
+  const user = normalizeBoundedText(value, maxCmSessionUserLength, 'desktop_cm_session_user');
+  if (!/^[A-Za-z0-9._-]+$/.test(user)) {
+    throw new Error('desktop_cm_session_user_invalid');
+  }
+  return user;
+}
+
+export function normalizeDesktopCmSessionPort(value: number) {
+  const port = Number(value);
+  if (!Number.isInteger(port) || port < 1 || port > 65535) {
+    throw new Error('desktop_cm_session_port_invalid');
+  }
+  return port;
+}
+
+export function normalizeDesktopCmSessionId(value: string) {
+  const id = value.trim();
+  if (!id || id.length > 80 || !/^[A-Za-z0-9._-]+$/.test(id)) {
+    throw new Error('desktop_cm_session_id_invalid');
+  }
+  return id;
+}
+
 function parseDesktopKubernetesProfile(value: unknown): DesktopKubernetesProfile | null {
   if (!value || typeof value !== 'object') {
     return null;
@@ -248,6 +385,56 @@ function parseDesktopKubernetesProfile(value: unknown): DesktopKubernetesProfile
   } catch {
     return null;
   }
+}
+
+function parseDesktopCmSession(value: unknown): DesktopCmSession | null {
+  if (!value || typeof value !== 'object') {
+    return null;
+  }
+  const session = value as Partial<DesktopCmSession>;
+  if (
+    typeof session.id !== 'string' ||
+    typeof session.name !== 'string' ||
+    typeof session.host !== 'string' ||
+    typeof session.port !== 'number' ||
+    typeof session.user !== 'string' ||
+    typeof session.authType !== 'string' ||
+    typeof session.status !== 'string' ||
+    typeof session.updatedAt !== 'number' ||
+    typeof session.selected !== 'boolean'
+  ) {
+    return null;
+  }
+  try {
+    return {
+      id: normalizeDesktopCmSessionId(session.id),
+      name: normalizeBoundedText(session.name, maxCmSessionNameLength, 'desktop_cm_session_name'),
+      host: normalizeDesktopCmSessionHost(session.host),
+      port: normalizeDesktopCmSessionPort(session.port),
+      user: normalizeDesktopCmSessionUser(session.user),
+      authType: session.authType.trim() || 'os-credential-store',
+      status: session.status.trim() || 'metadata-only',
+      updatedAt: session.updatedAt,
+      selected: session.selected,
+      description:
+        typeof session.description === 'string' && session.description.trim()
+          ? normalizeBoundedText(session.description, maxCmSessionDescriptionLength, 'desktop_cm_session_description')
+          : undefined,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function normalizeBoundedText(value: string, maxLength: number, errorPrefix: string) {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    throw new Error(`${errorPrefix}_required`);
+  }
+  if (trimmed.length > maxLength) {
+    throw new Error(`${errorPrefix}_too_long`);
+  }
+  return trimmed;
 }
 
 function isLoopbackHostname(hostname: string) {

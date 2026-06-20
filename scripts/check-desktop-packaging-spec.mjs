@@ -34,6 +34,7 @@ requireCondition(
     'desktop-keychain-sidecar-runtime',
     'desktop-native-credential-runtime-smoke',
     'desktop-package-smoke-matrix',
+    'desktop-cm-ssh-sessions',
   ].includes(spec.status),
   'status must be a known desktop packaging milestone'
 );
@@ -84,6 +85,7 @@ await validateReleaseVersioning(spec);
 await validateLocalSidecar(spec);
 await validateCredentialStorageDesign(spec);
 await validatePackageSmokeMatrix(spec);
+await validateCmSshSessionManager(spec);
 validateDryRuns(spec);
 
 if (
@@ -102,6 +104,7 @@ if (
     'desktop-keychain-sidecar-runtime',
     'desktop-native-credential-runtime-smoke',
     'desktop-package-smoke-matrix',
+    'desktop-cm-ssh-sessions',
   ].includes(spec.status)
 ) {
   await validateTauriScaffold(spec.tauri || {});
@@ -359,7 +362,7 @@ async function validateBuildPrerequisites(spec) {
 
 async function validateRemoteConnectionProfile(spec) {
   const profile = spec.remoteConnectionProfile || {};
-  requireCondition(profile.status === 'scaffolded', 'remoteConnectionProfile.status must be scaffolded');
+  requireCondition(['scaffolded', 'prototype-only'].includes(profile.status), 'remoteConnectionProfile.status must be scaffolded or prototype-only');
   requireCondition(profile.runtimeOnly === true, 'remoteConnectionProfile.runtimeOnly must be true');
   requireCondition(profile.storage === 'localStorage-url-only', 'remoteConnectionProfile.storage must be localStorage-url-only');
   requireCondition(profile.storageKey === 'kuviewer_desktop_connection_profile', 'remoteConnectionProfile.storageKey must match the frontend storage key');
@@ -383,6 +386,16 @@ async function validateRemoteConnectionProfile(spec) {
   requireCondition(profilePanel.includes('storeDesktopConnectionProfile'), 'desktop connection profile panel must save through the profile helper');
   requireCondition(profilePanel.includes('clearDesktopConnectionProfile'), 'desktop connection profile panel must clear through the profile helper');
   requireCondition(profilePanel.includes('desktop-use-sidecar-profile'), 'desktop connection profile panel must expose the local sidecar switch action');
+
+  if (profile.status === 'prototype-only') {
+    const sourceModeBar = await readTextFile('website/src/components/SourceModeBar.tsx', 'source mode bar');
+    requireCondition(!sourceModeBar.includes('DesktopConnectionProfilePanel'), 'prototype-only remote profile UI must not render in SourceModeBar');
+    const app = await readTextFile('website/src/app/App.tsx', 'app shell');
+    requireCondition(app.includes('clearDesktopConnectionProfile'), 'app shell must clear legacy desktop API profiles in desktop runtime');
+    const desktopReadme = await readTextFile('desktop/README.md', 'desktop README');
+    requireCondition(desktopReadme.includes('Prototype-only Remote API Profile'), 'desktop README must mark the remote API profile as prototype-only');
+    return;
+  }
 
   const app = await readTextFile('website/src/app/App.tsx', 'app shell');
   requireCondition(app.includes('handleDesktopConnectionProfileChange'), 'app shell must handle desktop profile changes');
@@ -501,9 +514,9 @@ async function validateLocalSidecar(spec) {
   requireCondition(runtime.resourceViewsStore === 'runtime-memory-unless-user-configured-later', 'localSidecar.runtime.resourceViewsStore must be runtime-memory-unless-user-configured-later');
 
   const profileUx = localSidecar.profileUx || {};
-  requireCondition(profileUx.status === 'scaffolded', 'localSidecar.profileUx.status must be scaffolded');
+  requireCondition(['scaffolded', 'prototype-hidden'].includes(profileUx.status), 'localSidecar.profileUx.status must be scaffolded or prototype-hidden');
   requireCondition(profileUx.displaysSidecarSource === true, 'localSidecar.profileUx.displaysSidecarSource must be true');
-  requireCondition(profileUx.explicitUseSidecarButton === true, 'localSidecar.profileUx.explicitUseSidecarButton must be true');
+  requireCondition(typeof profileUx.explicitUseSidecarButton === 'boolean', 'localSidecar.profileUx.explicitUseSidecarButton must be boolean');
   requireCondition(profileUx.remoteProfileCanOverrideLocal === true, 'localSidecar.profileUx.remoteProfileCanOverrideLocal must be true');
   requireCondition(profileUx.tokenRequeryOnSwitch === true, 'localSidecar.profileUx.tokenRequeryOnSwitch must be true');
   requireCondition(profileUx.noTokenPropDrilling === true, 'localSidecar.profileUx.noTokenPropDrilling must be true');
@@ -559,6 +572,7 @@ async function validateLocalSidecar(spec) {
     'sidecar("kuviewer-sidecar")',
     'KUVIEWER_DESKTOP_SIDECAR_SOURCE',
     'KUVIEWER_DESKTOP_DISABLE_SIDECAR',
+    'KUVIEWER_DESKTOP_ENABLE_PROTOTYPE_SIDECAR',
     'KUVIEWER_ADMIN_TOKEN',
     'KUVIEWER_LISTEN_ADDR',
     'getrandom',
@@ -574,13 +588,23 @@ async function validateLocalSidecar(spec) {
   }
 
   const app = await readTextFile('website/src/app/App.tsx', 'app shell');
-  for (const marker of ['getDesktopSidecarProfile', 'storeAdminToken', 'storeDesktopConnectionProfile', 'handleUseDesktopSidecar', 'setDesktopSidecarProfile']) {
-    requireCondition(app.includes(marker), `app shell must include ${marker}`);
+  if (profileUx.status === 'prototype-hidden') {
+    const sourceModeBar = await readTextFile('website/src/components/SourceModeBar.tsx', 'source mode bar');
+    requireCondition(!sourceModeBar.includes('desktop-use-sidecar-profile'), 'prototype-hidden sidecar UI must not expose the local sidecar switch');
+    requireCondition(!app.includes('handleUseDesktopSidecar'), 'app shell must not expose the local sidecar switch handler in CM/SSH product mode');
+  } else {
+    for (const marker of ['getDesktopSidecarProfile', 'storeAdminToken', 'storeDesktopConnectionProfile', 'handleUseDesktopSidecar', 'setDesktopSidecarProfile']) {
+      requireCondition(app.includes(marker), `app shell must include ${marker}`);
+    }
   }
 
   const profilePanel = await readTextFile('website/src/components/DesktopConnectionProfilePanel.tsx', 'desktop connection profile UI panel');
-  for (const marker of ['sidecarProfile', 'desktop-use-sidecar-profile', '로컬 sidecar 사용']) {
-    requireCondition(profilePanel.includes(marker), `desktop connection profile panel must include ${marker}`);
+  if (profileUx.status === 'prototype-hidden') {
+    requireCondition(profilePanel.includes('desktop-use-sidecar-profile'), 'prototype sidecar panel source should remain available for reference');
+  } else {
+    for (const marker of ['sidecarProfile', 'desktop-use-sidecar-profile', '로컬 sidecar 사용']) {
+      requireCondition(profilePanel.includes(marker), `desktop connection profile panel must include ${marker}`);
+    }
   }
 
   requireCondition(desktopReadme.includes('Local Sidecar Runtime'), 'desktop README must document local sidecar runtime');
@@ -590,7 +614,11 @@ async function validateLocalSidecar(spec) {
 
 async function validateCredentialStorageDesign(spec) {
   const design = spec.credentialStorageDesign || {};
-  requireCondition(design.status === 'sidecar-runtime-scaffolded', 'credentialStorageDesign.status must be sidecar-runtime-scaffolded');
+  const credentialPrototypeHidden = design.status === 'prototype-hidden-after-cm-session-manager';
+  requireCondition(
+    design.status === 'sidecar-runtime-scaffolded' || credentialPrototypeHidden,
+    'credentialStorageDesign.status must be sidecar-runtime-scaffolded or prototype-hidden-after-cm-session-manager'
+  );
   requireCondition(design.documentPath === 'desktop/KEYCHAIN_CREDENTIAL_DESIGN.md', 'credentialStorageDesign.documentPath must point at the keychain credential design doc');
   requireCondition(design.firstRuntimeScope === 'bearer-token-only', 'credentialStorageDesign.firstRuntimeScope must be bearer-token-only');
   requireCondition(design.browserCredentialEntry === false, 'credentialStorageDesign.browserCredentialEntry must be false');
@@ -611,7 +639,10 @@ async function validateCredentialStorageDesign(spec) {
   requireCondition(runtimePrototype.metadataCommand === 'desktop_kubernetes_profiles', 'credentialStorageDesign.runtimePrototype.metadataCommand must be desktop_kubernetes_profiles');
   requireCondition(runtimePrototype.selectCommand === 'desktop_select_kubernetes_profile', 'credentialStorageDesign.runtimePrototype.selectCommand must be desktop_select_kubernetes_profile');
   requireCondition(runtimePrototype.deleteCredentialCommand === 'desktop_delete_kubernetes_profile_credential', 'credentialStorageDesign.runtimePrototype.deleteCredentialCommand must be desktop_delete_kubernetes_profile_credential');
-  requireCondition(runtimePrototype.uiPanel === 'DesktopKubernetesProfilePanel', 'credentialStorageDesign.runtimePrototype.uiPanel must be DesktopKubernetesProfilePanel');
+  requireCondition(
+    runtimePrototype.uiPanel === 'DesktopKubernetesProfilePanel' || (credentialPrototypeHidden && runtimePrototype.uiPanel === 'prototype-hidden'),
+    'credentialStorageDesign.runtimePrototype.uiPanel must be DesktopKubernetesProfilePanel or prototype-hidden'
+  );
   requireCondition(runtimePrototype.secretReadWriteImplemented === true, 'credentialStorageDesign.runtimePrototype.secretReadWriteImplemented must be true once native OS store helpers exist');
   requireCondition(runtimePrototype.sidecarRestartImplemented === true, 'credentialStorageDesign.runtimePrototype.sidecarRestartImplemented must be true once selecting a stored credential restarts the sidecar');
   requireCondition(runtimePrototype.browserReceivesSecrets === false, 'credentialStorageDesign.runtimePrototype.browserReceivesSecrets must be false');
@@ -622,13 +653,17 @@ async function validateCredentialStorageDesign(spec) {
   requireCondition(runtimePrototype.runtimeTokenFileEnv === 'KUVIEWER_KUBE_TOKEN_FILE', 'credentialStorageDesign.runtimePrototype.runtimeTokenFileEnv must be KUVIEWER_KUBE_TOKEN_FILE');
   requireCondition(runtimePrototype.runtimeTokenFilePolicy === '0600-temp-dir-delete-on-sidecar-stop', 'credentialStorageDesign.runtimePrototype.runtimeTokenFilePolicy must be 0600-temp-dir-delete-on-sidecar-stop');
   const runtimeSmoke = runtimePrototype.runtimeSmoke || {};
-  requireCondition(runtimeSmoke.status === 'automated-stubbed-tauri-bridge', 'credentialStorageDesign.runtimePrototype.runtimeSmoke.status must be automated-stubbed-tauri-bridge');
-  requireCondition(runtimeSmoke.script === 'scripts/smoke-desktop-keychain-runtime.mjs', 'credentialStorageDesign.runtimePrototype.runtimeSmoke.script must point at smoke-desktop-keychain-runtime');
-  requireCondition(runtimeSmoke.ciWorkflow === '.github/workflows/ci.yml', 'credentialStorageDesign.runtimePrototype.runtimeSmoke.ciWorkflow must point at ci workflow');
-  requireCondition(runtimeSmoke.requiresRealCredentialStore === false, 'credentialStorageDesign.runtimePrototype.runtimeSmoke.requiresRealCredentialStore must be false');
-  const smokeFlows = new Set(Array.isArray(runtimeSmoke.verifiedFlows) ? runtimeSmoke.verifiedFlows : []);
-  requireCondition(smokeFlows.has('select-profile-restarts-sidecar-live'), 'credentialStorageDesign.runtimePrototype.runtimeSmoke.verifiedFlows must include select-profile-restarts-sidecar-live');
-  requireCondition(smokeFlows.has('delete-active-credential-clears-live-token'), 'credentialStorageDesign.runtimePrototype.runtimeSmoke.verifiedFlows must include delete-active-credential-clears-live-token');
+  if (credentialPrototypeHidden) {
+    requireCondition(runtimeSmoke.status === 'prototype-hidden', 'credentialStorageDesign.runtimePrototype.runtimeSmoke.status must be prototype-hidden');
+  } else {
+    requireCondition(runtimeSmoke.status === 'automated-stubbed-tauri-bridge', 'credentialStorageDesign.runtimePrototype.runtimeSmoke.status must be automated-stubbed-tauri-bridge');
+    requireCondition(runtimeSmoke.script === 'scripts/smoke-desktop-keychain-runtime.mjs', 'credentialStorageDesign.runtimePrototype.runtimeSmoke.script must point at smoke-desktop-keychain-runtime');
+    requireCondition(runtimeSmoke.ciWorkflow === '.github/workflows/ci.yml', 'credentialStorageDesign.runtimePrototype.runtimeSmoke.ciWorkflow must point at ci workflow');
+    requireCondition(runtimeSmoke.requiresRealCredentialStore === false, 'credentialStorageDesign.runtimePrototype.runtimeSmoke.requiresRealCredentialStore must be false');
+    const smokeFlows = new Set(Array.isArray(runtimeSmoke.verifiedFlows) ? runtimeSmoke.verifiedFlows : []);
+    requireCondition(smokeFlows.has('select-profile-restarts-sidecar-live'), 'credentialStorageDesign.runtimePrototype.runtimeSmoke.verifiedFlows must include select-profile-restarts-sidecar-live');
+    requireCondition(smokeFlows.has('delete-active-credential-clears-live-token'), 'credentialStorageDesign.runtimePrototype.runtimeSmoke.verifiedFlows must include delete-active-credential-clears-live-token');
+  }
   const fixtureEnv = new Set(Array.isArray(runtimePrototype.envMetadataFixture) ? runtimePrototype.envMetadataFixture : []);
   for (const envName of ['KUVIEWER_DESKTOP_KUBE_API_SERVER', 'KUVIEWER_DESKTOP_KUBE_PROFILE_ID', 'KUVIEWER_DESKTOP_KUBE_PROFILE_NAME']) {
     requireCondition(fixtureEnv.has(envName), `credentialStorageDesign.runtimePrototype.envMetadataFixture must include ${envName}`);
@@ -690,30 +725,32 @@ async function validateCredentialStorageDesign(spec) {
   }
   requireCondition(!mainRs.includes('KUVIEWER_DESKTOP_KUBE_BEARER_TOKEN'), 'desktop Tauri main must not read bearer tokens from desktop env metadata fixture');
 
-  const smokeScript = await readTextFile(runtimeSmoke.script, 'desktop native credential runtime smoke script');
-  for (const marker of [
-    'desktop_kubernetes_profiles',
-    'desktop_select_kubernetes_profile',
-    'desktop_sidecar_profile',
-    'desktop_delete_kubernetes_profile_credential',
-    'sidecar-kubernetes-active',
-    'token은 native/runtime file 경로만 사용',
-    'kuviewer_admin_token',
-    'kuviewer_source_mode',
-    'desktop smoke must not store admin token in localStorage',
-    'active credential delete must clear sessionStorage admin token',
-  ]) {
-    requireCondition(smokeScript.includes(marker), `desktop native credential runtime smoke script must include ${marker}`);
-  }
+  if (!credentialPrototypeHidden) {
+    const smokeScript = await readTextFile(runtimeSmoke.script, 'desktop native credential runtime smoke script');
+    for (const marker of [
+      'desktop_kubernetes_profiles',
+      'desktop_select_kubernetes_profile',
+      'desktop_sidecar_profile',
+      'desktop_delete_kubernetes_profile_credential',
+      'sidecar-kubernetes-active',
+      'token은 native/runtime file 경로만 사용',
+      'kuviewer_admin_token',
+      'kuviewer_source_mode',
+      'desktop smoke must not store admin token in localStorage',
+      'active credential delete must clear sessionStorage admin token',
+    ]) {
+      requireCondition(smokeScript.includes(marker), `desktop native credential runtime smoke script must include ${marker}`);
+    }
 
-  const ciWorkflow = await readTextFile(runtimeSmoke.ciWorkflow, 'ci workflow');
-  for (const marker of [
-    'Desktop native credential runtime smoke',
-    'scripts/smoke-desktop-keychain-runtime.mjs',
-    'npx playwright install --with-deps chromium',
-    'http://127.0.0.1:4174/',
-  ]) {
-    requireCondition(ciWorkflow.includes(marker), `ci workflow must include ${marker}`);
+    const ciWorkflow = await readTextFile(runtimeSmoke.ciWorkflow, 'ci workflow');
+    for (const marker of [
+      'Desktop native credential runtime smoke',
+      'scripts/smoke-desktop-keychain-runtime.mjs',
+      'npx playwright install --with-deps chromium',
+      'http://127.0.0.1:4174/',
+    ]) {
+      requireCondition(ciWorkflow.includes(marker), `ci workflow must include ${marker}`);
+    }
   }
 
   const desktopReadme = await readTextFile('desktop/README.md', 'desktop README');
@@ -744,11 +781,145 @@ async function validateCredentialStorageDesign(spec) {
   }
 
   const sourceModeBar = await readTextFile('website/src/components/SourceModeBar.tsx', 'source mode bar');
-  requireCondition(sourceModeBar.includes('DesktopKubernetesProfilePanel'), 'source mode bar must render DesktopKubernetesProfilePanel in desktop runtime');
+  if (credentialPrototypeHidden) {
+    requireCondition(!sourceModeBar.includes('DesktopKubernetesProfilePanel'), 'source mode bar must not render DesktopKubernetesProfilePanel in CM/SSH product mode');
+  } else {
+    requireCondition(sourceModeBar.includes('DesktopKubernetesProfilePanel'), 'source mode bar must render DesktopKubernetesProfilePanel in desktop runtime');
+  }
 
   const app = await readTextFile('website/src/app/App.tsx', 'app shell');
-  for (const marker of ['sidecar-kubernetes-active', 'getDesktopSidecarProfile', 'storeAdminToken', 'storeSourceMode', 'token은 native/runtime file 경로만 사용']) {
+  if (credentialPrototypeHidden) {
+    requireCondition(!app.includes('sidecar-kubernetes-active'), 'app shell must not expose keychain sidecar activation in CM/SSH product mode');
+  } else {
+    for (const marker of ['sidecar-kubernetes-active', 'getDesktopSidecarProfile', 'storeAdminToken', 'storeSourceMode', 'token은 native/runtime file 경로만 사용']) {
+      requireCondition(app.includes(marker), `app shell must include ${marker}`);
+    }
+  }
+}
+
+async function validateCmSshSessionManager(spec) {
+  const manager = spec.cmSshSessionManager || {};
+  requireCondition(manager.status === 'scaffolded', 'cmSshSessionManager.status must be scaffolded');
+  requireCondition(manager.desktopOnly === true, 'cmSshSessionManager.desktopOnly must be true');
+  requireCondition(manager.webExposed === false, 'cmSshSessionManager.webExposed must be false');
+  requireCondition(manager.storage === 'tauri-state-safe-metadata-only', 'cmSshSessionManager.storage must be tauri-state-safe-metadata-only');
+  requireCondition(manager.secretStorage === 'none-in-v1', 'cmSshSessionManager.secretStorage must be none-in-v1');
+  requireCondition(manager.defaultPort === 22, 'cmSshSessionManager.defaultPort must be 22');
+  requireCondition(manager.actualSshConnection === false, 'cmSshSessionManager.actualSshConnection must be false for the metadata-only v1');
+
+  const fields = new Set(Array.isArray(manager.safeMetadataFields) ? manager.safeMetadataFields : []);
+  for (const field of ['id', 'name', 'host', 'port', 'user', 'authType', 'status', 'updatedAt', 'selected', 'description']) {
+    requireCondition(fields.has(field), `cmSshSessionManager.safeMetadataFields must include ${field}`);
+  }
+  const commands = new Set(Array.isArray(manager.commands) ? manager.commands : []);
+  for (const command of ['desktop_cm_sessions', 'desktop_save_cm_session', 'desktop_select_cm_session', 'desktop_delete_cm_session']) {
+    requireCondition(commands.has(command), `cmSshSessionManager.commands must include ${command}`);
+  }
+  const hiddenPrototypeUi = new Set(Array.isArray(manager.hiddenPrototypeUi) ? manager.hiddenPrototypeUi : []);
+  for (const marker of ['DesktopConnectionProfilePanel', 'DesktopKubernetesProfilePanel', 'desktop-use-sidecar-profile']) {
+    requireCondition(hiddenPrototypeUi.has(marker), `cmSshSessionManager.hiddenPrototypeUi must include ${marker}`);
+  }
+
+  const mainRs = await readTextFile('desktop/src-tauri/src/main.rs', 'desktop Tauri main');
+  for (const marker of [
+    'DesktopCmSessionMetadata',
+    'DesktopCmSessionInput',
+    'desktop_cm_sessions',
+    'desktop_save_cm_session',
+    'desktop_select_cm_session',
+    'desktop_delete_cm_session',
+    'KUVIEWER_DESKTOP_CM_SESSION_HOST',
+    'KUVIEWER_DESKTOP_ENABLE_PROTOTYPE_SIDECAR',
+    'metadata-only',
+    'os-credential-store',
+  ]) {
+    requireCondition(mainRs.includes(marker), `desktop Tauri main must include ${marker}`);
+  }
+
+  const profileModule = await readTextFile('website/src/features/desktop/desktopConnectionProfile.ts', 'desktop connection profile frontend module');
+  for (const marker of [
+    'DesktopCmSession',
+    'DesktopCmSessionInput',
+    'getDesktopCmSessions',
+    'saveDesktopCmSession',
+    'selectDesktopCmSession',
+    'deleteDesktopCmSession',
+    'normalizeDesktopCmSessionHost',
+    'desktop_cm_sessions',
+    'desktop_save_cm_session',
+    'desktop_select_cm_session',
+    'desktop_delete_cm_session',
+  ]) {
+    requireCondition(profileModule.includes(marker), `desktop frontend profile module must include ${marker}`);
+  }
+
+  const sessionPanel = await readTextFile('website/src/components/DesktopCmSessionPanel.tsx', 'desktop CM session panel');
+  for (const marker of [
+    'Desktop CM/SSH sessions',
+    'desktop-cm-session-panel',
+    'desktop-cm-session-save',
+    'secret 저장 없음',
+    'credential store 후속',
+    'SSH 연결과 credential 저장은 다음 작업',
+  ]) {
+    requireCondition(sessionPanel.includes(marker), `desktop CM session panel must include ${marker}`);
+  }
+
+  const sourceModeBar = await readTextFile('website/src/components/SourceModeBar.tsx', 'source mode bar');
+  requireCondition(sourceModeBar.includes('DesktopCmSessionPanel'), 'SourceModeBar must render DesktopCmSessionPanel in desktop runtime');
+  requireCondition(!sourceModeBar.includes('DesktopConnectionProfilePanel'), 'SourceModeBar must not render DesktopConnectionProfilePanel');
+  requireCondition(!sourceModeBar.includes('DesktopKubernetesProfilePanel'), 'SourceModeBar must not render DesktopKubernetesProfilePanel');
+
+  const app = await readTextFile('website/src/app/App.tsx', 'app shell');
+  for (const marker of [
+    'getDesktopCmSessions',
+    'saveDesktopCmSession',
+    'selectDesktopCmSession',
+    'deleteDesktopCmSession',
+    'clearDesktopConnectionProfile',
+    'desktopCmSessions',
+  ]) {
     requireCondition(app.includes(marker), `app shell must include ${marker}`);
+  }
+  requireCondition(!app.includes('handleUseDesktopSidecar'), 'app shell must not expose handleUseDesktopSidecar');
+  requireCondition(!app.includes('DesktopKubernetesProfile'), 'app shell must not import DesktopKubernetesProfile in CM/SSH product mode');
+
+  const smokeScript = await readTextFile('scripts/smoke-desktop-cm-sessions.mjs', 'desktop CM session smoke script');
+  for (const marker of [
+    'desktop_cm_sessions',
+    'desktop_save_cm_session',
+    'desktop_select_cm_session',
+    'desktop_delete_cm_session',
+    'desktop-cm-session-panel',
+    'web runtime must not expose desktop CM/SSH session UI',
+    'desktop CM smoke must not store admin token',
+  ]) {
+    requireCondition(smokeScript.includes(marker), `desktop CM session smoke script must include ${marker}`);
+  }
+
+  const ciWorkflow = await readTextFile('.github/workflows/ci.yml', 'ci workflow');
+  for (const marker of [
+    'Desktop CM session runtime smoke',
+    'scripts/smoke-desktop-cm-sessions.mjs',
+    'npx playwright install --with-deps chromium',
+    'http://127.0.0.1:4174/',
+  ]) {
+    requireCondition(ciWorkflow.includes(marker), `ci workflow must include ${marker}`);
+  }
+
+  const rootReadme = await readTextFile('README.md', 'root README');
+  const desktopReadme = await readTextFile('desktop/README.md', 'desktop README');
+  const prerequisitesDoc = await readTextFile('desktop/BUILD_PREREQUISITES.md', 'desktop build prerequisites doc');
+  const handoff = await readTextFile('CODEX_HANDOFF.md', 'Codex handoff');
+  for (const [label, text] of [
+    ['root README', rootReadme],
+    ['desktop README', desktopReadme],
+    ['desktop build prerequisites doc', prerequisitesDoc],
+    ['Codex handoff', handoff],
+  ]) {
+    requireCondition(text.includes('CM/SSH session manager'), `${label} must document the CM/SSH session manager`);
+    requireCondition(text.includes('metadata-only'), `${label} must document metadata-only CM/SSH sessions`);
+    requireCondition(text.includes('web app must not expose SSH'), `${label} must document that the web app must not expose SSH`);
   }
 }
 

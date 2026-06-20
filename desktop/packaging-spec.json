@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "name": "Kuviewer Desktop CM Session Explorer",
   "goal": "installable-read-only-cm-ssh-session-explorer",
-  "status": "desktop-package-smoke-matrix",
+  "status": "desktop-cm-ssh-sessions",
   "recommendedPackager": "tauri",
   "fallbackPackager": "electron",
   "tauri": {
@@ -53,8 +53,44 @@
     "noBrowserSsh": true,
     "noOperationalActions": true
   },
-  "remoteConnectionProfile": {
+  "cmSshSessionManager": {
     "status": "scaffolded",
+    "desktopOnly": true,
+    "webExposed": false,
+    "storage": "tauri-state-safe-metadata-only",
+    "secretStorage": "none-in-v1",
+    "defaultPort": 22,
+    "actualSshConnection": false,
+    "safeMetadataFields": [
+      "id",
+      "name",
+      "host",
+      "port",
+      "user",
+      "authType",
+      "status",
+      "updatedAt",
+      "selected",
+      "description"
+    ],
+    "commands": [
+      "desktop_cm_sessions",
+      "desktop_save_cm_session",
+      "desktop_select_cm_session",
+      "desktop_delete_cm_session"
+    ],
+    "hiddenPrototypeUi": [
+      "DesktopConnectionProfilePanel",
+      "DesktopKubernetesProfilePanel",
+      "desktop-use-sidecar-profile"
+    ],
+    "next": [
+      "desktop SSH credential store + connection check",
+      "CM session tunnel/runtime integration"
+    ]
+  },
+  "remoteConnectionProfile": {
+    "status": "prototype-only",
     "runtimeOnly": true,
     "storage": "localStorage-url-only",
     "storageKey": "kuviewer_desktop_connection_profile",
@@ -130,9 +166,9 @@
       "resourceViewsStore": "runtime-memory-unless-user-configured-later"
     },
     "profileUx": {
-      "status": "scaffolded",
+      "status": "prototype-hidden",
       "displaysSidecarSource": true,
-      "explicitUseSidecarButton": true,
+      "explicitUseSidecarButton": false,
       "remoteProfileCanOverrideLocal": true,
       "tokenRequeryOnSwitch": true,
       "noTokenPropDrilling": true
@@ -149,7 +185,7 @@
     }
   },
   "credentialStorageDesign": {
-    "status": "sidecar-runtime-scaffolded",
+    "status": "prototype-hidden-after-cm-session-manager",
     "documentPath": "desktop/KEYCHAIN_CREDENTIAL_DESIGN.md",
     "firstRuntimeScope": "bearer-token-only",
     "browserCredentialEntry": false,
@@ -168,7 +204,7 @@
       "metadataCommand": "desktop_kubernetes_profiles",
       "selectCommand": "desktop_select_kubernetes_profile",
       "deleteCredentialCommand": "desktop_delete_kubernetes_profile_credential",
-      "uiPanel": "DesktopKubernetesProfilePanel",
+      "uiPanel": "prototype-hidden",
       "secretReadWriteImplemented": true,
       "sidecarRestartImplemented": true,
       "browserReceivesSecrets": false,
@@ -179,7 +215,7 @@
       "runtimeTokenFileEnv": "KUVIEWER_KUBE_TOKEN_FILE",
       "runtimeTokenFilePolicy": "0600-temp-dir-delete-on-sidecar-stop",
       "runtimeSmoke": {
-        "status": "automated-stubbed-tauri-bridge",
+        "status": "prototype-hidden",
         "script": "scripts/smoke-desktop-keychain-runtime.mjs",
         "ciWorkflow": ".github/workflows/ci.yml",
         "requiresRealCredentialStore": false,
@@ -413,6 +449,7 @@
     "keychain-sidecar-runtime",
     "native-credential-runtime-smoke",
     "desktop-package-smoke-matrix",
+    "desktop-cm-ssh-sessions",
     "macos-dmg-build",
     "windows-exe-build",
     "signing-and-release"

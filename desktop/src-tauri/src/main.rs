@@ -1,8 +1,9 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
+use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Manager, State};
 use tauri_plugin_shell::{
     process::{CommandChild, CommandEvent},
@@ -36,12 +37,40 @@ struct DesktopKubernetesProfileMetadata {
     status: String,
 }
 
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DesktopCmSessionMetadata {
+    id: String,
+    name: String,
+    host: String,
+    port: u16,
+    user: String,
+    auth_type: String,
+    status: String,
+    updated_at: u64,
+    selected: bool,
+    description: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct DesktopCmSessionInput {
+    id: Option<String>,
+    name: String,
+    host: String,
+    port: u16,
+    user: String,
+    description: Option<String>,
+}
+
 #[derive(Default)]
 struct DesktopSidecarState {
     child: Mutex<Option<CommandChild>>,
     profile: Mutex<Option<DesktopSidecarProfile>>,
     kubernetes_profiles: Mutex<Vec<DesktopKubernetesProfileMetadata>>,
     selected_kubernetes_profile_id: Mutex<Option<String>>,
+    cm_sessions: Mutex<Vec<DesktopCmSessionMetadata>>,
+    selected_cm_session_id: Mutex<Option<String>>,
     runtime_temp_files: Mutex<Vec<PathBuf>>,
 }
 
@@ -158,6 +187,87 @@ fn desktop_delete_kubernetes_profile_credential(
     ))
 }
 
+#[tauri::command]
+fn desktop_cm_sessions(state: State<'_, DesktopSidecarState>) -> Vec<DesktopCmSessionMetadata> {
+    state.cm_sessions.lock().map(|sessions| sessions.clone()).unwrap_or_default()
+}
+
+#[tauri::command]
+fn desktop_save_cm_session(
+    session: DesktopCmSessionInput,
+    state: State<'_, DesktopSidecarState>,
+) -> Result<DesktopCmSessionMetadata, String> {
+    let mut next_session = normalize_cm_session_input(session)?;
+    let selected_id = state
+        .selected_cm_session_id
+        .lock()
+        .ok()
+        .and_then(|selected| selected.clone());
+    next_session.selected = selected_id.as_deref().is_some_and(|id| id == next_session.id);
+
+    let mut sessions = state
+        .cm_sessions
+        .lock()
+        .map_err(|_| "desktop_cm_sessions_unavailable".to_string())?;
+    if let Some(existing) = sessions.iter_mut().find(|session| session.id == next_session.id) {
+        *existing = next_session.clone();
+    } else {
+        sessions.insert(0, next_session.clone());
+    }
+    Ok(next_session)
+}
+
+#[tauri::command]
+fn desktop_select_cm_session(
+    session_id: String,
+    state: State<'_, DesktopSidecarState>,
+) -> Result<DesktopCmSessionMetadata, String> {
+    let session_id = normalize_cm_session_id(&session_id)?;
+    let mut sessions = state
+        .cm_sessions
+        .lock()
+        .map_err(|_| "desktop_cm_sessions_unavailable".to_string())?;
+    if !sessions.iter().any(|session| session.id == session_id) {
+        return Err("desktop_cm_session_not_found".to_string());
+    }
+    if let Ok(mut selected_id) = state.selected_cm_session_id.lock() {
+        *selected_id = Some(session_id.clone());
+    }
+
+    let mut selected_session = None;
+    for session in sessions.iter_mut() {
+        session.selected = session.id == session_id;
+        session.status = "metadata-only".to_string();
+        if session.selected {
+            selected_session = Some(session.clone());
+        }
+    }
+    selected_session.ok_or_else(|| "desktop_cm_session_not_found".to_string())
+}
+
+#[tauri::command]
+fn desktop_delete_cm_session(
+    session_id: String,
+    state: State<'_, DesktopSidecarState>,
+) -> Result<Vec<DesktopCmSessionMetadata>, String> {
+    let session_id = normalize_cm_session_id(&session_id)?;
+    let mut sessions = state
+        .cm_sessions
+        .lock()
+        .map_err(|_| "desktop_cm_sessions_unavailable".to_string())?;
+    let original_count = sessions.len();
+    sessions.retain(|session| session.id != session_id);
+    if sessions.len() == original_count {
+        return Err("desktop_cm_session_not_found".to_string());
+    }
+    if let Ok(mut selected_id) = state.selected_cm_session_id.lock() {
+        if selected_id.as_deref().is_some_and(|selected| selected == session_id) {
+            *selected_id = None;
+        }
+    }
+    Ok(sessions.clone())
+}
+
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
@@ -166,12 +276,19 @@ fn main() {
             desktop_sidecar_profile,
             desktop_kubernetes_profiles,
             desktop_select_kubernetes_profile,
-            desktop_delete_kubernetes_profile_credential
+            desktop_delete_kubernetes_profile_credential,
+            desktop_cm_sessions,
+            desktop_save_cm_session,
+            desktop_select_cm_session,
+            desktop_delete_cm_session
         ])
         .setup(|app| {
+            initialize_desktop_cm_sessions(app.handle());
             initialize_desktop_kubernetes_profiles(app.handle());
-            if let Err(error) = start_desktop_sidecar(app.handle()) {
-                eprintln!("kuviewer desktop sidecar not started: {error}");
+            if env_flag_enabled("KUVIEWER_DESKTOP_ENABLE_PROTOTYPE_SIDECAR") {
+                if let Err(error) = start_desktop_sidecar(app.handle()) {
+                    eprintln!("kuviewer desktop sidecar not started: {error}");
+                }
             }
             Ok(())
         })
@@ -352,6 +469,166 @@ fn cleanup_runtime_files(state: &DesktopSidecarState) {
             remove_runtime_file(&path);
         }
     }
+}
+
+fn initialize_desktop_cm_sessions(app: &tauri::AppHandle) {
+    let sessions = load_desktop_cm_sessions_from_env();
+    let selected_session_id = sessions.first().map(|session| session.id.clone());
+    let state = app.state::<DesktopSidecarState>();
+    if let Ok(mut stored_sessions) = state.cm_sessions.lock() {
+        *stored_sessions = sessions;
+    }
+    if let Ok(mut selected) = state.selected_cm_session_id.lock() {
+        *selected = selected_session_id;
+    }
+}
+
+fn load_desktop_cm_sessions_from_env() -> Vec<DesktopCmSessionMetadata> {
+    let Some(host) = read_safe_env("KUVIEWER_DESKTOP_CM_SESSION_HOST") else {
+        return Vec::new();
+    };
+
+    let input = DesktopCmSessionInput {
+        id: read_safe_env("KUVIEWER_DESKTOP_CM_SESSION_ID"),
+        name: read_safe_env("KUVIEWER_DESKTOP_CM_SESSION_NAME").unwrap_or_else(|| "Environment CM session".to_string()),
+        host,
+        port: read_safe_env("KUVIEWER_DESKTOP_CM_SESSION_PORT")
+            .and_then(|port| port.parse::<u16>().ok())
+            .unwrap_or(22),
+        user: read_safe_env("KUVIEWER_DESKTOP_CM_SESSION_USER").unwrap_or_else(|| "ubuntu".to_string()),
+        description: read_safe_env("KUVIEWER_DESKTOP_CM_SESSION_DESCRIPTION"),
+    };
+
+    normalize_cm_session_input(input)
+        .map(|mut session| {
+            session.selected = true;
+            session
+        })
+        .into_iter()
+        .collect()
+}
+
+fn normalize_cm_session_input(input: DesktopCmSessionInput) -> Result<DesktopCmSessionMetadata, String> {
+    let name = normalize_bounded_text(&input.name, 60, "desktop_cm_session_name")?;
+    let host = normalize_cm_session_host(&input.host)?;
+    let user = normalize_cm_session_user(&input.user)?;
+    if input.port == 0 {
+        return Err("desktop_cm_session_port_invalid".to_string());
+    }
+    let description = input
+        .description
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| normalize_bounded_text(value, 160, "desktop_cm_session_description"))
+        .transpose()?;
+    let id = input
+        .id
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(normalize_cm_session_id)
+        .transpose()?
+        .unwrap_or_else(|| generated_cm_session_id(&name, &host, &user));
+
+    Ok(DesktopCmSessionMetadata {
+        id,
+        name,
+        host,
+        port: input.port,
+        user,
+        auth_type: "os-credential-store".to_string(),
+        status: "metadata-only".to_string(),
+        updated_at: current_unix_millis(),
+        selected: false,
+        description,
+    })
+}
+
+fn normalize_cm_session_host(value: &str) -> Result<String, String> {
+    let host = normalize_bounded_text(value, 180, "desktop_cm_session_host")?.to_ascii_lowercase();
+    if host.contains("://")
+        || host.contains('/')
+        || host.contains('?')
+        || host.contains('#')
+        || host.contains('@')
+        || host.contains(':')
+    {
+        return Err("desktop_cm_session_host_invalid".to_string());
+    }
+    if !host
+        .chars()
+        .all(|character| character.is_ascii_lowercase() || character.is_ascii_digit() || matches!(character, '-' | '.'))
+        || !host
+            .chars()
+            .next()
+            .is_some_and(|character| character.is_ascii_lowercase() || character.is_ascii_digit())
+    {
+        return Err("desktop_cm_session_host_invalid".to_string());
+    }
+    Ok(host)
+}
+
+fn normalize_cm_session_user(value: &str) -> Result<String, String> {
+    let user = normalize_bounded_text(value, 80, "desktop_cm_session_user")?;
+    if !user
+        .chars()
+        .all(|character| character.is_ascii_alphanumeric() || matches!(character, '-' | '_' | '.'))
+    {
+        return Err("desktop_cm_session_user_invalid".to_string());
+    }
+    Ok(user)
+}
+
+fn normalize_cm_session_id(value: &str) -> Result<String, String> {
+    let session_id = value.trim();
+    if session_id.is_empty()
+        || session_id.len() > 80
+        || !session_id
+            .chars()
+            .all(|character| character.is_ascii_alphanumeric() || matches!(character, '-' | '_' | '.'))
+    {
+        return Err("desktop_cm_session_id_invalid".to_string());
+    }
+    Ok(session_id.to_string())
+}
+
+fn normalize_bounded_text(value: &str, max_len: usize, error_prefix: &str) -> Result<String, String> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return Err(format!("{error_prefix}_required"));
+    }
+    if trimmed.len() > max_len {
+        return Err(format!("{error_prefix}_too_long"));
+    }
+    Ok(trimmed.to_string())
+}
+
+fn generated_cm_session_id(name: &str, host: &str, user: &str) -> String {
+    let base = format!("{name}-{user}-{host}");
+    let slug: String = base
+        .chars()
+        .map(|character| {
+            if character.is_ascii_alphanumeric() {
+                character.to_ascii_lowercase()
+            } else {
+                '-'
+            }
+        })
+        .collect();
+    let trimmed = slug
+        .split('-')
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>()
+        .join("-");
+    format!("{}-{}", trimmed.chars().take(52).collect::<String>(), current_unix_millis())
+}
+
+fn current_unix_millis() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_millis() as u64)
+        .unwrap_or(0)
 }
 
 fn initialize_desktop_kubernetes_profiles(app: &tauri::AppHandle) {

@@ -13,19 +13,16 @@ import {
   UploadCloud,
 } from 'lucide-react';
 import { clearAdminToken, getStoredAdminToken, storeAdminToken } from '../features/auth/adminToken';
-import type { DesktopConnectionProfile, DesktopKubernetesProfile, DesktopSidecarStatus } from '../features/desktop/desktopConnectionProfile';
+import type { DesktopCmSession, DesktopCmSessionInput } from '../features/desktop/desktopConnectionProfile';
 import type { TopologySourceMode } from '../features/topology/useTopology';
 import type { UploadedTopologyState } from '../features/upload/parseKubernetesFiles';
 import { fetchConnectorStatusWithToken } from '../services/statusApi';
-import { DesktopConnectionProfilePanel } from './DesktopConnectionProfilePanel';
-import { DesktopKubernetesProfilePanel } from './DesktopKubernetesProfilePanel';
+import { DesktopCmSessionPanel } from './DesktopCmSessionPanel';
 
 interface SourceModeBarProps {
   desktopConnectionAvailable: boolean;
-  desktopConnectionProfile: DesktopConnectionProfile | null;
-  desktopKubernetesProfileMessage: string;
-  desktopKubernetesProfiles: DesktopKubernetesProfile[];
-  desktopSidecarProfile: DesktopSidecarStatus | null;
+  desktopCmSessionMessage: string;
+  desktopCmSessions: DesktopCmSession[];
   mode: TopologySourceMode;
   liveUnlocked: boolean;
   uploadClusterId: string;
@@ -40,10 +37,9 @@ interface SourceModeBarProps {
   onUploadFiles: (files: File[]) => void;
   onImportJson: (file: File) => void;
   onExportJson: () => void;
-  onDesktopConnectionProfileChange: (profile: DesktopConnectionProfile | null) => void;
-  onDesktopKubernetesProfileCredentialDelete: (profileId: string) => void;
-  onDesktopKubernetesProfileSelect: (profileId: string) => void;
-  onUseDesktopSidecar: () => void;
+  onDesktopCmSessionDelete: (sessionId: string) => Promise<void>;
+  onDesktopCmSessionSave: (session: DesktopCmSessionInput) => Promise<void>;
+  onDesktopCmSessionSelect: (sessionId: string) => Promise<void>;
   onLiveUnlock: () => void;
   onLiveLock: () => void;
 }
@@ -56,10 +52,8 @@ const modeOptions: Array<{ mode: TopologySourceMode; label: string; icon: typeof
 
 export function SourceModeBar({
   desktopConnectionAvailable,
-  desktopConnectionProfile,
-  desktopKubernetesProfileMessage,
-  desktopKubernetesProfiles,
-  desktopSidecarProfile,
+  desktopCmSessionMessage,
+  desktopCmSessions,
   mode,
   liveUnlocked,
   uploadClusterId,
@@ -74,10 +68,9 @@ export function SourceModeBar({
   onUploadFiles,
   onImportJson,
   onExportJson,
-  onDesktopConnectionProfileChange,
-  onDesktopKubernetesProfileCredentialDelete,
-  onDesktopKubernetesProfileSelect,
-  onUseDesktopSidecar,
+  onDesktopCmSessionDelete,
+  onDesktopCmSessionSave,
+  onDesktopCmSessionSelect,
   onLiveUnlock,
   onLiveLock,
 }: SourceModeBarProps) {
@@ -91,7 +84,7 @@ export function SourceModeBar({
   useEffect(() => {
     setToken(getStoredAdminToken());
     setTokenError('');
-  }, [desktopConnectionProfile?.serverUrl]);
+  }, [desktopConnectionAvailable]);
 
   const handleLiveUnlock = async () => {
     const trimmedToken = token.trim();
@@ -244,20 +237,13 @@ export function SourceModeBar({
       ) : null}
 
       {desktopConnectionAvailable ? (
-        <>
-          <DesktopConnectionProfilePanel
-            profile={desktopConnectionProfile}
-            sidecarProfile={desktopSidecarProfile}
-            onProfileChange={onDesktopConnectionProfileChange}
-            onUseSidecar={onUseDesktopSidecar}
-          />
-          <DesktopKubernetesProfilePanel
-            message={desktopKubernetesProfileMessage}
-            profiles={desktopKubernetesProfiles}
-            onDeleteCredential={onDesktopKubernetesProfileCredentialDelete}
-            onSelectProfile={onDesktopKubernetesProfileSelect}
-          />
-        </>
+        <DesktopCmSessionPanel
+          message={desktopCmSessionMessage}
+          sessions={desktopCmSessions}
+          onDeleteSession={onDesktopCmSessionDelete}
+          onSaveSession={onDesktopCmSessionSave}
+          onSelectSession={onDesktopCmSessionSelect}
+        />
       ) : null}
 
       <input
