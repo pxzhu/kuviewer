@@ -1,0 +1,131 @@
+name: deploy-known-hosts-bootstrap
+
+on:
+  workflow_dispatch:
+    inputs:
+      trust_first_connection:
+        description: Type I_UNDERSTAND_TOFU to allow SSH accept-new fallback when ssh-keyscan is blocked.
+        required: false
+        default: ''
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  KNOWN_HOSTS_VARIABLE: SERVER_SSH_KNOWN_HOSTS
+
+permissions:
+  contents: read
+  actions: write
+
+concurrency:
+  group: kuviewer-production-known-hosts-bootstrap
+  cancel-in-progress: true
+
+jobs:
+  bootstrap:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Report bootstrap scope
+        run: |
+          echo "deploy-known-hosts-bootstrap-only"
+          echo "no image build, upload, compose rollout, rollback, or server mutation will run"
+
+      - name: Validate required secrets
+        shell: bash
+        run: |
+          test -n "${{ secrets.SERVER_FHOST }}"
+          test -n "${{ secrets.SERVER_FUSER }}"
+          test -n "${{ secrets.SERVER_PORT }}"
+          test -n "${{ secrets.SERVER_SSH_KEY }}"
+          case "${{ secrets.SERVER_PORT }}" in
+            ''|*[!0-9]*)
+              echo "SERVER_PORT must be numeric"
+              exit 1
+              ;;
+          esac
+          if [ "${{ secrets.SERVER_PORT }}" -lt 1 ] || [ "${{ secrets.SERVER_PORT }}" -gt 65535 ]; then
+            echo "SERVER_PORT must be between 1 and 65535"
+            exit 1
+          fi
+
+      - name: Prepare SSH key
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "${{ secrets.SERVER_SSH_KEY }}" > ~/.ssh/deploy_key.pem
+          chmod 600 ~/.ssh/deploy_key.pem
+          : > ~/.ssh/known_hosts
+          if timeout 10 bash -c ':</dev/tcp/"$0"/"$1"' "${{ secrets.SERVER_FHOST }}" "${{ secrets.SERVER_PORT }}" 2>/dev/null; then
+            echo "ssh-tcp-reachable"
+          else
+            echo "ssh-tcp-unreachable; verify SERVER_FHOST/SERVER_PORT firewall and SSH service"
+            exit 1
+          fi
+
+      - name: Capture host key
+        id: capture
+        shell: bash
+        run: |
+          set -euo pipefail
+          scanned=false
+          : > ~/.ssh/known_hosts.tmp
+          for key_type in ed25519 ecdsa rsa; do
+            ssh-keyscan -4 -T 10 -t "${key_type}" -p "${{ secrets.SERVER_PORT }}" "${{ secrets.SERVER_FHOST }}" >> ~/.ssh/known_hosts.tmp 2>/dev/null || true
+            test -s ~/.ssh/known_hosts.tmp && break
+          done
+          if ! test -s ~/.ssh/known_hosts.tmp; then
+            for key_type in ed25519 ecdsa rsa; do
+              ssh-keyscan -T 10 -t "${key_type}" -p "${{ secrets.SERVER_PORT }}" "${{ secrets.SERVER_FHOST }}" >> ~/.ssh/known_hosts.tmp 2>/dev/null || true
+              test -s ~/.ssh/known_hosts.tmp && break
+            done
+          fi
+          if test -s ~/.ssh/known_hosts.tmp; then
+            cp ~/.ssh/known_hosts.tmp ~/.ssh/known_hosts
+            scanned=true
+            echo "host-key-source=ssh-keyscan"
+          fi
+
+          if [ "$scanned" != true ]; then
+            if [ "${{ inputs.trust_first_connection }}" != "I_UNDERSTAND_TOFU" ]; then
+              echo "ssh-keyscan failed; rerun with trust_first_connection=I_UNDERSTAND_TOFU to use guarded SSH accept-new fallback"
+              exit 1
+            fi
+            echo "host-key-source=ssh-accept-new"
+            ssh \
+              -i "$HOME/.ssh/deploy_key.pem" \
+              -o BatchMode=yes \
+              -o IdentitiesOnly=yes \
+              -o StrictHostKeyChecking=accept-new \
+              -o UserKnownHostsFile="$HOME/.ssh/known_hosts" \
+              -o ConnectTimeout=20 \
+              -o ServerAliveInterval=30 \
+              -o ServerAliveCountMax=5 \
+              -o TCPKeepAlive=yes \
+              -p "${{ secrets.SERVER_PORT }}" \
+              "${{ secrets.SERVER_FUSER }}@${{ secrets.SERVER_FHOST }}" \
+              "true"
+          fi
+
+          rm -f ~/.ssh/known_hosts.tmp
+          sort -u ~/.ssh/known_hosts -o ~/.ssh/known_hosts
+          test -s ~/.ssh/known_hosts
+          entries="$(grep -cv '^[[:space:]]*$' ~/.ssh/known_hosts)"
+          printf 'entries=%s\n' "$entries" >> "$GITHUB_OUTPUT"
+          echo "known-hosts-ready"
+
+      - name: Store repository variable
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh variable set "$KNOWN_HOSTS_VARIABLE" < ~/.ssh/known_hosts
+          echo "updated repository variable: $KNOWN_HOSTS_VARIABLE"
+          echo "known_hosts entries: ${{ steps.capture.outputs.entries }}"
+
+      - name: Cleanup bootstrap SSH material
+        if: always()
+        run: rm -f ~/.ssh/deploy_key.pem ~/.ssh/known_hosts ~/.ssh/known_hosts.tmp
