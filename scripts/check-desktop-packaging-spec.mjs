@@ -1,4 +1,4 @@
-import { readFile } from 'node:fs/promises';
+import { access, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -16,16 +16,12 @@ function requireCondition(condition, message) {
 }
 
 requireCondition(spec.schemaVersion === 1, 'schemaVersion must be 1');
-requireCondition(spec.goal === 'installable-read-only-cm-ssh-session-explorer', 'goal must describe the installable read-only CM/SSH session explorer');
+requireCondition(spec.goal === 'desktop-cm-session-prototype', 'goal must describe the desktop CM/SSH session prototype');
 requireCondition(
   [
     'packaging-spike',
     'tauri-scaffold',
-    'macos-dmg-dry-run',
-    'windows-exe-dry-run',
     'desktop-remote-profile-ux',
-    'desktop-release-versioning',
-    'desktop-signing-notarization',
     'desktop-local-sidecar-evaluation',
     'desktop-local-sidecar-runtime',
     'desktop-keychain-credential-design',
@@ -33,22 +29,16 @@ requireCondition(
     'desktop-os-credential-store',
     'desktop-keychain-sidecar-runtime',
     'desktop-native-credential-runtime-smoke',
-    'desktop-package-smoke-matrix',
     'desktop-cm-ssh-sessions',
     'desktop-cm-ssh-credential-check',
     'desktop-cm-ssh-runtime',
     'desktop-cm-runtime-health-details',
-    'desktop-signed-release-readiness',
+    'desktop-download-descope',
   ].includes(spec.status),
   'status must be a known desktop packaging milestone'
 );
 requireCondition(spec.recommendedPackager === 'tauri', 'recommendedPackager must be tauri for the first packaging spike');
 requireCondition(spec.fallbackPackager === 'electron', 'fallbackPackager must be electron');
-
-const targets = Array.isArray(spec.targets) ? spec.targets : [];
-const targetArtifacts = new Set(targets.map((target) => `${target.platform}:${target.artifact}`));
-requireCondition(targetArtifacts.has('macos:dmg'), 'targets must include macos:dmg');
-requireCondition(targetArtifacts.has('windows:exe'), 'targets must include windows:exe');
 
 const connectionModes = new Set((Array.isArray(spec.connectionModes) ? spec.connectionModes : []).map((mode) => mode.id));
 requireCondition(connectionModes.has('cm-ssh-session'), 'connectionModes must include cm-ssh-session as the primary desktop direction');
@@ -73,38 +63,27 @@ const phases = Array.isArray(spec.phaseOrder) ? spec.phaseOrder : [];
 requireCondition(phases[0] === 'packaging-spec', 'phaseOrder must start with packaging-spec');
 requireCondition(phases.includes('tauri-scaffold'), 'phaseOrder must include tauri-scaffold');
 requireCondition(phases.includes('remote-connection-profile'), 'phaseOrder must include remote-connection-profile');
-requireCondition(phases.includes('release-versioning'), 'phaseOrder must include release-versioning');
 requireCondition(phases.includes('keychain-credential-design'), 'phaseOrder must include keychain-credential-design');
 requireCondition(phases.includes('keychain-profile-runtime'), 'phaseOrder must include keychain-profile-runtime');
 requireCondition(phases.includes('os-credential-store'), 'phaseOrder must include os-credential-store');
 requireCondition(phases.includes('keychain-sidecar-runtime'), 'phaseOrder must include keychain-sidecar-runtime');
 requireCondition(phases.includes('native-credential-runtime-smoke'), 'phaseOrder must include native-credential-runtime-smoke');
-requireCondition(phases.includes('desktop-package-smoke-matrix'), 'phaseOrder must include desktop-package-smoke-matrix');
-requireCondition(phases.includes('macos-dmg-build'), 'phaseOrder must include macos-dmg-build');
-requireCondition(phases.includes('windows-exe-build'), 'phaseOrder must include windows-exe-build');
 requireCondition(phases.includes('desktop-cm-ssh-credential-check'), 'phaseOrder must include desktop-cm-ssh-credential-check');
 requireCondition(phases.includes('desktop-cm-ssh-runtime'), 'phaseOrder must include desktop-cm-ssh-runtime');
 requireCondition(phases.includes('desktop-cm-runtime-health-details'), 'phaseOrder must include desktop-cm-runtime-health-details');
-requireCondition(phases.includes('desktop-signed-release-readiness'), 'phaseOrder must include desktop-signed-release-readiness');
+requireCondition(phases.includes('desktop-download-descope'), 'phaseOrder must include desktop-download-descope');
 
 await validateBuildPrerequisites(spec);
+await validateDesktopDistributionPolicy(spec);
 await validateRemoteConnectionProfile(spec);
-await validateReleaseVersioning(spec);
 await validateLocalSidecar(spec);
 await validateCredentialStorageDesign(spec);
-await validatePackageSmokeMatrix(spec);
-await validateReleaseAssets(spec);
 await validateCmSshSessionManager(spec);
-validateDryRuns(spec);
 
 if (
   [
     'tauri-scaffold',
-    'macos-dmg-dry-run',
-    'windows-exe-dry-run',
     'desktop-remote-profile-ux',
-    'desktop-release-versioning',
-    'desktop-signing-notarization',
     'desktop-local-sidecar-evaluation',
     'desktop-local-sidecar-runtime',
     'desktop-keychain-credential-design',
@@ -112,12 +91,11 @@ if (
     'desktop-os-credential-store',
     'desktop-keychain-sidecar-runtime',
     'desktop-native-credential-runtime-smoke',
-    'desktop-package-smoke-matrix',
     'desktop-cm-ssh-sessions',
     'desktop-cm-ssh-credential-check',
     'desktop-cm-ssh-runtime',
     'desktop-cm-runtime-health-details',
-    'desktop-signed-release-readiness',
+    'desktop-download-descope',
   ].includes(spec.status)
 ) {
   await validateTauriScaffold(spec.tauri || {});
@@ -182,9 +160,9 @@ async function validateTauriScaffold(tauri) {
   requireCondition(tauriConfig?.build?.beforeDevCommand?.includes('build-desktop-sidecar.mjs'), 'tauri config must build the desktop sidecar before dev launch');
   requireCondition(tauriConfig?.app?.withGlobalTauri === true, 'tauri config must expose the Tauri invoke bridge for the sidecar profile command');
 
-  const bundleTargets = new Set(Array.isArray(tauriConfig?.bundle?.targets) ? tauriConfig.bundle.targets : []);
-  requireCondition(bundleTargets.has('dmg'), 'tauri bundle targets must include dmg');
-  requireCondition(bundleTargets.has('nsis'), 'tauri bundle targets must include nsis for Windows exe installers');
+  requireCondition(tauriConfig?.bundle?.active === false, 'tauri bundle must stay inactive while desktop installer downloads are de-scoped');
+  const bundleTargets = Array.isArray(tauriConfig?.bundle?.targets) ? tauriConfig.bundle.targets : [];
+  requireCondition(bundleTargets.length === 0, 'tauri bundle targets must stay empty while desktop installer downloads are de-scoped');
   const externalBins = new Set(Array.isArray(tauriConfig?.bundle?.externalBin) ? tauriConfig.bundle.externalBin : []);
   requireCondition(externalBins.has('binaries/kuviewer-sidecar'), 'tauri bundle externalBin must include binaries/kuviewer-sidecar');
   const bundleIcons = new Set(Array.isArray(tauriConfig?.bundle?.icon) ? tauriConfig.bundle.icon : []);
@@ -210,25 +188,14 @@ async function validateTauriScaffold(tauri) {
 
 async function validateBuildPrerequisites(spec) {
   const prerequisiteIds = new Set((Array.isArray(spec.buildPrerequisites) ? spec.buildPrerequisites : []).map((prerequisite) => prerequisite.id));
-  for (const id of ['node', 'npm', 'go', 'rust', 'cargo', 'xcode-command-line-tools', 'windows-runner']) {
+  for (const id of ['node', 'npm', 'go', 'rust', 'cargo']) {
     requireCondition(prerequisiteIds.has(id), `buildPrerequisites must include ${id}`);
   }
-
-  const macPrerequisites = new Set(
-    (Array.isArray(spec.buildPrerequisites) ? spec.buildPrerequisites : [])
-      .filter((prerequisite) => Array.isArray(prerequisite.requiredFor) && prerequisite.requiredFor.includes('macos'))
-      .map((prerequisite) => prerequisite.id)
-  );
-  const windowsPrerequisites = new Set(
-    (Array.isArray(spec.buildPrerequisites) ? spec.buildPrerequisites : [])
-      .filter((prerequisite) => Array.isArray(prerequisite.requiredFor) && prerequisite.requiredFor.includes('windows'))
-      .map((prerequisite) => prerequisite.id)
-  );
-  for (const id of ['node', 'npm', 'go', 'rust', 'cargo', 'xcode-command-line-tools']) {
-    requireCondition(macPrerequisites.has(id), `macos buildPrerequisites must include ${id}`);
-  }
-  for (const id of ['node', 'npm', 'go', 'rust', 'cargo', 'windows-runner']) {
-    requireCondition(windowsPrerequisites.has(id), `windows buildPrerequisites must include ${id}`);
+  for (const prerequisite of Array.isArray(spec.buildPrerequisites) ? spec.buildPrerequisites : []) {
+    requireCondition(
+      Array.isArray(prerequisite.requiredFor) && prerequisite.requiredFor.includes('desktop-shell'),
+      `buildPrerequisites.${prerequisite.id} must target desktop-shell`
+    );
   }
 
   const iconSources = Array.isArray(spec.icons?.sourceAssets) ? spec.icons.sourceAssets : [];
@@ -289,73 +256,6 @@ async function validateBuildPrerequisites(spec) {
   await validateIcnsFile('desktop/src-tauri/icons/icon.icns', 'generated macOS icon.icns');
   await validateIcoFile('desktop/src-tauri/icons/icon.ico', 'generated Windows icon.ico');
 
-  const signing = spec.signing || {};
-  requireCondition(signing.status === 'ci-enabled', 'signing.status must be ci-enabled once the signed workflow path exists');
-  requireCondition(signing.noCertificatesInRepo === true, 'signing.noCertificatesInRepo must be true');
-  requireCondition(signing.noPrivateKeysInRepo === true, 'signing.noPrivateKeysInRepo must be true');
-  requireCondition(signing.workflowPath === '.github/workflows/desktop-package.yml', 'signing.workflowPath must point at desktop-package workflow');
-  requireCondition(signing.signingConfigScript === 'scripts/configure-desktop-signing.mjs', 'signing.signingConfigScript must point at configure-desktop-signing');
-  requireCondition(signing.manualOnly === true, 'signing.manualOnly must be true');
-  requireCondition(signing.unsignedBuildDefault === true, 'signing.unsignedBuildDefault must be true');
-  requireCondition(signing.signedBuildRequiresSecrets === true, 'signing.signedBuildRequiresSecrets must be true');
-  requireCondition(typeof signing.macos === 'string' && signing.macos.includes('temporary GitHub runner keychain'), 'signing.macos must reference temporary runner keychain handling');
-  requireCondition(signing.macosMode === 'temporary-keychain-p12', 'signing.macosMode must be temporary-keychain-p12');
-  requireCondition(signing.macosNotarizationMode === 'apple-id-env', 'signing.macosNotarizationMode must be apple-id-env');
-  requireCondition(typeof signing.windows === 'string' && signing.windows.includes('CurrentUser certificate store'), 'signing.windows must reference CurrentUser certificate store handling');
-  requireCondition(signing.windowsMode === 'current-user-pfx-thumbprint', 'signing.windowsMode must be current-user-pfx-thumbprint');
-  requireCondition(signing.windowsTimestampUrlDefault === 'http://timestamp.digicert.com', 'signing.windowsTimestampUrlDefault must be http://timestamp.digicert.com');
-  for (const secretName of ['APPLE_CERTIFICATE_BASE64', 'APPLE_CERTIFICATE_PASSWORD', 'APPLE_SIGNING_IDENTITY', 'APPLE_ID', 'APPLE_PASSWORD', 'APPLE_TEAM_ID']) {
-    requireCondition(Array.isArray(signing.macosSecretNames) && signing.macosSecretNames.includes(secretName), `signing.macosSecretNames must include ${secretName}`);
-  }
-  for (const secretName of ['WINDOWS_CERTIFICATE_BASE64', 'WINDOWS_CERTIFICATE_PASSWORD']) {
-    requireCondition(Array.isArray(signing.windowsSecretNames) && signing.windowsSecretNames.includes(secretName), `signing.windowsSecretNames must include ${secretName}`);
-  }
-
-  const workflow = await readTextFile(signing.workflowPath, 'desktop package workflow');
-  requireCondition(workflow.includes('workflow_dispatch'), 'desktop package workflow must be manual');
-  requireCondition(workflow.includes('macos-latest'), 'desktop package workflow must include a macOS job');
-  requireCondition(workflow.includes('windows-latest'), 'desktop package workflow must include a Windows job');
-  requireCondition(workflow.includes('npm run tauri:build -- --bundles dmg'), 'desktop package workflow must build dmg bundles');
-  requireCondition(workflow.includes('npm run tauri:build -- --bundles nsis'), 'desktop package workflow must build nsis bundles');
-  requireCondition(workflow.includes('${{ secrets.APPLE_CERTIFICATE_BASE64 }}'), 'desktop package workflow must read macOS signing secrets by name');
-  requireCondition(workflow.includes('${{ secrets.WINDOWS_CERTIFICATE_BASE64 }}'), 'desktop package workflow must read Windows signing secrets by name');
-  for (const marker of [
-    'Import macOS signing certificate',
-    'Configure macOS signing',
-    'Build signed and notarized macOS dmg',
-    'Clean macOS signing keychain',
-    'security create-keychain',
-    'security import',
-    'APPLE_ID',
-    'APPLE_PASSWORD',
-    'APPLE_TEAM_ID',
-    'Import Windows signing certificate',
-    'Configure Windows signing',
-    'Build signed Windows exe',
-    'Clean Windows signing certificate',
-    'Import-PfxCertificate',
-    'WINDOWS_CERTIFICATE_THUMBPRINT',
-    'scripts/configure-desktop-signing.mjs --macos',
-    'scripts/configure-desktop-signing.mjs --windows',
-  ]) {
-    requireCondition(workflow.includes(marker), `desktop package workflow must include ${marker}`);
-  }
-
-  const signingConfigScript = await readTextFile(signing.signingConfigScript, 'desktop signing config script');
-  for (const marker of [
-    'APPLE_SIGNING_IDENTITY',
-    'WINDOWS_CERTIFICATE_THUMBPRINT',
-    'WINDOWS_TIMESTAMP_URL',
-    'WINDOWS_DIGEST_ALGORITHM',
-    'certificateThumbprint',
-    'signingIdentity',
-    '--macos',
-    '--windows',
-    '--dry-run',
-  ]) {
-    requireCondition(signingConfigScript.includes(marker), `desktop signing config script must include ${marker}`);
-  }
-
   const desktopReadme = await readTextFile('desktop/README.md', 'desktop README');
   const prerequisitesDoc = await readTextFile('desktop/BUILD_PREREQUISITES.md', 'desktop build prerequisites doc');
   const iconReadme = await readTextFile('desktop/icons/README.md', 'desktop icons README');
@@ -363,14 +263,54 @@ async function validateBuildPrerequisites(spec) {
   requireCondition(desktopReadme.includes('BUILD_PREREQUISITES.md'), 'desktop README must link build prerequisites');
   requireCondition(prerequisitesDoc.includes('Rust and Cargo'), 'desktop build prerequisites doc must mention Rust and Cargo');
   requireCondition(prerequisitesDoc.includes('Go'), 'desktop build prerequisites doc must mention Go');
-  requireCondition(prerequisitesDoc.includes('Xcode Command Line Tools'), 'desktop build prerequisites doc must mention Xcode Command Line Tools');
-  requireCondition(prerequisitesDoc.includes('Windows host or CI runner'), 'desktop build prerequisites doc must mention Windows host or CI runner');
-  requireCondition(prerequisitesDoc.includes('Do not commit certificates'), 'desktop build prerequisites doc must state signing material is not committed');
   requireCondition(prerequisitesDoc.includes('node scripts/generate-desktop-icons.mjs'), 'desktop build prerequisites doc must mention icon generation');
-  requireCondition(prerequisitesDoc.includes('node scripts/set-desktop-package-version.mjs'), 'desktop build prerequisites doc must mention release versioning');
-  requireCondition(prerequisitesDoc.includes('node scripts/configure-desktop-signing.mjs'), 'desktop build prerequisites doc must mention signing config');
+  requireCondition(prerequisitesDoc.includes('No desktop installer download path'), 'desktop build prerequisites doc must state installer downloads are de-scoped');
   requireCondition(iconReadme.includes('icon.icns'), 'desktop icons README must describe icon.icns');
   requireCondition(iconReadme.includes('icon.ico'), 'desktop icons README must describe icon.ico');
+}
+
+async function validateDesktopDistributionPolicy(spec) {
+  const policy = spec.distributionPolicy || {};
+  requireCondition(policy.status === 'download-installer-descope', 'distributionPolicy.status must be download-installer-descope');
+  requireCondition(policy.installerDownloads === false, 'distributionPolicy.installerDownloads must be false');
+  requireCondition(policy.releaseAssetPublishing === false, 'distributionPolicy.releaseAssetPublishing must be false');
+  requireCondition(policy.desktopPackageWorkflow === false, 'distributionPolicy.desktopPackageWorkflow must be false');
+  requireCondition(policy.signedInstallerRelease === false, 'distributionPolicy.signedInstallerRelease must be false');
+  requireCondition(!('targets' in spec), 'desktop installer targets must not be configured');
+  requireCondition(!('releaseAssets' in spec), 'releaseAssets must not be configured');
+  requireCondition(!('packageSmokeMatrix' in spec), 'packageSmokeMatrix must not be configured');
+  requireCondition(!('signing' in spec), 'signing must not be configured for desktop installer releases');
+  requireCondition(!('dryRuns' in spec), 'desktop installer dryRuns must not be tracked');
+  requireCondition(!('releaseVersioning' in spec), 'releaseVersioning must not be configured for desktop installer releases');
+
+  for (const filePath of [
+    ['.github', 'workflows', ['desktop', 'package'].join('-') + '.yml'].join('/'),
+    ['scripts', ['configure', 'desktop', 'signing'].join('-') + '.mjs'].join('/'),
+    ['scripts', ['set', 'desktop', 'package', 'version'].join('-') + '.mjs'].join('/'),
+  ]) {
+    requireCondition(!(await fileExists(filePath)), `${filePath} must not exist while desktop installer downloads are de-scoped`);
+  }
+
+  const docs = [
+    ['root README', await readTextFile('README.md', 'root README')],
+    ['desktop README', await readTextFile('desktop/README.md', 'desktop README')],
+    ['desktop build prerequisites doc', await readTextFile('desktop/BUILD_PREREQUISITES.md', 'desktop build prerequisites doc')],
+    ['Codex handoff', await readTextFile('CODEX_HANDOFF.md', 'Codex handoff')],
+  ];
+  for (const [label, text] of docs) {
+    requireCondition(text.includes('No desktop installer download path'), `${label} must state there is no desktop installer download path`);
+    for (const staleMarker of [
+      ['publish', 'release', 'assets'].join('_'),
+      ['smoke', 'matrix'].join('_'),
+      ['desktop', 'package'].join('-'),
+      ['signed', 'Release', 'asset'].join(' '),
+      ['Signed', 'Release', 'asset'].join(' '),
+      ['Kuviewer', '0.1.0', 'aarch64'].join('_'),
+      ['Kuviewer', '0.1.0', 'x64'].join('_'),
+    ]) {
+      requireCondition(!text.includes(staleMarker), `${label} must not reference stale desktop download marker ${staleMarker}`);
+    }
+  }
 }
 
 async function validateRemoteConnectionProfile(spec) {
@@ -424,62 +364,6 @@ async function validateRemoteConnectionProfile(spec) {
   const desktopReadme = await readTextFile('desktop/README.md', 'desktop README');
   requireCondition(desktopReadme.includes('Remote Server Profile'), 'desktop README must document the remote server profile');
   requireCondition(desktopReadme.includes('KUVIEWER_CORS_ORIGIN'), 'desktop README must document CORS expectations for remote server profiles');
-}
-
-async function validateReleaseVersioning(spec) {
-  const releaseVersioning = spec.releaseVersioning || {};
-  requireCondition(releaseVersioning.status === 'scaffolded', 'releaseVersioning.status must be scaffolded');
-  requireCondition(releaseVersioning.versionScript === 'scripts/set-desktop-package-version.mjs', 'releaseVersioning.versionScript must point at set-desktop-package-version');
-  requireCondition(releaseVersioning.workflowInput === 'package_version', 'releaseVersioning.workflowInput must be package_version');
-  requireCondition(releaseVersioning.tagPrefix === 'v', 'releaseVersioning.tagPrefix must be v');
-  requireCondition(releaseVersioning.fallbackVersion === '0.1.0', 'releaseVersioning.fallbackVersion must stay 0.1.0 until desktop packages are intentionally bumped');
-  requireCondition(releaseVersioning.artifactNamePattern === 'kuviewer-{platform}-{artifact}-{version}', 'releaseVersioning artifactNamePattern must include version');
-  requireCondition(releaseVersioning.ciWorkspaceOnly === true, 'releaseVersioning.ciWorkspaceOnly must be true');
-  requireCondition(releaseVersioning.noCredentialPersistence === true, 'releaseVersioning.noCredentialPersistence must be true');
-
-  const sourceFiles = new Set(Array.isArray(releaseVersioning.sourceFiles) ? releaseVersioning.sourceFiles : []);
-  for (const sourceFile of ['desktop/package.json', 'desktop/src-tauri/Cargo.toml', 'desktop/src-tauri/tauri.conf.json']) {
-    requireCondition(sourceFiles.has(sourceFile), `releaseVersioning.sourceFiles must include ${sourceFile}`);
-  }
-
-  const versionScript = await readTextFile(releaseVersioning.versionScript, 'desktop package version script');
-  for (const marker of [
-    'KUVIEWER_DESKTOP_VERSION',
-    'GITHUB_REF_NAME',
-    'GITHUB_OUTPUT',
-    'desktop/package.json',
-    'desktop/src-tauri/Cargo.toml',
-    'desktop/src-tauri/tauri.conf.json',
-    '--check',
-    '--dry-run',
-  ]) {
-    requireCondition(versionScript.includes(marker), `desktop package version script must include ${marker}`);
-  }
-
-  const fallbackVersion = releaseVersioning.fallbackVersion;
-  const desktopPackage = await readJsonFile('desktop/package.json', 'desktop package.json');
-  const tauriConfig = await readJsonFile('desktop/src-tauri/tauri.conf.json', 'desktop tauri config');
-  const cargoToml = await readTextFile('desktop/src-tauri/Cargo.toml', 'desktop Cargo.toml');
-  requireCondition(desktopPackage?.version === fallbackVersion, `desktop package.json version must default to ${fallbackVersion}`);
-  requireCondition(tauriConfig?.version === fallbackVersion, `tauri config version must default to ${fallbackVersion}`);
-  requireCondition(readCargoPackageVersion(cargoToml) === fallbackVersion, `Cargo.toml package version must default to ${fallbackVersion}`);
-
-  const workflow = await readTextFile(spec.signing?.workflowPath, 'desktop package workflow');
-  for (const marker of [
-    'package_version',
-    'scripts/set-desktop-package-version.mjs',
-    'KUVIEWER_DESKTOP_VERSION',
-    '--github-output',
-    '${{ steps.desktop-version.outputs.version }}',
-    'kuviewer-macos-dmg-${{ steps.desktop-version.outputs.version }}',
-    'kuviewer-windows-exe-${{ steps.desktop-version.outputs.version }}',
-  ]) {
-    requireCondition(workflow.includes(marker), `desktop package workflow must include ${marker}`);
-  }
-
-  const desktopReadme = await readTextFile('desktop/README.md', 'desktop README');
-  requireCondition(desktopReadme.includes('Release Versioning'), 'desktop README must document release versioning');
-  requireCondition(desktopReadme.includes('package_version'), 'desktop README must document package_version input');
 }
 
 async function validateLocalSidecar(spec) {
@@ -1054,165 +938,6 @@ async function validateCmSshSessionManager(spec) {
   }
 }
 
-async function validatePackageSmokeMatrix(spec) {
-  const matrix = spec.packageSmokeMatrix || {};
-  requireCondition(matrix.status === 'manual-unsigned-matrix', 'packageSmokeMatrix.status must be manual-unsigned-matrix');
-  requireCondition(matrix.workflowPath === '.github/workflows/desktop-package.yml', 'packageSmokeMatrix.workflowPath must point at desktop-package workflow');
-  requireCondition(matrix.workflowInput === 'smoke_matrix', 'packageSmokeMatrix.workflowInput must be smoke_matrix');
-  requireCondition(matrix.manualOnly === true, 'packageSmokeMatrix.manualOnly must be true');
-  requireCondition(matrix.signedAllowed === false, 'packageSmokeMatrix.signedAllowed must be false');
-  requireCondition(matrix.artifactNamePattern === 'kuviewer-{platform}-{artifact}-{version}', 'packageSmokeMatrix artifactNamePattern must include version');
-  requireCondition(matrix.artifactStorage === 'github-actions-artifact-only', 'packageSmokeMatrix artifactStorage must be github-actions-artifact-only');
-  requireCondition(matrix.releaseAsset === false, 'packageSmokeMatrix.releaseAsset must be false');
-
-  const targetMap = new Map((Array.isArray(matrix.targets) ? matrix.targets : []).map((target) => [`${target.platform}:${target.artifact}`, target]));
-  const macosTarget = targetMap.get('macos:dmg');
-  const windowsTarget = targetMap.get('windows:exe');
-  requireCondition(macosTarget?.job === 'macos-dmg', 'packageSmokeMatrix must map macos:dmg to macos-dmg');
-  requireCondition(windowsTarget?.job === 'windows-exe', 'packageSmokeMatrix must map windows:exe to windows-exe');
-
-  const workflow = await readTextFile(matrix.workflowPath, 'desktop package workflow');
-  for (const marker of [
-    'smoke_matrix:',
-    'Build unsigned macOS dmg and Windows exe smoke matrix',
-    'Validate unsigned smoke matrix mode',
-    'Setup Go',
-    'actions/setup-go@v5',
-    "go-version: '1.26.x'",
-    'cache: false',
-    'if: ${{ inputs.smoke_matrix && inputs.signed }}',
-    'smoke_matrix builds unsigned artifacts only; set signed=false.',
-    'if: ${{ inputs.build_macos || inputs.smoke_matrix }}',
-    'if: ${{ inputs.build_windows || inputs.smoke_matrix }}',
-    'kuviewer-macos-dmg-${{ steps.desktop-version.outputs.version }}',
-    'kuviewer-windows-exe-${{ steps.desktop-version.outputs.version }}',
-  ]) {
-    requireCondition(workflow.includes(marker), `desktop package workflow must include ${marker}`);
-  }
-
-  const rootReadme = await readTextFile('README.md', 'root README');
-  const desktopReadme = await readTextFile('desktop/README.md', 'desktop README');
-  const prerequisitesDoc = await readTextFile('desktop/BUILD_PREREQUISITES.md', 'desktop build prerequisites doc');
-  const handoff = await readTextFile('CODEX_HANDOFF.md', 'Codex handoff');
-  for (const [label, text] of [
-    ['root README', rootReadme],
-    ['desktop README', desktopReadme],
-    ['desktop build prerequisites doc', prerequisitesDoc],
-    ['Codex handoff', handoff],
-  ]) {
-    requireCondition(text.includes('smoke_matrix'), `${label} must document the smoke_matrix workflow input`);
-    requireCondition(text.includes('unsigned'), `${label} must document that desktop smoke matrix artifacts are unsigned`);
-    requireCondition(text.includes('GitHub Actions artifact'), `${label} must document smoke matrix artifact storage`);
-  }
-}
-
-async function validateReleaseAssets(spec) {
-  const releaseAssets = spec.releaseAssets || {};
-  requireCondition(releaseAssets.status === 'signed-release-ready', 'releaseAssets.status must be signed-release-ready');
-  requireCondition(releaseAssets.workflowPath === '.github/workflows/desktop-package.yml', 'releaseAssets.workflowPath must point at desktop-package workflow');
-  requireCondition(releaseAssets.workflowInput === 'publish_release_assets', 'releaseAssets.workflowInput must be publish_release_assets');
-  requireCondition(releaseAssets.manualOnly === true, 'releaseAssets.manualOnly must be true');
-  requireCondition(releaseAssets.requiresSigned === true, 'releaseAssets.requiresSigned must be true');
-  requireCondition(releaseAssets.requiresTagRef === true, 'releaseAssets.requiresTagRef must be true');
-  requireCondition(releaseAssets.tagPrefix === 'v', 'releaseAssets.tagPrefix must be v');
-  requireCondition(releaseAssets.smokeMatrixAllowed === false, 'releaseAssets.smokeMatrixAllowed must be false');
-  requireCondition(releaseAssets.unsignedAllowed === false, 'releaseAssets.unsignedAllowed must be false');
-  requireCondition(releaseAssets.job === 'publish-release', 'releaseAssets.job must be publish-release');
-  requireCondition(releaseAssets.permission === 'contents: write', 'releaseAssets.permission must be contents: write');
-  requireCondition(releaseAssets.releaseCommand === 'gh release upload', 'releaseAssets.releaseCommand must be gh release upload');
-  requireCondition(releaseAssets.releaseAssetSource === 'signed workflow artifacts only', 'releaseAssets.releaseAssetSource must be signed workflow artifacts only');
-  const assetPatterns = new Set(Array.isArray(releaseAssets.artifactPatterns) ? releaseAssets.artifactPatterns : []);
-  for (const pattern of ['*.dmg', '*.exe']) {
-    requireCondition(assetPatterns.has(pattern), `releaseAssets.artifactPatterns must include ${pattern}`);
-  }
-
-  const workflow = await readTextFile(releaseAssets.workflowPath, 'desktop package workflow');
-  for (const marker of [
-    'publish_release_assets:',
-    'Upload signed installers to the matching GitHub Release; requires signed=true and a v* tag ref',
-    'Validate signed release asset publish mode',
-    'publish_release_assets requires signed=true, smoke_matrix=false, a v* tag ref, and at least one package target.',
-    "startsWith(github.ref, 'refs/tags/v')",
-    'publish-release:',
-    'contents: write',
-    'actions/download-artifact@v4',
-    'pattern: kuviewer-*',
-    'gh release view',
-    'gh release create',
-    '--verify-tag',
-    'gh release upload',
-    '--clobber',
-    '-name "*.dmg"',
-    '-name "*.exe"',
-  ]) {
-    requireCondition(workflow.includes(marker), `desktop package workflow must include signed release marker ${marker}`);
-  }
-
-  const rootReadme = await readTextFile('README.md', 'root README');
-  const desktopReadme = await readTextFile('desktop/README.md', 'desktop README');
-  const prerequisitesDoc = await readTextFile('desktop/BUILD_PREREQUISITES.md', 'desktop build prerequisites doc');
-  const handoff = await readTextFile('CODEX_HANDOFF.md', 'Codex handoff');
-  for (const [label, text] of [
-    ['root README', rootReadme],
-    ['desktop README', desktopReadme],
-    ['desktop build prerequisites doc', prerequisitesDoc],
-    ['Codex handoff', handoff],
-  ]) {
-    requireCondition(text.includes('publish_release_assets'), `${label} must document publish_release_assets`);
-    requireCondition(text.includes('signed') && text.includes('Release'), `${label} must document signed Release asset publishing`);
-    requireCondition(text.includes('v* tag'), `${label} must document the v* tag requirement for signed release assets`);
-  }
-}
-
-function validateDryRuns(spec) {
-  if (!['macos-dmg-dry-run', 'windows-exe-dry-run'].includes(spec.status)) {
-    return;
-  }
-  const dryRuns = Array.isArray(spec.dryRuns) ? spec.dryRuns : [];
-  const macosDryRun = dryRuns.find((dryRun) => dryRun.id === 'macos-dmg-unsigned-2026-06-19');
-  requireCondition(Boolean(macosDryRun), 'dryRuns must include macos-dmg-unsigned-2026-06-19');
-  if (macosDryRun) {
-    requireCondition(macosDryRun.platform === 'macos', 'macOS dry-run platform must be macos');
-    requireCondition(macosDryRun.artifact === 'dmg', 'macOS dry-run artifact must be dmg');
-    requireCondition(macosDryRun.signed === false, 'macOS dry-run must be unsigned');
-    requireCondition(macosDryRun.workflow === 'desktop-package', 'macOS dry-run workflow must be desktop-package');
-    requireCondition(macosDryRun.workflowRunId === 27800527207, 'macOS dry-run workflowRunId must match the verified run');
-    requireCondition(macosDryRun.workflowRunUrl === 'https://github.com/pxzhu/kuviewer/actions/runs/27800527207', 'macOS dry-run workflowRunUrl must match the verified run');
-    requireCondition(macosDryRun.ref === 'main', 'macOS dry-run ref must be main');
-    requireCondition(macosDryRun.commit === 'd525971d7415a6053eb8f45d92f5a3573654e3cd', 'macOS dry-run commit must match the verified commit');
-    requireCondition(macosDryRun.conclusion === 'success', 'macOS dry-run conclusion must be success');
-    requireCondition(macosDryRun.outputFile === 'Kuviewer_0.1.0_aarch64.dmg', 'macOS dry-run output file must match the generated dmg');
-    requireCondition(macosDryRun.artifactName === 'kuviewer-macos-dmg', 'macOS dry-run artifact name must be kuviewer-macos-dmg');
-    requireCondition(macosDryRun.artifactId === 7740045761, 'macOS dry-run artifact id must match the uploaded artifact');
-    requireCondition(macosDryRun.artifactSizeBytes === 7125256, 'macOS dry-run artifact size must match the uploaded artifact');
-    requireCondition(macosDryRun.artifactZipSha256 === '3a663ab3e3cba2bd12e14cf692cf699f5ee862f15f4cb80d4840ff98dad173ec', 'macOS dry-run artifact digest must match the uploaded artifact');
-  }
-
-  if (spec.status !== 'windows-exe-dry-run') {
-    return;
-  }
-
-  const windowsDryRun = dryRuns.find((dryRun) => dryRun.id === 'windows-exe-unsigned-2026-06-19');
-  requireCondition(Boolean(windowsDryRun), 'dryRuns must include windows-exe-unsigned-2026-06-19');
-  if (!windowsDryRun) {
-    return;
-  }
-  requireCondition(windowsDryRun.platform === 'windows', 'Windows dry-run platform must be windows');
-  requireCondition(windowsDryRun.artifact === 'exe', 'Windows dry-run artifact must be exe');
-  requireCondition(windowsDryRun.signed === false, 'Windows dry-run must be unsigned');
-  requireCondition(windowsDryRun.workflow === 'desktop-package', 'Windows dry-run workflow must be desktop-package');
-  requireCondition(windowsDryRun.workflowRunId === 27803179419, 'Windows dry-run workflowRunId must match the verified run');
-  requireCondition(windowsDryRun.workflowRunUrl === 'https://github.com/pxzhu/kuviewer/actions/runs/27803179419', 'Windows dry-run workflowRunUrl must match the verified run');
-  requireCondition(windowsDryRun.ref === 'main', 'Windows dry-run ref must be main');
-  requireCondition(windowsDryRun.commit === 'b754c549ee2a2766c7f2d32257e4ee66a426aeb2', 'Windows dry-run commit must match the verified commit');
-  requireCondition(windowsDryRun.conclusion === 'success', 'Windows dry-run conclusion must be success');
-  requireCondition(windowsDryRun.outputFile === 'Kuviewer_0.1.0_x64-setup.exe', 'Windows dry-run output file must match the generated exe');
-  requireCondition(windowsDryRun.artifactName === 'kuviewer-windows-exe', 'Windows dry-run artifact name must be kuviewer-windows-exe');
-  requireCondition(windowsDryRun.artifactId === 7741029893, 'Windows dry-run artifact id must match the uploaded artifact');
-  requireCondition(windowsDryRun.artifactSizeBytes === 5777828, 'Windows dry-run artifact size must match the uploaded artifact');
-  requireCondition(windowsDryRun.artifactZipSha256 === '904285edb5307f1426f386ef340d413c81623e41ad57a835f0ea303c778970c4', 'Windows dry-run artifact digest must match the uploaded artifact');
-}
-
 function readCargoPackageVersion(text) {
   const lines = text.split('\n');
   let inPackage = false;
@@ -1257,6 +982,15 @@ async function readTextFile(relativePath, label) {
   } catch (error) {
     failures.push(`${label} could not be read: ${error instanceof Error ? error.message : String(error)}`);
     return '';
+  }
+}
+
+async function fileExists(relativePath) {
+  try {
+    await access(path.join(repoRoot, relativePath));
+    return true;
+  } catch {
+    return false;
   }
 }
 
