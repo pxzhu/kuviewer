@@ -2,9 +2,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Boxes, GitBranch, LockKeyhole, Palette, Pause, Play, RefreshCw, SearchCode, SlidersHorizontal, Workflow } from 'lucide-react';
 import { clearAdminToken, getStoredAdminToken, isValidAdminToken } from '../features/auth/adminToken';
 import {
+  checkDesktopCmSession,
   clearDesktopConnectionProfile,
   deleteDesktopCmSession,
+  deleteDesktopCmSessionCredential,
   getDesktopCmSessions,
+  importDesktopCmSessionPrivateKey,
   isDesktopRuntime,
   saveDesktopCmSession,
   selectDesktopCmSession,
@@ -322,13 +325,40 @@ function Dashboard() {
         status: session.id === selectedSession.id ? selectedSession.status : 'metadata-only',
       })),
     );
-    setDesktopCmSessionMessage(`${selectedSession.name} 선택됨 · SSH 연결은 후속`);
+    setDesktopCmSessionMessage(`${selectedSession.name} 선택됨 · ${selectedSession.credentialAvailable ? 'credential ready' : 'credential 필요'}`);
   }, []);
 
   const handleDesktopCmSessionDelete = useCallback(async (sessionId: string) => {
     const sessions = await deleteDesktopCmSession(sessionId);
     setDesktopCmSessions(sessions);
     setDesktopCmSessionMessage('CM/SSH session 삭제됨');
+  }, []);
+
+  const handleDesktopCmSessionPrivateKeyImport = useCallback(async (sessionId: string, keyFilePath: string) => {
+    const updatedSession = await importDesktopCmSessionPrivateKey(sessionId, keyFilePath);
+    if (!updatedSession) {
+      throw new Error('desktop_cm_private_key_import_failed');
+    }
+    setDesktopCmSessions((currentSessions) => upsertDesktopCmSession(currentSessions, updatedSession));
+    setDesktopCmSessionMessage(`${updatedSession.name} credential 저장됨`);
+  }, []);
+
+  const handleDesktopCmSessionCredentialDelete = useCallback(async (sessionId: string) => {
+    const updatedSession = await deleteDesktopCmSessionCredential(sessionId);
+    if (!updatedSession) {
+      throw new Error('desktop_cm_credential_delete_failed');
+    }
+    setDesktopCmSessions((currentSessions) => upsertDesktopCmSession(currentSessions, updatedSession));
+    setDesktopCmSessionMessage(`${updatedSession.name} credential 삭제됨`);
+  }, []);
+
+  const handleDesktopCmSessionCheck = useCallback(async (sessionId: string) => {
+    const updatedSession = await checkDesktopCmSession(sessionId);
+    if (!updatedSession) {
+      throw new Error('desktop_cm_session_check_failed');
+    }
+    setDesktopCmSessions((currentSessions) => upsertDesktopCmSession(currentSessions, updatedSession));
+    setDesktopCmSessionMessage(`${updatedSession.name} 확인 · ${formatCmSessionStatus(updatedSession.lastCheckStatus)}`);
   }, []);
 
   const handleOpenTopologyNode = useCallback((nodeId: string) => {
@@ -489,6 +519,9 @@ function Dashboard() {
           uploadedState={uploadedState}
           uploadError={uploadError}
           onDesktopCmSessionDelete={handleDesktopCmSessionDelete}
+          onDesktopCmSessionCredentialDelete={handleDesktopCmSessionCredentialDelete}
+          onDesktopCmSessionCheck={handleDesktopCmSessionCheck}
+          onDesktopCmSessionPrivateKeyImport={handleDesktopCmSessionPrivateKeyImport}
           onDesktopCmSessionSave={handleDesktopCmSessionSave}
           onDesktopCmSessionSelect={handleDesktopCmSessionSelect}
           onExportJson={handleExportJson}
@@ -806,6 +839,29 @@ function upsertDesktopCmSession(sessions: DesktopCmSession[], savedSession: Desk
     return [savedSession, ...sessions];
   }
   return sessions.map((session) => (session.id === savedSession.id ? savedSession : session));
+}
+
+function formatCmSessionStatus(status: string) {
+  switch (status) {
+    case 'reachable':
+      return '연결 가능';
+    case 'auth-failed':
+      return '인증 실패';
+    case 'timeout':
+      return '시간 초과';
+    case 'unreachable':
+      return '연결 불가';
+    case 'not-ssh':
+      return 'SSH 아님';
+    case 'ssh-binary-missing':
+      return 'ssh 없음';
+    case 'credential-ready':
+      return 'credential 준비됨';
+    case 'credential-missing':
+      return 'credential 없음';
+    default:
+      return status || '확인 안 됨';
+  }
 }
 
 function readStoredSourceMode(): TopologySourceMode | null {

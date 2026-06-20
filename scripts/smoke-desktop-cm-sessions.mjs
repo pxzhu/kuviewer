@@ -49,9 +49,12 @@ async function smokeDesktopRuntime(browser, url) {
                 user: args.session.user,
                 description: args.session.description,
                 authType: 'os-credential-store',
+                credentialStore: 'native-smoke-store',
+                credentialAvailable: false,
                 status: 'metadata-only',
                 updatedAt: now,
                 selected: false,
+                lastCheckStatus: 'not-checked',
               };
               window.__kuviewerCmSessions = [session, ...window.__kuviewerCmSessions.filter((item) => item.id !== session.id)];
               return session;
@@ -62,7 +65,7 @@ async function smokeDesktopRuntime(browser, url) {
                 const nextSession = {
                   ...session,
                   selected: session.id === args.sessionId,
-                  status: 'metadata-only',
+                  status: session.credentialAvailable ? 'credential-ready' : 'metadata-only',
                 };
                 if (nextSession.selected) {
                   selected = nextSession;
@@ -77,6 +80,71 @@ async function smokeDesktopRuntime(browser, url) {
             if (command === 'desktop_delete_cm_session') {
               window.__kuviewerCmSessions = window.__kuviewerCmSessions.filter((session) => session.id !== args.sessionId);
               return window.__kuviewerCmSessions;
+            }
+            if (command === 'desktop_import_cm_session_private_key') {
+              let imported = null;
+              window.__kuviewerCmSessions = window.__kuviewerCmSessions.map((session) => {
+                if (session.id !== args.sessionId) {
+                  return session;
+                }
+                imported = {
+                  ...session,
+                  credentialAvailable: true,
+                  status: 'credential-ready',
+                  updatedAt: Date.now(),
+                  lastCheckStatus: 'credential-ready',
+                  lastCheckAt: Date.now(),
+                  lastCheckMessage: 'private-key-imported',
+                };
+                return imported;
+              });
+              if (!imported) {
+                throw new Error('desktop_cm_session_not_found');
+              }
+              return imported;
+            }
+            if (command === 'desktop_check_cm_session') {
+              let checked = null;
+              window.__kuviewerCmSessions = window.__kuviewerCmSessions.map((session) => {
+                if (session.id !== args.sessionId) {
+                  return session;
+                }
+                checked = {
+                  ...session,
+                  status: session.credentialAvailable ? 'reachable' : 'reachable',
+                  updatedAt: Date.now(),
+                  lastCheckStatus: 'reachable',
+                  lastCheckAt: Date.now(),
+                  lastCheckMessage: session.credentialAvailable ? 'ssh-check-succeeded' : 'tcp-reachable',
+                };
+                return checked;
+              });
+              if (!checked) {
+                throw new Error('desktop_cm_session_not_found');
+              }
+              return checked;
+            }
+            if (command === 'desktop_delete_cm_session_credential') {
+              let updated = null;
+              window.__kuviewerCmSessions = window.__kuviewerCmSessions.map((session) => {
+                if (session.id !== args.sessionId) {
+                  return session;
+                }
+                updated = {
+                  ...session,
+                  credentialAvailable: false,
+                  status: 'credential-deleted',
+                  updatedAt: Date.now(),
+                  lastCheckStatus: 'credential-deleted',
+                  lastCheckAt: Date.now(),
+                  lastCheckMessage: 'credential-deleted',
+                };
+                return updated;
+              });
+              if (!updated) {
+                throw new Error('desktop_cm_session_not_found');
+              }
+              return updated;
             }
             throw new Error(`unexpected_tauri_command:${command}`);
           },
@@ -94,10 +162,18 @@ async function smokeDesktopRuntime(browser, url) {
     await page.getByTestId('desktop-cm-session-save').click();
     await page.getByTestId(/^desktop-cm-session-prod-cm-/).waitFor({ state: 'visible', timeout: 10_000 });
     await page.getByRole('button', { name: /Prod CM/ }).click();
-    await page.getByText('Prod CM 선택됨 · SSH 연결은 후속').waitFor({ state: 'visible', timeout: 10_000 });
+    await page.getByText('Prod CM 선택됨 · credential 필요').waitFor({ state: 'visible', timeout: 10_000 });
 
     const sessionId = await page.evaluate(() => window.__kuviewerCmSessions[0]?.id);
     requireCondition(typeof sessionId === 'string' && sessionId.startsWith('prod-cm-'), 'saved CM session id must be generated');
+    await page.getByTestId(`desktop-cm-session-key-path-${sessionId}`).fill('/tmp/kuviewer-smoke-id_ed25519');
+    await page.getByTestId(`desktop-cm-session-import-key-${sessionId}`).click();
+    await page.getByText('Prod CM credential 저장됨').waitFor({ state: 'visible', timeout: 10_000 });
+    await page.getByTestId(`desktop-cm-session-check-${sessionId}`).click();
+    await page.getByText('Prod CM 확인 · 연결 가능').waitFor({ state: 'visible', timeout: 10_000 });
+    await page.getByTestId(`desktop-cm-session-delete-credential-${sessionId}`).click();
+    await page.getByTestId(`desktop-cm-session-delete-credential-${sessionId}`).click();
+    await page.getByText('Prod CM credential 삭제됨').waitFor({ state: 'visible', timeout: 10_000 });
     await page.getByTestId(`desktop-cm-session-delete-${sessionId}`).click();
     await page.getByTestId(`desktop-cm-session-delete-${sessionId}`).click();
     await page.getByText('CM/SSH session 삭제됨').waitFor({ state: 'visible', timeout: 10_000 });
@@ -111,17 +187,22 @@ async function smokeDesktopRuntime(browser, url) {
       oldSidecarPanel: Boolean(document.querySelector('[data-testid="desktop-use-sidecar-profile"]')),
       oldKubernetesPanel: Boolean(document.querySelector('[data-testid="desktop-kubernetes-profile-panel"]')),
     }));
+    const invocationsJson = JSON.stringify(state.invocations);
 
     requireCondition(state.localToken === null, 'desktop CM smoke must not store admin token in localStorage');
     requireCondition(state.legacyProfile === null, 'desktop CM smoke must clear the legacy desktop API profile');
     requireCondition(state.sessionToken === null, 'desktop CM smoke must not store admin token in sessionStorage');
     requireCondition(Array.isArray(state.sessions) && state.sessions.length === 0, 'desktop CM delete must remove the saved session');
+    requireCondition(!invocationsJson.includes('BEGIN OPENSSH PRIVATE KEY'), 'desktop CM smoke must not expose private key bodies to browser state');
     requireCondition(state.oldSidecarPanel === false, 'desktop product UI must not show the local sidecar switch');
     requireCondition(state.oldKubernetesPanel === false, 'desktop product UI must not show the keychain Kubernetes prototype panel');
     requireCommandOrder(state.invocations, [
       'desktop_cm_sessions',
       'desktop_save_cm_session',
       'desktop_select_cm_session',
+      'desktop_import_cm_session_private_key',
+      'desktop_check_cm_session',
+      'desktop_delete_cm_session_credential',
       'desktop_delete_cm_session',
     ]);
   } finally {

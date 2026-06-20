@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "name": "Kuviewer Desktop CM Session Explorer",
   "goal": "installable-read-only-cm-ssh-session-explorer",
-  "status": "desktop-cm-ssh-sessions",
+  "status": "desktop-cm-ssh-credential-check",
   "recommendedPackager": "tauri",
   "fallbackPackager": "electron",
   "tauri": {
@@ -54,13 +54,13 @@
     "noOperationalActions": true
   },
   "cmSshSessionManager": {
-    "status": "scaffolded",
+    "status": "credential-check",
     "desktopOnly": true,
     "webExposed": false,
-    "storage": "tauri-state-safe-metadata-only",
-    "secretStorage": "none-in-v1",
+    "storage": "tauri-state-safe-metadata-with-os-credential-store",
+    "secretStorage": "os-credential-store-private-key",
     "defaultPort": 22,
-    "actualSshConnection": false,
+    "actualSshConnection": true,
     "safeMetadataFields": [
       "id",
       "name",
@@ -68,16 +68,24 @@
       "port",
       "user",
       "authType",
+      "credentialStore",
+      "credentialAvailable",
       "status",
       "updatedAt",
       "selected",
-      "description"
+      "description",
+      "lastCheckStatus",
+      "lastCheckAt",
+      "lastCheckMessage"
     ],
     "commands": [
       "desktop_cm_sessions",
       "desktop_save_cm_session",
       "desktop_select_cm_session",
-      "desktop_delete_cm_session"
+      "desktop_delete_cm_session",
+      "desktop_import_cm_session_private_key",
+      "desktop_delete_cm_session_credential",
+      "desktop_check_cm_session"
     ],
     "hiddenPrototypeUi": [
       "DesktopConnectionProfilePanel",
@@ -85,7 +93,6 @@
       "desktop-use-sidecar-profile"
     ],
     "next": [
-      "desktop SSH credential store + connection check",
       "CM session tunnel/runtime integration"
     ]
   },
@@ -450,6 +457,7 @@
     "native-credential-runtime-smoke",
     "desktop-package-smoke-matrix",
     "desktop-cm-ssh-sessions",
+    "desktop-cm-ssh-credential-check",
     "macos-dmg-build",
     "windows-exe-build",
     "signing-and-release"

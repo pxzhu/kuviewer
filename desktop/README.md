@@ -48,23 +48,25 @@ Build prerequisites, icon source policy, and signing boundaries are tracked in [
 - Do not ask users to paste kubeconfigs into the browser UI.
 - Do not persist kubeconfigs, admin tokens, cloud credentials, private keys, Secret values, Events, or logs in the app bundle.
 - Do not add operational actions such as exec, port-forward, restart, scale, delete, apply, or edit in the packaging spike.
-- Treat desktop connection settings as URL-only UI profile state until the dedicated keychain-backed runtime is implemented.
-- The desktop CM/SSH session manager should keep host credentials in the OS credential store and expose only safe session metadata to the UI.
+- Treat prototype remote API and local sidecar settings as scaffold-only UI state outside the desktop product default.
+- The desktop CM/SSH session manager keeps imported host private keys in the OS credential store and exposes only safe session metadata plus connection check results to the UI.
 
 ## CM/SSH Session Manager
 
 The current desktop product UI is a CM/SSH session manager. It is desktop-only and the web app must not expose SSH.
 
-The first implementation is metadata-only. It supports multiple sessions with safe fields only:
+The current implementation supports multiple sessions with safe metadata fields only:
 
 - `name`
 - `host`
 - `port`
 - `user`
 - `description`
-- status, selection, and updated timestamp
+- status, selection, updated timestamp, credential availability, credential store label, and last connection check status/message
 
-The Tauri bridge exposes safe metadata commands only: `desktop_cm_sessions`, `desktop_save_cm_session`, `desktop_select_cm_session`, and `desktop_delete_cm_session`. No password, private key, token, kubeconfig, cloud credential, Secret value, Event, or log is stored or returned. Actual SSH connection checks, credential-store import, and CM tunnel/runtime integration are the next desktop milestones.
+The Tauri bridge exposes safe session commands: `desktop_cm_sessions`, `desktop_save_cm_session`, `desktop_select_cm_session`, `desktop_delete_cm_session`, `desktop_import_cm_session_private_key`, `desktop_delete_cm_session_credential`, and `desktop_check_cm_session`. Private keys are imported from a local file path by Rust and written to macOS Keychain or Windows Credential Manager under the desktop CM/SSH credential service. Private key bodies are never returned to browser JavaScript, localStorage, JSON export, app logs, or repository files. Passwords, passphrases, tokens, kubeconfigs, cloud credentials, Secret values, Events, and logs are not stored or returned.
+
+`desktop_check_cm_session` performs a bounded connection check. If a private key is available it runs an SSH no-op check with a temporary owner-only key file outside the repository and deletes that file after the check. If no private key is available it falls back to TCP/SSH banner reachability. Deleting a CM/SSH session also removes its stored credential when present. The UI receives only coarse statuses such as `reachable`, `unreachable`, or `credential-missing`, plus safe messages. CM tunnel/runtime integration is the next desktop milestone.
 
 The desktop runtime can seed one metadata fixture for smoke work with `KUVIEWER_DESKTOP_CM_SESSION_HOST` plus optional `KUVIEWER_DESKTOP_CM_SESSION_ID`, `KUVIEWER_DESKTOP_CM_SESSION_NAME`, `KUVIEWER_DESKTOP_CM_SESSION_PORT`, `KUVIEWER_DESKTOP_CM_SESSION_USER`, and `KUVIEWER_DESKTOP_CM_SESSION_DESCRIPTION`.
 
