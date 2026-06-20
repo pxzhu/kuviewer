@@ -1,0 +1,158 @@
+name: deploy-preflight
+
+on:
+  workflow_dispatch:
+
+env:
+  DEPLOY_PATH: ${{ vars.DEPLOY_PATH || '/home/ubuntu/kuviewer' }}
+  REMOTE_IMAGE_TAR: /tmp/kuviewer-preflight-${{ github.run_id }}.tmp
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: kuviewer-production-deploy-preflight
+  cancel-in-progress: true
+
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+
+    steps:
+      - name: Report preflight scope
+        run: |
+          echo "deploy-preflight-only"
+          echo "no image build, upload, compose rollout, or rollback will run"
+
+      - name: Validate required secrets
+        shell: bash
+        run: |
+          test -n "${{ secrets.SERVER_FHOST }}"
+          test -n "${{ secrets.SERVER_FUSER }}"
+          test -n "${{ secrets.SERVER_PORT }}"
+          test -n "${{ secrets.SERVER_SSH_KEY }}"
+          if [ -n "${{ secrets.SERVER_SSH_KNOWN_HOSTS }}" ]; then
+            echo "SERVER_SSH_KNOWN_HOSTS present"
+          else
+            echo "SERVER_SSH_KNOWN_HOSTS missing; keyscan fallback will be used"
+          fi
+          case "${{ secrets.SERVER_PORT }}" in
+            ''|*[!0-9]*)
+              echo "SERVER_PORT must be numeric"
+              exit 1
+              ;;
+          esac
+          if [ "${{ secrets.SERVER_PORT }}" -lt 1 ] || [ "${{ secrets.SERVER_PORT }}" -gt 65535 ]; then
+            echo "SERVER_PORT must be between 1 and 65535"
+            exit 1
+          fi
+
+      - name: Prepare SSH key
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "${{ secrets.SERVER_SSH_KEY }}" > ~/.ssh/deploy_key.pem
+          chmod 600 ~/.ssh/deploy_key.pem
+          : > ~/.ssh/known_hosts
+          if [ -n "${{ secrets.SERVER_SSH_KNOWN_HOSTS }}" ]; then
+            echo "Using pinned SSH known_hosts secret"
+            printf '%s\n' "${{ secrets.SERVER_SSH_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+            sort -u ~/.ssh/known_hosts -o ~/.ssh/known_hosts
+          else
+            scanned=false
+            for attempt in 1 2 3 4 5 6; do
+              echo "SSH host key scan attempt ${attempt}/6"
+              : > ~/.ssh/known_hosts.tmp
+              for key_type in ed25519 ecdsa rsa; do
+                ssh-keyscan -4 -T 10 -t "${key_type}" -p "${{ secrets.SERVER_PORT }}" "${{ secrets.SERVER_FHOST }}" >> ~/.ssh/known_hosts.tmp 2>/dev/null || true
+                test -s ~/.ssh/known_hosts.tmp && break
+              done
+              if ! test -s ~/.ssh/known_hosts.tmp; then
+                for key_type in ed25519 ecdsa rsa; do
+                  ssh-keyscan -T 10 -t "${key_type}" -p "${{ secrets.SERVER_PORT }}" "${{ secrets.SERVER_FHOST }}" >> ~/.ssh/known_hosts.tmp 2>/dev/null || true
+                  test -s ~/.ssh/known_hosts.tmp && break
+                done
+              fi
+              if test -s ~/.ssh/known_hosts.tmp; then
+                cat ~/.ssh/known_hosts.tmp >> ~/.ssh/known_hosts
+                rm -f ~/.ssh/known_hosts.tmp
+                sort -u ~/.ssh/known_hosts -o ~/.ssh/known_hosts
+                scanned=true
+                break
+              fi
+              sleep 5
+            done
+            rm -f ~/.ssh/known_hosts.tmp
+            if [ "$scanned" != true ]; then
+              echo "SSH host key scan failed; set SERVER_SSH_KNOWN_HOSTS or verify SERVER_FHOST/SERVER_PORT reachability"
+              exit 1
+            fi
+          fi
+          test -s ~/.ssh/known_hosts
+
+      - name: Remote SSH preflight
+        shell: bash
+        run: |
+          set -euo pipefail
+          SSH_COMMON_OPTS=(
+            -i "$HOME/.ssh/deploy_key.pem"
+            -o BatchMode=yes
+            -o IdentitiesOnly=yes
+            -o StrictHostKeyChecking=yes
+            -o UserKnownHostsFile="$HOME/.ssh/known_hosts"
+            -o ConnectTimeout=20
+            -o ServerAliveInterval=30
+            -o ServerAliveCountMax=20
+            -o TCPKeepAlive=yes
+          )
+          ssh "${SSH_COMMON_OPTS[@]}" \
+            -p "${{ secrets.SERVER_PORT }}" \
+            "${{ secrets.SERVER_FUSER }}@${{ secrets.SERVER_FHOST }}" \
+            "bash -se" <<'REMOTE_PREFLIGHT'
+          set -euo pipefail
+          DEPLOY_PATH='${{ env.DEPLOY_PATH }}'
+          REMOTE_IMAGE_TAR='${{ env.REMOTE_IMAGE_TAR }}'
+
+          case "$DEPLOY_PATH" in
+            /*) ;;
+            *)
+              echo "DEPLOY_PATH must be absolute"
+              exit 1
+              ;;
+          esac
+
+          command -v git >/dev/null
+          command -v curl >/dev/null
+          command -v gzip >/dev/null
+
+          if docker info >/dev/null 2>&1; then
+            DOCKER='docker'
+          elif sudo -n docker info >/dev/null 2>&1; then
+            DOCKER='sudo -n docker'
+          else
+            echo "Docker is not available for deploy user"
+            exit 1
+          fi
+          sh -c "$DOCKER compose version >/dev/null"
+
+          mkdir -p "$DEPLOY_PATH"
+          test -d "$DEPLOY_PATH"
+          test -w "$DEPLOY_PATH"
+
+          if [ -d "$DEPLOY_PATH/.git" ]; then
+            test -f "$DEPLOY_PATH/deploy/standalone/.env"
+          fi
+
+          TMP_TEST="${REMOTE_IMAGE_TAR}.preflight.$$"
+          : > "$TMP_TEST"
+          rm -f "$TMP_TEST"
+          echo "remote-preflight-ok"
+          REMOTE_PREFLIGHT
+
+      - name: Cleanup deploy preflight secrets
+        if: always()
+        run: rm -f ~/.ssh/deploy_key.pem ~/.ssh/known_hosts ~/.ssh/known_hosts.tmp

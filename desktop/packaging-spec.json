@@ -24,6 +24,7 @@
   "deployWorkflowPolicy": {
     "status": "rollback-observability-hardened",
     "workflowPath": ".github/workflows/deploy.yml",
+    "preflightWorkflowPath": ".github/workflows/deploy-preflight.yml",
     "staticCheck": "scripts/check-deploy-workflow.mjs",
     "preflightBeforeBuild": true,
     "strictHostKeyChecking": true,

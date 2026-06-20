@@ -7,6 +7,7 @@ const repoRoot = path.resolve(scriptDir, '..');
 const failures = [];
 
 const deployWorkflow = await readTextFile('.github/workflows/deploy.yml');
+const deployPreflightWorkflow = await readTextFile('.github/workflows/deploy-preflight.yml');
 const ciWorkflow = await readTextFile('.github/workflows/ci.yml');
 const knownHostsHelper = await readTextFile('scripts/prepare-deploy-known-hosts.mjs');
 const packagingSpec = JSON.parse(await readTextFile('desktop/packaging-spec.json'));
@@ -65,6 +66,25 @@ requireOrder(deployWorkflow, ['Deploy on server', 'Cleanup deploy runner secrets
 requireIncludes(ciWorkflow, 'Deploy workflow preflight check', 'CI must run deploy workflow preflight check');
 requireIncludes(ciWorkflow, 'node scripts/check-deploy-workflow.mjs', 'CI must execute deploy workflow checker');
 
+requireIncludes(deployPreflightWorkflow, 'name: deploy-preflight', 'deploy preflight workflow must be named deploy-preflight');
+requireIncludes(deployPreflightWorkflow, 'workflow_dispatch:', 'deploy preflight workflow must be manual-only');
+requireIncludes(deployPreflightWorkflow, 'deploy-preflight-only', 'deploy preflight workflow must report preflight-only scope');
+requireIncludes(deployPreflightWorkflow, 'no image build, upload, compose rollout, or rollback will run', 'deploy preflight workflow must document no deploy side effects');
+requireIncludes(deployPreflightWorkflow, 'SERVER_SSH_KNOWN_HOSTS present', 'deploy preflight workflow must report known_hosts secret presence safely');
+requireIncludes(deployPreflightWorkflow, 'SERVER_SSH_KNOWN_HOSTS missing; keyscan fallback will be used', 'deploy preflight workflow must report known_hosts fallback safely');
+requireIncludes(deployPreflightWorkflow, 'Using pinned SSH known_hosts secret', 'deploy preflight workflow must use pinned known_hosts when present');
+requireIncludes(deployPreflightWorkflow, 'SSH host key scan failed; set SERVER_SSH_KNOWN_HOSTS or verify SERVER_FHOST/SERVER_PORT reachability', 'deploy preflight workflow must explain keyscan failures safely');
+requireIncludes(deployPreflightWorkflow, 'Remote SSH preflight', 'deploy preflight workflow must verify remote SSH prerequisites');
+requireIncludes(deployPreflightWorkflow, 'remote-preflight-ok', 'deploy preflight workflow must report safe remote preflight success');
+requireIncludes(deployPreflightWorkflow, 'Cleanup deploy preflight secrets', 'deploy preflight workflow must clean runner SSH material');
+requireNotIncludes(deployPreflightWorkflow, 'docker build', 'deploy preflight workflow must not build images');
+requireNotIncludes(deployPreflightWorkflow, 'docker save', 'deploy preflight workflow must not save images');
+requireNotIncludes(deployPreflightWorkflow, 'scp ', 'deploy preflight workflow must not upload files');
+requireNotIncludes(deployPreflightWorkflow, 'Deploy on server', 'deploy preflight workflow must not deploy on server');
+requireNotIncludes(deployPreflightWorkflow, 'compose --env-file', 'deploy preflight workflow must not run compose rollout');
+requireNotIncludes(deployPreflightWorkflow, 'docker compose logs', 'deploy preflight workflow must not dump raw compose logs');
+requireNotIncludes(deployPreflightWorkflow, 'StrictHostKeyChecking=no', 'deploy preflight workflow must not disable strict host key checking');
+
 requireIncludes(knownHostsHelper, 'SERVER_SSH_KNOWN_HOSTS', 'known_hosts helper must target SERVER_SSH_KNOWN_HOSTS');
 requireIncludes(knownHostsHelper, 'ssh-keyscan', 'known_hosts helper must generate host keys with ssh-keyscan');
 requireIncludes(knownHostsHelper, '--from-file', 'known_hosts helper must support validating an existing file');
@@ -76,6 +96,7 @@ requireNotIncludes(knownHostsHelper, 'console.log(knownHosts', 'known_hosts help
 const deployWorkflowPolicy = packagingSpec.deployWorkflowPolicy || {};
 requireCondition(deployWorkflowPolicy.status === 'rollback-observability-hardened', 'deployWorkflowPolicy.status must be rollback-observability-hardened');
 requireCondition(deployWorkflowPolicy.workflowPath === '.github/workflows/deploy.yml', 'deployWorkflowPolicy.workflowPath must point to deploy workflow');
+requireCondition(deployWorkflowPolicy.preflightWorkflowPath === '.github/workflows/deploy-preflight.yml', 'deployWorkflowPolicy.preflightWorkflowPath must point to preflight workflow');
 requireCondition(deployWorkflowPolicy.staticCheck === 'scripts/check-deploy-workflow.mjs', 'deployWorkflowPolicy.staticCheck must point to this script');
 requireCondition(deployWorkflowPolicy.preflightBeforeBuild === true, 'deployWorkflowPolicy.preflightBeforeBuild must be true');
 requireCondition(deployWorkflowPolicy.strictHostKeyChecking === true, 'deployWorkflowPolicy.strictHostKeyChecking must be true');
