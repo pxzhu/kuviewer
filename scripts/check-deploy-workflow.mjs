@@ -8,6 +8,7 @@ const failures = [];
 
 const deployWorkflow = await readTextFile('.github/workflows/deploy.yml');
 const deployPreflightWorkflow = await readTextFile('.github/workflows/deploy-preflight.yml');
+const deployKnownHostsBootstrapWorkflow = await readTextFile('.github/workflows/deploy-known-hosts-bootstrap.yml');
 const ciWorkflow = await readTextFile('.github/workflows/ci.yml');
 const knownHostsHelper = await readTextFile('scripts/prepare-deploy-known-hosts.mjs');
 const packagingSpec = JSON.parse(await readTextFile('desktop/packaging-spec.json'));
@@ -96,6 +97,28 @@ requireNotIncludes(deployPreflightWorkflow, 'compose --env-file', 'deploy prefli
 requireNotIncludes(deployPreflightWorkflow, 'docker compose logs', 'deploy preflight workflow must not dump raw compose logs');
 requireNotIncludes(deployPreflightWorkflow, 'StrictHostKeyChecking=no', 'deploy preflight workflow must not disable strict host key checking');
 
+requireIncludes(deployKnownHostsBootstrapWorkflow, 'name: deploy-known-hosts-bootstrap', 'known_hosts bootstrap workflow must be named deploy-known-hosts-bootstrap');
+requireIncludes(deployKnownHostsBootstrapWorkflow, 'workflow_dispatch:', 'known_hosts bootstrap workflow must be manual-only');
+requireIncludes(deployKnownHostsBootstrapWorkflow, 'I_UNDERSTAND_TOFU', 'known_hosts bootstrap workflow must require explicit TOFU acknowledgement');
+requireIncludes(deployKnownHostsBootstrapWorkflow, 'actions: write', 'known_hosts bootstrap workflow must be able to store repository variable');
+requireIncludes(deployKnownHostsBootstrapWorkflow, 'deploy-known-hosts-bootstrap-only', 'known_hosts bootstrap workflow must report bootstrap-only scope');
+requireIncludes(deployKnownHostsBootstrapWorkflow, 'no image build, upload, compose rollout, rollback, or server mutation will run', 'known_hosts bootstrap workflow must document no deploy side effects');
+requireIncludes(deployKnownHostsBootstrapWorkflow, 'SERVER_PORT must be numeric', 'known_hosts bootstrap workflow must validate SERVER_PORT');
+requireIncludes(deployKnownHostsBootstrapWorkflow, 'ssh-tcp-reachable', 'known_hosts bootstrap workflow must probe SSH TCP reachability');
+requireIncludes(deployKnownHostsBootstrapWorkflow, 'ssh-keyscan -4 -T 10 -t "${key_type}"', 'known_hosts bootstrap workflow must try IPv4 ssh-keyscan first');
+requireIncludes(deployKnownHostsBootstrapWorkflow, 'ssh-keyscan -T 10 -t "${key_type}"', 'known_hosts bootstrap workflow must try normal ssh-keyscan fallback');
+requireIncludes(deployKnownHostsBootstrapWorkflow, 'StrictHostKeyChecking=accept-new', 'known_hosts bootstrap workflow must keep TOFU fallback explicit and scoped');
+requireIncludes(deployKnownHostsBootstrapWorkflow, 'gh variable set "$KNOWN_HOSTS_VARIABLE" < ~/.ssh/known_hosts', 'known_hosts bootstrap workflow must store repository variable without printing key body');
+requireIncludes(deployKnownHostsBootstrapWorkflow, 'updated repository variable: $KNOWN_HOSTS_VARIABLE', 'known_hosts bootstrap workflow must report variable update safely');
+requireIncludes(deployKnownHostsBootstrapWorkflow, 'known-hosts-ready', 'known_hosts bootstrap workflow must report safe capture success');
+requireIncludes(deployKnownHostsBootstrapWorkflow, 'Cleanup bootstrap SSH material', 'known_hosts bootstrap workflow must clean runner SSH material');
+requireNotIncludes(deployKnownHostsBootstrapWorkflow, 'docker build', 'known_hosts bootstrap workflow must not build images');
+requireNotIncludes(deployKnownHostsBootstrapWorkflow, 'docker save', 'known_hosts bootstrap workflow must not save images');
+requireNotIncludes(deployKnownHostsBootstrapWorkflow, 'scp ', 'known_hosts bootstrap workflow must not upload files');
+requireNotIncludes(deployKnownHostsBootstrapWorkflow, 'compose --env-file', 'known_hosts bootstrap workflow must not run compose');
+requireNotIncludes(deployKnownHostsBootstrapWorkflow, 'cat ~/.ssh/known_hosts', 'known_hosts bootstrap workflow must not print known_hosts body');
+requireNotIncludes(deployKnownHostsBootstrapWorkflow, 'StrictHostKeyChecking=no', 'known_hosts bootstrap workflow must not disable strict host key checking');
+
 requireIncludes(knownHostsHelper, 'SERVER_SSH_KNOWN_HOSTS', 'known_hosts helper must target SERVER_SSH_KNOWN_HOSTS');
 requireIncludes(knownHostsHelper, 'ssh-keyscan', 'known_hosts helper must generate host keys with ssh-keyscan');
 requireIncludes(knownHostsHelper, '--from-file', 'known_hosts helper must support validating an existing file');
@@ -113,6 +136,7 @@ const deployWorkflowPolicy = packagingSpec.deployWorkflowPolicy || {};
 requireCondition(deployWorkflowPolicy.status === 'rollback-observability-hardened', 'deployWorkflowPolicy.status must be rollback-observability-hardened');
 requireCondition(deployWorkflowPolicy.workflowPath === '.github/workflows/deploy.yml', 'deployWorkflowPolicy.workflowPath must point to deploy workflow');
 requireCondition(deployWorkflowPolicy.preflightWorkflowPath === '.github/workflows/deploy-preflight.yml', 'deployWorkflowPolicy.preflightWorkflowPath must point to preflight workflow');
+requireCondition(deployWorkflowPolicy.knownHostsBootstrapWorkflowPath === '.github/workflows/deploy-known-hosts-bootstrap.yml', 'deployWorkflowPolicy.knownHostsBootstrapWorkflowPath must point to known_hosts bootstrap workflow');
 requireCondition(deployWorkflowPolicy.staticCheck === 'scripts/check-deploy-workflow.mjs', 'deployWorkflowPolicy.staticCheck must point to this script');
 requireCondition(deployWorkflowPolicy.preflightBeforeBuild === true, 'deployWorkflowPolicy.preflightBeforeBuild must be true');
 requireCondition(deployWorkflowPolicy.strictHostKeyChecking === true, 'deployWorkflowPolicy.strictHostKeyChecking must be true');
@@ -137,6 +161,8 @@ requireCondition(deployWorkflowPolicy.runnerCleanupAlways === true, 'deployWorkf
 requireCondition(deployWorkflowPolicy.noNewRequiredSecrets === true, 'deployWorkflowPolicy.noNewRequiredSecrets must be true');
 requireCondition(deployWorkflowPolicy.optionalPinnedKnownHostsOnly === true, 'deployWorkflowPolicy.optionalPinnedKnownHostsOnly must be true');
 requireCondition(deployWorkflowPolicy.noSecretValueLogging === true, 'deployWorkflowPolicy.noSecretValueLogging must be true');
+requireCondition(deployWorkflowPolicy.knownHostsBootstrapManualOnly === true, 'deployWorkflowPolicy.knownHostsBootstrapManualOnly must be true');
+requireCondition(deployWorkflowPolicy.knownHostsBootstrapTofuRequiresAcknowledgement === true, 'deployWorkflowPolicy.knownHostsBootstrapTofuRequiresAcknowledgement must be true');
 const keyscanTypes = new Set(Array.isArray(deployWorkflowPolicy.keyscanTypes) ? deployWorkflowPolicy.keyscanTypes : []);
 for (const keyType of ['ed25519', 'ecdsa', 'rsa']) {
   requireCondition(keyscanTypes.has(keyType), `deployWorkflowPolicy.keyscanTypes must include ${keyType}`);

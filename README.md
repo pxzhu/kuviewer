@@ -478,6 +478,8 @@ node scripts/prepare-deploy-known-hosts.mjs \
   --set-variable
 ```
 
+If you cannot run the helper from a trusted local/server shell, the manual `deploy-known-hosts-bootstrap` workflow can populate the repository variable. It first tries `ssh-keyscan`; if keyscan is blocked, it only falls back to SSH `accept-new` when the workflow input `trust_first_connection` is exactly `I_UNDERSTAND_TOFU`. That fallback is trust-on-first-use, so prefer the helper or a copied server `.pub` host key when available. The workflow stores only the public SSH host key pin in `SERVER_SSH_KNOWN_HOSTS` and does not build, upload, deploy, roll back, or mutate the server.
+
 If both the workflow keyscan fallback and the helper cannot collect host keys, SSH is not reachable from that network path; verify the server SSH service, port, DNS/IP, and firewall before rerunning the tag deploy.
 
 Before creating a new release tag, the manual `deploy-preflight` workflow can validate only the deploy connection path. It checks required secrets, SSH TCP reachability, the optional pinned host key, strict SSH connection setup, remote `git`/`curl`/`gzip`/Docker/Compose availability, `DEPLOY_PATH`, existing `deploy/standalone/.env`, and temporary write access. It does not build an image, upload files, run compose, roll back, or change the server deployment.
