@@ -246,13 +246,30 @@ async function verifyResourceDetailSectionControls(page) {
   await expect(page.getByTestId('resource-detail-cluster-chip')).toBeVisible({ timeout: 10_000 });
   await expect(page.getByTestId('resource-detail-active-section')).toContainText('현재 Metadata', { timeout: 10_000 });
   await expect(page.getByTestId('resource-detail-open-section-count')).toContainText('열린 섹션 5 / 9', { timeout: 10_000 });
+  await expect(page.getByTestId('resource-detail-section-navigator')).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByTestId('resource-detail-section-navigator-count')).toContainText('5 open', { timeout: 10_000 });
+  await expect(page.getByTestId('resource-detail-section-nav-item-metadata')).toHaveAttribute('aria-current', 'true');
+  await expect(page.getByTestId('resource-detail-section-nav-state-yaml')).toContainText('closed', { timeout: 10_000 });
+  const statusNavigatorSummary = await page.getByTestId('resource-detail-section-nav-summary-status').textContent({ timeout: 10_000 });
+  if (!statusNavigatorSummary?.trim()) {
+    throw new Error('resource detail navigator status summary must be visible');
+  }
   await expect(page.getByTestId('resource-detail-section-body-metadata')).toBeVisible({ timeout: 10_000 });
   await expect(page.getByTestId('resource-detail-section-body-events')).toBeVisible({ timeout: 10_000 });
   await expect(page.getByTestId('resource-detail-section-body-yaml')).toHaveCount(0);
 
+  await page.getByTestId('resource-detail-section-nav-item-yaml').click();
+  await expect(page.getByTestId('resource-detail-active-section')).toContainText('현재 YAML Preview', { timeout: 10_000 });
+  await expect(page.getByTestId('resource-detail-section-nav-item-yaml')).toHaveAttribute('aria-current', 'true');
+  await expect(page.getByTestId('resource-detail-section-nav-state-yaml')).toContainText('open', { timeout: 10_000 });
+  await expect(page.getByTestId('resource-detail-section-body-yaml')).toBeVisible({ timeout: 10_000 });
+  await page.getByTestId('resource-detail-section-nav-item-metadata').click();
+  await expect(page.getByTestId('resource-detail-active-section')).toContainText('현재 Metadata', { timeout: 10_000 });
+
   await page.getByTestId('resource-detail-collapse-all').click();
   await expect(page.getByTestId('resource-detail-open-section-count')).toContainText('열린 섹션 0 / 9', { timeout: 10_000 });
   await expect(page.getByTestId('resource-detail-collapse-all')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByTestId('resource-detail-section-navigator-count')).toContainText('0 open', { timeout: 10_000 });
   await expect(page.getByTestId('resource-detail-section-body-metadata')).toHaveCount(0);
   await expect(page.getByTestId('resource-detail-section-body-events')).toHaveCount(0);
   await expect(page.getByRole('heading', { name: 'Metadata' })).toBeVisible({ timeout: 10_000 });
@@ -260,6 +277,7 @@ async function verifyResourceDetailSectionControls(page) {
   await page.getByTestId('resource-detail-expand-all').click();
   await expect(page.getByTestId('resource-detail-open-section-count')).toContainText('열린 섹션 9 / 9', { timeout: 10_000 });
   await expect(page.getByTestId('resource-detail-expand-all')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByTestId('resource-detail-section-navigator-count')).toContainText('9 open', { timeout: 10_000 });
   await expect(page.getByTestId('resource-detail-section-body-yaml')).toBeVisible({ timeout: 10_000 });
   await expect(page.getByTestId('resource-detail-section-body-labels')).toBeVisible({ timeout: 10_000 });
   await expect(page.getByTestId('resource-detail-section-body-logs')).toBeVisible({ timeout: 10_000 });
@@ -267,6 +285,7 @@ async function verifyResourceDetailSectionControls(page) {
   await page.getByTestId('resource-detail-reset-sections').click();
   await expect(page.getByTestId('resource-detail-open-section-count')).toContainText('열린 섹션 5 / 9', { timeout: 10_000 });
   await expect(page.getByTestId('resource-detail-reset-sections')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByTestId('resource-detail-section-navigator-count')).toContainText('5 open', { timeout: 10_000 });
   await expect(page.getByTestId('resource-detail-section-body-metadata')).toBeVisible({ timeout: 10_000 });
   await expect(page.getByTestId('resource-detail-section-body-events')).toBeVisible({ timeout: 10_000 });
   await expect(page.getByTestId('resource-detail-section-body-yaml')).toHaveCount(0);
