@@ -32,11 +32,22 @@ jobs:
 
     steps:
       - name: Validate required secrets
+        shell: bash
         run: |
           test -n "${{ secrets.SERVER_FHOST }}"
           test -n "${{ secrets.SERVER_FUSER }}"
           test -n "${{ secrets.SERVER_PORT }}"
           test -n "${{ secrets.SERVER_SSH_KEY }}"
+          case "${{ secrets.SERVER_PORT }}" in
+            ''|*[!0-9]*)
+              echo "SERVER_PORT must be numeric"
+              exit 1
+              ;;
+          esac
+          if [ "${{ secrets.SERVER_PORT }}" -lt 1 ] || [ "${{ secrets.SERVER_PORT }}" -gt 65535 ]; then
+            echo "SERVER_PORT must be between 1 and 65535"
+            exit 1
+          fi
 
       - name: Resolve deploy ref
         id: ref
@@ -59,6 +70,90 @@ jobs:
           git fetch origin main:refs/remotes/origin/main
           git merge-base --is-ancestor "${GITHUB_SHA}" origin/main
 
+      - name: Prepare SSH key
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "${{ secrets.SERVER_SSH_KEY }}" > ~/.ssh/deploy_key.pem
+          chmod 600 ~/.ssh/deploy_key.pem
+          : > ~/.ssh/known_hosts
+          scanned=false
+          for attempt in 1 2 3; do
+            echo "SSH host key scan attempt ${attempt}/3"
+            if ssh-keyscan -T 30 -p "${{ secrets.SERVER_PORT }}" "${{ secrets.SERVER_FHOST }}" > ~/.ssh/known_hosts.tmp; then
+              cat ~/.ssh/known_hosts.tmp >> ~/.ssh/known_hosts
+              rm -f ~/.ssh/known_hosts.tmp
+              sort -u ~/.ssh/known_hosts -o ~/.ssh/known_hosts
+              scanned=true
+              break
+            fi
+            sleep 5
+          done
+          rm -f ~/.ssh/known_hosts.tmp
+          test "$scanned" = true
+          test -s ~/.ssh/known_hosts
+
+      - name: Remote SSH preflight
+        shell: bash
+        run: |
+          set -euo pipefail
+          SSH_COMMON_OPTS=(
+            -i "$HOME/.ssh/deploy_key.pem"
+            -o BatchMode=yes
+            -o IdentitiesOnly=yes
+            -o StrictHostKeyChecking=yes
+            -o UserKnownHostsFile="$HOME/.ssh/known_hosts"
+            -o ConnectTimeout=20
+            -o ServerAliveInterval=30
+            -o ServerAliveCountMax=20
+            -o TCPKeepAlive=yes
+          )
+          ssh "${SSH_COMMON_OPTS[@]}" \
+            -p "${{ secrets.SERVER_PORT }}" \
+            "${{ secrets.SERVER_FUSER }}@${{ secrets.SERVER_FHOST }}" \
+            "bash -se" <<'REMOTE_PREFLIGHT'
+          set -euo pipefail
+          DEPLOY_PATH='${{ env.DEPLOY_PATH }}'
+          REMOTE_IMAGE_TAR='${{ env.REMOTE_IMAGE_TAR }}'
+
+          case "$DEPLOY_PATH" in
+            /*) ;;
+            *)
+              echo "DEPLOY_PATH must be absolute"
+              exit 1
+              ;;
+          esac
+
+          command -v git >/dev/null
+          command -v curl >/dev/null
+          command -v gzip >/dev/null
+
+          if docker info >/dev/null 2>&1; then
+            DOCKER='docker'
+          elif sudo -n docker info >/dev/null 2>&1; then
+            DOCKER='sudo -n docker'
+          else
+            echo "Docker is not available for deploy user"
+            exit 1
+          fi
+          sh -c "$DOCKER compose version >/dev/null"
+
+          mkdir -p "$DEPLOY_PATH"
+          test -d "$DEPLOY_PATH"
+          test -w "$DEPLOY_PATH"
+
+          if [ -d "$DEPLOY_PATH/.git" ]; then
+            test -f "$DEPLOY_PATH/deploy/standalone/.env"
+          fi
+
+          TMP_TEST="${REMOTE_IMAGE_TAR}.preflight.$$"
+          : > "$TMP_TEST"
+          rm -f "$TMP_TEST"
+          echo "remote-preflight-ok"
+          REMOTE_PREFLIGHT
+
       - name: Build deployment image
         run: |
           build_ok=false
@@ -77,69 +172,89 @@ jobs:
           docker save kuviewer:local | gzip > "${IMAGE_TAR}"
           ls -lh "${IMAGE_TAR}"
 
-      - name: Prepare SSH key
+      - name: Upload image to server
+        shell: bash
         run: |
-          mkdir -p ~/.ssh
-          printf '%s\n' "${{ secrets.SERVER_SSH_KEY }}" > ~/.ssh/deploy_key.pem
-          chmod 600 ~/.ssh/deploy_key.pem
-          scanned=false
+          set -euo pipefail
+          SSH_COMMON_OPTS=(
+            -i "$HOME/.ssh/deploy_key.pem"
+            -o BatchMode=yes
+            -o IdentitiesOnly=yes
+            -o StrictHostKeyChecking=yes
+            -o UserKnownHostsFile="$HOME/.ssh/known_hosts"
+            -o ConnectTimeout=20
+            -o ServerAliveInterval=30
+            -o ServerAliveCountMax=20
+            -o TCPKeepAlive=yes
+          )
+          upload_ok=false
           for attempt in 1 2 3; do
-            if ssh-keyscan -T 30 -p "${{ secrets.SERVER_PORT }}" "${{ secrets.SERVER_FHOST }}" >> ~/.ssh/known_hosts; then
-              scanned=true
+            echo "SCP upload attempt ${attempt}/3"
+            if scp "${SSH_COMMON_OPTS[@]}" \
+              -P "${{ secrets.SERVER_PORT }}" \
+              "${IMAGE_TAR}" \
+              "${{ secrets.SERVER_FUSER }}@${{ secrets.SERVER_FHOST }}:${REMOTE_IMAGE_TAR}"; then
+              upload_ok=true
               break
             fi
-            sleep 5
+            sleep 10
           done
-          test "$scanned" = true
-
-      - name: Upload image to server
-        run: |
-          scp -i ~/.ssh/deploy_key.pem \
-            -o IdentitiesOnly=yes \
-            -o ServerAliveInterval=30 \
-            -o ServerAliveCountMax=20 \
-            -o TCPKeepAlive=yes \
-            -P "${{ secrets.SERVER_PORT }}" \
-            "${IMAGE_TAR}" \
-            "${{ secrets.SERVER_FUSER }}@${{ secrets.SERVER_FHOST }}:${REMOTE_IMAGE_TAR}"
+          test "$upload_ok" = true
 
       - name: Deploy on server
+        shell: bash
         run: |
-          ssh -i ~/.ssh/deploy_key.pem \
-            -o IdentitiesOnly=yes \
-            -o ServerAliveInterval=30 \
-            -o ServerAliveCountMax=20 \
-            -o TCPKeepAlive=yes \
+          set -euo pipefail
+          SSH_COMMON_OPTS=(
+            -i "$HOME/.ssh/deploy_key.pem"
+            -o BatchMode=yes
+            -o IdentitiesOnly=yes
+            -o StrictHostKeyChecking=yes
+            -o UserKnownHostsFile="$HOME/.ssh/known_hosts"
+            -o ConnectTimeout=20
+            -o ServerAliveInterval=30
+            -o ServerAliveCountMax=20
+            -o TCPKeepAlive=yes
+          )
+          ssh "${SSH_COMMON_OPTS[@]}" \
             -p "${{ secrets.SERVER_PORT }}" \
             "${{ secrets.SERVER_FUSER }}@${{ secrets.SERVER_FHOST }}" \
-            "set -e
-             DEPLOY_PATH='${{ env.DEPLOY_PATH }}'
-             REPO_URL='https://github.com/${{ github.repository }}.git'
-             DEPLOY_REF='${{ steps.ref.outputs.ref }}'
-             HEALTH_URL='${{ env.HEALTH_URL }}'
-             IMAGE_TAR='${{ env.REMOTE_IMAGE_TAR }}'
+            "bash -se" <<'REMOTE_DEPLOY'
+          set -euo pipefail
+          DEPLOY_PATH='${{ env.DEPLOY_PATH }}'
+          REPO_URL='https://github.com/${{ github.repository }}.git'
+          DEPLOY_REF='${{ steps.ref.outputs.ref }}'
+          HEALTH_URL='${{ env.HEALTH_URL }}'
+          IMAGE_TAR='${{ env.REMOTE_IMAGE_TAR }}'
 
-             if docker info >/dev/null 2>&1; then
-               DOCKER='docker'
-             else
-               DOCKER='sudo -n docker'
-             fi
+          if docker info >/dev/null 2>&1; then
+            DOCKER='docker'
+          else
+            DOCKER='sudo -n docker'
+          fi
 
-             trap 'rm -f "$IMAGE_TAR"' EXIT
+          trap 'rm -f "$IMAGE_TAR"' EXIT
 
-             if [ ! -d \"\$DEPLOY_PATH/.git\" ]; then
-               mkdir -p \"\$DEPLOY_PATH\"
-               git clone \"\$REPO_URL\" \"\$DEPLOY_PATH\"
-             fi
+          if [ ! -d "$DEPLOY_PATH/.git" ]; then
+            mkdir -p "$DEPLOY_PATH"
+            git clone "$REPO_URL" "$DEPLOY_PATH"
+          fi
 
-             cd \"\$DEPLOY_PATH\"
-             git fetch --prune --tags origin
-             git checkout --force \"\$DEPLOY_REF\"
-             git reset --hard \"origin/\$DEPLOY_REF\" 2>/dev/null || git reset --hard \"\$DEPLOY_REF\"
+          cd "$DEPLOY_PATH"
+          git fetch --prune --tags origin
+          git checkout --force "$DEPLOY_REF"
+          git reset --hard "origin/$DEPLOY_REF" 2>/dev/null || git reset --hard "$DEPLOY_REF"
 
-             test -f deploy/standalone/.env
-             test -f \"\$IMAGE_TAR\"
+          test -f deploy/standalone/.env
+          test -f "$IMAGE_TAR"
 
-             sh -c \"gzip -dc '\$IMAGE_TAR' | \$DOCKER load\"
-             sh -c \"\$DOCKER compose --env-file deploy/standalone/.env -f deploy/standalone/docker-compose.yml up -d --force-recreate --remove-orphans\"
-             curl -fsS \"\$HEALTH_URL\""
+          sh -c "gzip -dc '$IMAGE_TAR' | $DOCKER load"
+          sh -c "$DOCKER compose --env-file deploy/standalone/.env -f deploy/standalone/docker-compose.yml up -d --force-recreate --remove-orphans"
+          curl -fsS "$HEALTH_URL"
+          REMOTE_DEPLOY
+
+      - name: Cleanup deploy runner secrets and artifacts
+        if: always()
+        shell: bash
+        run: |
+          rm -f "${IMAGE_TAR}" ~/.ssh/deploy_key.pem ~/.ssh/known_hosts ~/.ssh/known_hosts.tmp

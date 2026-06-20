@@ -59,6 +59,9 @@ jobs:
       - name: Desktop packaging spec check
         run: node scripts/check-desktop-packaging-spec.mjs
 
+      - name: Deploy workflow preflight check
+        run: node scripts/check-deploy-workflow.mjs
+
       - name: Desktop sidecar build plan check
         run: node scripts/build-desktop-sidecar.mjs --target aarch64-apple-darwin --dry-run
 

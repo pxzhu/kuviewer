@@ -432,7 +432,7 @@ KUVIEWER_VISUAL_URL=http://127.0.0.1:18085/ npm run test:visual
 
 ## GitHub Actions deploy
 
-Kuviewer can deploy without a container registry. The workflow in `.github/workflows/deploy.yml` builds `kuviewer:local` on the GitHub runner, saves it as a compressed image archive, uploads that archive to the server over SSH/SCP, updates the Git checkout, loads the image with Docker, and runs the standalone compose file.
+Kuviewer can deploy without a container registry. The workflow in `.github/workflows/deploy.yml` first validates SSH access and remote runtime prerequisites, then builds `kuviewer:local` on the GitHub runner, saves it as a compressed image archive, uploads that archive to the server over SSH/SCP, updates the Git checkout, loads the image with Docker, and runs the standalone compose file.
 
 Required repository secrets:
 
@@ -442,6 +442,8 @@ SERVER_FUSER
 SERVER_PORT
 SERVER_SSH_KEY
 ```
+
+Deploy SSH preflight uses the same secrets and does not require a registry or extra credential. It validates the SSH port range, pins the scanned host key with `StrictHostKeyChecking=yes`, checks remote `git`, `curl`, `gzip`, Docker/Compose availability, verifies `DEPLOY_PATH` and `/tmp` writability, and confirms `deploy/standalone/.env` when an existing checkout is already present. Runner-side image archives and temporary SSH material are removed in an always-run cleanup step.
 
 Optional repository variables, shown with example values:
 

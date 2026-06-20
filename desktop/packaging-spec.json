@@ -21,6 +21,19 @@
     "signedInstallerRelease": false,
     "notes": "Desktop code remains a local CM/SSH session prototype. Public downloadable installer artifacts are not part of the active Kuviewer product path."
   },
+  "deployWorkflowPolicy": {
+    "status": "ssh-preflight-hardened",
+    "workflowPath": ".github/workflows/deploy.yml",
+    "staticCheck": "scripts/check-deploy-workflow.mjs",
+    "preflightBeforeBuild": true,
+    "strictHostKeyChecking": true,
+    "serverPortRangeValidation": true,
+    "remoteCapabilityChecks": ["git", "curl", "gzip", "docker", "docker-compose", "deploy-path", "standalone-env", "tmp-write"],
+    "uploadRetryAttempts": 3,
+    "runnerCleanupAlways": true,
+    "noNewSecrets": true,
+    "noSecretValueLogging": true
+  },
   "connectionModes": [
     {
       "id": "cm-ssh-session",
@@ -200,7 +213,8 @@
       "desktop-use-sidecar-profile"
     ],
     "next": [
-      "desktop deploy SSH preflight hardening"
+      "desktop deploy rollback/observability hardening",
+      "Desktop CM session grouping/favorites"
     ]
   },
   "remoteConnectionProfile": {
