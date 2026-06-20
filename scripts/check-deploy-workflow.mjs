@@ -15,6 +15,9 @@ requireIncludes(deployWorkflow, 'SERVER_PORT must be numeric', 'deploy workflow 
 requireIncludes(deployWorkflow, 'SERVER_PORT must be between 1 and 65535', 'deploy workflow must validate SERVER_PORT range');
 requireIncludes(deployWorkflow, 'Prepare SSH key', 'deploy workflow must prepare SSH key before preflight');
 requireIncludes(deployWorkflow, 'ssh-keyscan -T 30', 'deploy workflow must scan host keys');
+requireIncludes(deployWorkflow, 'SSH host key scan attempt ${attempt}/6', 'deploy workflow must retry host key scans six times');
+requireIncludes(deployWorkflow, 'ssh-keyscan -4 -T 30', 'deploy workflow must include IPv4 host key scan fallback');
+requireIncludes(deployWorkflow, 'if test -s ~/.ssh/known_hosts.tmp; then', 'deploy workflow must accept non-empty keyscan output even if a scan command exits non-zero');
 requireIncludes(deployWorkflow, 'Remote SSH preflight', 'deploy workflow must include remote SSH preflight');
 requireIncludes(deployWorkflow, 'remote-preflight-ok', 'deploy workflow must report safe preflight success');
 requireIncludes(deployWorkflow, 'compose version >/dev/null', 'deploy preflight must verify docker compose availability');
@@ -63,6 +66,9 @@ requireCondition(deployWorkflowPolicy.workflowPath === '.github/workflows/deploy
 requireCondition(deployWorkflowPolicy.staticCheck === 'scripts/check-deploy-workflow.mjs', 'deployWorkflowPolicy.staticCheck must point to this script');
 requireCondition(deployWorkflowPolicy.preflightBeforeBuild === true, 'deployWorkflowPolicy.preflightBeforeBuild must be true');
 requireCondition(deployWorkflowPolicy.strictHostKeyChecking === true, 'deployWorkflowPolicy.strictHostKeyChecking must be true');
+requireCondition(deployWorkflowPolicy.hostKeyScanAttempts === 6, 'deployWorkflowPolicy.hostKeyScanAttempts must be 6');
+requireCondition(deployWorkflowPolicy.acceptNonEmptyKeyscanOutput === true, 'deployWorkflowPolicy.acceptNonEmptyKeyscanOutput must be true');
+requireCondition(deployWorkflowPolicy.ipv4KeyscanFallback === true, 'deployWorkflowPolicy.ipv4KeyscanFallback must be true');
 requireCondition(deployWorkflowPolicy.serverPortRangeValidation === true, 'deployWorkflowPolicy.serverPortRangeValidation must be true');
 requireCondition(deployWorkflowPolicy.uploadRetryAttempts === 3, 'deployWorkflowPolicy.uploadRetryAttempts must be 3');
 requireCondition(deployWorkflowPolicy.rollbackImageTag === 'kuviewer:rollback-${GITHUB_RUN_ID}', 'deployWorkflowPolicy.rollbackImageTag must document the per-run rollback tag');
