@@ -68,6 +68,9 @@ export interface DesktopCmSessionRuntimeProfile {
   localPort: number;
   status: string;
   startedAt: number;
+  healthStatus: string;
+  lastHealthAt?: number;
+  lastHealthMessage?: string;
   lastError?: string;
 }
 
@@ -428,6 +431,20 @@ export async function startDesktopCmSessionRuntime(sessionId: string): Promise<D
   return parseDesktopCmSessionRuntimeProfile(profile);
 }
 
+export async function checkDesktopCmSessionRuntime(): Promise<DesktopCmSessionRuntimeProfile | null> {
+  if (!isDesktopRuntime()) {
+    return null;
+  }
+
+  const invoke = getTauriInvoke();
+  if (!invoke) {
+    return null;
+  }
+
+  const profile = await invoke<unknown>('desktop_check_cm_session_runtime');
+  return parseDesktopCmSessionRuntimeProfile(profile);
+}
+
 export async function stopDesktopCmSessionRuntime(): Promise<void> {
   if (!isDesktopRuntime()) {
     return;
@@ -664,6 +681,12 @@ function parseDesktopCmSessionRuntimeProfile(value: unknown): DesktopCmSessionRu
       localPort: normalizeDesktopCmRemoteApiPort(profile.localPort),
       status: profile.status.trim() || 'runtime-active',
       startedAt: profile.startedAt,
+      healthStatus: typeof profile.healthStatus === 'string' && profile.healthStatus.trim() ? normalizeBoundedText(profile.healthStatus, 40, 'desktop_cm_runtime_health_status') : 'unknown',
+      lastHealthAt: typeof profile.lastHealthAt === 'number' ? profile.lastHealthAt : undefined,
+      lastHealthMessage:
+        typeof profile.lastHealthMessage === 'string' && profile.lastHealthMessage.trim()
+          ? normalizeBoundedText(profile.lastHealthMessage, 120, 'desktop_cm_runtime_last_health_message')
+          : undefined,
       lastError:
         typeof profile.lastError === 'string' && profile.lastError.trim()
           ? normalizeBoundedText(profile.lastError, 120, 'desktop_cm_runtime_last_error')

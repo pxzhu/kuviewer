@@ -92,6 +92,9 @@ struct DesktopCmSessionRuntimeProfile {
     local_port: u16,
     status: String,
     started_at: u64,
+    health_status: String,
+    last_health_at: Option<u64>,
+    last_health_message: Option<String>,
     last_error: Option<String>,
 }
 
@@ -233,8 +236,10 @@ fn desktop_cm_sessions(state: State<'_, DesktopSidecarState>) -> Vec<DesktopCmSe
 }
 
 #[tauri::command]
-fn desktop_cm_session_runtime(state: State<'_, DesktopSidecarState>) -> Option<DesktopCmSessionRuntimeProfile> {
-    state.cm_runtime_profile.lock().ok().and_then(|profile| profile.clone())
+fn desktop_cm_session_runtime(
+    state: State<'_, DesktopSidecarState>,
+) -> Result<Option<DesktopCmSessionRuntimeProfile>, String> {
+    check_cm_session_runtime_state(&state)
 }
 
 #[tauri::command]
@@ -267,6 +272,13 @@ fn desktop_start_cm_session_runtime(
 fn desktop_stop_cm_session_runtime(state: State<'_, DesktopSidecarState>) -> Result<Option<DesktopCmSessionRuntimeProfile>, String> {
     stop_cm_session_runtime_state(&state);
     Ok(None)
+}
+
+#[tauri::command]
+fn desktop_check_cm_session_runtime(
+    state: State<'_, DesktopSidecarState>,
+) -> Result<Option<DesktopCmSessionRuntimeProfile>, String> {
+    check_cm_session_runtime_state(&state)
 }
 
 #[tauri::command]
@@ -479,6 +491,7 @@ fn main() {
             desktop_cm_session_runtime,
             desktop_start_cm_session_runtime,
             desktop_stop_cm_session_runtime,
+            desktop_check_cm_session_runtime,
             desktop_save_cm_session,
             desktop_select_cm_session,
             desktop_delete_cm_session,
@@ -733,6 +746,101 @@ fn mark_cm_session_runtime_stopped(state: &DesktopSidecarState, session_id: &str
     }
 }
 
+fn mark_cm_session_runtime_lost(state: &DesktopSidecarState, session_id: &str) {
+    if let Ok(mut sessions) = state.cm_sessions.lock() {
+        if let Some(session) = sessions.iter_mut().find(|session| session.id == session_id) {
+            session.runtime_status = "runtime-lost".to_string();
+            session.status = "runtime-lost".to_string();
+            session.updated_at = current_unix_millis();
+        }
+    }
+}
+
+fn check_cm_session_runtime_state(
+    state: &DesktopSidecarState,
+) -> Result<Option<DesktopCmSessionRuntimeProfile>, String> {
+    let profile_snapshot = state
+        .cm_runtime_profile
+        .lock()
+        .map_err(|_| "desktop_cm_runtime_profile_state_unavailable".to_string())?
+        .clone();
+    let Some(profile_snapshot) = profile_snapshot else {
+        return Ok(None);
+    };
+
+    let child_missing_or_exited = {
+        let mut child_slot = state
+            .cm_runtime_child
+            .lock()
+            .map_err(|_| "desktop_cm_runtime_child_state_unavailable".to_string())?;
+        let should_clear_child = match child_slot.as_mut() {
+            Some(child) => match child.try_wait() {
+                Ok(Some(_)) => true,
+                Ok(None) => false,
+                Err(_) => true,
+            },
+            None => true,
+        };
+        if should_clear_child {
+            if let Some(mut exited_child) = child_slot.take() {
+                let _ = exited_child.kill();
+                let _ = exited_child.wait();
+            }
+        }
+        should_clear_child
+    };
+
+    if child_missing_or_exited {
+        if let Ok(mut profile_slot) = state.cm_runtime_profile.lock() {
+            *profile_slot = None;
+        }
+        cleanup_cm_runtime_files(state);
+        mark_cm_session_runtime_lost(state, &profile_snapshot.session_id);
+        return Ok(None);
+    }
+
+    let now = current_unix_millis();
+    let health_ok = probe_cm_runtime_health(profile_snapshot.local_port);
+    let mut updated_profile = profile_snapshot.clone();
+    updated_profile.health_status = if health_ok {
+        "healthy".to_string()
+    } else {
+        "unhealthy".to_string()
+    };
+    updated_profile.last_health_at = Some(now);
+    updated_profile.last_health_message = Some(if health_ok {
+        "healthz-ok".to_string()
+    } else {
+        "healthz-unavailable".to_string()
+    });
+    updated_profile.last_error = if health_ok {
+        None
+    } else {
+        Some("desktop_cm_runtime_health_unavailable".to_string())
+    };
+
+    {
+        let mut profile_slot = state
+            .cm_runtime_profile
+            .lock()
+            .map_err(|_| "desktop_cm_runtime_profile_state_unavailable".to_string())?;
+        *profile_slot = Some(updated_profile.clone());
+    }
+    if let Ok(mut sessions) = state.cm_sessions.lock() {
+        if let Some(session) = sessions.iter_mut().find(|session| session.id == updated_profile.session_id) {
+            session.runtime_status = if health_ok {
+                "runtime-active".to_string()
+            } else {
+                "runtime-unhealthy".to_string()
+            };
+            session.status = session.runtime_status.clone();
+            session.updated_at = now;
+        }
+    }
+
+    Ok(Some(updated_profile))
+}
+
 fn start_cm_session_ssh_tunnel(
     state: &DesktopSidecarState,
     session: DesktopCmSessionMetadata,
@@ -788,6 +896,7 @@ fn start_cm_session_ssh_tunnel(
         return Err(error);
     }
 
+    let started_at = current_unix_millis();
     let profile = DesktopCmSessionRuntimeProfile {
         session_id: session.id.clone(),
         session_name: session.name.clone(),
@@ -796,7 +905,10 @@ fn start_cm_session_ssh_tunnel(
         remote_api_port: session.remote_api_port,
         local_port,
         status: "runtime-active".to_string(),
-        started_at: current_unix_millis(),
+        started_at,
+        health_status: "healthy".to_string(),
+        last_health_at: Some(started_at),
+        last_health_message: Some("healthz-ok".to_string()),
         last_error: None,
     };
 

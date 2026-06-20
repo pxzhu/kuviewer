@@ -37,6 +37,7 @@ requireCondition(
     'desktop-cm-ssh-sessions',
     'desktop-cm-ssh-credential-check',
     'desktop-cm-ssh-runtime',
+    'desktop-cm-runtime-health-details',
   ].includes(spec.status),
   'status must be a known desktop packaging milestone'
 );
@@ -82,6 +83,7 @@ requireCondition(phases.includes('macos-dmg-build'), 'phaseOrder must include ma
 requireCondition(phases.includes('windows-exe-build'), 'phaseOrder must include windows-exe-build');
 requireCondition(phases.includes('desktop-cm-ssh-credential-check'), 'phaseOrder must include desktop-cm-ssh-credential-check');
 requireCondition(phases.includes('desktop-cm-ssh-runtime'), 'phaseOrder must include desktop-cm-ssh-runtime');
+requireCondition(phases.includes('desktop-cm-runtime-health-details'), 'phaseOrder must include desktop-cm-runtime-health-details');
 
 await validateBuildPrerequisites(spec);
 await validateRemoteConnectionProfile(spec);
@@ -111,6 +113,7 @@ if (
     'desktop-cm-ssh-sessions',
     'desktop-cm-ssh-credential-check',
     'desktop-cm-ssh-runtime',
+    'desktop-cm-runtime-health-details',
   ].includes(spec.status)
 ) {
   await validateTauriScaffold(spec.tauri || {});
@@ -805,7 +808,7 @@ async function validateCredentialStorageDesign(spec) {
 
 async function validateCmSshSessionManager(spec) {
   const manager = spec.cmSshSessionManager || {};
-  requireCondition(manager.status === 'runtime-tunnel', 'cmSshSessionManager.status must be runtime-tunnel');
+  requireCondition(manager.status === 'runtime-health-details', 'cmSshSessionManager.status must be runtime-health-details');
   requireCondition(manager.desktopOnly === true, 'cmSshSessionManager.desktopOnly must be true');
   requireCondition(manager.webExposed === false, 'cmSshSessionManager.webExposed must be false');
   requireCondition(
@@ -851,8 +854,26 @@ async function validateCmSshSessionManager(spec) {
     'desktop_cm_session_runtime',
     'desktop_start_cm_session_runtime',
     'desktop_stop_cm_session_runtime',
+    'desktop_check_cm_session_runtime',
   ]) {
     requireCondition(commands.has(command), `cmSshSessionManager.commands must include ${command}`);
+  }
+  const runtimeFields = new Set(Array.isArray(manager.runtimeSafeProfileFields) ? manager.runtimeSafeProfileFields : []);
+  for (const field of [
+    'sessionId',
+    'sessionName',
+    'serverUrl',
+    'remoteApiHost',
+    'remoteApiPort',
+    'localPort',
+    'status',
+    'startedAt',
+    'healthStatus',
+    'lastHealthAt',
+    'lastHealthMessage',
+    'lastError',
+  ]) {
+    requireCondition(runtimeFields.has(field), `cmSshSessionManager.runtimeSafeProfileFields must include ${field}`);
   }
   const hiddenPrototypeUi = new Set(Array.isArray(manager.hiddenPrototypeUi) ? manager.hiddenPrototypeUi : []);
   for (const marker of ['DesktopConnectionProfilePanel', 'DesktopKubernetesProfilePanel', 'desktop-use-sidecar-profile']) {
@@ -868,6 +889,7 @@ async function validateCmSshSessionManager(spec) {
     'desktop_cm_session_runtime',
     'desktop_start_cm_session_runtime',
     'desktop_stop_cm_session_runtime',
+    'desktop_check_cm_session_runtime',
     'desktop_save_cm_session',
     'desktop_select_cm_session',
     'desktop_delete_cm_session',
@@ -879,12 +901,15 @@ async function validateCmSshSessionManager(spec) {
     'KUVIEWER_DESKTOP_ENABLE_PROTOTYPE_SIDECAR',
     'credential-ready',
     'runtime-active',
+    'runtime-lost',
+    'health_status',
     'MAX_DESKTOP_CM_PRIVATE_KEY_BYTES',
     'os-credential-store',
     'read_desktop_cm_private_key_file',
     'run_ssh_noop_check',
     'start_cm_session_ssh_tunnel',
     'wait_for_cm_runtime_health',
+    'check_cm_session_runtime_state',
     'ExitOnForwardFailure=yes',
     'remote_api_host',
   ]) {
@@ -899,6 +924,7 @@ async function validateCmSshSessionManager(spec) {
     'getDesktopCmRuntimeProfile',
     'getDesktopCmSessions',
     'getDesktopCmSessionRuntime',
+    'checkDesktopCmSessionRuntime',
     'startDesktopCmSessionRuntime',
     'stopDesktopCmSessionRuntime',
     'saveDesktopCmSession',
@@ -914,6 +940,7 @@ async function validateCmSshSessionManager(spec) {
     'desktop_cm_session_runtime',
     'desktop_start_cm_session_runtime',
     'desktop_stop_cm_session_runtime',
+    'desktop_check_cm_session_runtime',
     'desktop_save_cm_session',
     'desktop_select_cm_session',
     'desktop_delete_cm_session',
@@ -937,6 +964,8 @@ async function validateCmSshSessionManager(spec) {
     'desktop-cm-session-remote-api-port',
     'desktop-cm-session-start-runtime',
     'desktop-cm-session-stop-runtime',
+    'desktop-cm-session-check-runtime',
+    'desktop-cm-session-runtime-detail',
     'desktop-cm-session-delete-credential',
   ]) {
     requireCondition(sessionPanel.includes(marker), `desktop CM session panel must include ${marker}`);
@@ -951,6 +980,7 @@ async function validateCmSshSessionManager(spec) {
   for (const marker of [
     'getDesktopCmSessions',
     'getDesktopCmSessionRuntime',
+    'checkDesktopCmSessionRuntime',
     'startDesktopCmSessionRuntime',
     'stopDesktopCmSessionRuntime',
     'desktopCmRuntimeProfile',
@@ -974,6 +1004,7 @@ async function validateCmSshSessionManager(spec) {
     'desktop_cm_session_runtime',
     'desktop_start_cm_session_runtime',
     'desktop_stop_cm_session_runtime',
+    'desktop_check_cm_session_runtime',
     'desktop_save_cm_session',
     'desktop_select_cm_session',
     'desktop_delete_cm_session',
@@ -984,6 +1015,7 @@ async function validateCmSshSessionManager(spec) {
     'web runtime must not expose desktop CM/SSH session UI',
     'desktop CM smoke must not store admin token',
     'desktop CM runtime profile must use localhost tunnel URL',
+    'desktop CM runtime lost must clear the session runtime profile',
     'desktop CM smoke must not expose private key bodies',
   ]) {
     requireCondition(smokeScript.includes(marker), `desktop CM session smoke script must include ${marker}`);
@@ -1013,6 +1045,7 @@ async function validateCmSshSessionManager(spec) {
     requireCondition(text.includes('private key'), `${label} must document private key handling for CM/SSH sessions`);
     requireCondition(text.includes('connection check') || text.includes('연결 확인'), `${label} must document CM/SSH connection checks`);
     requireCondition(text.includes('CM tunnel/runtime') || text.includes('desktop-cm-ssh-runtime'), `${label} must document CM tunnel/runtime`);
+    requireCondition(text.includes('runtime health') || text.includes('health/details'), `${label} must document CM runtime health/details`);
     requireCondition(text.includes('web app must not expose SSH'), `${label} must document that the web app must not expose SSH`);
   }
 }

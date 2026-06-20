@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "name": "Kuviewer Desktop CM Session Explorer",
   "goal": "installable-read-only-cm-ssh-session-explorer",
-  "status": "desktop-cm-ssh-runtime",
+  "status": "desktop-cm-runtime-health-details",
   "recommendedPackager": "tauri",
   "fallbackPackager": "electron",
   "tauri": {
@@ -54,7 +54,7 @@
     "noOperationalActions": true
   },
   "cmSshSessionManager": {
-    "status": "runtime-tunnel",
+    "status": "runtime-health-details",
     "desktopOnly": true,
     "webExposed": false,
     "storage": "tauri-state-safe-metadata-with-os-credential-store-and-session-runtime",
@@ -91,7 +91,22 @@
       "desktop_check_cm_session",
       "desktop_cm_session_runtime",
       "desktop_start_cm_session_runtime",
-      "desktop_stop_cm_session_runtime"
+      "desktop_stop_cm_session_runtime",
+      "desktop_check_cm_session_runtime"
+    ],
+    "runtimeSafeProfileFields": [
+      "sessionId",
+      "sessionName",
+      "serverUrl",
+      "remoteApiHost",
+      "remoteApiPort",
+      "localPort",
+      "status",
+      "startedAt",
+      "healthStatus",
+      "lastHealthAt",
+      "lastHealthMessage",
+      "lastError"
     ],
     "hiddenPrototypeUi": [
       "DesktopConnectionProfilePanel",
@@ -99,7 +114,7 @@
       "desktop-use-sidecar-profile"
     ],
     "next": [
-      "CM session runtime health/details polish"
+      "desktop signed package release path"
     ]
   },
   "remoteConnectionProfile": {
@@ -465,6 +480,7 @@
     "desktop-cm-ssh-sessions",
     "desktop-cm-ssh-credential-check",
     "desktop-cm-ssh-runtime",
+    "desktop-cm-runtime-health-details",
     "macos-dmg-build",
     "windows-exe-build",
     "signing-and-release"

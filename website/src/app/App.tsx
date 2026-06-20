@@ -3,6 +3,7 @@ import { Boxes, GitBranch, LockKeyhole, Palette, Pause, Play, RefreshCw, SearchC
 import { clearAdminToken, getStoredAdminToken, isValidAdminToken } from '../features/auth/adminToken';
 import {
   checkDesktopCmSession,
+  checkDesktopCmSessionRuntime,
   clearDesktopCmRuntimeProfile,
   clearDesktopConnectionProfile,
   deleteDesktopCmSession,
@@ -469,6 +470,40 @@ function Dashboard() {
     setDesktopCmSessionMessage('CM/SSH runtime 중지됨');
   }, [desktopCmRuntimeProfile?.sessionId, resourceUrlFilters, setAutoRefresh, sourceMode, viewMode]);
 
+  const handleDesktopCmSessionRuntimeCheck = useCallback(async () => {
+    const previousSessionId = desktopCmRuntimeProfile?.sessionId;
+    const profile = await checkDesktopCmSessionRuntime();
+    if (!profile) {
+      clearDesktopCmRuntimeProfile();
+      setDesktopCmRuntimeProfile(null);
+      setDesktopCmSessions((currentSessions) =>
+        currentSessions.map((session) => ({
+          ...session,
+          status: session.id === previousSessionId ? 'runtime-lost' : session.status,
+          runtimeStatus: session.id === previousSessionId ? 'runtime-lost' : session.runtimeStatus,
+        })),
+      );
+      if (sourceMode === 'live') {
+        setSourceMode('upload');
+        storeSourceMode('upload');
+        writeAppUrlState({ viewMode, sourceMode: 'upload', resourceFilters: resourceUrlFilters }, 'push');
+        setAutoRefresh(false);
+      }
+      setDesktopCmSessionMessage('CM/SSH runtime 끊김');
+      return;
+    }
+    storeDesktopCmRuntimeProfile(profile);
+    setDesktopCmRuntimeProfile(profile);
+    setDesktopCmSessions((currentSessions) =>
+      currentSessions.map((session) => ({
+        ...session,
+        status: session.id === profile.sessionId ? (profile.healthStatus === 'healthy' ? 'runtime-active' : 'runtime-unhealthy') : session.status,
+        runtimeStatus: session.id === profile.sessionId ? (profile.healthStatus === 'healthy' ? 'runtime-active' : 'runtime-unhealthy') : session.runtimeStatus,
+      })),
+    );
+    setDesktopCmSessionMessage(`${profile.sessionName} health · ${formatCmRuntimeHealthStatus(profile.healthStatus)}`);
+  }, [desktopCmRuntimeProfile?.sessionId, resourceUrlFilters, setAutoRefresh, sourceMode, viewMode]);
+
   const handleOpenTopologyNode = useCallback((nodeId: string) => {
     setFilters(initialFilters);
     setSelectedNodeId(nodeId);
@@ -631,6 +666,7 @@ function Dashboard() {
           onDesktopCmSessionCredentialDelete={handleDesktopCmSessionCredentialDelete}
           onDesktopCmSessionCheck={handleDesktopCmSessionCheck}
           onDesktopCmSessionPrivateKeyImport={handleDesktopCmSessionPrivateKeyImport}
+          onDesktopCmSessionRuntimeCheck={handleDesktopCmSessionRuntimeCheck}
           onDesktopCmSessionRuntimeStart={handleDesktopCmSessionRuntimeStart}
           onDesktopCmSessionRuntimeStop={handleDesktopCmSessionRuntimeStop}
           onDesktopCmSessionSave={handleDesktopCmSessionSave}
@@ -972,6 +1008,19 @@ function formatCmSessionStatus(status: string) {
       return 'credential 없음';
     default:
       return status || '확인 안 됨';
+  }
+}
+
+function formatCmRuntimeHealthStatus(status: string) {
+  switch (status) {
+    case 'healthy':
+      return '정상';
+    case 'unhealthy':
+      return 'health 실패';
+    case 'unknown':
+      return '미확인';
+    default:
+      return status || '미확인';
   }
 }
 

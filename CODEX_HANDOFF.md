@@ -166,7 +166,8 @@ https://kuviewer.example.com/
    - Desktop-only CM/SSH session manager metadata-only 1차 구현은 완료됐다.
    - Desktop SSH credential store + connection check는 완료됐다.
    - Desktop CM tunnel/runtime integration은 완료됐다.
-   - 다음 확장 후보는 CM runtime health/details polish 또는 desktop signed package release path다.
+   - Desktop CM runtime health/details polish는 완료됐다.
+   - 다음 확장 후보는 desktop signed package release path다.
 
 4. 실제 Kubernetes 연결 설계
    - 브라우저에 kube credential을 직접 넣지 않는 방향 유지.
