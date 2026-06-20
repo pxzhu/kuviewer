@@ -280,6 +280,19 @@ interface LogSearchMatch {
   end: number;
 }
 
+interface KeyValueEntry {
+  key: string;
+  valueText: string;
+}
+
+interface KeyValueSearchMatch {
+  id: string;
+  entryIndex: number;
+  field: 'key' | 'value';
+  start: number;
+  end: number;
+}
+
 interface HealthSignal {
   label: string;
   value: string;
@@ -2529,6 +2542,8 @@ function ResourceExplorerDetail({
   const [logCopyStatus, setLogCopyStatus] = useState<{ tone: 'success' | 'warning'; message: string } | null>(null);
   const [logDensity, setLogDensity] = useState<LogDensity>(() => readLogDensityPreference());
   const [resourceDetailDensity, setResourceDetailDensity] = useState<ResourceDetailDensity>(() => readResourceDetailDensityPreference());
+  const [safePreviewFilter, setSafePreviewFilter] = useState('');
+  const [activeSafePreviewMatchIndex, setActiveSafePreviewMatchIndex] = useState(0);
   const [relationFilter, setRelationFilter] = useState('');
   const [relationsExpanded, setRelationsExpanded] = useState(false);
   const [activeDetailSectionId, setActiveDetailSectionId] = useState<DetailSectionId>('metadata');
@@ -2668,6 +2683,8 @@ function ResourceExplorerDetail({
     setLogTimeRangeFilter('all');
     setLogSortOrder('received');
     setLogCopyStatus(null);
+    setSafePreviewFilter('');
+    setActiveSafePreviewMatchIndex(0);
     setRelationFilter('');
     setRelationsExpanded(false);
     setEventFilter('');
@@ -2776,6 +2793,29 @@ function ResourceExplorerDetail({
     return () => window.cancelAnimationFrame(frame);
   }, [activeLogMatch?.id]);
 
+  const metadataPreview = resource ? recordFromUnknown(resource.preview.metadata) : {};
+  const statusPreview = resource ? recordFromUnknown(resource.preview.status) : {};
+  const summaryPreview = resource
+    ? {
+        ...recordFromUnknown(resource.preview.summary),
+        ...(resource.preview.secretValues ? { secretValues: resource.preview.secretValues } : {}),
+      }
+    : {};
+  const yamlPreview = resource && typeof resource.preview.safeYaml === 'string' ? resource.preview.safeYaml : '';
+  const safePreviewEntries = keyValueEntries(summaryPreview);
+  const safePreviewMatches = collectKeyValueSearchMatches(safePreviewEntries, safePreviewFilter);
+  const safePreviewFilterActive = safePreviewFilter.trim().length > 0;
+  const activeSafePreviewMatch = safePreviewMatches[activeSafePreviewMatchIndex] || null;
+
+  useEffect(() => {
+    setActiveSafePreviewMatchIndex((current) => {
+      if (safePreviewMatches.length === 0) {
+        return 0;
+      }
+      return Math.min(current, safePreviewMatches.length - 1);
+    });
+  }, [safePreviewMatches.length]);
+
   if (!resource) {
     return (
       <div className="ku-panel p-6 text-center">
@@ -2784,13 +2824,6 @@ function ResourceExplorerDetail({
     );
   }
 
-  const metadataPreview = recordFromUnknown(resource.preview.metadata);
-  const statusPreview = recordFromUnknown(resource.preview.status);
-  const summaryPreview = {
-    ...recordFromUnknown(resource.preview.summary),
-    ...(resource.preview.secretValues ? { secretValues: resource.preview.secretValues } : {}),
-  };
-  const yamlPreview = typeof resource.preview.safeYaml === 'string' ? resource.preview.safeYaml : '';
   const healthSignals = resourceHealthSignals(resource, statusPreview, summaryPreview);
   const healthSectionTone = healthSignalSectionTone(resource, healthSignals);
   const canFetchLogs = liveEnabled && resource.kind === 'Pod';
@@ -2905,6 +2938,27 @@ function ResourceExplorerDetail({
   };
   const handleResetDetailSections = () => {
     setOpenSections(new Set(defaultOpenDetailSections));
+  };
+  const handleSafePreviewFilterChange = (value: string) => {
+    setSafePreviewFilter(value);
+    setActiveSafePreviewMatchIndex(0);
+    if (value.trim()) {
+      openSection('safe');
+    }
+  };
+  const moveActiveSafePreviewMatch = (offset: number) => {
+    if (safePreviewMatches.length === 0) {
+      return;
+    }
+    openSection('safe');
+    setActiveSafePreviewMatchIndex((current) => (current + offset + safePreviewMatches.length) % safePreviewMatches.length);
+  };
+  const handleSafePreviewSearchKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
+    if (event.key !== 'Enter') {
+      return;
+    }
+    event.preventDefault();
+    moveActiveSafePreviewMatch(event.shiftKey ? -1 : 1);
   };
 
   useEffect(() => {
@@ -3359,7 +3413,72 @@ function ResourceExplorerDetail({
           <KeyValueGrid density={resourceDetailDensity} testId="status" values={statusPreview} />
         </DetailSection>
         <DetailSection id="safe" icon={FileText} title="Safe Preview" summary={detailSectionSummaries.safe} open={isSectionOpen('safe')} active={activeDetailSectionId === 'safe'} sectionRef={setDetailSectionRef('safe')} onFocusSection={() => setActiveDetailSectionId('safe')} onToggle={() => toggleSection('safe')}>
-          <KeyValueGrid density={resourceDetailDensity} testId="safe" values={summaryPreview} />
+          <div className="grid gap-2">
+            <div className="grid gap-2 rounded-[10px] border border-[rgba(60,60,67,0.12)] bg-white/70 p-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+              <label className="relative block">
+                <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[rgba(60,60,67,0.45)]" size={15} />
+                <input
+                  className="ku-input w-full pl-9"
+                  data-testid="safe-preview-search-input"
+                  placeholder="Safe Preview 검색"
+                  value={safePreviewFilter}
+                  onChange={(event) => handleSafePreviewFilterChange(event.target.value)}
+                  onKeyDown={handleSafePreviewSearchKeyDown}
+                  aria-label="Safe Preview 검색"
+                />
+              </label>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="ku-chip" data-testid="safe-preview-search-count">
+                  {safePreviewFilterActive ? `${safePreviewMatches.length} matches` : `${safePreviewEntries.length} items`}
+                </span>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    className="rounded-[8px] border border-[rgba(60,60,67,0.12)] bg-white px-2.5 py-1.5 text-xs font-semibold text-[rgba(60,60,67,0.72)] transition hover:bg-[rgba(242,242,247,0.9)] disabled:cursor-not-allowed disabled:opacity-50"
+                    type="button"
+                    onClick={() => moveActiveSafePreviewMatch(-1)}
+                    disabled={safePreviewMatches.length === 0}
+                    data-testid="safe-preview-search-prev"
+                    title="이전 Safe Preview match"
+                  >
+                    이전
+                  </button>
+                  <button
+                    className="rounded-[8px] border border-[rgba(60,60,67,0.12)] bg-white px-2.5 py-1.5 text-xs font-semibold text-[rgba(60,60,67,0.72)] transition hover:bg-[rgba(242,242,247,0.9)] disabled:cursor-not-allowed disabled:opacity-50"
+                    type="button"
+                    onClick={() => moveActiveSafePreviewMatch(1)}
+                    disabled={safePreviewMatches.length === 0}
+                    data-testid="safe-preview-search-next"
+                    title="다음 Safe Preview match"
+                  >
+                    다음
+                  </button>
+                  {safePreviewFilter ? (
+                    <button
+                      className="rounded-[8px] border border-[rgba(60,60,67,0.12)] bg-white px-2.5 py-1.5 text-xs font-semibold text-[rgba(60,60,67,0.72)] transition hover:bg-[rgba(242,242,247,0.9)]"
+                      type="button"
+                      onClick={() => handleSafePreviewFilterChange('')}
+                      data-testid="safe-preview-search-clear"
+                    >
+                      초기화
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+            </div>
+            {safePreviewFilterActive ? (
+              <p className="ku-meta" data-testid="safe-preview-search-status">
+                {safePreviewMatches.length > 0 ? `검색 결과 ${Math.min(activeSafePreviewMatchIndex + 1, safePreviewMatches.length)} / ${safePreviewMatches.length}` : '검색 결과 0개'}
+              </p>
+            ) : null}
+            <KeyValueGrid
+              activeMatch={activeSafePreviewMatch}
+              density={resourceDetailDensity}
+              filter={safePreviewFilter}
+              filteredEmpty="일치하는 Safe Preview 항목 없음"
+              testId="safe"
+              values={summaryPreview}
+            />
+          </div>
         </DetailSection>
         <DetailSection id="yaml" icon={FileText} title="YAML Preview" summary={detailSectionSummaries.yaml} open={isSectionOpen('yaml')} active={activeDetailSectionId === 'yaml'} sectionRef={setDetailSectionRef('yaml')} onFocusSection={() => setActiveDetailSectionId('yaml')} onToggle={() => toggleSection('yaml')}>
           {yamlPreview ? (
@@ -4961,7 +5080,7 @@ function groupRelatedResources(relations: ResourceExplorerItem['related'], visib
   return Array.from(groups.values()).filter((group) => group.items.length > 0);
 }
 
-function renderHighlightedText(text: string, filter: string, activeMatch?: Pick<LogSearchMatch, 'start' | 'end'>): ReactNode {
+function renderHighlightedText(text: string, filter: string, activeMatch?: Pick<LogSearchMatch, 'start' | 'end'>, activeTestId = 'active-log-search-match'): ReactNode {
   const normalizedFilter = filter.trim().toLowerCase();
   if (!normalizedFilter) {
     return text || ' ';
@@ -4981,7 +5100,7 @@ function renderHighlightedText(text: string, filter: string, activeMatch?: Pick<
       <mark
         key={`${matchIndex}:${matchEnd}`}
         className={`rounded-[3px] px-0.5 text-[#1d1d1f] ${active ? 'bg-[#ff9500] ring-1 ring-[#ffd60a]' : 'bg-[#ffd60a]'}`}
-        data-testid={active ? 'active-log-search-match' : undefined}
+        data-testid={active ? activeTestId : undefined}
       >
         {text.slice(matchIndex, matchEnd)}
       </mark>,
@@ -5001,6 +5120,51 @@ function sectionCount(values: Record<string, unknown>) {
 
 function visibleValueCount(values: Record<string, unknown>) {
   return Object.entries(values).filter(([, value]) => value !== undefined && value !== '' && (!Array.isArray(value) || value.length > 0)).length;
+}
+
+function keyValueEntries(values: Record<string, unknown>): KeyValueEntry[] {
+  return Object.entries(values)
+    .filter(([, value]) => value !== undefined && value !== '' && (!Array.isArray(value) || value.length > 0))
+    .map(([key, value]) => ({ key, valueText: formatValue(value) }));
+}
+
+function collectKeyValueSearchMatches(entries: KeyValueEntry[], filter: string) {
+  const normalizedFilter = filter.trim().toLowerCase();
+  if (!normalizedFilter) {
+    return [];
+  }
+  return entries.flatMap((entry, entryIndex) => [
+    ...collectKeyValueSearchMatchesForText(entry.key, normalizedFilter, entryIndex, 'key'),
+    ...collectKeyValueSearchMatchesForText(entry.valueText, normalizedFilter, entryIndex, 'value'),
+  ]);
+}
+
+function collectKeyValueSearchMatchesForText(text: string, normalizedFilter: string, entryIndex: number, field: KeyValueSearchMatch['field']) {
+  const lowerText = text.toLowerCase();
+  const matches: KeyValueSearchMatch[] = [];
+  let cursor = 0;
+  let matchIndex = lowerText.indexOf(normalizedFilter, cursor);
+  while (matchIndex >= 0) {
+    const matchEnd = matchIndex + normalizedFilter.length;
+    matches.push({
+      id: `${entryIndex}:${field}:${matchIndex}:${matchEnd}`,
+      entryIndex,
+      field,
+      start: matchIndex,
+      end: matchEnd,
+    });
+    cursor = matchEnd;
+    matchIndex = lowerText.indexOf(normalizedFilter, cursor);
+  }
+  return matches;
+}
+
+function keyValueEntryMatchesFilter(entry: KeyValueEntry, filter: string) {
+  const normalizedFilter = filter.trim().toLowerCase();
+  if (!normalizedFilter) {
+    return true;
+  }
+  return entry.key.toLowerCase().includes(normalizedFilter) || entry.valueText.toLowerCase().includes(normalizedFilter);
 }
 
 function ResourceSelect({ label, testId, value, values, onChange }: { label: string; testId: string; value: string; values: string[]; onChange: (value: string) => void }) {
@@ -5954,35 +6118,43 @@ function DetailSection({
 }
 
 function KeyValueGrid({
+  activeMatch,
   density = 'comfortable',
   empty = '데이터 없음',
+  filter = '',
+  filteredEmpty = '일치하는 항목 없음',
   limit = 20,
   testId,
   values,
 }: {
+  activeMatch?: KeyValueSearchMatch | null;
   density?: ResourceDetailDensity;
   empty?: string;
+  filter?: string;
+  filteredEmpty?: string;
   limit?: number;
   testId: string;
   values: Record<string, unknown>;
 }) {
-  const entries = useMemo(
-    () => Object.entries(values).filter(([, value]) => value !== undefined && value !== '' && (!Array.isArray(value) || value.length > 0)),
-    [values],
-  );
+  const entries = useMemo(() => keyValueEntries(values), [values]);
   const [expanded, setExpanded] = useState(false);
-  const entriesKey = useMemo(() => entries.map(([key]) => key).join('\u001f'), [entries]);
+  const entriesKey = useMemo(() => entries.map((entry) => entry.key).join('\u001f'), [entries]);
+  const normalizedFilter = filter.trim();
 
   useEffect(() => {
     setExpanded(false);
-  }, [entriesKey]);
+  }, [entriesKey, normalizedFilter]);
 
   if (entries.length === 0) {
     return <p className="ku-meta">{empty}</p>;
   }
+  const filteredEntries = normalizedFilter ? entries.filter((entry) => keyValueEntryMatchesFilter(entry, normalizedFilter)) : entries;
+  if (filteredEntries.length === 0) {
+    return <p className="ku-meta" data-testid={`resource-key-value-empty-${testId}`}>{filteredEmpty}</p>;
+  }
   const compact = density === 'compact';
-  const visibleEntries = expanded ? entries : entries.slice(0, limit);
-  const hiddenCount = Math.max(0, entries.length - visibleEntries.length);
+  const visibleEntries = normalizedFilter || expanded ? filteredEntries : filteredEntries.slice(0, limit);
+  const hiddenCount = Math.max(0, filteredEntries.length - visibleEntries.length);
   const gridClassName = compact ? 'grid gap-1' : 'grid gap-1.5';
   const rowClassName = compact
     ? 'grid grid-cols-[minmax(84px,0.32fr)_minmax(0,1fr)] gap-2 rounded-[7px] border border-[rgba(60,60,67,0.06)] bg-[rgba(242,242,247,0.62)] px-2 py-1'
@@ -5996,17 +6168,19 @@ function KeyValueGrid({
   return (
     <div className="grid gap-2" data-testid={`resource-key-value-grid-${testId}`} data-density={density}>
       <div className={gridClassName}>
-        {visibleEntries.map(([key, value]) => {
-          const valueText = formatValue(value);
+        {visibleEntries.map((entry) => {
+          const entryIndex = entries.findIndex((candidate) => candidate.key === entry.key);
+          const activeKeyMatch = activeMatch?.entryIndex === entryIndex && activeMatch.field === 'key' ? activeMatch : undefined;
+          const activeValueMatch = activeMatch?.entryIndex === entryIndex && activeMatch.field === 'value' ? activeMatch : undefined;
           return (
-            <div key={key} className={rowClassName} data-testid={`resource-key-value-row-${testId}`}>
-              <span className={keyClassName} title={key}>{key}</span>
-              <span className={valueClassName} title={valueText}>{valueText}</span>
+            <div key={entry.key} className={rowClassName} data-testid={`resource-key-value-row-${testId}`}>
+              <span className={keyClassName} title={entry.key}>{renderHighlightedText(entry.key, normalizedFilter, activeKeyMatch, 'active-key-value-search-match')}</span>
+              <span className={valueClassName} title={entry.valueText}>{renderHighlightedText(entry.valueText, normalizedFilter, activeValueMatch, 'active-key-value-search-match')}</span>
             </div>
           );
         })}
       </div>
-      {entries.length > limit ? (
+      {!normalizedFilter && entries.length > limit ? (
         <button
           className="inline-flex w-fit items-center gap-1.5 rounded-[8px] border border-[rgba(60,60,67,0.12)] bg-white px-2.5 py-1.5 text-xs font-semibold text-[rgba(60,60,67,0.72)] transition hover:bg-[rgba(242,242,247,0.9)]"
           type="button"
