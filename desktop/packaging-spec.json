@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "name": "Kuviewer Desktop CM Session Explorer",
   "goal": "desktop-cm-session-prototype",
-  "status": "desktop-cm-diagnostics-filtering",
+  "status": "desktop-cm-diagnostics-saved-filters",
   "recommendedPackager": "tauri",
   "fallbackPackager": "electron",
   "tauri": {
@@ -52,7 +52,7 @@
     "noOperationalActions": true
   },
   "cmSshSessionManager": {
-    "status": "diagnostics-filtering",
+    "status": "diagnostics-saved-filters",
     "desktopOnly": true,
     "webExposed": false,
     "storage": "tauri-state-safe-metadata-with-os-credential-store-and-session-runtime",
@@ -149,13 +149,26 @@
       "usesDisplayedDiagnosticSource": true,
       "fields": ["diagnosticStage", "diagnosticSeverity"]
     },
+    "diagnosticSavedFilters": {
+      "desktopOnly": true,
+      "storage": "localStorage-ui-preference",
+      "storageKey": "kuviewer_desktop_cm_diagnostic_filter_presets",
+      "maxPresets": 8,
+      "maxNameLength": 40,
+      "fields": ["name", "diagnosticStage", "diagnosticSeverity", "updatedAt"],
+      "noSessionSearch": true,
+      "noSessionData": true,
+      "noCredentialPayload": true,
+      "noRuntimeProfile": true,
+      "noDiagnosticHistory": true,
+      "noExportImportPayload": true
+    },
     "hiddenPrototypeUi": [
       "DesktopConnectionProfilePanel",
       "DesktopKubernetesProfilePanel",
       "desktop-use-sidecar-profile"
     ],
     "next": [
-      "desktop CM diagnostics saved filters",
       "CM session connection profile polish"
     ]
   },
@@ -409,6 +422,7 @@
     "desktop-download-descope",
     "desktop-cm-advanced-diagnostics",
     "desktop-cm-session-export-import",
-    "desktop-cm-diagnostics-filtering"
+    "desktop-cm-diagnostics-filtering",
+    "desktop-cm-diagnostics-saved-filters"
   ]
 }

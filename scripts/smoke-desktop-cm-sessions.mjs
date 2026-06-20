@@ -30,6 +30,9 @@ async function smokeDesktopRuntime(browser, url) {
     await page.addInitScript(() => {
       window.localStorage.removeItem('kuviewer_admin_token');
       window.localStorage.removeItem('kuviewer_desktop_connection_profile');
+      if (window.localStorage.getItem('kuviewer_desktop_cm_diagnostic_filter_presets_smoke_keep') !== '1') {
+        window.localStorage.removeItem('kuviewer_desktop_cm_diagnostic_filter_presets');
+      }
       window.sessionStorage.removeItem('kuviewer_admin_token');
       window.sessionStorage.removeItem('kuviewer_desktop_cm_runtime_profile');
       window.sessionStorage.removeItem('kuviewer_source_mode');
@@ -309,6 +312,37 @@ async function smokeDesktopRuntime(browser, url) {
     await page.getByTestId('desktop-cm-session-diagnostic-filter-clear').click();
     sessionSearchCount = await page.getByTestId('desktop-cm-session-search-count').textContent();
     requireCondition(sessionSearchCount?.includes('1 / 전체 1'), 'desktop CM diagnostic filter clear must restore visible sessions');
+    await page.getByTestId('desktop-cm-diagnostic-filter-preset-name').fill('Meta Info');
+    await page.getByTestId('desktop-cm-session-diagnostic-stage-filter').selectOption('metadata');
+    await page.getByTestId('desktop-cm-session-diagnostic-severity-filter').selectOption('info');
+    await page.getByTestId('desktop-cm-diagnostic-filter-preset-save').click();
+    await page.getByTestId('desktop-cm-diagnostic-filter-preset-meta-info').waitFor({ state: 'visible', timeout: 10_000 });
+    let diagnosticPresetCount = await page.getByTestId('desktop-cm-diagnostic-filter-preset-count').textContent();
+    requireCondition(diagnosticPresetCount?.includes('1 / 8'), 'desktop CM diagnostic saved filter count must update after save');
+    let diagnosticFilterStorage = await page.evaluate(() => window.localStorage.getItem('kuviewer_desktop_cm_diagnostic_filter_presets') || '');
+    requireCondition(diagnosticFilterStorage.includes('Meta Info'), 'desktop CM diagnostic saved filters must persist safe preset metadata');
+    requireCondition(!diagnosticFilterStorage.includes('credentialAvailable'), 'desktop CM diagnostic saved filters must not include credentialAvailable');
+    for (const forbiddenField of ['runtimeStatus', 'diagnosticMessage', 'diagnosticHint', 'serverUrl', 'adminToken', 'BEGIN OPENSSH PRIVATE KEY']) {
+      requireCondition(!diagnosticFilterStorage.includes(forbiddenField), `desktop CM diagnostic saved filters must not include ${forbiddenField}`);
+    }
+    await page.evaluate(() => {
+      window.localStorage.setItem('kuviewer_desktop_cm_diagnostic_filter_presets_smoke_keep', '1');
+    });
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await page.getByTestId('desktop-cm-session-panel').waitFor({ state: 'visible', timeout: 10_000 });
+    await page.getByTestId('desktop-cm-session-name').fill('Prod CM');
+    await page.getByTestId('desktop-cm-session-host').fill('cm.example.internal');
+    await page.getByTestId('desktop-cm-session-port').fill('22');
+    await page.getByTestId('desktop-cm-session-user').fill('ubuntu');
+    await page.getByTestId('desktop-cm-session-remote-api-host').fill('127.0.0.1');
+    await page.getByTestId('desktop-cm-session-remote-api-port').fill('18085');
+    await page.getByTestId('desktop-cm-session-description').fill('readonly entry');
+    await page.getByTestId('desktop-cm-session-save').click();
+    await page.getByTestId(/^desktop-cm-session-prod-cm-/).waitFor({ state: 'visible', timeout: 10_000 });
+    await page.getByTestId('desktop-cm-diagnostic-filter-preset-meta-info').waitFor({ state: 'visible', timeout: 10_000 });
+    await page.getByTestId('desktop-cm-diagnostic-filter-preset-meta-info').getByRole('button', { name: /Meta Info metadata \/ info/ }).click();
+    sessionSearchCount = await page.getByTestId('desktop-cm-session-search-count').textContent();
+    requireCondition(sessionSearchCount?.includes('1 / 전체 1'), 'desktop CM diagnostic saved filters must apply after reload');
     await page.getByTestId('desktop-cm-session-search').fill('prod');
     sessionSearchCount = await page.getByTestId('desktop-cm-session-search-count').textContent();
     requireCondition(sessionSearchCount?.includes('1 / 전체 1'), 'desktop CM session search must match session name metadata');
@@ -346,6 +380,14 @@ async function smokeDesktopRuntime(browser, url) {
     await page.getByTestId('desktop-cm-session-diagnostic-stage-filter').selectOption('credential');
     sessionSearchCount = await page.getByTestId('desktop-cm-session-search-count').textContent();
     requireCondition(sessionSearchCount?.includes('1 / 전체 1'), 'desktop CM diagnostic stage filter must match credential diagnostics');
+    await page.getByTestId('desktop-cm-diagnostic-filter-preset-name').fill('Meta Info');
+    await page.getByTestId('desktop-cm-diagnostic-filter-preset-save').click();
+    diagnosticPresetCount = await page.getByTestId('desktop-cm-diagnostic-filter-preset-count').textContent();
+    requireCondition(diagnosticPresetCount?.includes('1 / 8'), 'desktop CM diagnostic saved filter update must keep same-name presets unique');
+    await page.getByTestId('desktop-cm-session-diagnostic-filter-clear').click();
+    await page.getByTestId('desktop-cm-diagnostic-filter-preset-meta-info').getByRole('button', { name: /Meta Info credential \/ info/ }).click();
+    sessionSearchCount = await page.getByTestId('desktop-cm-session-search-count').textContent();
+    requireCondition(sessionSearchCount?.includes('1 / 전체 1'), 'desktop CM updated diagnostic saved filter must apply credential diagnostics');
     await page.getByTestId('desktop-cm-session-diagnostic-filter-clear').click();
     await page.getByTestId(`desktop-cm-session-check-${sessionId}`).click();
     await page.getByText('Prod CM 확인 · 연결 가능').waitFor({ state: 'visible', timeout: 10_000 });
@@ -376,6 +418,7 @@ async function smokeDesktopRuntime(browser, url) {
       'runtimeStatus',
       'lastCheckStatus',
       'diagnosticStage',
+      'Meta Info',
       'serverUrl',
       'adminToken',
       'private-key-imported',
@@ -537,6 +580,10 @@ async function smokeDesktopRuntime(browser, url) {
     requireCondition(!invocationsJson.includes('BEGIN OPENSSH PRIVATE KEY'), 'desktop CM smoke must not expose private key bodies to browser state');
     requireCondition(state.oldSidecarPanel === false, 'desktop product UI must not show the local sidecar switch');
     requireCondition(state.oldKubernetesPanel === false, 'desktop product UI must not show the keychain Kubernetes prototype panel');
+    await page.evaluate(() => {
+      window.localStorage.removeItem('kuviewer_desktop_cm_diagnostic_filter_presets');
+      window.localStorage.removeItem('kuviewer_desktop_cm_diagnostic_filter_presets_smoke_keep');
+    });
     requireCommandOrder(state.invocations, [
       'desktop_cm_sessions',
       'desktop_cm_session_runtime',

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Activity, CheckCircle2, Download, Filter, KeyRound, Pencil, Play, Plus, Search, ServerCog, ShieldCheck, Square, Trash2, Unplug, Upload, XCircle } from 'lucide-react';
+import { Activity, Bookmark, CheckCircle2, Download, Filter, KeyRound, Pencil, Play, Plus, Search, ServerCog, ShieldCheck, Square, Trash2, Unplug, Upload, XCircle } from 'lucide-react';
 import {
   createDesktopCmSessionExportBundle,
   desktopCmDefaultRemoteApiHost,
@@ -44,8 +44,18 @@ interface DesktopCmSessionImportSummary {
   invalid: number;
 }
 
+interface DesktopCmDiagnosticFilterPreset {
+  name: string;
+  diagnosticStage: CmDiagnosticStageFilter;
+  diagnosticSeverity: CmDiagnosticSeverityFilter;
+  updatedAt: number;
+}
+
 const cmDiagnosticStageFilterOptions = ['all', 'metadata', 'credential', 'reachability', 'ssh-auth', 'tunnel', 'health', 'runtime'] as const;
 const cmDiagnosticSeverityFilterOptions = ['all', 'info', 'warning', 'error'] as const;
+const desktopCmDiagnosticFilterPresetStorageKey = 'kuviewer_desktop_cm_diagnostic_filter_presets';
+const maxDesktopCmDiagnosticFilterPresets = 8;
+const maxDesktopCmDiagnosticFilterPresetNameLength = 40;
 
 type CmDiagnosticStageFilter = (typeof cmDiagnosticStageFilterOptions)[number];
 type CmDiagnosticSeverityFilter = (typeof cmDiagnosticSeverityFilterOptions)[number];
@@ -75,6 +85,8 @@ export function DesktopCmSessionPanel({
   const [sessionSearchQuery, setSessionSearchQuery] = useState('');
   const [diagnosticStageFilter, setDiagnosticStageFilter] = useState<CmDiagnosticStageFilter>('all');
   const [diagnosticSeverityFilter, setDiagnosticSeverityFilter] = useState<CmDiagnosticSeverityFilter>('all');
+  const [diagnosticFilterPresetName, setDiagnosticFilterPresetName] = useState('');
+  const [diagnosticFilterPresets, setDiagnosticFilterPresets] = useState<DesktopCmDiagnosticFilterPreset[]>(() => readDesktopCmDiagnosticFilterPresets());
   const [importSummary, setImportSummary] = useState<DesktopCmSessionImportSummary | null>(null);
   const importInputRef = useRef<HTMLInputElement | null>(null);
   const normalizedSessionSearchQuery = normalizeSearchValue(sessionSearchQuery);
@@ -90,6 +102,10 @@ export function DesktopCmSessionPanel({
     [activeRuntimeSessionId, diagnosticSeverityFilter, diagnosticStageFilter, normalizedSessionSearchQuery, runtimeProfile, sessions],
   );
   const diagnosticFiltersActive = diagnosticStageFilter !== 'all' || diagnosticSeverityFilter !== 'all';
+  const activeDiagnosticFilterPresetName = useMemo(
+    () => diagnosticFilterPresets.find((preset) => preset.diagnosticStage === diagnosticStageFilter && preset.diagnosticSeverity === diagnosticSeverityFilter)?.name || '',
+    [diagnosticFilterPresets, diagnosticSeverityFilter, diagnosticStageFilter],
+  );
   const selectedRuntimeActive = Boolean(selectedSession && runtimeProfile?.sessionId === selectedSession.id);
   const selectedRuntimeStatus = selectedRuntimeActive ? runtimeProfile?.status || selectedSession?.runtimeStatus || 'runtime-active' : selectedSession?.runtimeStatus || 'stopped';
 
@@ -268,6 +284,38 @@ export function DesktopCmSessionPanel({
         importInputRef.current.value = '';
       }
     }
+  };
+
+  const handleSaveDiagnosticFilterPreset = () => {
+    const presetName = normalizeDesktopCmDiagnosticFilterPresetName(
+      diagnosticFilterPresetName || `${formatCmDiagnosticStage(diagnosticStageFilter)} · ${formatCmDiagnosticSeverity(diagnosticSeverityFilter)}`,
+    );
+    const preset: DesktopCmDiagnosticFilterPreset = {
+      name: presetName,
+      diagnosticStage: diagnosticStageFilter,
+      diagnosticSeverity: diagnosticSeverityFilter,
+      updatedAt: Date.now(),
+    };
+    setDiagnosticFilterPresets((current) => {
+      const withoutSameName = current.filter((item) => item.name.toLowerCase() !== preset.name.toLowerCase());
+      const nextPresets = [preset, ...withoutSameName].slice(0, maxDesktopCmDiagnosticFilterPresets);
+      writeDesktopCmDiagnosticFilterPresets(nextPresets);
+      return nextPresets;
+    });
+    setDiagnosticFilterPresetName('');
+  };
+
+  const handleApplyDiagnosticFilterPreset = (preset: DesktopCmDiagnosticFilterPreset) => {
+    setDiagnosticStageFilter(preset.diagnosticStage);
+    setDiagnosticSeverityFilter(preset.diagnosticSeverity);
+  };
+
+  const handleDeleteDiagnosticFilterPreset = (presetName: string) => {
+    setDiagnosticFilterPresets((current) => {
+      const nextPresets = current.filter((preset) => preset.name !== presetName);
+      writeDesktopCmDiagnosticFilterPresets(nextPresets);
+      return nextPresets;
+    });
   };
 
   return (
@@ -529,69 +577,132 @@ export function DesktopCmSessionPanel({
       </div>
 
       {sessions.length > 0 ? (
-        <div className="flex min-w-0 flex-wrap items-center gap-2" data-testid="desktop-cm-session-search-bar">
-          <label className="relative min-w-[220px] flex-1">
-            <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[rgba(60,60,67,0.48)]" size={15} aria-hidden="true" />
-            <input
-              className="ku-field h-9 w-full pl-9 pr-3"
-              data-testid="desktop-cm-session-search"
-              placeholder="세션 검색"
-              value={sessionSearchQuery}
-              onChange={(event) => setSessionSearchQuery(event.target.value)}
-            />
-          </label>
-          <button className="ku-control h-9" data-testid="desktop-cm-session-search-clear" type="button" disabled={!sessionSearchQuery} onClick={() => setSessionSearchQuery('')}>
-            <XCircle size={14} aria-hidden="true" />
-            초기화
-          </button>
-          <label className="flex min-w-[150px] items-center gap-2">
-            <span className="ku-meta whitespace-nowrap">
-              <Filter size={13} aria-hidden="true" className="inline-block align-[-2px]" /> Stage
+        <div className="grid gap-2" data-testid="desktop-cm-session-search-bar">
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <label className="relative min-w-[220px] flex-1">
+              <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[rgba(60,60,67,0.48)]" size={15} aria-hidden="true" />
+              <input
+                className="ku-field h-9 w-full pl-9 pr-3"
+                data-testid="desktop-cm-session-search"
+                placeholder="세션 검색"
+                value={sessionSearchQuery}
+                onChange={(event) => setSessionSearchQuery(event.target.value)}
+              />
+            </label>
+            <button className="ku-control h-9" data-testid="desktop-cm-session-search-clear" type="button" disabled={!sessionSearchQuery} onClick={() => setSessionSearchQuery('')}>
+              <XCircle size={14} aria-hidden="true" />
+              초기화
+            </button>
+            <label className="flex min-w-[150px] items-center gap-2">
+              <span className="ku-meta whitespace-nowrap">
+                <Filter size={13} aria-hidden="true" className="inline-block align-[-2px]" /> Stage
+              </span>
+              <select
+                className="ku-field h-9 min-w-[118px]"
+                data-testid="desktop-cm-session-diagnostic-stage-filter"
+                value={diagnosticStageFilter}
+                onChange={(event) => setDiagnosticStageFilter(event.target.value as CmDiagnosticStageFilter)}
+              >
+                {cmDiagnosticStageFilterOptions.map((stage) => (
+                  <option key={stage} value={stage}>
+                    {stage === 'all' ? 'all stages' : formatCmDiagnosticStage(stage)}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="flex min-w-[150px] items-center gap-2">
+              <span className="ku-meta whitespace-nowrap">Severity</span>
+              <select
+                className="ku-field h-9 min-w-[112px]"
+                data-testid="desktop-cm-session-diagnostic-severity-filter"
+                value={diagnosticSeverityFilter}
+                onChange={(event) => setDiagnosticSeverityFilter(event.target.value as CmDiagnosticSeverityFilter)}
+              >
+                {cmDiagnosticSeverityFilterOptions.map((severity) => (
+                  <option key={severity} value={severity}>
+                    {severity === 'all' ? 'all severities' : formatCmDiagnosticSeverity(severity)}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button
+              className="ku-control h-9"
+              data-testid="desktop-cm-session-diagnostic-filter-clear"
+              type="button"
+              disabled={!diagnosticFiltersActive}
+              onClick={() => {
+                setDiagnosticStageFilter('all');
+                setDiagnosticSeverityFilter('all');
+              }}
+            >
+              <XCircle size={14} aria-hidden="true" />
+              진단 필터 초기화
+            </button>
+            <span className="ku-chip" data-testid="desktop-cm-session-search-count">
+              결과 {visibleSessions.length} / 전체 {sessions.length}
             </span>
-            <select
-              className="ku-field h-9 min-w-[118px]"
-              data-testid="desktop-cm-session-diagnostic-stage-filter"
-              value={diagnosticStageFilter}
-              onChange={(event) => setDiagnosticStageFilter(event.target.value as CmDiagnosticStageFilter)}
-            >
-              {cmDiagnosticStageFilterOptions.map((stage) => (
-                <option key={stage} value={stage}>
-                  {stage === 'all' ? 'all stages' : formatCmDiagnosticStage(stage)}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="flex min-w-[150px] items-center gap-2">
-            <span className="ku-meta whitespace-nowrap">Severity</span>
-            <select
-              className="ku-field h-9 min-w-[112px]"
-              data-testid="desktop-cm-session-diagnostic-severity-filter"
-              value={diagnosticSeverityFilter}
-              onChange={(event) => setDiagnosticSeverityFilter(event.target.value as CmDiagnosticSeverityFilter)}
-            >
-              {cmDiagnosticSeverityFilterOptions.map((severity) => (
-                <option key={severity} value={severity}>
-                  {severity === 'all' ? 'all severities' : formatCmDiagnosticSeverity(severity)}
-                </option>
-              ))}
-            </select>
-          </label>
-          <button
-            className="ku-control h-9"
-            data-testid="desktop-cm-session-diagnostic-filter-clear"
-            type="button"
-            disabled={!diagnosticFiltersActive}
-            onClick={() => {
-              setDiagnosticStageFilter('all');
-              setDiagnosticSeverityFilter('all');
-            }}
+          </div>
+
+          <div
+            className="grid gap-2 rounded-[10px] border border-[rgba(60,60,67,0.1)] bg-white/68 px-3 py-2"
+            data-testid="desktop-cm-diagnostic-saved-filters"
           >
-            <XCircle size={14} aria-hidden="true" />
-            진단 필터 초기화
-          </button>
-          <span className="ku-chip" data-testid="desktop-cm-session-search-count">
-            결과 {visibleSessions.length} / 전체 {sessions.length}
-          </span>
+            <div className="flex min-w-0 flex-wrap items-center gap-2">
+              <span className="ku-meta">Saved diagnostic filters</span>
+              <label className="min-w-[180px] flex-1">
+                <input
+                  className="ku-field h-9 w-full"
+                  data-testid="desktop-cm-diagnostic-filter-preset-name"
+                  maxLength={maxDesktopCmDiagnosticFilterPresetNameLength}
+                  placeholder={`${formatCmDiagnosticStage(diagnosticStageFilter)} · ${formatCmDiagnosticSeverity(diagnosticSeverityFilter)}`}
+                  value={diagnosticFilterPresetName}
+                  onChange={(event) => setDiagnosticFilterPresetName(event.target.value)}
+                />
+              </label>
+              <button className="ku-control h-9" data-testid="desktop-cm-diagnostic-filter-preset-save" type="button" onClick={handleSaveDiagnosticFilterPreset}>
+                <Bookmark size={14} aria-hidden="true" />
+                현재 진단 필터 저장
+              </button>
+              <span className="ku-chip" data-testid="desktop-cm-diagnostic-filter-preset-count">
+                {diagnosticFilterPresets.length} / {maxDesktopCmDiagnosticFilterPresets}
+              </span>
+            </div>
+            {diagnosticFilterPresets.length > 0 ? (
+              <div className="flex min-w-0 flex-wrap items-center gap-2" data-testid="desktop-cm-diagnostic-filter-preset-list">
+                {diagnosticFilterPresets.map((preset) => {
+                  const active = preset.name === activeDiagnosticFilterPresetName;
+                  return (
+                    <span
+                      key={preset.name}
+                      className={`ku-chip max-w-full gap-1 ${active ? 'border-[rgba(52,199,89,0.22)] bg-[rgba(52,199,89,0.1)] text-[#248a3d]' : ''}`}
+                      data-testid={`desktop-cm-diagnostic-filter-preset-${slugifyTestId(preset.name)}`}
+                    >
+                      <button className="flex min-w-0 items-center gap-1 truncate" type="button" onClick={() => handleApplyDiagnosticFilterPreset(preset)}>
+                        <Bookmark size={12} aria-hidden="true" />
+                        <span className="truncate">{preset.name}</span>
+                        <span className="truncate font-mono text-[10px]">
+                          {formatCmDiagnosticStage(preset.diagnosticStage)} / {formatCmDiagnosticSeverity(preset.diagnosticSeverity)}
+                        </span>
+                      </button>
+                      <button
+                        className="ml-1 rounded-full p-0.5 hover:bg-[rgba(60,60,67,0.08)]"
+                        data-testid={`desktop-cm-diagnostic-filter-preset-delete-${slugifyTestId(preset.name)}`}
+                        type="button"
+                        title={`${preset.name} 삭제`}
+                        onClick={() => handleDeleteDiagnosticFilterPreset(preset.name)}
+                      >
+                        <XCircle size={12} aria-hidden="true" />
+                      </button>
+                    </span>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="text-xs font-semibold text-[rgba(60,60,67,0.58)]" data-testid="desktop-cm-diagnostic-filter-preset-empty">
+                저장된 진단 필터 없음
+              </p>
+            )}
+          </div>
         </div>
       ) : null}
 
@@ -984,6 +1095,84 @@ function cmDiagnosticSeverityClass(severity: string) {
 
 function normalizeSearchValue(value: string) {
   return value.trim().toLowerCase();
+}
+
+function readDesktopCmDiagnosticFilterPresets(): DesktopCmDiagnosticFilterPreset[] {
+  if (typeof window === 'undefined') {
+    return [];
+  }
+  try {
+    const rawValue = window.localStorage.getItem(desktopCmDiagnosticFilterPresetStorageKey);
+    if (!rawValue) {
+      return [];
+    }
+    const parsedValue = JSON.parse(rawValue);
+    if (!Array.isArray(parsedValue)) {
+      window.localStorage.removeItem(desktopCmDiagnosticFilterPresetStorageKey);
+      return [];
+    }
+    return normalizeDesktopCmDiagnosticFilterPresets(parsedValue);
+  } catch {
+    window.localStorage.removeItem(desktopCmDiagnosticFilterPresetStorageKey);
+    return [];
+  }
+}
+
+function writeDesktopCmDiagnosticFilterPresets(presets: DesktopCmDiagnosticFilterPreset[]) {
+  if (typeof window === 'undefined') {
+    return;
+  }
+  try {
+    window.localStorage.setItem(desktopCmDiagnosticFilterPresetStorageKey, JSON.stringify(normalizeDesktopCmDiagnosticFilterPresets(presets)));
+  } catch {
+    // Saved diagnostic filters are only a UI preference; storage failures should not break sessions.
+  }
+}
+
+function normalizeDesktopCmDiagnosticFilterPresets(value: unknown[]): DesktopCmDiagnosticFilterPreset[] {
+  const seenNames = new Set<string>();
+  const presets: DesktopCmDiagnosticFilterPreset[] = [];
+  for (const item of value) {
+    if (!item || typeof item !== 'object') {
+      continue;
+    }
+    const candidate = item as Partial<DesktopCmDiagnosticFilterPreset>;
+    const name = normalizeDesktopCmDiagnosticFilterPresetName(candidate.name || '');
+    const nameKey = name.toLowerCase();
+    const diagnosticStage = normalizeCmDiagnosticStageFilter(candidate.diagnosticStage);
+    const diagnosticSeverity = normalizeCmDiagnosticSeverityFilter(candidate.diagnosticSeverity);
+    if (!name || seenNames.has(nameKey)) {
+      continue;
+    }
+    seenNames.add(nameKey);
+    presets.push({
+      name,
+      diagnosticStage,
+      diagnosticSeverity,
+      updatedAt: typeof candidate.updatedAt === 'number' && Number.isFinite(candidate.updatedAt) ? candidate.updatedAt : Date.now(),
+    });
+    if (presets.length >= maxDesktopCmDiagnosticFilterPresets) {
+      break;
+    }
+  }
+  return presets;
+}
+
+function normalizeDesktopCmDiagnosticFilterPresetName(value: string) {
+  const normalized = value.trim().replace(/\s+/g, ' ').slice(0, maxDesktopCmDiagnosticFilterPresetNameLength);
+  return normalized || 'all stages · all severities';
+}
+
+function normalizeCmDiagnosticStageFilter(value: unknown): CmDiagnosticStageFilter {
+  return typeof value === 'string' && cmDiagnosticStageFilterOptions.includes(value as CmDiagnosticStageFilter) ? (value as CmDiagnosticStageFilter) : 'all';
+}
+
+function normalizeCmDiagnosticSeverityFilter(value: unknown): CmDiagnosticSeverityFilter {
+  return typeof value === 'string' && cmDiagnosticSeverityFilterOptions.includes(value as CmDiagnosticSeverityFilter) ? (value as CmDiagnosticSeverityFilter) : 'all';
+}
+
+function slugifyTestId(value: string) {
+  return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'preset';
 }
 
 function getDisplayedCmDiagnostic(session: DesktopCmSession, runtimeProfile: DesktopCmSessionRuntimeProfile | null, activeRuntimeSessionId: string) {
