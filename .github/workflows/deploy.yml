@@ -79,23 +79,37 @@ jobs:
           printf '%s\n' "${{ secrets.SERVER_SSH_KEY }}" > ~/.ssh/deploy_key.pem
           chmod 600 ~/.ssh/deploy_key.pem
           : > ~/.ssh/known_hosts
-          scanned=false
-          for attempt in 1 2 3 4 5 6; do
-            echo "SSH host key scan attempt ${attempt}/6"
-            : > ~/.ssh/known_hosts.tmp
-            ssh-keyscan -T 30 -p "${{ secrets.SERVER_PORT }}" "${{ secrets.SERVER_FHOST }}" >> ~/.ssh/known_hosts.tmp 2>/dev/null || true
-            ssh-keyscan -4 -T 30 -p "${{ secrets.SERVER_PORT }}" "${{ secrets.SERVER_FHOST }}" >> ~/.ssh/known_hosts.tmp 2>/dev/null || true
-            if test -s ~/.ssh/known_hosts.tmp; then
-              cat ~/.ssh/known_hosts.tmp >> ~/.ssh/known_hosts
-              rm -f ~/.ssh/known_hosts.tmp
-              sort -u ~/.ssh/known_hosts -o ~/.ssh/known_hosts
-              scanned=true
-              break
-            fi
-            sleep 5
-          done
-          rm -f ~/.ssh/known_hosts.tmp
-          test "$scanned" = true
+          if [ -n "${{ secrets.SERVER_SSH_KNOWN_HOSTS }}" ]; then
+            echo "Using pinned SSH known_hosts secret"
+            printf '%s\n' "${{ secrets.SERVER_SSH_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+            sort -u ~/.ssh/known_hosts -o ~/.ssh/known_hosts
+          else
+            scanned=false
+            for attempt in 1 2 3 4 5 6; do
+              echo "SSH host key scan attempt ${attempt}/6"
+              : > ~/.ssh/known_hosts.tmp
+              for key_type in ed25519 ecdsa rsa; do
+                ssh-keyscan -4 -T 10 -t "${key_type}" -p "${{ secrets.SERVER_PORT }}" "${{ secrets.SERVER_FHOST }}" >> ~/.ssh/known_hosts.tmp 2>/dev/null || true
+                test -s ~/.ssh/known_hosts.tmp && break
+              done
+              if ! test -s ~/.ssh/known_hosts.tmp; then
+                for key_type in ed25519 ecdsa rsa; do
+                  ssh-keyscan -T 10 -t "${key_type}" -p "${{ secrets.SERVER_PORT }}" "${{ secrets.SERVER_FHOST }}" >> ~/.ssh/known_hosts.tmp 2>/dev/null || true
+                  test -s ~/.ssh/known_hosts.tmp && break
+                done
+              fi
+              if test -s ~/.ssh/known_hosts.tmp; then
+                cat ~/.ssh/known_hosts.tmp >> ~/.ssh/known_hosts
+                rm -f ~/.ssh/known_hosts.tmp
+                sort -u ~/.ssh/known_hosts -o ~/.ssh/known_hosts
+                scanned=true
+                break
+              fi
+              sleep 5
+            done
+            rm -f ~/.ssh/known_hosts.tmp
+            test "$scanned" = true
+          fi
           test -s ~/.ssh/known_hosts
 
       - name: Remote SSH preflight

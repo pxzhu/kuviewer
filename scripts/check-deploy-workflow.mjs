@@ -14,9 +14,12 @@ requireIncludes(deployWorkflow, 'Validate required secrets', 'deploy workflow mu
 requireIncludes(deployWorkflow, 'SERVER_PORT must be numeric', 'deploy workflow must validate numeric SERVER_PORT');
 requireIncludes(deployWorkflow, 'SERVER_PORT must be between 1 and 65535', 'deploy workflow must validate SERVER_PORT range');
 requireIncludes(deployWorkflow, 'Prepare SSH key', 'deploy workflow must prepare SSH key before preflight');
-requireIncludes(deployWorkflow, 'ssh-keyscan -T 30', 'deploy workflow must scan host keys');
+requireIncludes(deployWorkflow, 'secrets.SERVER_SSH_KNOWN_HOSTS', 'deploy workflow must support optional pinned known_hosts secret');
+requireIncludes(deployWorkflow, 'Using pinned SSH known_hosts secret', 'deploy workflow must report pinned known_hosts use without printing values');
+requireIncludes(deployWorkflow, 'ssh-keyscan -T 10 -t "${key_type}"', 'deploy workflow must scan host keys by key type');
 requireIncludes(deployWorkflow, 'SSH host key scan attempt ${attempt}/6', 'deploy workflow must retry host key scans six times');
-requireIncludes(deployWorkflow, 'ssh-keyscan -4 -T 30', 'deploy workflow must include IPv4 host key scan fallback');
+requireIncludes(deployWorkflow, 'for key_type in ed25519 ecdsa rsa', 'deploy workflow must scan key types sequentially');
+requireIncludes(deployWorkflow, 'ssh-keyscan -4 -T 10 -t "${key_type}"', 'deploy workflow must include IPv4 host key scan fallback');
 requireIncludes(deployWorkflow, 'if test -s ~/.ssh/known_hosts.tmp; then', 'deploy workflow must accept non-empty keyscan output even if a scan command exits non-zero');
 requireIncludes(deployWorkflow, 'Remote SSH preflight', 'deploy workflow must include remote SSH preflight');
 requireIncludes(deployWorkflow, 'remote-preflight-ok', 'deploy workflow must report safe preflight success');
@@ -66,7 +69,9 @@ requireCondition(deployWorkflowPolicy.workflowPath === '.github/workflows/deploy
 requireCondition(deployWorkflowPolicy.staticCheck === 'scripts/check-deploy-workflow.mjs', 'deployWorkflowPolicy.staticCheck must point to this script');
 requireCondition(deployWorkflowPolicy.preflightBeforeBuild === true, 'deployWorkflowPolicy.preflightBeforeBuild must be true');
 requireCondition(deployWorkflowPolicy.strictHostKeyChecking === true, 'deployWorkflowPolicy.strictHostKeyChecking must be true');
+requireCondition(deployWorkflowPolicy.optionalPinnedKnownHostsSecret === 'SERVER_SSH_KNOWN_HOSTS', 'deployWorkflowPolicy.optionalPinnedKnownHostsSecret must document SERVER_SSH_KNOWN_HOSTS');
 requireCondition(deployWorkflowPolicy.hostKeyScanAttempts === 6, 'deployWorkflowPolicy.hostKeyScanAttempts must be 6');
+requireCondition(deployWorkflowPolicy.keyscanTimeoutSeconds === 10, 'deployWorkflowPolicy.keyscanTimeoutSeconds must be 10');
 requireCondition(deployWorkflowPolicy.acceptNonEmptyKeyscanOutput === true, 'deployWorkflowPolicy.acceptNonEmptyKeyscanOutput must be true');
 requireCondition(deployWorkflowPolicy.ipv4KeyscanFallback === true, 'deployWorkflowPolicy.ipv4KeyscanFallback must be true');
 requireCondition(deployWorkflowPolicy.serverPortRangeValidation === true, 'deployWorkflowPolicy.serverPortRangeValidation must be true');
@@ -78,8 +83,13 @@ requireCondition(deployWorkflowPolicy.rollbackOnHealthFailure === true, 'deployW
 requireCondition(deployWorkflowPolicy.rollbackFailureKeepsWorkflowFailed === true, 'deployWorkflowPolicy.rollbackFailureKeepsWorkflowFailed must be true');
 requireCondition(deployWorkflowPolicy.noRawLogDump === true, 'deployWorkflowPolicy.noRawLogDump must be true');
 requireCondition(deployWorkflowPolicy.runnerCleanupAlways === true, 'deployWorkflowPolicy.runnerCleanupAlways must be true');
-requireCondition(deployWorkflowPolicy.noNewSecrets === true, 'deployWorkflowPolicy.noNewSecrets must be true');
+requireCondition(deployWorkflowPolicy.noNewRequiredSecrets === true, 'deployWorkflowPolicy.noNewRequiredSecrets must be true');
+requireCondition(deployWorkflowPolicy.optionalPinnedKnownHostsOnly === true, 'deployWorkflowPolicy.optionalPinnedKnownHostsOnly must be true');
 requireCondition(deployWorkflowPolicy.noSecretValueLogging === true, 'deployWorkflowPolicy.noSecretValueLogging must be true');
+const keyscanTypes = new Set(Array.isArray(deployWorkflowPolicy.keyscanTypes) ? deployWorkflowPolicy.keyscanTypes : []);
+for (const keyType of ['ed25519', 'ecdsa', 'rsa']) {
+  requireCondition(keyscanTypes.has(keyType), `deployWorkflowPolicy.keyscanTypes must include ${keyType}`);
+}
 const remoteChecks = new Set(Array.isArray(deployWorkflowPolicy.remoteCapabilityChecks) ? deployWorkflowPolicy.remoteCapabilityChecks : []);
 for (const check of ['git', 'curl', 'gzip', 'docker', 'docker-compose', 'deploy-path', 'standalone-env', 'tmp-write']) {
   requireCondition(remoteChecks.has(check), `deployWorkflowPolicy.remoteCapabilityChecks must include ${check}`);
