@@ -194,7 +194,7 @@ async function validateTauriScaffold(tauri) {
 
 async function validateBuildPrerequisites(spec) {
   const prerequisiteIds = new Set((Array.isArray(spec.buildPrerequisites) ? spec.buildPrerequisites : []).map((prerequisite) => prerequisite.id));
-  for (const id of ['node', 'npm', 'rust', 'cargo', 'xcode-command-line-tools', 'windows-runner']) {
+  for (const id of ['node', 'npm', 'go', 'rust', 'cargo', 'xcode-command-line-tools', 'windows-runner']) {
     requireCondition(prerequisiteIds.has(id), `buildPrerequisites must include ${id}`);
   }
 
@@ -208,10 +208,10 @@ async function validateBuildPrerequisites(spec) {
       .filter((prerequisite) => Array.isArray(prerequisite.requiredFor) && prerequisite.requiredFor.includes('windows'))
       .map((prerequisite) => prerequisite.id)
   );
-  for (const id of ['node', 'npm', 'rust', 'cargo', 'xcode-command-line-tools']) {
+  for (const id of ['node', 'npm', 'go', 'rust', 'cargo', 'xcode-command-line-tools']) {
     requireCondition(macPrerequisites.has(id), `macos buildPrerequisites must include ${id}`);
   }
-  for (const id of ['node', 'npm', 'rust', 'cargo', 'windows-runner']) {
+  for (const id of ['node', 'npm', 'go', 'rust', 'cargo', 'windows-runner']) {
     requireCondition(windowsPrerequisites.has(id), `windows buildPrerequisites must include ${id}`);
   }
 
@@ -346,6 +346,7 @@ async function validateBuildPrerequisites(spec) {
 
   requireCondition(desktopReadme.includes('BUILD_PREREQUISITES.md'), 'desktop README must link build prerequisites');
   requireCondition(prerequisitesDoc.includes('Rust and Cargo'), 'desktop build prerequisites doc must mention Rust and Cargo');
+  requireCondition(prerequisitesDoc.includes('Go'), 'desktop build prerequisites doc must mention Go');
   requireCondition(prerequisitesDoc.includes('Xcode Command Line Tools'), 'desktop build prerequisites doc must mention Xcode Command Line Tools');
   requireCondition(prerequisitesDoc.includes('Windows host or CI runner'), 'desktop build prerequisites doc must mention Windows host or CI runner');
   requireCondition(prerequisitesDoc.includes('Do not commit certificates'), 'desktop build prerequisites doc must state signing material is not committed');
@@ -773,6 +774,10 @@ async function validatePackageSmokeMatrix(spec) {
     'smoke_matrix:',
     'Build unsigned macOS dmg and Windows exe smoke matrix',
     'Validate unsigned smoke matrix mode',
+    'Setup Go',
+    'actions/setup-go@v5',
+    "go-version: '1.26.x'",
+    'cache: false',
     'if: ${{ inputs.smoke_matrix && inputs.signed }}',
     'smoke_matrix builds unsigned artifacts only; set signed=false.',
     'if: ${{ inputs.build_macos || inputs.smoke_matrix }}',

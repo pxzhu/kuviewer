@@ -36,7 +36,7 @@ The first real installer build should happen through the manual `desktop-package
 
 Build prerequisites, icon source policy, and signing boundaries are tracked in [BUILD_PREREQUISITES.md](BUILD_PREREQUISITES.md). The short version is:
 
-- Node.js/npm and Rust/Cargo are required for local Tauri builds.
+- Node.js/npm, Go, and Rust/Cargo are required for local Tauri builds.
 - macOS `.dmg` builds need Xcode Command Line Tools on macOS.
 - Windows `.exe` builds need a Windows host or CI runner for the NSIS target.
 - Desktop icons are generated from the transparent YAML Flow PNG and committed under `desktop/src-tauri/icons`.
