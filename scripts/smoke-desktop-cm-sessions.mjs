@@ -33,6 +33,7 @@ async function smokeDesktopRuntime(browser, url) {
       window.sessionStorage.removeItem('kuviewer_source_mode');
       window.__kuviewerCmSessions = [];
       window.__kuviewerCmRuntimeProfile = null;
+      window.__kuviewerCmRuntimeLost = false;
       window.__kuviewerDesktopInvocations = [];
       window.__TAURI__ = {
         core: {
@@ -182,6 +183,9 @@ async function smokeDesktopRuntime(browser, url) {
                 localPort: 18123,
                 status: 'runtime-active',
                 startedAt: now,
+                healthStatus: 'healthy',
+                lastHealthAt: now,
+                lastHealthMessage: 'healthz-ok',
               };
               window.__kuviewerCmSessions = window.__kuviewerCmSessions.map((item) => ({
                 ...item,
@@ -189,6 +193,28 @@ async function smokeDesktopRuntime(browser, url) {
                 status: item.id === session.id ? 'runtime-active' : item.status,
                 runtimeStatus: item.id === session.id ? 'runtime-active' : 'stopped',
               }));
+              return window.__kuviewerCmRuntimeProfile;
+            }
+            if (command === 'desktop_check_cm_session_runtime') {
+              if (!window.__kuviewerCmRuntimeProfile) {
+                return null;
+              }
+              if (window.__kuviewerCmRuntimeLost) {
+                const lostSessionId = window.__kuviewerCmRuntimeProfile.sessionId;
+                window.__kuviewerCmRuntimeProfile = null;
+                window.__kuviewerCmSessions = window.__kuviewerCmSessions.map((session) => ({
+                  ...session,
+                  status: session.id === lostSessionId ? 'runtime-lost' : session.status,
+                  runtimeStatus: session.id === lostSessionId ? 'runtime-lost' : session.runtimeStatus,
+                }));
+                return null;
+              }
+              window.__kuviewerCmRuntimeProfile = {
+                ...window.__kuviewerCmRuntimeProfile,
+                healthStatus: 'healthy',
+                lastHealthAt: Date.now(),
+                lastHealthMessage: 'healthz-ok',
+              };
               return window.__kuviewerCmRuntimeProfile;
             }
             if (command === 'desktop_stop_cm_session_runtime') {
@@ -237,11 +263,24 @@ async function smokeDesktopRuntime(browser, url) {
     }));
     requireCondition(runtimeState.profile?.serverUrl === 'http://127.0.0.1:18123', 'desktop CM runtime profile must use localhost tunnel URL');
     requireCondition(runtimeState.profile?.remoteApiHost === '127.0.0.1', 'desktop CM runtime profile must include remote API host metadata');
+    requireCondition(runtimeState.profile?.healthStatus === 'healthy', 'desktop CM runtime profile must include health status metadata');
     requireCondition(runtimeState.sourceMode === 'live', 'desktop CM runtime start must switch source mode to live');
+    await page.getByTestId(`desktop-cm-session-runtime-detail-${sessionId}`).waitFor({ state: 'visible', timeout: 10_000 });
+    await page.getByTestId(`desktop-cm-session-check-runtime-${sessionId}`).click();
+    await page.getByText('Prod CM health · 정상').waitFor({ state: 'visible', timeout: 10_000 });
     await page.getByTestId(`desktop-cm-session-stop-runtime-${sessionId}`).click();
     await page.getByText('CM/SSH runtime 중지됨').waitFor({ state: 'visible', timeout: 10_000 });
     const stoppedRuntimeProfile = await page.evaluate(() => window.sessionStorage.getItem('kuviewer_desktop_cm_runtime_profile'));
     requireCondition(stoppedRuntimeProfile === null, 'desktop CM runtime stop must clear the session runtime profile');
+    await page.getByTestId(`desktop-cm-session-start-runtime-${sessionId}`).click();
+    await page.getByText('Prod CM runtime 시작됨').waitFor({ state: 'visible', timeout: 10_000 });
+    await page.evaluate(() => {
+      window.__kuviewerCmRuntimeLost = true;
+    });
+    await page.getByTestId(`desktop-cm-session-check-runtime-${sessionId}`).click();
+    await page.getByText('CM/SSH runtime 끊김').waitFor({ state: 'visible', timeout: 10_000 });
+    const lostRuntimeProfile = await page.evaluate(() => window.sessionStorage.getItem('kuviewer_desktop_cm_runtime_profile'));
+    requireCondition(lostRuntimeProfile === null, 'desktop CM runtime lost must clear the session runtime profile');
     await page.getByTestId(`desktop-cm-session-delete-credential-${sessionId}`).click();
     await page.getByTestId(`desktop-cm-session-delete-credential-${sessionId}`).click();
     await page.getByText('Prod CM credential 삭제됨').waitFor({ state: 'visible', timeout: 10_000 });
@@ -277,7 +316,10 @@ async function smokeDesktopRuntime(browser, url) {
       'desktop_import_cm_session_private_key',
       'desktop_check_cm_session',
       'desktop_start_cm_session_runtime',
+      'desktop_check_cm_session_runtime',
       'desktop_stop_cm_session_runtime',
+      'desktop_start_cm_session_runtime',
+      'desktop_check_cm_session_runtime',
       'desktop_delete_cm_session_credential',
       'desktop_delete_cm_session',
     ]);

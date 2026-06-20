@@ -16,6 +16,7 @@ interface DesktopCmSessionPanelProps {
   onDeleteSessionCredential: (sessionId: string) => Promise<void>;
   onCheckSession: (sessionId: string) => Promise<void>;
   onImportPrivateKey: (sessionId: string, keyFilePath: string) => Promise<void>;
+  onCheckSessionRuntime: () => Promise<void>;
   onStartSessionRuntime: (sessionId: string) => Promise<void>;
   onStopSessionRuntime: () => Promise<void>;
   onSaveSession: (session: DesktopCmSessionInput) => Promise<void>;
@@ -40,6 +41,7 @@ export function DesktopCmSessionPanel({
   onDeleteSessionCredential,
   onCheckSession,
   onImportPrivateKey,
+  onCheckSessionRuntime,
   onStartSessionRuntime,
   onStopSessionRuntime,
   onSaveSession,
@@ -169,6 +171,18 @@ export function DesktopCmSessionPanel({
       await onStopSessionRuntime();
     } catch (requestError) {
       setError(formatCmSessionError(requestError instanceof Error ? requestError.message : 'desktop_cm_runtime_stop_failed'));
+    } finally {
+      setBusyAction('');
+    }
+  };
+
+  const handleCheckRuntime = async () => {
+    setError('');
+    setBusyAction('check-runtime');
+    try {
+      await onCheckSessionRuntime();
+    } catch (requestError) {
+      setError(formatCmSessionError(requestError instanceof Error ? requestError.message : 'desktop_cm_runtime_check_failed'));
     } finally {
       setBusyAction('');
     }
@@ -364,6 +378,31 @@ export function DesktopCmSessionPanel({
                   </span>
                 </span>
               </button>
+              {activeRuntimeSessionId === session.id && runtimeProfile ? (
+                <div
+                  className="grid gap-1 rounded-[8px] border border-[rgba(0,122,255,0.18)] bg-[rgba(0,122,255,0.07)] px-2.5 py-2 text-xs font-semibold text-[#0066cc]"
+                  data-testid={`desktop-cm-session-runtime-detail-${session.id}`}
+                >
+                  <div className="flex min-w-0 flex-wrap items-center gap-2">
+                    <span className={`ku-chip max-w-full ${runtimeProfile.healthStatus === 'healthy' ? 'border-[rgba(52,199,89,0.22)] bg-[rgba(52,199,89,0.1)] text-[#248a3d]' : 'border-[rgba(255,149,0,0.24)] bg-[rgba(255,149,0,0.12)] text-[#b05f00]'}`}>
+                      <Activity size={12} aria-hidden="true" />
+                      {formatRuntimeHealthStatus(runtimeProfile.healthStatus)}
+                    </span>
+                    <span className="truncate font-mono" title={runtimeProfile.serverUrl}>
+                      {runtimeProfile.serverUrl}
+                    </span>
+                  </div>
+                  <div className="truncate font-mono text-[rgba(0,78,140,0.78)]">
+                    remote {runtimeProfile.remoteApiHost}:{runtimeProfile.remoteApiPort}
+                  </div>
+                  <div className="flex min-w-0 flex-wrap items-center gap-2 text-[rgba(0,78,140,0.74)]">
+                    <span className="truncate">
+                      {runtimeProfile.lastHealthAt ? `health ${new Date(runtimeProfile.lastHealthAt).toLocaleTimeString()}` : 'health 미확인'}
+                    </span>
+                    {runtimeProfile.lastHealthMessage ? <span className="truncate">{runtimeProfile.lastHealthMessage}</span> : null}
+                  </div>
+                </div>
+              ) : null}
               <div className="grid gap-2">
                 <label className="min-w-0">
                   <span className="ku-meta">Private key path</span>
@@ -400,16 +439,28 @@ export function DesktopCmSessionPanel({
                     연결 확인
                   </button>
                   {activeRuntimeSessionId === session.id ? (
-                    <button
-                      className="ku-control w-fit text-[11px]"
-                      data-testid={`desktop-cm-session-stop-runtime-${session.id}`}
-                      type="button"
-                      disabled={busyAction === 'stop-runtime'}
-                      onClick={() => void handleStopRuntime()}
-                    >
-                      <Square size={13} aria-hidden="true" />
-                      runtime 중지
-                    </button>
+                    <>
+                      <button
+                        className="ku-control w-fit text-[11px]"
+                        data-testid={`desktop-cm-session-check-runtime-${session.id}`}
+                        type="button"
+                        disabled={busyAction === 'check-runtime'}
+                        onClick={() => void handleCheckRuntime()}
+                      >
+                        <Activity size={13} aria-hidden="true" />
+                        health 재확인
+                      </button>
+                      <button
+                        className="ku-control w-fit text-[11px]"
+                        data-testid={`desktop-cm-session-stop-runtime-${session.id}`}
+                        type="button"
+                        disabled={busyAction === 'stop-runtime'}
+                        onClick={() => void handleStopRuntime()}
+                      >
+                        <Square size={13} aria-hidden="true" />
+                        runtime 중지
+                      </button>
+                    </>
                   ) : (
                     <button
                       className="ku-control w-fit text-[11px]"
@@ -555,5 +606,18 @@ function formatCmSessionCheckStatus(status: string) {
       return '확인 안 됨';
     default:
       return status || '확인 안 됨';
+  }
+}
+
+function formatRuntimeHealthStatus(status: string) {
+  switch (status) {
+    case 'healthy':
+      return 'health 정상';
+    case 'unhealthy':
+      return 'health 실패';
+    case 'unknown':
+      return 'health 미확인';
+    default:
+      return status || 'health 미확인';
   }
 }

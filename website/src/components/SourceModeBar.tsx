@@ -42,6 +42,7 @@ interface SourceModeBarProps {
   onDesktopCmSessionCredentialDelete: (sessionId: string) => Promise<void>;
   onDesktopCmSessionCheck: (sessionId: string) => Promise<void>;
   onDesktopCmSessionPrivateKeyImport: (sessionId: string, keyFilePath: string) => Promise<void>;
+  onDesktopCmSessionRuntimeCheck: () => Promise<void>;
   onDesktopCmSessionRuntimeStart: (sessionId: string) => Promise<void>;
   onDesktopCmSessionRuntimeStop: () => Promise<void>;
   onDesktopCmSessionSave: (session: DesktopCmSessionInput) => Promise<void>;
@@ -79,6 +80,7 @@ export function SourceModeBar({
   onDesktopCmSessionCredentialDelete,
   onDesktopCmSessionCheck,
   onDesktopCmSessionPrivateKeyImport,
+  onDesktopCmSessionRuntimeCheck,
   onDesktopCmSessionRuntimeStart,
   onDesktopCmSessionRuntimeStop,
   onDesktopCmSessionSave,
@@ -257,6 +259,7 @@ export function SourceModeBar({
           onDeleteSessionCredential={onDesktopCmSessionCredentialDelete}
           onCheckSession={onDesktopCmSessionCheck}
           onImportPrivateKey={onDesktopCmSessionPrivateKeyImport}
+          onCheckSessionRuntime={onDesktopCmSessionRuntimeCheck}
           onStartSessionRuntime={onDesktopCmSessionRuntimeStart}
           onStopSessionRuntime={onDesktopCmSessionRuntimeStop}
           onSaveSession={onDesktopCmSessionSave}
