@@ -11,6 +11,7 @@ const deployPreflightWorkflow = await readTextFile('.github/workflows/deploy-pre
 const deployKnownHostsBootstrapWorkflow = await readTextFile('.github/workflows/deploy-known-hosts-bootstrap.yml');
 const ciWorkflow = await readTextFile('.github/workflows/ci.yml');
 const knownHostsHelper = await readTextFile('scripts/prepare-deploy-known-hosts.mjs');
+const sshBannerHelper = await readTextFile('scripts/check-ssh-banner.mjs');
 const packagingSpec = JSON.parse(await readTextFile('desktop/packaging-spec.json'));
 
 requireIncludes(deployWorkflow, 'Validate required secrets', 'deploy workflow must validate required secrets');
@@ -27,6 +28,7 @@ requireIncludes(deployWorkflow, 'ssh-tcp-unreachable; verify SERVER_FHOST/SERVER
 requireIncludes(deployWorkflow, ':</dev/tcp/"$0"/"$1"', 'deploy workflow must use a TCP socket probe before keyscan');
 requireIncludes(deployWorkflow, 'ssh-banner-received', 'deploy workflow must report safe SSH banner success');
 requireIncludes(deployWorkflow, 'ssh-banner-timeout; TCP opened but SSH banner was not received', 'deploy workflow must fail fast when TCP opens but SSH banner is unavailable');
+requireIncludes(deployWorkflow, 'ssh-banner-action; verify SERVER_PORT points to SSH', 'deploy workflow must explain SSH banner timeout remediation safely');
 requireIncludes(deployWorkflow, 'case "$banner" in SSH-*)', 'deploy workflow must verify SSH banner before keyscan');
 requireIncludes(deployWorkflow, 'SERVER_SSH_KNOWN_HOSTS variable present', 'deploy workflow must report known_hosts variable presence safely');
 requireIncludes(deployWorkflow, 'KNOWN_HOSTS_PIN="${{ secrets.SERVER_SSH_KNOWN_HOSTS || vars.SERVER_SSH_KNOWN_HOSTS }}"', 'deploy workflow must prefer known_hosts secret and fall back to variable');
@@ -94,6 +96,7 @@ requireIncludes(deployPreflightWorkflow, 'ssh-tcp-unreachable; verify SERVER_FHO
 requireIncludes(deployPreflightWorkflow, ':</dev/tcp/"$0"/"$1"', 'deploy preflight workflow must use a TCP socket probe before keyscan');
 requireIncludes(deployPreflightWorkflow, 'ssh-banner-received', 'deploy preflight workflow must report safe SSH banner success');
 requireIncludes(deployPreflightWorkflow, 'ssh-banner-timeout; TCP opened but SSH banner was not received', 'deploy preflight workflow must fail fast when TCP opens but SSH banner is unavailable');
+requireIncludes(deployPreflightWorkflow, 'ssh-banner-action; verify SERVER_PORT points to SSH', 'deploy preflight workflow must explain SSH banner timeout remediation safely');
 requireIncludes(deployPreflightWorkflow, 'case "$banner" in SSH-*)', 'deploy preflight workflow must verify SSH banner before keyscan');
 requireIncludes(deployPreflightWorkflow, 'KNOWN_HOSTS_PIN="${{ secrets.SERVER_SSH_KNOWN_HOSTS || vars.SERVER_SSH_KNOWN_HOSTS }}"', 'deploy preflight workflow must prefer known_hosts secret and fall back to variable');
 requireIncludes(deployPreflightWorkflow, 'Using pinned SSH known_hosts input', 'deploy preflight workflow must use pinned known_hosts when present');
@@ -122,6 +125,7 @@ requireNotIncludes(deployKnownHostsBootstrapWorkflow, 'printf \'%s\\n\' "${{ sec
 requireIncludes(deployKnownHostsBootstrapWorkflow, 'ssh-tcp-reachable', 'known_hosts bootstrap workflow must probe SSH TCP reachability');
 requireIncludes(deployKnownHostsBootstrapWorkflow, 'ssh-banner-received', 'known_hosts bootstrap workflow must report safe SSH banner success');
 requireIncludes(deployKnownHostsBootstrapWorkflow, 'ssh-banner-timeout; TCP opened but SSH banner was not received', 'known_hosts bootstrap workflow must fail fast when TCP opens but SSH banner is unavailable');
+requireIncludes(deployKnownHostsBootstrapWorkflow, 'ssh-banner-action; verify SERVER_PORT points to SSH', 'known_hosts bootstrap workflow must explain SSH banner timeout remediation safely');
 requireIncludes(deployKnownHostsBootstrapWorkflow, 'case "$banner" in SSH-*)', 'known_hosts bootstrap workflow must verify SSH banner before key capture');
 requireIncludes(deployKnownHostsBootstrapWorkflow, 'ssh-keyscan -4 -T 10 -t "${key_type}"', 'known_hosts bootstrap workflow must try IPv4 ssh-keyscan first');
 requireIncludes(deployKnownHostsBootstrapWorkflow, 'ssh-keyscan -T 10 -t "${key_type}"', 'known_hosts bootstrap workflow must try normal ssh-keyscan fallback');
@@ -150,6 +154,12 @@ requireIncludes(knownHostsHelper, 'renderKnownHostsFromPublicKeys', 'known_hosts
 requireIncludes(knownHostsHelper, 'console.log(`known_hosts entries:', 'known_hosts helper must print safe summary counts');
 requireNotIncludes(knownHostsHelper, 'console.log(knownHosts', 'known_hosts helper must not print known_hosts body');
 
+requireIncludes(sshBannerHelper, 'ssh-banner-received', 'SSH banner helper must report successful SSH banner receipt');
+requireIncludes(sshBannerHelper, 'ssh-banner-timeout; TCP opened but SSH banner was not received', 'SSH banner helper must report banner timeout safely');
+requireIncludes(sshBannerHelper, 'ssh-tcp-unreachable', 'SSH banner helper must report TCP errors safely');
+requireIncludes(sshBannerHelper, '--host <host>', 'SSH banner helper must document host usage');
+requireNotIncludes(sshBannerHelper, 'SERVER_SSH_KEY', 'SSH banner helper must not use deploy private keys');
+
 const deployWorkflowPolicy = packagingSpec.deployWorkflowPolicy || {};
 requireCondition(deployWorkflowPolicy.status === 'rollback-observability-hardened', 'deployWorkflowPolicy.status must be rollback-observability-hardened');
 requireCondition(deployWorkflowPolicy.workflowPath === '.github/workflows/deploy.yml', 'deployWorkflowPolicy.workflowPath must point to deploy workflow');
@@ -164,6 +174,8 @@ requireCondition(deployWorkflowPolicy.knownHostsHelper === 'scripts/prepare-depl
 requireCondition(deployWorkflowPolicy.knownHostsHelperSupportsPublicKeyFiles === true, 'deployWorkflowPolicy.knownHostsHelperSupportsPublicKeyFiles must be true');
 requireCondition(deployWorkflowPolicy.sshTcpReachabilityProbe === true, 'deployWorkflowPolicy.sshTcpReachabilityProbe must be true');
 requireCondition(deployWorkflowPolicy.sshBannerProbe === true, 'deployWorkflowPolicy.sshBannerProbe must be true');
+requireCondition(deployWorkflowPolicy.sshBannerDiagnosticHelper === 'scripts/check-ssh-banner.mjs', 'deployWorkflowPolicy.sshBannerDiagnosticHelper must document the helper script');
+requireCondition(deployWorkflowPolicy.sshBannerTimeoutGuidance === true, 'deployWorkflowPolicy.sshBannerTimeoutGuidance must be true');
 requireCondition(deployWorkflowPolicy.hostKeyScanAttempts === 6, 'deployWorkflowPolicy.hostKeyScanAttempts must be 6');
 requireCondition(deployWorkflowPolicy.keyscanTimeoutSeconds === 10, 'deployWorkflowPolicy.keyscanTimeoutSeconds must be 10');
 requireCondition(deployWorkflowPolicy.acceptNonEmptyKeyscanOutput === true, 'deployWorkflowPolicy.acceptNonEmptyKeyscanOutput must be true');

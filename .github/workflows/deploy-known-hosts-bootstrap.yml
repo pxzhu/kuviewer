@@ -70,6 +70,7 @@ jobs:
             echo "ssh-banner-received"
           else
             echo "ssh-banner-timeout; TCP opened but SSH banner was not received"
+            echo "ssh-banner-action; verify SERVER_PORT points to SSH, sshd is listening, network security rules allow GitHub runners, and no proxy/tarpit delays the SSH banner"
             exit 1
           fi
 

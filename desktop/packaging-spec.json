@@ -35,6 +35,8 @@
     "knownHostsHelperSupportsPublicKeyFiles": true,
     "sshTcpReachabilityProbe": true,
     "sshBannerProbe": true,
+    "sshBannerDiagnosticHelper": "scripts/check-ssh-banner.mjs",
+    "sshBannerTimeoutGuidance": true,
     "hostKeyScanAttempts": 6,
     "keyscanTimeoutSeconds": 10,
     "keyscanTypes": ["ed25519", "ecdsa", "rsa"],
