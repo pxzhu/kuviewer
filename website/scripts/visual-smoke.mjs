@@ -209,8 +209,44 @@ async function verifyResourceExplorer(page) {
   await expect(page.getByRole('heading', { name: 'Relations' })).toBeVisible({ timeout: 10_000 });
   await expect(page.getByRole('heading', { name: 'Events' })).toBeVisible({ timeout: 10_000 });
   await expect(page.getByRole('heading', { name: 'Logs' })).toBeVisible({ timeout: 10_000 });
+  await verifyResourceDetailSectionControls(page);
   await expect(page.getByText('표시할 이벤트가 없습니다')).toBeVisible({ timeout: 10_000 });
   await expect(page.getByText(/Secret value 숨김/)).toBeVisible({ timeout: 10_000 });
+}
+
+async function verifyResourceDetailSectionControls(page) {
+  await expect(page.getByTestId('resource-detail-kind-chip')).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByTestId('resource-detail-name-chip')).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByTestId('resource-detail-cluster-chip')).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByTestId('resource-detail-active-section')).toContainText('현재 Metadata', { timeout: 10_000 });
+  await expect(page.getByTestId('resource-detail-open-section-count')).toContainText('열린 섹션 5 / 9', { timeout: 10_000 });
+  await expect(page.getByTestId('resource-detail-section-body-metadata')).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByTestId('resource-detail-section-body-events')).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByTestId('resource-detail-section-body-yaml')).toHaveCount(0);
+
+  await page.getByTestId('resource-detail-collapse-all').click();
+  await expect(page.getByTestId('resource-detail-open-section-count')).toContainText('열린 섹션 0 / 9', { timeout: 10_000 });
+  await expect(page.getByTestId('resource-detail-collapse-all')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByTestId('resource-detail-section-body-metadata')).toHaveCount(0);
+  await expect(page.getByTestId('resource-detail-section-body-events')).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'Metadata' })).toBeVisible({ timeout: 10_000 });
+
+  await page.getByTestId('resource-detail-expand-all').click();
+  await expect(page.getByTestId('resource-detail-open-section-count')).toContainText('열린 섹션 9 / 9', { timeout: 10_000 });
+  await expect(page.getByTestId('resource-detail-expand-all')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByTestId('resource-detail-section-body-yaml')).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByTestId('resource-detail-section-body-labels')).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByTestId('resource-detail-section-body-logs')).toBeVisible({ timeout: 10_000 });
+
+  await page.getByTestId('resource-detail-reset-sections').click();
+  await expect(page.getByTestId('resource-detail-open-section-count')).toContainText('열린 섹션 5 / 9', { timeout: 10_000 });
+  await expect(page.getByTestId('resource-detail-reset-sections')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByTestId('resource-detail-section-body-metadata')).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByTestId('resource-detail-section-body-events')).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByTestId('resource-detail-section-body-yaml')).toHaveCount(0);
+  await expect(page.getByTestId('resource-detail-section-body-labels')).toHaveCount(0);
+  await expect(page.getByTestId('resource-detail-section-body-annotations')).toHaveCount(0);
+  await expect(page.getByTestId('resource-detail-section-body-logs')).toHaveCount(0);
 }
 
 async function verifyResourceViewConflictImport(page) {
