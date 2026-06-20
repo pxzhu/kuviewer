@@ -179,6 +179,7 @@ requireIncludes(sshEndpointDiagnosticsHelper, 'diagnostics-credentials: none', '
 requireIncludes(sshEndpointDiagnosticsHelper, 'ssh-banner-detected', 'SSH endpoint diagnostics helper must detect SSH banners');
 requireIncludes(sshEndpointDiagnosticsHelper, 'http-response-detected', 'SSH endpoint diagnostics helper must detect HTTP responses');
 requireIncludes(sshEndpointDiagnosticsHelper, 'tls-handshake-detected', 'SSH endpoint diagnostics helper must detect TLS handshakes');
+requireIncludes(sshEndpointDiagnosticsHelper, 'net.isIP(host) === 0', 'SSH endpoint diagnostics helper must avoid TLS SNI warnings for IP hosts');
 requireIncludes(sshEndpointDiagnosticsHelper, '--host <host>', 'SSH endpoint diagnostics helper must document host usage');
 requireNotIncludes(sshEndpointDiagnosticsHelper, 'SERVER_SSH_KEY', 'SSH endpoint diagnostics helper must not use deploy private keys');
 
