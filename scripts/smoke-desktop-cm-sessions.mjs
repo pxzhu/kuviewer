@@ -299,6 +299,16 @@ async function smokeDesktopRuntime(browser, url) {
     await page.getByTestId('desktop-cm-session-search-count').waitFor({ state: 'visible', timeout: 10_000 });
     let sessionSearchCount = await page.getByTestId('desktop-cm-session-search-count').textContent();
     requireCondition(sessionSearchCount?.includes('1 / 전체 1'), 'desktop CM session search count must include visible and total session counts');
+    await page.getByTestId('desktop-cm-session-diagnostic-stage-filter').selectOption('metadata');
+    sessionSearchCount = await page.getByTestId('desktop-cm-session-search-count').textContent();
+    requireCondition(sessionSearchCount?.includes('1 / 전체 1'), 'desktop CM diagnostic stage filter must match metadata sessions');
+    await page.getByTestId('desktop-cm-session-diagnostic-severity-filter').selectOption('error');
+    await page.getByTestId('desktop-cm-session-search-empty').waitFor({ state: 'visible', timeout: 10_000 });
+    sessionSearchCount = await page.getByTestId('desktop-cm-session-search-count').textContent();
+    requireCondition(sessionSearchCount?.includes('0 / 전체 1'), 'desktop CM diagnostic severity filter must hide non-error sessions');
+    await page.getByTestId('desktop-cm-session-diagnostic-filter-clear').click();
+    sessionSearchCount = await page.getByTestId('desktop-cm-session-search-count').textContent();
+    requireCondition(sessionSearchCount?.includes('1 / 전체 1'), 'desktop CM diagnostic filter clear must restore visible sessions');
     await page.getByTestId('desktop-cm-session-search').fill('prod');
     sessionSearchCount = await page.getByTestId('desktop-cm-session-search-count').textContent();
     requireCondition(sessionSearchCount?.includes('1 / 전체 1'), 'desktop CM session search must match session name metadata');
@@ -333,6 +343,10 @@ async function smokeDesktopRuntime(browser, url) {
     diagnosticStage = await page.getByTestId('desktop-cm-session-summary-diagnostics-stage').textContent();
     requireCondition(diagnosticStage?.includes('credential'), 'desktop CM diagnostics must show credential stage after private key import');
     requireCondition(diagnosticMessage?.includes('private-key-imported'), 'desktop CM diagnostics must show safe credential import message');
+    await page.getByTestId('desktop-cm-session-diagnostic-stage-filter').selectOption('credential');
+    sessionSearchCount = await page.getByTestId('desktop-cm-session-search-count').textContent();
+    requireCondition(sessionSearchCount?.includes('1 / 전체 1'), 'desktop CM diagnostic stage filter must match credential diagnostics');
+    await page.getByTestId('desktop-cm-session-diagnostic-filter-clear').click();
     await page.getByTestId(`desktop-cm-session-check-${sessionId}`).click();
     await page.getByText('Prod CM 확인 · 연결 가능').waitFor({ state: 'visible', timeout: 10_000 });
     diagnosticMessage = await page.getByTestId('desktop-cm-session-summary-diagnostics-message').textContent();
@@ -442,6 +456,10 @@ async function smokeDesktopRuntime(browser, url) {
     diagnosticStage = await page.getByTestId('desktop-cm-session-summary-diagnostics-stage').textContent();
     requireCondition(diagnosticStage?.includes('health'), 'desktop CM diagnostics must show health stage after runtime start');
     requireCondition(diagnosticMessage?.includes('healthz-ok'), 'desktop CM diagnostics must show safe health message');
+    await page.getByTestId('desktop-cm-session-diagnostic-stage-filter').selectOption('health');
+    sessionSearchCount = await page.getByTestId('desktop-cm-session-search-count').textContent();
+    requireCondition(sessionSearchCount?.includes('1 / 전체 2'), 'desktop CM diagnostic stage filter must prefer active runtime diagnostics');
+    await page.getByTestId('desktop-cm-session-diagnostic-filter-clear').click();
     const runtimeState = await page.evaluate(() => ({
       profile: JSON.parse(window.sessionStorage.getItem('kuviewer_desktop_cm_runtime_profile') || 'null'),
       sourceMode: window.sessionStorage.getItem('kuviewer_source_mode'),
@@ -476,6 +494,11 @@ async function smokeDesktopRuntime(browser, url) {
     diagnosticStage = await page.getByTestId('desktop-cm-session-summary-diagnostics-stage').textContent();
     requireCondition(diagnosticStage?.includes('runtime'), 'desktop CM diagnostics must show runtime stage after lost runtime');
     requireCondition(diagnosticMessage?.includes('runtime-lost'), 'desktop CM diagnostics must show runtime-lost message');
+    await page.getByTestId('desktop-cm-session-diagnostic-stage-filter').selectOption('runtime');
+    await page.getByTestId('desktop-cm-session-diagnostic-severity-filter').selectOption('error');
+    sessionSearchCount = await page.getByTestId('desktop-cm-session-search-count').textContent();
+    requireCondition(sessionSearchCount?.includes('1 / 전체 2'), 'desktop CM diagnostic filters must match runtime error diagnostics');
+    await page.getByTestId('desktop-cm-session-diagnostic-filter-clear').click();
     await page.getByTestId('desktop-cm-session-search').fill('runtime-lost');
     sessionSearchCount = await page.getByTestId('desktop-cm-session-search-count').textContent();
     requireCondition(sessionSearchCount?.includes('1 / 전체 2'), 'desktop CM session search must match runtime diagnostic message');

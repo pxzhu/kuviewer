@@ -172,7 +172,8 @@ https://kuviewer.example.com/
    - Desktop installer/download release path de-scope는 완료됐다.
    - Desktop CM advanced diagnostics는 완료됐다.
    - Desktop CM session export/import는 완료됐다.
-   - 다음 확장 후보는 Desktop CM diagnostics filtering이다.
+   - Desktop CM diagnostics filtering은 완료됐다.
+   - 다음 확장 후보는 Desktop CM diagnostics saved filters 또는 CM session connection profile polish이다.
 
 4. 실제 Kubernetes 연결 설계
    - 브라우저에 kube credential을 직접 넣지 않는 방향 유지.
