@@ -246,6 +246,7 @@ async function verifyResourceDetailSectionControls(page) {
   await expect(page.getByTestId('resource-detail-cluster-chip')).toBeVisible({ timeout: 10_000 });
   await expect(page.getByTestId('resource-detail-active-section')).toContainText('현재 Metadata', { timeout: 10_000 });
   await expect(page.getByTestId('resource-detail-open-section-count')).toContainText('열린 섹션 5 / 9', { timeout: 10_000 });
+  await expect(page.getByTestId('resource-detail-keyboard-hint')).toContainText('J/K 이동', { timeout: 10_000 });
   await expect(page.getByTestId('resource-detail-section-navigator')).toBeVisible({ timeout: 10_000 });
   await expect(page.getByTestId('resource-detail-section-navigator-count')).toContainText('5 open', { timeout: 10_000 });
   await expect(page.getByTestId('resource-detail-section-nav-item-metadata')).toHaveAttribute('aria-current', 'true');
@@ -292,6 +293,47 @@ async function verifyResourceDetailSectionControls(page) {
   await expect(page.getByTestId('resource-detail-section-body-labels')).toHaveCount(0);
   await expect(page.getByTestId('resource-detail-section-body-annotations')).toHaveCount(0);
   await expect(page.getByTestId('resource-detail-section-body-logs')).toHaveCount(0);
+
+  await page.getByTestId('resource-detail-panel').focus();
+  await page.keyboard.press('j');
+  await expect(page.getByTestId('resource-detail-active-section')).toContainText('현재 Status', { timeout: 10_000 });
+  await expect(page.getByTestId('resource-detail-section-nav-item-status')).toHaveAttribute('aria-current', 'true');
+  await page.keyboard.press('k');
+  await expect(page.getByTestId('resource-detail-active-section')).toContainText('현재 Metadata', { timeout: 10_000 });
+  await page.keyboard.press('3');
+  await expect(page.getByTestId('resource-detail-active-section')).toContainText('현재 Safe Preview', { timeout: 10_000 });
+  await expect(page.getByTestId('resource-detail-section-body-safe')).toBeVisible({ timeout: 10_000 });
+  await page.keyboard.press('9');
+  await expect(page.getByTestId('resource-detail-active-section')).toContainText('현재 Logs', { timeout: 10_000 });
+  await expect(page.getByTestId('resource-detail-section-body-logs')).toBeVisible({ timeout: 10_000 });
+  await page.keyboard.press('o');
+  await expect(page.getByTestId('resource-detail-section-nav-state-logs')).toContainText('closed', { timeout: 10_000 });
+  await expect(page.getByTestId('resource-detail-section-body-logs')).toHaveCount(0);
+  await page.keyboard.press('o');
+  await expect(page.getByTestId('resource-detail-section-nav-state-logs')).toContainText('open', { timeout: 10_000 });
+  await expect(page.getByTestId('resource-detail-section-body-logs')).toBeVisible({ timeout: 10_000 });
+  await page.keyboard.press('c');
+  await expect(page.getByTestId('resource-detail-open-section-count')).toContainText('열린 섹션 0 / 9', { timeout: 10_000 });
+  await page.keyboard.press('e');
+  await expect(page.getByTestId('resource-detail-open-section-count')).toContainText('열린 섹션 9 / 9', { timeout: 10_000 });
+  await page.keyboard.press('r');
+  await expect(page.getByTestId('resource-detail-open-section-count')).toContainText('열린 섹션 5 / 9', { timeout: 10_000 });
+  await page.keyboard.press('3');
+  await expect(page.getByTestId('resource-detail-active-section')).toContainText('현재 Safe Preview', { timeout: 10_000 });
+  await expect(page.getByTestId('resource-detail-section-safe')).toBeFocused({ timeout: 10_000 });
+  const safePreviewSearchInput = page.getByTestId('safe-preview-search-input');
+  await safePreviewSearchInput.focus();
+  await expect(safePreviewSearchInput).toBeFocused({ timeout: 10_000 });
+  await page.keyboard.press('j');
+  await page.keyboard.press('o');
+  await page.keyboard.press('e');
+  await page.keyboard.press('c');
+  await page.keyboard.press('r');
+  await page.keyboard.press('1');
+  await expect(page.getByTestId('resource-detail-active-section')).toContainText('현재 Safe Preview', { timeout: 10_000 });
+  await expect(safePreviewSearchInput).toHaveValue('joecr1');
+  await page.getByTestId('safe-preview-search-clear').click();
+  await expect(page.getByTestId('resource-key-value-row-safe').first()).toBeVisible({ timeout: 10_000 });
 }
 
 async function verifyResourceViewConflictImport(page) {

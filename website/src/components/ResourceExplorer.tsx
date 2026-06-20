@@ -2926,7 +2926,7 @@ function ResourceExplorerDetail({
     window.requestAnimationFrame(() => {
       const section = detailSectionRefs.current[id];
       section?.scrollIntoView({ block: 'start', behavior: 'smooth' });
-      section?.querySelector<HTMLButtonElement>('[data-detail-section-toggle="true"]')?.focus({ preventScroll: true });
+      section?.focus({ preventScroll: true });
     });
   };
   const moveDetailSection = (offset: number) => {
@@ -2935,18 +2935,44 @@ function ResourceExplorerDetail({
     focusDetailSection(detailKeyboardSections[nextIndex]);
   };
   const handleDetailShortcut = (event: globalThis.KeyboardEvent) => {
-    if (event.altKey || event.ctrlKey || event.metaKey || isEditableTarget(event.target)) {
+    const eventPath = event.composedPath();
+    const editableTargetHasFocus = Boolean(detailPanelRef.current?.querySelector('input:focus, select:focus, textarea:focus, button:focus, [contenteditable="true"]:focus'));
+    if (
+      event.altKey ||
+      event.ctrlKey ||
+      event.metaKey ||
+      editableTargetHasFocus ||
+      isEditableTarget(event.target) ||
+      isEditableTarget(document.activeElement) ||
+      eventPath.some((target) => isEditableTarget(target))
+    ) {
       return;
     }
-    if (event.key === 'j') {
+    const key = event.key.toLowerCase();
+    if (key === 'j') {
       event.preventDefault();
       moveDetailSection(1);
-    } else if (event.key === 'k') {
+    } else if (key === 'k') {
       event.preventDefault();
       moveDetailSection(-1);
-    } else if (event.key === 'o') {
+    } else if (key === 'o') {
       event.preventDefault();
       toggleSection(activeDetailSectionId);
+    } else if (key === 'e') {
+      event.preventDefault();
+      handleExpandAllDetailSections();
+    } else if (key === 'c') {
+      event.preventDefault();
+      handleCollapseAllDetailSections();
+    } else if (key === 'r') {
+      event.preventDefault();
+      handleResetDetailSections();
+    } else if (/^[1-9]$/.test(key)) {
+      const targetSection = detailKeyboardSections[Number(key) - 1];
+      if (targetSection) {
+        event.preventDefault();
+        focusDetailSection(targetSection);
+      }
     }
   };
   const setDetailSectionRef = (id: DetailSectionId) => (node: HTMLElement | null) => {
@@ -3298,6 +3324,7 @@ function ResourceExplorerDetail({
         detailPanelActiveRef.current = true;
       }}
       aria-label="리소스 상세 패널"
+      data-testid="resource-detail-panel"
     >
       <div className="border-b border-[rgba(60,60,67,0.12)] px-4 py-3">
         <div className="flex items-start justify-between gap-3">
@@ -3344,6 +3371,9 @@ function ResourceExplorerDetail({
             </span>
             <span className="ku-chip" data-testid="resource-detail-open-section-count">
               열린 섹션 {openDetailSectionCount} / {detailKeyboardSections.length}
+            </span>
+            <span className="ku-chip" data-testid="resource-detail-keyboard-hint" title="상세 패널에 포커스가 있을 때만 동작합니다">
+              J/K 이동 · O 열기 · E 펼치기 · C 접기 · R 기본 · 1-9 이동
             </span>
           </div>
           <div className="flex flex-wrap items-center justify-end gap-1.5">
@@ -6187,8 +6217,9 @@ function DetailSection({
   return (
     <section
       ref={sectionRef}
-      className={`rounded-[12px] border transition ${detailSectionToneClassName(active, tone)}`}
+      className={`rounded-[12px] border transition focus:outline-none focus:ring-2 focus:ring-[rgba(0,122,255,0.22)] ${detailSectionToneClassName(active, tone)}`}
       onFocusCapture={onFocusSection}
+      tabIndex={-1}
       data-testid={`resource-detail-section-${id}`}
     >
       <div className="flex items-center justify-between gap-2 px-3 py-2.5">
