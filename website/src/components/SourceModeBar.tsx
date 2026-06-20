@@ -38,6 +38,9 @@ interface SourceModeBarProps {
   onImportJson: (file: File) => void;
   onExportJson: () => void;
   onDesktopCmSessionDelete: (sessionId: string) => Promise<void>;
+  onDesktopCmSessionCredentialDelete: (sessionId: string) => Promise<void>;
+  onDesktopCmSessionCheck: (sessionId: string) => Promise<void>;
+  onDesktopCmSessionPrivateKeyImport: (sessionId: string, keyFilePath: string) => Promise<void>;
   onDesktopCmSessionSave: (session: DesktopCmSessionInput) => Promise<void>;
   onDesktopCmSessionSelect: (sessionId: string) => Promise<void>;
   onLiveUnlock: () => void;
@@ -69,6 +72,9 @@ export function SourceModeBar({
   onImportJson,
   onExportJson,
   onDesktopCmSessionDelete,
+  onDesktopCmSessionCredentialDelete,
+  onDesktopCmSessionCheck,
+  onDesktopCmSessionPrivateKeyImport,
   onDesktopCmSessionSave,
   onDesktopCmSessionSelect,
   onLiveUnlock,
@@ -241,6 +247,9 @@ export function SourceModeBar({
           message={desktopCmSessionMessage}
           sessions={desktopCmSessions}
           onDeleteSession={onDesktopCmSessionDelete}
+          onDeleteSessionCredential={onDesktopCmSessionCredentialDelete}
+          onCheckSession={onDesktopCmSessionCheck}
+          onImportPrivateKey={onDesktopCmSessionPrivateKeyImport}
           onSaveSession={onDesktopCmSessionSave}
           onSelectSession={onDesktopCmSessionSelect}
         />

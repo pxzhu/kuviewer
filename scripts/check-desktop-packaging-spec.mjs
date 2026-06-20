@@ -35,6 +35,7 @@ requireCondition(
     'desktop-native-credential-runtime-smoke',
     'desktop-package-smoke-matrix',
     'desktop-cm-ssh-sessions',
+    'desktop-cm-ssh-credential-check',
   ].includes(spec.status),
   'status must be a known desktop packaging milestone'
 );
@@ -78,6 +79,7 @@ requireCondition(phases.includes('native-credential-runtime-smoke'), 'phaseOrder
 requireCondition(phases.includes('desktop-package-smoke-matrix'), 'phaseOrder must include desktop-package-smoke-matrix');
 requireCondition(phases.includes('macos-dmg-build'), 'phaseOrder must include macos-dmg-build');
 requireCondition(phases.includes('windows-exe-build'), 'phaseOrder must include windows-exe-build');
+requireCondition(phases.includes('desktop-cm-ssh-credential-check'), 'phaseOrder must include desktop-cm-ssh-credential-check');
 
 await validateBuildPrerequisites(spec);
 await validateRemoteConnectionProfile(spec);
@@ -105,6 +107,7 @@ if (
     'desktop-native-credential-runtime-smoke',
     'desktop-package-smoke-matrix',
     'desktop-cm-ssh-sessions',
+    'desktop-cm-ssh-credential-check',
   ].includes(spec.status)
 ) {
   await validateTauriScaffold(spec.tauri || {});
@@ -799,20 +802,44 @@ async function validateCredentialStorageDesign(spec) {
 
 async function validateCmSshSessionManager(spec) {
   const manager = spec.cmSshSessionManager || {};
-  requireCondition(manager.status === 'scaffolded', 'cmSshSessionManager.status must be scaffolded');
+  requireCondition(manager.status === 'credential-check', 'cmSshSessionManager.status must be credential-check');
   requireCondition(manager.desktopOnly === true, 'cmSshSessionManager.desktopOnly must be true');
   requireCondition(manager.webExposed === false, 'cmSshSessionManager.webExposed must be false');
-  requireCondition(manager.storage === 'tauri-state-safe-metadata-only', 'cmSshSessionManager.storage must be tauri-state-safe-metadata-only');
-  requireCondition(manager.secretStorage === 'none-in-v1', 'cmSshSessionManager.secretStorage must be none-in-v1');
+  requireCondition(manager.storage === 'tauri-state-safe-metadata-with-os-credential-store', 'cmSshSessionManager.storage must be tauri-state-safe-metadata-with-os-credential-store');
+  requireCondition(manager.secretStorage === 'os-credential-store-private-key', 'cmSshSessionManager.secretStorage must be os-credential-store-private-key');
   requireCondition(manager.defaultPort === 22, 'cmSshSessionManager.defaultPort must be 22');
-  requireCondition(manager.actualSshConnection === false, 'cmSshSessionManager.actualSshConnection must be false for the metadata-only v1');
+  requireCondition(manager.actualSshConnection === true, 'cmSshSessionManager.actualSshConnection must be true for credential connection checks');
 
   const fields = new Set(Array.isArray(manager.safeMetadataFields) ? manager.safeMetadataFields : []);
-  for (const field of ['id', 'name', 'host', 'port', 'user', 'authType', 'status', 'updatedAt', 'selected', 'description']) {
+  for (const field of [
+    'id',
+    'name',
+    'host',
+    'port',
+    'user',
+    'authType',
+    'credentialStore',
+    'credentialAvailable',
+    'status',
+    'updatedAt',
+    'selected',
+    'description',
+    'lastCheckStatus',
+    'lastCheckAt',
+    'lastCheckMessage',
+  ]) {
     requireCondition(fields.has(field), `cmSshSessionManager.safeMetadataFields must include ${field}`);
   }
   const commands = new Set(Array.isArray(manager.commands) ? manager.commands : []);
-  for (const command of ['desktop_cm_sessions', 'desktop_save_cm_session', 'desktop_select_cm_session', 'desktop_delete_cm_session']) {
+  for (const command of [
+    'desktop_cm_sessions',
+    'desktop_save_cm_session',
+    'desktop_select_cm_session',
+    'desktop_delete_cm_session',
+    'desktop_import_cm_session_private_key',
+    'desktop_delete_cm_session_credential',
+    'desktop_check_cm_session',
+  ]) {
     requireCondition(commands.has(command), `cmSshSessionManager.commands must include ${command}`);
   }
   const hiddenPrototypeUi = new Set(Array.isArray(manager.hiddenPrototypeUi) ? manager.hiddenPrototypeUi : []);
@@ -828,10 +855,16 @@ async function validateCmSshSessionManager(spec) {
     'desktop_save_cm_session',
     'desktop_select_cm_session',
     'desktop_delete_cm_session',
+    'desktop_import_cm_session_private_key',
+    'desktop_delete_cm_session_credential',
+    'desktop_check_cm_session',
     'KUVIEWER_DESKTOP_CM_SESSION_HOST',
     'KUVIEWER_DESKTOP_ENABLE_PROTOTYPE_SIDECAR',
-    'metadata-only',
+    'credential-ready',
+    'MAX_DESKTOP_CM_PRIVATE_KEY_BYTES',
     'os-credential-store',
+    'read_desktop_cm_private_key_file',
+    'run_ssh_noop_check',
   ]) {
     requireCondition(mainRs.includes(marker), `desktop Tauri main must include ${marker}`);
   }
@@ -844,11 +877,17 @@ async function validateCmSshSessionManager(spec) {
     'saveDesktopCmSession',
     'selectDesktopCmSession',
     'deleteDesktopCmSession',
+    'importDesktopCmSessionPrivateKey',
+    'deleteDesktopCmSessionCredential',
+    'checkDesktopCmSession',
     'normalizeDesktopCmSessionHost',
     'desktop_cm_sessions',
     'desktop_save_cm_session',
     'desktop_select_cm_session',
     'desktop_delete_cm_session',
+    'desktop_import_cm_session_private_key',
+    'desktop_delete_cm_session_credential',
+    'desktop_check_cm_session',
   ]) {
     requireCondition(profileModule.includes(marker), `desktop frontend profile module must include ${marker}`);
   }
@@ -859,8 +898,10 @@ async function validateCmSshSessionManager(spec) {
     'desktop-cm-session-panel',
     'desktop-cm-session-save',
     'secret 저장 없음',
-    'credential store 후속',
-    'SSH 연결과 credential 저장은 다음 작업',
+    'credential store 사용',
+    'desktop-cm-session-import-key',
+    'desktop-cm-session-check',
+    'desktop-cm-session-delete-credential',
   ]) {
     requireCondition(sessionPanel.includes(marker), `desktop CM session panel must include ${marker}`);
   }
@@ -876,6 +917,9 @@ async function validateCmSshSessionManager(spec) {
     'saveDesktopCmSession',
     'selectDesktopCmSession',
     'deleteDesktopCmSession',
+    'importDesktopCmSessionPrivateKey',
+    'deleteDesktopCmSessionCredential',
+    'checkDesktopCmSession',
     'clearDesktopConnectionProfile',
     'desktopCmSessions',
   ]) {
@@ -890,9 +934,13 @@ async function validateCmSshSessionManager(spec) {
     'desktop_save_cm_session',
     'desktop_select_cm_session',
     'desktop_delete_cm_session',
+    'desktop_import_cm_session_private_key',
+    'desktop_delete_cm_session_credential',
+    'desktop_check_cm_session',
     'desktop-cm-session-panel',
     'web runtime must not expose desktop CM/SSH session UI',
     'desktop CM smoke must not store admin token',
+    'desktop CM smoke must not expose private key bodies',
   ]) {
     requireCondition(smokeScript.includes(marker), `desktop CM session smoke script must include ${marker}`);
   }
@@ -918,7 +966,8 @@ async function validateCmSshSessionManager(spec) {
     ['Codex handoff', handoff],
   ]) {
     requireCondition(text.includes('CM/SSH session manager'), `${label} must document the CM/SSH session manager`);
-    requireCondition(text.includes('metadata-only'), `${label} must document metadata-only CM/SSH sessions`);
+    requireCondition(text.includes('private key'), `${label} must document private key handling for CM/SSH sessions`);
+    requireCondition(text.includes('connection check') || text.includes('연결 확인'), `${label} must document CM/SSH connection checks`);
     requireCondition(text.includes('web app must not expose SSH'), `${label} must document that the web app must not expose SSH`);
   }
 }

@@ -34,10 +34,15 @@ export interface DesktopCmSession {
   port: number;
   user: string;
   authType: string;
+  credentialStore: string;
+  credentialAvailable: boolean;
   status: string;
   updatedAt: number;
   selected: boolean;
   description?: string;
+  lastCheckStatus: string;
+  lastCheckAt?: number;
+  lastCheckMessage?: string;
 }
 
 export interface DesktopCmSessionInput {
@@ -56,6 +61,7 @@ const maxCmSessionNameLength = 60;
 const maxCmSessionHostLength = 180;
 const maxCmSessionUserLength = 80;
 const maxCmSessionDescriptionLength = 160;
+const maxCmSessionKeyFilePathLength = 1024;
 
 type TauriInvoke = <Response>(command: string, args?: Record<string, unknown>) => Promise<Response>;
 
@@ -274,6 +280,51 @@ export async function deleteDesktopCmSession(sessionId: string): Promise<Desktop
   return sessions.map(parseDesktopCmSession).filter((session): session is DesktopCmSession => Boolean(session));
 }
 
+export async function importDesktopCmSessionPrivateKey(sessionId: string, keyFilePath: string): Promise<DesktopCmSession | null> {
+  if (!isDesktopRuntime()) {
+    return null;
+  }
+
+  const invoke = getTauriInvoke();
+  if (!invoke) {
+    return null;
+  }
+
+  const session = await invoke<unknown>('desktop_import_cm_session_private_key', {
+    sessionId: normalizeDesktopCmSessionId(sessionId),
+    keyFilePath: normalizeDesktopCmPrivateKeyPath(keyFilePath),
+  });
+  return parseDesktopCmSession(session);
+}
+
+export async function deleteDesktopCmSessionCredential(sessionId: string): Promise<DesktopCmSession | null> {
+  if (!isDesktopRuntime()) {
+    return null;
+  }
+
+  const invoke = getTauriInvoke();
+  if (!invoke) {
+    return null;
+  }
+
+  const session = await invoke<unknown>('desktop_delete_cm_session_credential', { sessionId: normalizeDesktopCmSessionId(sessionId) });
+  return parseDesktopCmSession(session);
+}
+
+export async function checkDesktopCmSession(sessionId: string): Promise<DesktopCmSession | null> {
+  if (!isDesktopRuntime()) {
+    return null;
+  }
+
+  const invoke = getTauriInvoke();
+  if (!invoke) {
+    return null;
+  }
+
+  const session = await invoke<unknown>('desktop_check_cm_session', { sessionId: normalizeDesktopCmSessionId(sessionId) });
+  return parseDesktopCmSession(session);
+}
+
 export function normalizeDesktopServerUrl(value: string) {
   const input = value.trim();
   if (!input) {
@@ -354,6 +405,10 @@ export function normalizeDesktopCmSessionId(value: string) {
   return id;
 }
 
+export function normalizeDesktopCmPrivateKeyPath(value: string) {
+  return normalizeBoundedText(value, maxCmSessionKeyFilePathLength, 'desktop_cm_private_key_path');
+}
+
 function parseDesktopKubernetesProfile(value: unknown): DesktopKubernetesProfile | null {
   if (!value || typeof value !== 'object') {
     return null;
@@ -413,12 +468,20 @@ function parseDesktopCmSession(value: unknown): DesktopCmSession | null {
       port: normalizeDesktopCmSessionPort(session.port),
       user: normalizeDesktopCmSessionUser(session.user),
       authType: session.authType.trim() || 'os-credential-store',
+      credentialStore: typeof session.credentialStore === 'string' && session.credentialStore.trim() ? session.credentialStore.trim() : 'os-credential-store',
+      credentialAvailable: typeof session.credentialAvailable === 'boolean' ? session.credentialAvailable : false,
       status: session.status.trim() || 'metadata-only',
       updatedAt: session.updatedAt,
       selected: session.selected,
       description:
         typeof session.description === 'string' && session.description.trim()
           ? normalizeBoundedText(session.description, maxCmSessionDescriptionLength, 'desktop_cm_session_description')
+          : undefined,
+      lastCheckStatus: typeof session.lastCheckStatus === 'string' && session.lastCheckStatus.trim() ? session.lastCheckStatus.trim() : 'not-checked',
+      lastCheckAt: typeof session.lastCheckAt === 'number' ? session.lastCheckAt : undefined,
+      lastCheckMessage:
+        typeof session.lastCheckMessage === 'string' && session.lastCheckMessage.trim()
+          ? normalizeBoundedText(session.lastCheckMessage, 120, 'desktop_cm_session_last_check_message')
           : undefined,
     };
   } catch {

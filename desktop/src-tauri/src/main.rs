@@ -1,9 +1,12 @@
 use serde::{Deserialize, Serialize};
 use std::fs::{self, OpenOptions};
-use std::io::Write;
+use std::io::{Read, Write};
+use std::net::{TcpStream, ToSocketAddrs};
 use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
 use std::sync::Mutex;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::thread;
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Manager, State};
 use tauri_plugin_shell::{
     process::{CommandChild, CommandEvent},
@@ -13,7 +16,9 @@ use tauri_plugin_shell::{
 const SIDECAR_SERVER_URL: &str = "http://127.0.0.1:18086";
 const SIDECAR_LISTEN_ADDR: &str = "127.0.0.1:18086";
 const DESKTOP_KUBE_CREDENTIAL_SERVICE: &str = "com.kuviewer.desktop.kubernetes";
+const DESKTOP_CM_SSH_CREDENTIAL_SERVICE: &str = "com.kuviewer.desktop.cm-ssh";
 const MAX_DESKTOP_KUBE_TOKEN_BYTES: u64 = 64 * 1024;
+const MAX_DESKTOP_CM_PRIVATE_KEY_BYTES: u64 = 128 * 1024;
 
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -46,10 +51,15 @@ struct DesktopCmSessionMetadata {
     port: u16,
     user: String,
     auth_type: String,
+    credential_store: String,
+    credential_available: bool,
     status: String,
     updated_at: u64,
     selected: bool,
     description: Option<String>,
+    last_check_status: String,
+    last_check_at: Option<u64>,
+    last_check_message: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -79,6 +89,11 @@ struct DesktopSidecarRuntimeConfig {
     kubernetes_profile_id: Option<String>,
     kube_api_server: Option<String>,
     kube_token_file: Option<PathBuf>,
+}
+
+struct DesktopCmSessionCheckOutcome {
+    status: String,
+    message: String,
 }
 
 #[tauri::command]
@@ -256,6 +271,16 @@ fn desktop_delete_cm_session(
         .lock()
         .map_err(|_| "desktop_cm_sessions_unavailable".to_string())?;
     let original_count = sessions.len();
+    let removed_session = sessions
+        .iter()
+        .find(|session| session.id == session_id)
+        .cloned()
+        .ok_or_else(|| "desktop_cm_session_not_found".to_string())?;
+    if removed_session.credential_available {
+        os_credential_store::delete_secret(DESKTOP_CM_SSH_CREDENTIAL_SERVICE, &session_id)?;
+    } else {
+        let _ = os_credential_store::delete_secret(DESKTOP_CM_SSH_CREDENTIAL_SERVICE, &session_id);
+    }
     sessions.retain(|session| session.id != session_id);
     if sessions.len() == original_count {
         return Err("desktop_cm_session_not_found".to_string());
@@ -266,6 +291,101 @@ fn desktop_delete_cm_session(
         }
     }
     Ok(sessions.clone())
+}
+
+#[tauri::command]
+fn desktop_import_cm_session_private_key(
+    session_id: String,
+    key_file_path: String,
+    state: State<'_, DesktopSidecarState>,
+) -> Result<DesktopCmSessionMetadata, String> {
+    let session_id = normalize_cm_session_id(&session_id)?;
+    let private_key = read_desktop_cm_private_key_file(&key_file_path)?;
+    os_credential_store::write_secret(DESKTOP_CM_SSH_CREDENTIAL_SERVICE, &session_id, &private_key)?;
+
+    let mut sessions = state
+        .cm_sessions
+        .lock()
+        .map_err(|_| "desktop_cm_sessions_unavailable".to_string())?;
+    let session = find_cm_session_mut(&mut sessions, &session_id)?;
+    session.credential_store = os_credential_store::store_name().to_string();
+    session.credential_available = true;
+    session.status = "credential-ready".to_string();
+    session.updated_at = current_unix_millis();
+    session.last_check_status = "credential-ready".to_string();
+    session.last_check_at = Some(session.updated_at);
+    session.last_check_message = Some("private-key-imported".to_string());
+    Ok(session.clone())
+}
+
+#[tauri::command]
+fn desktop_delete_cm_session_credential(
+    session_id: String,
+    state: State<'_, DesktopSidecarState>,
+) -> Result<DesktopCmSessionMetadata, String> {
+    let session_id = normalize_cm_session_id(&session_id)?;
+    os_credential_store::delete_secret(DESKTOP_CM_SSH_CREDENTIAL_SERVICE, &session_id)?;
+
+    let mut sessions = state
+        .cm_sessions
+        .lock()
+        .map_err(|_| "desktop_cm_sessions_unavailable".to_string())?;
+    let session = find_cm_session_mut(&mut sessions, &session_id)?;
+    session.credential_store = os_credential_store::store_name().to_string();
+    session.credential_available = false;
+    session.status = "credential-deleted".to_string();
+    session.updated_at = current_unix_millis();
+    session.last_check_status = "credential-deleted".to_string();
+    session.last_check_at = Some(session.updated_at);
+    session.last_check_message = Some("credential-deleted".to_string());
+    Ok(session.clone())
+}
+
+#[tauri::command]
+fn desktop_check_cm_session(
+    session_id: String,
+    state: State<'_, DesktopSidecarState>,
+) -> Result<DesktopCmSessionMetadata, String> {
+    let session_id = normalize_cm_session_id(&session_id)?;
+    let session_snapshot = {
+        let sessions = state
+            .cm_sessions
+            .lock()
+            .map_err(|_| "desktop_cm_sessions_unavailable".to_string())?;
+        sessions
+            .iter()
+            .find(|session| session.id == session_id)
+            .cloned()
+            .ok_or_else(|| "desktop_cm_session_not_found".to_string())?
+    };
+
+    let stored_private_key = os_credential_store::read_secret(DESKTOP_CM_SSH_CREDENTIAL_SERVICE, &session_id)
+        .map(|secret| secret.filter(|value| !value.trim().is_empty()));
+    let (credential_available, outcome) = match stored_private_key {
+        Ok(Some(private_key)) => (true, check_cm_session_with_private_key(&session_snapshot, &private_key)),
+        Ok(None) => (false, check_cm_session_reachability(&session_snapshot)),
+        Err(_) => (
+            false,
+            DesktopCmSessionCheckOutcome {
+                status: "credential-missing".to_string(),
+                message: "credential-store-unavailable".to_string(),
+            },
+        ),
+    };
+
+    let mut sessions = state
+        .cm_sessions
+        .lock()
+        .map_err(|_| "desktop_cm_sessions_unavailable".to_string())?;
+    let session = find_cm_session_mut(&mut sessions, &session_id)?;
+    session.credential_store = os_credential_store::store_name().to_string();
+    session.credential_available = credential_available;
+    session.status = outcome.status.clone();
+    session.updated_at = current_unix_millis();
+    session.last_check_status = outcome.status;
+    session.last_check_at = Some(session.updated_at);
+    session.last_check_message = Some(outcome.message);
+    Ok(session.clone())
 }
 
 fn main() {
@@ -280,7 +400,10 @@ fn main() {
             desktop_cm_sessions,
             desktop_save_cm_session,
             desktop_select_cm_session,
-            desktop_delete_cm_session
+            desktop_delete_cm_session,
+            desktop_import_cm_session_private_key,
+            desktop_delete_cm_session_credential,
+            desktop_check_cm_session
         ])
         .setup(|app| {
             initialize_desktop_cm_sessions(app.handle());
@@ -531,18 +654,25 @@ fn normalize_cm_session_input(input: DesktopCmSessionInput) -> Result<DesktopCmS
         .transpose()?
         .unwrap_or_else(|| generated_cm_session_id(&name, &host, &user));
 
-    Ok(DesktopCmSessionMetadata {
+    let mut session = DesktopCmSessionMetadata {
         id,
         name,
         host,
         port: input.port,
         user,
         auth_type: "os-credential-store".to_string(),
+        credential_store: os_credential_store::store_name().to_string(),
+        credential_available: false,
         status: "metadata-only".to_string(),
         updated_at: current_unix_millis(),
         selected: false,
         description,
-    })
+        last_check_status: "not-checked".to_string(),
+        last_check_at: None,
+        last_check_message: None,
+    };
+    refresh_cm_session_credential_state(&mut session);
+    Ok(session)
 }
 
 fn normalize_cm_session_host(value: &str) -> Result<String, String> {
@@ -622,6 +752,328 @@ fn generated_cm_session_id(name: &str, host: &str, user: &str) -> String {
         .collect::<Vec<_>>()
         .join("-");
     format!("{}-{}", trimmed.chars().take(52).collect::<String>(), current_unix_millis())
+}
+
+fn find_cm_session_mut<'a>(
+    sessions: &'a mut [DesktopCmSessionMetadata],
+    session_id: &str,
+) -> Result<&'a mut DesktopCmSessionMetadata, String> {
+    sessions
+        .iter_mut()
+        .find(|session| session.id == session_id)
+        .ok_or_else(|| "desktop_cm_session_not_found".to_string())
+}
+
+fn refresh_cm_session_credential_state(session: &mut DesktopCmSessionMetadata) {
+    session.credential_store = os_credential_store::store_name().to_string();
+    match os_credential_store::has_secret(DESKTOP_CM_SSH_CREDENTIAL_SERVICE, &session.id) {
+        Ok(true) => {
+            session.credential_available = true;
+            if matches!(session.status.as_str(), "metadata-only" | "credential-deleted") {
+                session.status = "credential-ready".to_string();
+            }
+        }
+        Ok(false) => {
+            session.credential_available = false;
+        }
+        Err(_) => {
+            session.credential_available = false;
+            if session.status == "credential-ready" {
+                session.status = "credential-store-unavailable".to_string();
+            }
+        }
+    }
+}
+
+fn read_desktop_cm_private_key_file(key_file_path: &str) -> Result<String, String> {
+    let path = expand_user_path(key_file_path)?;
+    let canonical_path = fs::canonicalize(&path).map_err(|_| "desktop_cm_private_key_file_unavailable".to_string())?;
+    reject_disallowed_private_key_path(&canonical_path)?;
+    let metadata = fs::metadata(&canonical_path).map_err(|_| "desktop_cm_private_key_file_unavailable".to_string())?;
+    if !metadata.is_file() {
+        return Err("desktop_cm_private_key_file_invalid".to_string());
+    }
+    if metadata.len() == 0 || metadata.len() > MAX_DESKTOP_CM_PRIVATE_KEY_BYTES {
+        return Err("desktop_cm_private_key_file_size".to_string());
+    }
+
+    let private_key = fs::read_to_string(&canonical_path)
+        .map_err(|_| "desktop_cm_private_key_file_unreadable".to_string())?;
+    validate_desktop_cm_private_key(&private_key)?;
+    Ok(format!("{}\n", private_key.trim_end()))
+}
+
+fn expand_user_path(value: &str) -> Result<PathBuf, String> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() || trimmed.len() > 1024 || trimmed.contains('\0') {
+        return Err("desktop_cm_private_key_path_invalid".to_string());
+    }
+    if trimmed == "~" || trimmed.starts_with("~/") {
+        let home = std::env::var("HOME")
+            .or_else(|_| std::env::var("USERPROFILE"))
+            .map_err(|_| "desktop_cm_private_key_path_invalid".to_string())?;
+        if trimmed == "~" {
+            return Ok(PathBuf::from(home));
+        }
+        return Ok(PathBuf::from(home).join(&trimmed[2..]));
+    }
+    Ok(PathBuf::from(trimmed))
+}
+
+fn reject_disallowed_private_key_path(path: &Path) -> Result<(), String> {
+    if let Ok(current_dir) = std::env::current_dir().and_then(fs::canonicalize) {
+        if path.starts_with(current_dir) {
+            return Err("desktop_cm_private_key_repo_path_rejected".to_string());
+        }
+    }
+    let normalized = path.to_string_lossy().replace('\\', "/").to_ascii_lowercase();
+    for marker in [
+        "/.git/",
+        "/website/dist/",
+        "/website/artifacts/",
+        "/desktop/src-tauri/binaries/",
+    ] {
+        if normalized.contains(marker) {
+            return Err("desktop_cm_private_key_repo_path_rejected".to_string());
+        }
+    }
+    Ok(())
+}
+
+fn validate_desktop_cm_private_key(private_key: &str) -> Result<(), String> {
+    if private_key.contains('\0') {
+        return Err("desktop_cm_private_key_invalid".to_string());
+    }
+    let markers = [
+        "-----BEGIN OPENSSH PRIVATE KEY-----",
+        "-----BEGIN RSA PRIVATE KEY-----",
+        "-----BEGIN EC PRIVATE KEY-----",
+        "-----BEGIN DSA PRIVATE KEY-----",
+    ];
+    if !markers.iter().any(|marker| private_key.contains(marker)) {
+        return Err("desktop_cm_private_key_marker_missing".to_string());
+    }
+    Ok(())
+}
+
+fn check_cm_session_with_private_key(
+    session: &DesktopCmSessionMetadata,
+    private_key: &str,
+) -> DesktopCmSessionCheckOutcome {
+    match write_runtime_cm_private_key_file(&session.id, private_key) {
+        Ok(key_file) => {
+            let outcome = run_ssh_noop_check(session, &key_file);
+            remove_runtime_file(&key_file);
+            outcome
+        }
+        Err(error) => DesktopCmSessionCheckOutcome {
+            status: "credential-missing".to_string(),
+            message: error,
+        },
+    }
+}
+
+fn run_ssh_noop_check(session: &DesktopCmSessionMetadata, key_file: &Path) -> DesktopCmSessionCheckOutcome {
+    let mut command = Command::new("ssh");
+    command
+        .arg("-i")
+        .arg(key_file)
+        .arg("-p")
+        .arg(session.port.to_string())
+        .arg("-o")
+        .arg("BatchMode=yes")
+        .arg("-o")
+        .arg("ConnectTimeout=6")
+        .arg("-o")
+        .arg("StrictHostKeyChecking=no")
+        .arg("-o")
+        .arg(format!("UserKnownHostsFile={}", platform_null_file()))
+        .arg("-o")
+        .arg("LogLevel=ERROR")
+        .arg("-T")
+        .arg(format!("{}@{}", session.user, session.host))
+        .arg("true")
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped());
+
+    let mut child = match command.spawn() {
+        Ok(child) => child,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return DesktopCmSessionCheckOutcome {
+                status: "ssh-binary-missing".to_string(),
+                message: "ssh-binary-missing".to_string(),
+            };
+        }
+        Err(_) => {
+            return DesktopCmSessionCheckOutcome {
+                status: "unreachable".to_string(),
+                message: "ssh-process-start-failed".to_string(),
+            };
+        }
+    };
+
+    let deadline = Instant::now() + Duration::from_secs(8);
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) => {
+                let mut stderr = String::new();
+                if let Some(mut pipe) = child.stderr.take() {
+                    let _ = pipe.read_to_string(&mut stderr);
+                }
+                return classify_ssh_check_result(status.success(), &stderr);
+            }
+            Ok(None) if Instant::now() >= deadline => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return DesktopCmSessionCheckOutcome {
+                    status: "timeout".to_string(),
+                    message: "ssh-check-timeout".to_string(),
+                };
+            }
+            Ok(None) => thread::sleep(Duration::from_millis(100)),
+            Err(_) => {
+                return DesktopCmSessionCheckOutcome {
+                    status: "unreachable".to_string(),
+                    message: "ssh-check-failed".to_string(),
+                };
+            }
+        }
+    }
+}
+
+fn classify_ssh_check_result(success: bool, stderr: &str) -> DesktopCmSessionCheckOutcome {
+    if success {
+        return DesktopCmSessionCheckOutcome {
+            status: "reachable".to_string(),
+            message: "ssh-check-succeeded".to_string(),
+        };
+    }
+    let lower = stderr.to_ascii_lowercase();
+    if lower.contains("permission denied") || lower.contains("publickey") || lower.contains("authentication failed") {
+        return DesktopCmSessionCheckOutcome {
+            status: "auth-failed".to_string(),
+            message: "ssh-auth-failed".to_string(),
+        };
+    }
+    if lower.contains("timed out") || lower.contains("timeout") {
+        return DesktopCmSessionCheckOutcome {
+            status: "timeout".to_string(),
+            message: "ssh-check-timeout".to_string(),
+        };
+    }
+    if lower.contains("protocol mismatch") || lower.contains("banner") || lower.contains("kex_exchange_identification") {
+        return DesktopCmSessionCheckOutcome {
+            status: "not-ssh".to_string(),
+            message: "ssh-banner-invalid".to_string(),
+        };
+    }
+    if lower.contains("connection refused")
+        || lower.contains("could not resolve hostname")
+        || lower.contains("name or service not known")
+        || lower.contains("no route to host")
+        || lower.contains("network is unreachable")
+    {
+        return DesktopCmSessionCheckOutcome {
+            status: "unreachable".to_string(),
+            message: "ssh-target-unreachable".to_string(),
+        };
+    }
+    DesktopCmSessionCheckOutcome {
+        status: "unreachable".to_string(),
+        message: "ssh-check-failed".to_string(),
+    }
+}
+
+fn check_cm_session_reachability(session: &DesktopCmSessionMetadata) -> DesktopCmSessionCheckOutcome {
+    let addresses = match (session.host.as_str(), session.port).to_socket_addrs() {
+        Ok(addresses) => addresses.collect::<Vec<_>>(),
+        Err(_) => {
+            return DesktopCmSessionCheckOutcome {
+                status: "unreachable".to_string(),
+                message: "host-resolve-failed".to_string(),
+            };
+        }
+    };
+    for address in addresses {
+        match TcpStream::connect_timeout(&address, Duration::from_secs(5)) {
+            Ok(mut stream) => {
+                let _ = stream.set_read_timeout(Some(Duration::from_secs(1)));
+                let mut buffer = [0u8; 4];
+                match stream.read(&mut buffer) {
+                    Ok(count) if count >= 4 && &buffer == b"SSH-" => {
+                        return DesktopCmSessionCheckOutcome {
+                            status: "reachable".to_string(),
+                            message: "ssh-banner-reachable".to_string(),
+                        };
+                    }
+                    Ok(count) if count > 0 => {
+                        return DesktopCmSessionCheckOutcome {
+                            status: "not-ssh".to_string(),
+                            message: "ssh-banner-invalid".to_string(),
+                        };
+                    }
+                    _ => {
+                        return DesktopCmSessionCheckOutcome {
+                            status: "reachable".to_string(),
+                            message: "tcp-reachable".to_string(),
+                        };
+                    }
+                }
+            }
+            Err(_) => continue,
+        }
+    }
+    DesktopCmSessionCheckOutcome {
+        status: "unreachable".to_string(),
+        message: "tcp-unreachable".to_string(),
+    }
+}
+
+fn write_runtime_cm_private_key_file(session_id: &str, private_key: &str) -> Result<PathBuf, String> {
+    let dir_name = format!(
+        "kuviewer-desktop-cm-{}-{}",
+        session_id,
+        generate_admin_token().map_err(|_| "desktop_cm_private_key_temp_random_failed".to_string())?
+    );
+    let runtime_dir = std::env::temp_dir().join(dir_name);
+    fs::create_dir_all(&runtime_dir).map_err(|_| "desktop_cm_private_key_temp_dir_unavailable".to_string())?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(&runtime_dir, fs::Permissions::from_mode(0o700))
+            .map_err(|_| "desktop_cm_private_key_temp_dir_permissions_failed".to_string())?;
+    }
+
+    let key_file = runtime_dir.join("identity");
+    #[cfg(unix)]
+    let mut file = {
+        use std::os::unix::fs::OpenOptionsExt;
+        OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .mode(0o600)
+            .open(&key_file)
+            .map_err(|_| "desktop_cm_private_key_temp_file_unavailable".to_string())?
+    };
+    #[cfg(not(unix))]
+    let mut file = OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&key_file)
+        .map_err(|_| "desktop_cm_private_key_temp_file_unavailable".to_string())?;
+
+    file.write_all(private_key.as_bytes())
+        .map_err(|_| "desktop_cm_private_key_temp_file_write_failed".to_string())?;
+    Ok(key_file)
+}
+
+fn platform_null_file() -> &'static str {
+    if cfg!(windows) {
+        "NUL"
+    } else {
+        "/dev/null"
+    }
 }
 
 fn current_unix_millis() -> u64 {
@@ -834,10 +1286,26 @@ mod os_credential_store {
     }
 
     pub fn write_bearer_token(service: &str, account: &str, token: &str) -> Result<(), String> {
-        let _ = delete_bearer_token(service, account);
-        let service = c_string(service, "desktop_kubernetes_credential_service_invalid")?;
-        let account = c_string(account, "desktop_kubernetes_profile_invalid")?;
-        let token_bytes = token.as_bytes();
+        write_secret(service, account, token)
+    }
+
+    pub fn has_bearer_token(service: &str, account: &str) -> Result<bool, String> {
+        has_secret(service, account)
+    }
+
+    pub fn delete_bearer_token(service: &str, account: &str) -> Result<(), String> {
+        delete_secret(service, account)
+    }
+
+    pub fn read_bearer_token(service: &str, account: &str) -> Result<Option<String>, String> {
+        read_secret(service, account)
+    }
+
+    pub fn write_secret(service: &str, account: &str, secret: &str) -> Result<(), String> {
+        let _ = delete_secret(service, account);
+        let service = c_string(service, "desktop_credential_service_invalid")?;
+        let account = c_string(account, "desktop_credential_account_invalid")?;
+        let secret_bytes = secret.as_bytes();
         let status = unsafe {
             SecKeychainAddGenericPassword(
                 ptr::null_mut(),
@@ -845,8 +1313,8 @@ mod os_credential_store {
                 service.as_ptr(),
                 account.as_bytes().len() as u32,
                 account.as_ptr(),
-                token_bytes.len() as u32,
-                token_bytes.as_ptr() as *const c_void,
+                secret_bytes.len() as u32,
+                secret_bytes.as_ptr() as *const c_void,
                 ptr::null_mut(),
             )
         };
@@ -857,13 +1325,13 @@ mod os_credential_store {
         }
     }
 
-    pub fn has_bearer_token(service: &str, account: &str) -> Result<bool, String> {
-        read_bearer_token(service, account).map(|token| token.is_some())
+    pub fn has_secret(service: &str, account: &str) -> Result<bool, String> {
+        read_secret(service, account).map(|secret| secret.is_some())
     }
 
-    pub fn delete_bearer_token(service: &str, account: &str) -> Result<(), String> {
-        let service = c_string(service, "desktop_kubernetes_credential_service_invalid")?;
-        let account = c_string(account, "desktop_kubernetes_profile_invalid")?;
+    pub fn delete_secret(service: &str, account: &str) -> Result<(), String> {
+        let service = c_string(service, "desktop_credential_service_invalid")?;
+        let account = c_string(account, "desktop_credential_account_invalid")?;
         let mut item_ref: *mut c_void = ptr::null_mut();
         let status = unsafe {
             SecKeychainFindGenericPassword(
@@ -895,11 +1363,11 @@ mod os_credential_store {
         }
     }
 
-    pub fn read_bearer_token(service: &str, account: &str) -> Result<Option<String>, String> {
-        let service = c_string(service, "desktop_kubernetes_credential_service_invalid")?;
-        let account = c_string(account, "desktop_kubernetes_profile_invalid")?;
-        let mut password_length: u32 = 0;
-        let mut password_data: *mut c_void = ptr::null_mut();
+    pub fn read_secret(service: &str, account: &str) -> Result<Option<String>, String> {
+        let service = c_string(service, "desktop_credential_service_invalid")?;
+        let account = c_string(account, "desktop_credential_account_invalid")?;
+        let mut secret_length: u32 = 0;
+        let mut secret_data: *mut c_void = ptr::null_mut();
         let status = unsafe {
             SecKeychainFindGenericPassword(
                 ptr::null_mut(),
@@ -907,8 +1375,8 @@ mod os_credential_store {
                 service.as_ptr(),
                 account.as_bytes().len() as u32,
                 account.as_ptr(),
-                &mut password_length,
-                &mut password_data,
+                &mut secret_length,
+                &mut secret_data,
                 ptr::null_mut(),
             )
         };
@@ -918,16 +1386,16 @@ mod os_credential_store {
         if status != ERR_SEC_SUCCESS {
             return Err(format!("desktop_macos_keychain_read_failed:{status}"));
         }
-        let token = if password_data.is_null() || password_length == 0 {
+        let secret = if secret_data.is_null() || secret_length == 0 {
             String::new()
         } else {
-            let bytes = unsafe { slice::from_raw_parts(password_data as *const u8, password_length as usize) };
+            let bytes = unsafe { slice::from_raw_parts(secret_data as *const u8, secret_length as usize) };
             String::from_utf8_lossy(bytes).to_string()
         };
-        if !password_data.is_null() {
-            let _ = unsafe { SecKeychainItemFreeContent(ptr::null_mut(), password_data) };
+        if !secret_data.is_null() {
+            let _ = unsafe { SecKeychainItemFreeContent(ptr::null_mut(), secret_data) };
         }
-        Ok(Some(token))
+        Ok(Some(secret))
     }
 
     fn c_string(value: &str, error: &str) -> Result<CString, String> {
@@ -981,9 +1449,25 @@ mod os_credential_store {
     }
 
     pub fn write_bearer_token(service: &str, account: &str, token: &str) -> Result<(), String> {
+        write_secret(service, account, token)
+    }
+
+    pub fn has_bearer_token(service: &str, account: &str) -> Result<bool, String> {
+        has_secret(service, account)
+    }
+
+    pub fn delete_bearer_token(service: &str, account: &str) -> Result<(), String> {
+        delete_secret(service, account)
+    }
+
+    pub fn read_bearer_token(service: &str, account: &str) -> Result<Option<String>, String> {
+        read_secret(service, account)
+    }
+
+    pub fn write_secret(service: &str, account: &str, secret: &str) -> Result<(), String> {
         let mut target_name = wide_null(&target_name(service, account));
         let mut user_name = wide_null("kuviewer");
-        let token_bytes = token.as_bytes();
+        let secret_bytes = secret.as_bytes();
         let credential = CredentialW {
             flags: 0,
             credential_type: CRED_TYPE_GENERIC,
@@ -993,8 +1477,8 @@ mod os_credential_store {
                 low_date_time: 0,
                 high_date_time: 0,
             },
-            credential_blob_size: token_bytes.len() as u32,
-            credential_blob: token_bytes.as_ptr() as *mut u8,
+            credential_blob_size: secret_bytes.len() as u32,
+            credential_blob: secret_bytes.as_ptr() as *mut u8,
             persist: CRED_PERSIST_LOCAL_MACHINE,
             attribute_count: 0,
             attributes: ptr::null_mut(),
@@ -1009,11 +1493,11 @@ mod os_credential_store {
         }
     }
 
-    pub fn has_bearer_token(service: &str, account: &str) -> Result<bool, String> {
-        read_bearer_token(service, account).map(|token| token.is_some())
+    pub fn has_secret(service: &str, account: &str) -> Result<bool, String> {
+        read_secret(service, account).map(|secret| secret.is_some())
     }
 
-    pub fn delete_bearer_token(service: &str, account: &str) -> Result<(), String> {
+    pub fn delete_secret(service: &str, account: &str) -> Result<(), String> {
         let target_name = wide_null(&target_name(service, account));
         let ok = unsafe { CredDeleteW(target_name.as_ptr(), CRED_TYPE_GENERIC, 0) };
         if ok != 0 || last_error() == ERROR_NOT_FOUND {
@@ -1023,7 +1507,7 @@ mod os_credential_store {
         }
     }
 
-    pub fn read_bearer_token(service: &str, account: &str) -> Result<Option<String>, String> {
+    pub fn read_secret(service: &str, account: &str) -> Result<Option<String>, String> {
         let target_name = wide_null(&target_name(service, account));
         let mut credential: *mut CredentialW = ptr::null_mut();
         let ok = unsafe { CredReadW(target_name.as_ptr(), CRED_TYPE_GENERIC, 0, &mut credential) };
@@ -1038,7 +1522,7 @@ mod os_credential_store {
             return Ok(None);
         }
 
-        let token = unsafe {
+        let secret = unsafe {
             let credential_ref = &*credential;
             let bytes = slice::from_raw_parts(
                 credential_ref.credential_blob as *const u8,
@@ -1047,7 +1531,7 @@ mod os_credential_store {
             String::from_utf8_lossy(bytes).to_string()
         };
         unsafe { CredFree(credential as *mut c_void) };
-        Ok(Some(token))
+        Ok(Some(secret))
     }
 
     fn target_name(service: &str, account: &str) -> String {
@@ -1082,6 +1566,22 @@ mod os_credential_store {
     }
 
     pub fn delete_bearer_token(_service: &str, _account: &str) -> Result<(), String> {
+        Err("desktop_credential_store_unsupported".to_string())
+    }
+
+    pub fn write_secret(_service: &str, _account: &str, _secret: &str) -> Result<(), String> {
+        Err("desktop_credential_store_unsupported".to_string())
+    }
+
+    pub fn has_secret(_service: &str, _account: &str) -> Result<bool, String> {
+        Err("desktop_credential_store_unsupported".to_string())
+    }
+
+    pub fn read_secret(_service: &str, _account: &str) -> Result<Option<String>, String> {
+        Err("desktop_credential_store_unsupported".to_string())
+    }
+
+    pub fn delete_secret(_service: &str, _account: &str) -> Result<(), String> {
         Err("desktop_credential_store_unsupported".to_string())
     }
 }
