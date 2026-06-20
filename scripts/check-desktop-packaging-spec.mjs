@@ -854,6 +854,9 @@ async function validateCmSshSessionManager(spec) {
     'desktop-cm-session-stop-runtime',
     'desktop-cm-session-check-runtime',
     'desktop-cm-session-runtime-detail',
+    'desktop-cm-session-summary',
+    'desktop-cm-session-search',
+    'desktop-cm-session-search-count',
     'desktop-cm-session-delete-credential',
   ]) {
     requireCondition(sessionPanel.includes(marker), `desktop CM session panel must include ${marker}`);
@@ -905,6 +908,8 @@ async function validateCmSshSessionManager(spec) {
     'desktop CM runtime profile must use localhost tunnel URL',
     'desktop CM runtime lost must clear the session runtime profile',
     'desktop CM smoke must not expose private key bodies',
+    'desktop CM session search must match session name metadata',
+    'desktop CM session summary must show active runtime status',
   ]) {
     requireCondition(smokeScript.includes(marker), `desktop CM session smoke script must include ${marker}`);
   }

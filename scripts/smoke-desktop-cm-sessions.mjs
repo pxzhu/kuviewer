@@ -244,19 +244,44 @@ async function smokeDesktopRuntime(browser, url) {
     await page.getByTestId('desktop-cm-session-description').fill('readonly entry');
     await page.getByTestId('desktop-cm-session-save').click();
     await page.getByTestId(/^desktop-cm-session-prod-cm-/).waitFor({ state: 'visible', timeout: 10_000 });
+    await page.getByTestId('desktop-cm-session-search-count').waitFor({ state: 'visible', timeout: 10_000 });
+    let sessionSearchCount = await page.getByTestId('desktop-cm-session-search-count').textContent();
+    requireCondition(sessionSearchCount?.includes('1 / 전체 1'), 'desktop CM session search count must include visible and total session counts');
+    await page.getByTestId('desktop-cm-session-search').fill('prod');
+    sessionSearchCount = await page.getByTestId('desktop-cm-session-search-count').textContent();
+    requireCondition(sessionSearchCount?.includes('1 / 전체 1'), 'desktop CM session search must match session name metadata');
+    await page.getByTestId('desktop-cm-session-search').fill('no-match');
+    await page.getByTestId('desktop-cm-session-search-empty').waitFor({ state: 'visible', timeout: 10_000 });
+    sessionSearchCount = await page.getByTestId('desktop-cm-session-search-count').textContent();
+    requireCondition(sessionSearchCount?.includes('0 / 전체 1'), 'desktop CM session search must show no-result counts');
+    await page.getByTestId('desktop-cm-session-search-clear').click();
+    await page.getByTestId(/^desktop-cm-session-prod-cm-/).waitFor({ state: 'visible', timeout: 10_000 });
     await page.getByRole('button', { name: /Prod CM/ }).click();
     await page.getByText('Prod CM 선택됨 · credential 필요').waitFor({ state: 'visible', timeout: 10_000 });
+    await page.getByTestId('desktop-cm-session-summary').waitFor({ state: 'visible', timeout: 10_000 });
+    await page.getByTestId('desktop-cm-session-summary-name').waitFor({ state: 'visible', timeout: 10_000 });
+    let summaryText = await page.getByTestId('desktop-cm-session-summary').textContent();
+    requireCondition(summaryText?.includes('Prod CM'), 'desktop CM session summary must show the selected session name');
+    requireCondition(summaryText?.includes('credential 필요'), 'desktop CM session summary must show credential availability');
+    requireCondition(summaryText?.includes('runtime stopped'), 'desktop CM session summary must show stopped runtime status');
 
     const sessionId = await page.evaluate(() => window.__kuviewerCmSessions[0]?.id);
     requireCondition(typeof sessionId === 'string' && sessionId.startsWith('prod-cm-'), 'saved CM session id must be generated');
     await page.getByTestId(`desktop-cm-session-key-path-${sessionId}`).fill('/tmp/kuviewer-smoke-id_ed25519');
     await page.getByTestId(`desktop-cm-session-import-key-${sessionId}`).click();
     await page.getByText('Prod CM credential 저장됨').waitFor({ state: 'visible', timeout: 10_000 });
+    summaryText = await page.getByTestId('desktop-cm-session-summary').textContent();
+    requireCondition(summaryText?.includes('credential ready'), 'desktop CM session summary must update credential availability');
     await page.getByTestId(`desktop-cm-session-check-${sessionId}`).click();
     await page.getByText('Prod CM 확인 · 연결 가능').waitFor({ state: 'visible', timeout: 10_000 });
     await page.getByTestId(`desktop-cm-session-start-runtime-${sessionId}`).click();
     await page.getByText('Prod CM runtime 시작됨').waitFor({ state: 'visible', timeout: 10_000 });
     await page.getByText(/runtime active · Prod CM/).waitFor({ state: 'visible', timeout: 10_000 });
+    await page.getByTestId('desktop-cm-session-summary-health').waitFor({ state: 'visible', timeout: 10_000 });
+    await page.getByTestId('desktop-cm-session-summary-runtime-url').waitFor({ state: 'visible', timeout: 10_000 });
+    summaryText = await page.getByTestId('desktop-cm-session-summary').textContent();
+    requireCondition(summaryText?.includes('runtime active'), 'desktop CM session summary must show active runtime status');
+    requireCondition(summaryText?.includes('health 정상'), 'desktop CM session summary must show runtime health');
     const runtimeState = await page.evaluate(() => ({
       profile: JSON.parse(window.sessionStorage.getItem('kuviewer_desktop_cm_runtime_profile') || 'null'),
       sourceMode: window.sessionStorage.getItem('kuviewer_source_mode'),
@@ -279,6 +304,8 @@ async function smokeDesktopRuntime(browser, url) {
     });
     await page.getByTestId(`desktop-cm-session-check-runtime-${sessionId}`).click();
     await page.getByText('CM/SSH runtime 끊김').waitFor({ state: 'visible', timeout: 10_000 });
+    summaryText = await page.getByTestId('desktop-cm-session-summary').textContent();
+    requireCondition(summaryText?.includes('runtime 끊김'), 'desktop CM session summary must show lost runtime status');
     const lostRuntimeProfile = await page.evaluate(() => window.sessionStorage.getItem('kuviewer_desktop_cm_runtime_profile'));
     requireCondition(lostRuntimeProfile === null, 'desktop CM runtime lost must clear the session runtime profile');
     await page.getByTestId(`desktop-cm-session-delete-credential-${sessionId}`).click();

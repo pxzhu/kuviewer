@@ -112,7 +112,7 @@
       "desktop-use-sidecar-profile"
     ],
     "next": [
-      "desktop CM/server connection UX can be revisited after web resource exploration work stabilizes"
+      "desktop CM advanced diagnostics can revisit richer connection troubleshooting after the metadata-only UX polish"
     ]
   },
   "remoteConnectionProfile": {
