@@ -580,6 +580,59 @@ async function smokeDesktopRuntime(browser, url) {
     requireCondition(!JSON.stringify(importedState.invocations).includes('BEGIN OPENSSH PRIVATE KEY'), 'desktop CM import must not expose private key bodies');
     await rm(importDir, { force: true, recursive: true });
 
+    await page.getByTestId('desktop-cm-session-bulk-select-visible').click();
+    await page.getByTestId('desktop-cm-session-bulk-toolbar').waitFor({ state: 'visible', timeout: 10_000 });
+    let bulkCount = await page.getByTestId('desktop-cm-session-bulk-count').textContent();
+    requireCondition(bulkCount?.includes('선택 2개'), 'desktop CM bulk select visible must select current results');
+    await page.getByTestId('desktop-cm-session-bulk-group-input').fill('Operations');
+    await page.getByTestId('desktop-cm-session-bulk-group-apply').click();
+    await page.getByTestId('desktop-cm-session-group-operations').waitFor({ state: 'visible', timeout: 10_000 });
+    groupCount = await page.getByTestId('desktop-cm-session-group-count-operations').textContent();
+    requireCondition(groupCount?.includes('2 / 2'), 'desktop CM bulk group move must update selected session groups');
+    await page.getByTestId('desktop-cm-session-bulk-favorite-on').click();
+    const operationsFavoriteCount = await page.getByTestId('desktop-cm-session-group-favorites-operations').textContent();
+    requireCondition(operationsFavoriteCount?.includes('favorite 2'), 'desktop CM bulk favorite must update selected favorite counts');
+    const selectedDownloadPromise = page.waitForEvent('download');
+    await page.getByTestId('desktop-cm-session-bulk-export').click();
+    const selectedDownload = await selectedDownloadPromise;
+    const selectedExportPath = await selectedDownload.path();
+    requireCondition(typeof selectedExportPath === 'string', 'desktop CM selected export must create a downloadable JSON file');
+    const selectedExportBundle = JSON.parse(await readFile(selectedExportPath, 'utf8'));
+    requireCondition(Array.isArray(selectedExportBundle.items) && selectedExportBundle.items.length === 2, 'desktop CM selected export must include selected sessions only');
+    const selectedExportJson = JSON.stringify(selectedExportBundle);
+    for (const forbiddenField of ['Operations', 'favorite', 'kuviewer_desktop_cm_session_view_preferences', 'credentialAvailable', 'diagnosticMessage', 'serverUrl', 'adminToken']) {
+      requireCondition(!selectedExportJson.includes(forbiddenField), `desktop CM selected export must not include ${forbiddenField}`);
+    }
+    requireCondition(!selectedExportJson.includes('kuviewer_desktop_cm_session_view_preferences'), 'desktop CM selected export must not include grouping preferences');
+    await page.getByTestId('desktop-cm-session-bulk-clear-toolbar').click();
+    await page.getByTestId('desktop-cm-session-bulk-toolbar').waitFor({ state: 'hidden', timeout: 10_000 });
+    await page.getByTestId('desktop-cm-session-group-select-input-operations').check();
+    bulkCount = await page.getByTestId('desktop-cm-session-bulk-count').textContent();
+    requireCondition(bulkCount?.includes('선택 2개'), 'desktop CM group bulk checkbox must select visible group sessions');
+    await page.getByTestId('desktop-cm-session-bulk-clear').click();
+    const editCancelButtonVisible = await page.getByTestId('desktop-cm-session-edit-cancel').isVisible().catch(() => false);
+    if (editCancelButtonVisible) {
+      await page.getByTestId('desktop-cm-session-edit-cancel').click();
+    }
+    await page.getByTestId('desktop-cm-session-name').fill('Bulk Delete CM');
+    await page.getByTestId('desktop-cm-session-host').fill('bulk-delete.example.internal');
+    await page.getByTestId('desktop-cm-session-port').fill('22');
+    await page.getByTestId('desktop-cm-session-user').fill('ubuntu');
+    await page.getByTestId('desktop-cm-session-remote-api-host').fill('127.0.0.1');
+    await page.getByTestId('desktop-cm-session-remote-api-port').fill('18085');
+    await page.getByTestId('desktop-cm-session-description').fill('temporary bulk delete entry');
+    await page.getByTestId('desktop-cm-session-save').click();
+    const bulkDeleteSessionId = await page.evaluate(() => window.__kuviewerCmSessions.find((session) => session.name === 'Bulk Delete CM')?.id);
+    requireCondition(typeof bulkDeleteSessionId === 'string', 'desktop CM bulk delete setup must create a temporary session');
+    await page.getByTestId(`desktop-cm-session-bulk-select-input-${bulkDeleteSessionId}`).check();
+    await page.getByTestId('desktop-cm-session-bulk-delete').click();
+    let bulkDeleteState = await page.evaluate(() => window.__kuviewerCmSessions.length);
+    requireCondition(bulkDeleteState === 3, `desktop CM bulk delete must require inline confirmation; got ${bulkDeleteState}`);
+    await page.getByTestId('desktop-cm-session-bulk-delete').click();
+    await page.getByText('CM/SSH session 삭제됨').waitFor({ state: 'visible', timeout: 10_000 });
+    bulkDeleteState = await page.evaluate(() => window.__kuviewerCmSessions.length);
+    requireCondition(bulkDeleteState === 2, 'desktop CM bulk delete confirmation must remove selected sessions');
+
     await page.getByTestId(`desktop-cm-session-start-runtime-${sessionId}`).click();
     await page.getByText('Prod CM runtime 시작됨').waitFor({ state: 'visible', timeout: 10_000 });
     await page.getByText(/runtime active · Prod CM/).waitFor({ state: 'visible', timeout: 10_000 });

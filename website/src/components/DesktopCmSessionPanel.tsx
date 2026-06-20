@@ -119,6 +119,9 @@ export function DesktopCmSessionPanel({
   const [diagnosticFilterPresetName, setDiagnosticFilterPresetName] = useState('');
   const [diagnosticFilterPresets, setDiagnosticFilterPresets] = useState<DesktopCmDiagnosticFilterPreset[]>(() => readDesktopCmDiagnosticFilterPresets());
   const [sessionViewPreferences, setSessionViewPreferences] = useState<DesktopCmSessionViewPreferences>(() => readDesktopCmSessionViewPreferences());
+  const [selectedBulkSessionIds, setSelectedBulkSessionIds] = useState<Set<string>>(() => new Set());
+  const [bulkGroupName, setBulkGroupName] = useState(defaultDesktopCmSessionGroup);
+  const [bulkDeleteConfirm, setBulkDeleteConfirm] = useState(false);
   const [importSummary, setImportSummary] = useState<DesktopCmSessionImportSummary | null>(null);
   const [cloneDraftSourceName, setCloneDraftSourceName] = useState('');
   const importInputRef = useRef<HTMLInputElement | null>(null);
@@ -140,6 +143,9 @@ export function DesktopCmSessionPanel({
     () => buildDesktopCmSessionGroups(sessions, visibleSessions, sessionPreferenceMap, sessionViewPreferences.collapsedGroups),
     [sessionPreferenceMap, sessionViewPreferences.collapsedGroups, sessions, visibleSessions],
   );
+  const selectedBulkSessions = useMemo(() => sessions.filter((session) => selectedBulkSessionIds.has(session.id)), [selectedBulkSessionIds, sessions]);
+  const selectedVisibleBulkCount = useMemo(() => visibleSessions.filter((session) => selectedBulkSessionIds.has(session.id)).length, [selectedBulkSessionIds, visibleSessions]);
+  const visibleSessionIds = useMemo(() => visibleSessions.map((session) => session.id), [visibleSessions]);
   const diagnosticFiltersActive = diagnosticStageFilter !== 'all' || diagnosticSeverityFilter !== 'all';
   const activeDiagnosticFilterPresetName = useMemo(
     () => diagnosticFilterPresets.find((preset) => preset.diagnosticStage === diagnosticStageFilter && preset.diagnosticSeverity === diagnosticSeverityFilter)?.name || '',
@@ -169,6 +175,20 @@ export function DesktopCmSessionPanel({
       return nextPreferences;
     });
   }, [sessions]);
+
+  useEffect(() => {
+    const validSessionIds = new Set(sessions.map((session) => session.id));
+    setSelectedBulkSessionIds((current) => {
+      const nextSelection = new Set([...current].filter((sessionId) => validSessionIds.has(sessionId)));
+      return setsEqual(current, nextSelection) ? current : nextSelection;
+    });
+  }, [sessions]);
+
+  useEffect(() => {
+    if (selectedBulkSessionIds.size === 0 && bulkDeleteConfirm) {
+      setBulkDeleteConfirm(false);
+    }
+  }, [bulkDeleteConfirm, selectedBulkSessionIds.size]);
 
   const handleSave = async () => {
     setError('');
@@ -354,6 +374,18 @@ export function DesktopCmSessionPanel({
     window.URL.revokeObjectURL(url);
   };
 
+  const handleExportSelectedSessions = () => {
+    setError('');
+    const bundle = createDesktopCmSessionExportBundle(selectedBulkSessions);
+    const blob = new Blob([`${JSON.stringify(bundle, null, 2)}\n`], { type: 'application/json' });
+    const url = window.URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = `kuviewer-desktop-cm-sessions-selected-${new Date(bundle.exportedAt).toISOString().slice(0, 10)}.json`;
+    anchor.click();
+    window.URL.revokeObjectURL(url);
+  };
+
   const handleImportSessions = async (file: File | null) => {
     if (!file) {
       return;
@@ -441,6 +473,103 @@ export function DesktopCmSessionPanel({
       writeDesktopCmSessionViewPreferences(nextPreferences);
       return nextPreferences;
     });
+  };
+
+  const handleToggleBulkSession = (sessionId: string, checked: boolean) => {
+    setBulkDeleteConfirm(false);
+    setSelectedBulkSessionIds((current) => {
+      const nextSelection = new Set(current);
+      if (checked) {
+        nextSelection.add(sessionId);
+      } else {
+        nextSelection.delete(sessionId);
+      }
+      return nextSelection;
+    });
+  };
+
+  const handleToggleBulkGroup = (sessionIds: string[], checked: boolean) => {
+    setBulkDeleteConfirm(false);
+    setSelectedBulkSessionIds((current) => {
+      const nextSelection = new Set(current);
+      for (const sessionId of sessionIds) {
+        if (checked) {
+          nextSelection.add(sessionId);
+        } else {
+          nextSelection.delete(sessionId);
+        }
+      }
+      return nextSelection;
+    });
+  };
+
+  const handleSelectVisibleSessions = () => {
+    setBulkDeleteConfirm(false);
+    setSelectedBulkSessionIds((current) => new Set([...current, ...visibleSessionIds]));
+  };
+
+  const handleClearBulkSelection = () => {
+    setBulkDeleteConfirm(false);
+    setSelectedBulkSessionIds(new Set());
+  };
+
+  const handleMoveSelectedSessionsToGroup = () => {
+    const sessionIds = [...selectedBulkSessionIds];
+    if (sessionIds.length === 0) {
+      return;
+    }
+    setBulkDeleteConfirm(false);
+    const normalizedGroup = normalizeDesktopCmSessionGroupName(bulkGroupName);
+    setBulkGroupName(normalizedGroup);
+    setSessionViewPreferences((current) => {
+      const nextPreferences = setDesktopCmSessionGroupPreferences(current, sessionIds, normalizedGroup);
+      writeDesktopCmSessionViewPreferences(nextPreferences);
+      return nextPreferences;
+    });
+  };
+
+  const handleSetSelectedFavorite = (favorite: boolean) => {
+    const sessionIds = [...selectedBulkSessionIds];
+    if (sessionIds.length === 0) {
+      return;
+    }
+    setBulkDeleteConfirm(false);
+    setSessionViewPreferences((current) => {
+      const nextPreferences = setDesktopCmSessionFavoritePreferences(current, sessionIds, favorite);
+      writeDesktopCmSessionViewPreferences(nextPreferences);
+      return nextPreferences;
+    });
+  };
+
+  const handleDeleteSelectedSessions = async () => {
+    const sessionIds = [...selectedBulkSessionIds];
+    if (sessionIds.length === 0) {
+      return;
+    }
+    if (!bulkDeleteConfirm) {
+      setBulkDeleteConfirm(true);
+      return;
+    }
+
+    setError('');
+    setBusyAction('bulk-delete-sessions');
+    try {
+      for (const sessionId of sessionIds) {
+        await onDeleteSession(sessionId);
+      }
+      if (form.id && selectedBulkSessionIds.has(form.id)) {
+        setForm(emptyForm);
+        setCloneDraftSourceName('');
+      }
+      setSelectedBulkSessionIds(new Set());
+      setBulkDeleteConfirm(false);
+      setDeleteConfirmId('');
+      setCredentialDeleteConfirmId('');
+    } catch (requestError) {
+      setError(formatCmSessionError(requestError instanceof Error ? requestError.message : 'desktop_cm_session_bulk_delete_failed'));
+    } finally {
+      setBusyAction('');
+    }
   };
 
   return (
@@ -639,7 +768,7 @@ export function DesktopCmSessionPanel({
                 {form.id ? '수정' : '저장'}
               </button>
               {form.id ? (
-                <button className="ku-control h-9" type="button" onClick={() => {
+                <button className="ku-control h-9" data-testid="desktop-cm-session-edit-cancel" type="button" onClick={() => {
                   setForm(emptyForm);
                   setCloneDraftSourceName('');
                 }}>
@@ -826,6 +955,24 @@ export function DesktopCmSessionPanel({
             <span className="ku-chip" data-testid="desktop-cm-session-search-count">
               결과 {visibleSessions.length} / 전체 {sessions.length}
             </span>
+            <button
+              className="ku-control h-9"
+              data-testid="desktop-cm-session-bulk-select-visible"
+              type="button"
+              disabled={visibleSessions.length === 0}
+              onClick={handleSelectVisibleSessions}
+            >
+              현재 결과 선택
+            </button>
+            <button
+              className="ku-control h-9"
+              data-testid="desktop-cm-session-bulk-clear"
+              type="button"
+              disabled={selectedBulkSessionIds.size === 0}
+              onClick={handleClearBulkSelection}
+            >
+              선택 해제
+            </button>
           </div>
 
           <div
@@ -888,6 +1035,70 @@ export function DesktopCmSessionPanel({
               </p>
             )}
           </div>
+
+          {selectedBulkSessionIds.size > 0 ? (
+            <div
+              className="grid gap-2 rounded-[10px] border border-[rgba(0,122,255,0.16)] bg-[rgba(0,122,255,0.06)] px-3 py-2"
+              data-testid="desktop-cm-session-bulk-toolbar"
+            >
+              <div className="flex min-w-0 flex-wrap items-center gap-2">
+                <span className="ku-chip border-[rgba(0,122,255,0.18)] bg-[rgba(0,122,255,0.08)] text-[#0066cc]" data-testid="desktop-cm-session-bulk-count">
+                  선택 {selectedBulkSessionIds.size}개 · 현재 결과 {selectedVisibleBulkCount}개
+                </span>
+                <button className="ku-control h-8 text-xs" data-testid="desktop-cm-session-bulk-export" type="button" onClick={handleExportSelectedSessions}>
+                  <Download size={13} aria-hidden="true" />
+                  선택 export
+                </button>
+                <button className="ku-control h-8 text-xs" data-testid="desktop-cm-session-bulk-favorite-on" type="button" onClick={() => handleSetSelectedFavorite(true)}>
+                  <Star size={13} aria-hidden="true" />
+                  즐겨찾기 설정
+                </button>
+                <button className="ku-control h-8 text-xs" data-testid="desktop-cm-session-bulk-favorite-off" type="button" onClick={() => handleSetSelectedFavorite(false)}>
+                  <Star size={13} aria-hidden="true" />
+                  즐겨찾기 해제
+                </button>
+                <button
+                  className={`ku-control h-8 text-xs ${bulkDeleteConfirm ? 'border-[rgba(255,59,48,0.28)] bg-[rgba(255,59,48,0.1)] text-[#b42318]' : ''}`}
+                  data-testid="desktop-cm-session-bulk-delete"
+                  type="button"
+                  disabled={busyAction === 'bulk-delete-sessions'}
+                  onClick={() => void handleDeleteSelectedSessions()}
+                >
+                  <Trash2 size={13} aria-hidden="true" />
+                  {bulkDeleteConfirm ? '선택 삭제 확인' : '선택 삭제'}
+                </button>
+                <button className="ku-control h-8 text-xs" data-testid="desktop-cm-session-bulk-clear-toolbar" type="button" onClick={handleClearBulkSelection}>
+                  <XCircle size={13} aria-hidden="true" />
+                  선택 해제
+                </button>
+              </div>
+              <div className="flex min-w-0 flex-wrap items-center gap-2">
+                <label className="min-w-[180px] flex-1">
+                  <span className="ku-meta">Bulk group</span>
+                  <input
+                    className="ku-field mt-1 h-8 w-full text-xs"
+                    data-testid="desktop-cm-session-bulk-group-input"
+                    maxLength={maxDesktopCmSessionGroupNameLength}
+                    placeholder={defaultDesktopCmSessionGroup}
+                    value={bulkGroupName}
+                    onChange={(event) => setBulkGroupName(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') {
+                        handleMoveSelectedSessionsToGroup();
+                      }
+                    }}
+                  />
+                </label>
+                <button className="ku-control h-8 self-end text-xs" data-testid="desktop-cm-session-bulk-group-apply" type="button" onClick={handleMoveSelectedSessionsToGroup}>
+                  <Folder size={13} aria-hidden="true" />
+                  Group 이동
+                </button>
+                <span className="text-xs font-semibold text-[rgba(60,60,67,0.58)]">
+                  selection은 메모리 전용 · export/import/Tauri payload 제외
+                </span>
+              </div>
+            </div>
+          ) : null}
         </div>
       ) : null}
 
@@ -901,6 +1112,16 @@ export function DesktopCmSessionPanel({
                 data-testid={`desktop-cm-session-group-${group.slug}`}
               >
                 <div className="flex min-w-0 flex-wrap items-center gap-2">
+                  <label className="ku-control h-8 text-xs" data-testid={`desktop-cm-session-group-select-${group.slug}`}>
+                    <input
+                      className="h-4 w-4 accent-[#007aff]"
+                      data-testid={`desktop-cm-session-group-select-input-${group.slug}`}
+                      type="checkbox"
+                      checked={group.sessions.length > 0 && group.sessions.every((session) => selectedBulkSessionIds.has(session.id))}
+                      onChange={(event) => handleToggleBulkGroup(group.sessions.map((session) => session.id), event.currentTarget.checked)}
+                    />
+                    선택
+                  </label>
                   <button
                     className="ku-control h-8 text-xs"
                     data-testid={`desktop-cm-session-group-toggle-${group.slug}`}
@@ -918,6 +1139,11 @@ export function DesktopCmSessionPanel({
                     <Star size={12} aria-hidden="true" />
                     favorite {group.favoriteCount}
                   </span>
+                  {group.sessions.some((session) => selectedBulkSessionIds.has(session.id)) ? (
+                    <span className="ku-chip" data-testid={`desktop-cm-session-group-selected-${group.slug}`}>
+                      selected {group.sessions.filter((session) => selectedBulkSessionIds.has(session.id)).length}
+                    </span>
+                  ) : null}
                 </div>
                 {group.collapsed ? null : (
                   <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3" data-testid={`desktop-cm-session-group-items-${group.slug}`}>
@@ -934,6 +1160,16 @@ export function DesktopCmSessionPanel({
                           data-testid={`desktop-cm-session-${session.id}`}
                         >
                           <div className="flex min-w-0 flex-wrap items-center gap-2">
+                            <label className="ku-control w-fit text-[11px]" data-testid={`desktop-cm-session-bulk-select-${session.id}`}>
+                              <input
+                                className="h-4 w-4 accent-[#007aff]"
+                                data-testid={`desktop-cm-session-bulk-select-input-${session.id}`}
+                                type="checkbox"
+                                checked={selectedBulkSessionIds.has(session.id)}
+                                onChange={(event) => handleToggleBulkSession(session.id, event.currentTarget.checked)}
+                              />
+                              선택
+                            </label>
                             <button
                               className={`ku-control w-fit text-[11px] ${preference.favorite ? 'border-[rgba(255,204,0,0.32)] bg-[rgba(255,204,0,0.14)] text-[#8a6500]' : ''}`}
                               data-testid={`desktop-cm-session-favorite-${session.id}`}
@@ -1484,6 +1720,14 @@ function setDesktopCmSessionGroupPreference(preferences: DesktopCmSessionViewPre
   });
 }
 
+function setDesktopCmSessionGroupPreferences(preferences: DesktopCmSessionViewPreferences, sessionIds: string[], group: string) {
+  let nextPreferences = preferences;
+  for (const sessionId of sessionIds) {
+    nextPreferences = setDesktopCmSessionGroupPreference(nextPreferences, sessionId, group);
+  }
+  return nextPreferences;
+}
+
 function toggleDesktopCmSessionFavoritePreference(preferences: DesktopCmSessionViewPreferences, sessionId: string) {
   const current = getDesktopCmSessionPreference(sessionId, new Map(preferences.sessions.map((preference) => [preference.sessionId, preference])));
   return upsertDesktopCmSessionViewPreference(preferences, {
@@ -1491,6 +1735,19 @@ function toggleDesktopCmSessionFavoritePreference(preferences: DesktopCmSessionV
     favorite: !current.favorite,
     updatedAt: Date.now(),
   });
+}
+
+function setDesktopCmSessionFavoritePreferences(preferences: DesktopCmSessionViewPreferences, sessionIds: string[], favorite: boolean) {
+  let nextPreferences = preferences;
+  for (const sessionId of sessionIds) {
+    const current = getDesktopCmSessionPreference(sessionId, new Map(nextPreferences.sessions.map((preference) => [preference.sessionId, preference])));
+    nextPreferences = upsertDesktopCmSessionViewPreference(nextPreferences, {
+      ...current,
+      favorite,
+      updatedAt: Date.now(),
+    });
+  }
+  return nextPreferences;
 }
 
 function toggleDesktopCmSessionGroupCollapsed(preferences: DesktopCmSessionViewPreferences, group: string) {
@@ -1585,6 +1842,18 @@ function compareDesktopCmSessionGroupNames(left: string, right: string) {
     return 1;
   }
   return left.localeCompare(right);
+}
+
+function setsEqual(left: Set<string>, right: Set<string>) {
+  if (left.size !== right.size) {
+    return false;
+  }
+  for (const value of left) {
+    if (!right.has(value)) {
+      return false;
+    }
+  }
+  return true;
 }
 
 function readDesktopCmDiagnosticFilterPresets(): DesktopCmDiagnosticFilterPreset[] {
