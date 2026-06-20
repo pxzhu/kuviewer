@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "name": "Kuviewer Desktop CM Session Explorer",
   "goal": "desktop-cm-session-prototype",
-  "status": "desktop-cm-session-saved-layouts",
+  "status": "desktop-cm-session-layout-import-export",
   "recommendedPackager": "tauri",
   "fallbackPackager": "electron",
   "tauri": {
@@ -71,7 +71,7 @@
     "noOperationalActions": true
   },
   "cmSshSessionManager": {
-    "status": "session-saved-layouts",
+    "status": "session-layout-import-export",
     "desktopOnly": true,
     "webExposed": false,
     "storage": "tauri-state-safe-metadata-with-os-credential-store-and-session-runtime",
@@ -273,13 +273,41 @@
       "noSecretValues": true,
       "noEventsOrLogs": true
     },
+    "sessionLayoutImportExport": {
+      "desktopOnly": true,
+      "uiOnly": true,
+      "storage": "browser-local-file-user-click",
+      "schemaVersion": 1,
+      "kind": "kuviewer.desktop.cmSessionLayouts",
+      "storageKey": "kuviewer_desktop_cm_session_layout_presets",
+      "maxImportItems": 8,
+      "fields": ["name", "viewPreferences", "updatedAt"],
+      "viewPreferenceFields": ["sessionId", "group", "favorite", "updatedAt", "collapsedGroups"],
+      "acceptsBundleItemsShape": true,
+      "acceptsPlainArray": true,
+      "updatesSameNamePreset": true,
+      "prunesUnknownSessionIds": true,
+      "skipsEmptyImportedLayouts": true,
+      "noSessionExportImportSchemaChange": true,
+      "noTauriSchemaChange": true,
+      "noSessionSearch": true,
+      "noDiagnosticFilters": true,
+      "noEndpointMetadata": true,
+      "noCredentialPayload": true,
+      "noRuntimeProfile": true,
+      "noDiagnosticHistory": true,
+      "noToken": true,
+      "noKubeconfig": true,
+      "noSecretValues": true,
+      "noEventsOrLogs": true
+    },
     "hiddenPrototypeUi": [
       "DesktopConnectionProfilePanel",
       "DesktopKubernetesProfilePanel",
       "desktop-use-sidecar-profile"
     ],
     "next": [
-      "Desktop CM session layout import/export polish"
+      "Desktop CM session layout conflict preview"
     ]
   },
   "remoteConnectionProfile": {
@@ -538,6 +566,7 @@
     "desktop-cm-session-clone-polish",
     "desktop-cm-session-groups-favorites",
     "desktop-cm-session-bulk-actions",
-    "desktop-cm-session-saved-layouts"
+    "desktop-cm-session-saved-layouts",
+    "desktop-cm-session-layout-import-export"
   ]
 }

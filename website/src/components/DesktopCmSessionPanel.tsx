@@ -50,6 +50,14 @@ interface DesktopCmSessionImportSummary {
   invalid: number;
 }
 
+interface DesktopCmSessionLayoutImportSummary {
+  fileName: string;
+  imported: number;
+  updated: number;
+  skipped: number;
+  invalid: number;
+}
+
 interface DesktopCmDiagnosticFilterPreset {
   name: string;
   diagnosticStage: CmDiagnosticStageFilter;
@@ -89,6 +97,7 @@ const cmDiagnosticSeverityFilterOptions = ['all', 'info', 'warning', 'error'] as
 const desktopCmDiagnosticFilterPresetStorageKey = 'kuviewer_desktop_cm_diagnostic_filter_presets';
 const desktopCmSessionViewPreferenceStorageKey = 'kuviewer_desktop_cm_session_view_preferences';
 const desktopCmSessionLayoutPresetStorageKey = 'kuviewer_desktop_cm_session_layout_presets';
+const desktopCmSessionLayoutExportKind = 'kuviewer.desktop.cmSessionLayouts';
 const maxDesktopCmDiagnosticFilterPresets = 8;
 const maxDesktopCmDiagnosticFilterPresetNameLength = 40;
 const maxDesktopCmSessionLayoutPresets = 8;
@@ -134,8 +143,10 @@ export function DesktopCmSessionPanel({
   const [bulkGroupName, setBulkGroupName] = useState(defaultDesktopCmSessionGroup);
   const [bulkDeleteConfirm, setBulkDeleteConfirm] = useState(false);
   const [importSummary, setImportSummary] = useState<DesktopCmSessionImportSummary | null>(null);
+  const [sessionLayoutImportSummary, setSessionLayoutImportSummary] = useState<DesktopCmSessionLayoutImportSummary | null>(null);
   const [cloneDraftSourceName, setCloneDraftSourceName] = useState('');
   const importInputRef = useRef<HTMLInputElement | null>(null);
+  const sessionLayoutImportInputRef = useRef<HTMLInputElement | null>(null);
   const normalizedSessionSearchQuery = normalizeSearchValue(sessionSearchQuery);
   const sessionPreferenceMap = useMemo(() => new Map(sessionViewPreferences.sessions.map((preference) => [preference.sessionId, preference])), [sessionViewPreferences.sessions]);
   const visibleSessions = useMemo(
@@ -498,6 +509,54 @@ export function DesktopCmSessionPanel({
     });
   };
 
+  const handleExportSessionLayouts = () => {
+    setError('');
+    const bundle = createDesktopCmSessionLayoutExportBundle(sessionLayoutPresets);
+    const blob = new Blob([`${JSON.stringify(bundle, null, 2)}\n`], { type: 'application/json' });
+    const url = window.URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = `kuviewer-desktop-cm-session-layouts-${new Date(bundle.exportedAt).toISOString().slice(0, 10)}.json`;
+    anchor.click();
+    window.URL.revokeObjectURL(url);
+  };
+
+  const handleImportSessionLayouts = async (file: File | null) => {
+    if (!file) {
+      return;
+    }
+    setError('');
+    setBusyAction('import-session-layouts');
+    try {
+      const parsed = parseDesktopCmSessionLayoutImportBundle(JSON.parse(await file.text()), sessions);
+      const existingPresetNames = new Set(sessionLayoutPresets.map((preset) => preset.name.toLowerCase()));
+      let imported = 0;
+      let updated = 0;
+      for (const preset of parsed.items) {
+        if (existingPresetNames.has(preset.name.toLowerCase())) {
+          updated += 1;
+        } else {
+          imported += 1;
+        }
+      }
+      const incomingPresetNames = new Set(parsed.items.map((preset) => preset.name.toLowerCase()));
+      const nextPresets = normalizeDesktopCmSessionLayoutPresets([
+        ...parsed.items,
+        ...sessionLayoutPresets.filter((preset) => !incomingPresetNames.has(preset.name.toLowerCase())),
+      ]);
+      setSessionLayoutPresets(nextPresets);
+      writeDesktopCmSessionLayoutPresets(nextPresets);
+      setSessionLayoutImportSummary({ fileName: file.name, imported, updated, skipped: parsed.skipped, invalid: parsed.invalid });
+    } catch (requestError) {
+      setError(formatCmSessionError(requestError instanceof Error ? requestError.message : 'desktop_cm_session_layout_import_failed'));
+    } finally {
+      setBusyAction('');
+      if (sessionLayoutImportInputRef.current) {
+        sessionLayoutImportInputRef.current.value = '';
+      }
+    }
+  };
+
   const handleSetSessionGroup = (sessionId: string, group: string) => {
     setSessionViewPreferences((current) => {
       const nextPreferences = setDesktopCmSessionGroupPreference(current, sessionId, group);
@@ -665,6 +724,12 @@ export function DesktopCmSessionPanel({
         {importSummary ? (
           <span className="ku-chip max-w-full" data-testid="desktop-cm-session-import-summary">
             import {importSummary.fileName} · new {importSummary.imported} · updated {importSummary.updated} · skipped {importSummary.skipped} · invalid {importSummary.invalid}
+          </span>
+        ) : null}
+        {sessionLayoutImportSummary ? (
+          <span className="ku-chip max-w-full" data-testid="desktop-cm-session-layout-import-summary">
+            layout import {sessionLayoutImportSummary.fileName} · new {sessionLayoutImportSummary.imported} · updated {sessionLayoutImportSummary.updated} · skipped{' '}
+            {sessionLayoutImportSummary.skipped} · invalid {sessionLayoutImportSummary.invalid}
           </span>
         ) : null}
       </div>
@@ -1106,6 +1171,29 @@ export function DesktopCmSessionPanel({
               <span className="ku-chip" data-testid="desktop-cm-session-layout-count">
                 {sessionLayoutPresets.length} / {maxDesktopCmSessionLayoutPresets}
               </span>
+              <button
+                className="ku-control h-9"
+                data-testid="desktop-cm-session-layout-export"
+                type="button"
+                disabled={sessionLayoutPresets.length === 0 || busyAction === 'import-session-layouts'}
+                onClick={handleExportSessionLayouts}
+              >
+                <Download size={14} aria-hidden="true" />
+                layout export
+              </button>
+              <label className={`ku-control h-9 ${busyAction === 'import-session-layouts' ? 'opacity-60' : ''}`} data-testid="desktop-cm-session-layout-import-label">
+                <Upload size={14} aria-hidden="true" />
+                layout import
+                <input
+                  ref={sessionLayoutImportInputRef}
+                  className="hidden"
+                  data-testid="desktop-cm-session-layout-import"
+                  type="file"
+                  accept="application/json,.json"
+                  disabled={busyAction === 'import-session-layouts'}
+                  onChange={(event) => void handleImportSessionLayouts(event.currentTarget.files?.[0] || null)}
+                />
+              </label>
             </div>
             {sessionLayoutPresets.length > 0 ? (
               <div className="flex min-w-0 flex-wrap items-center gap-2" data-testid="desktop-cm-session-layout-list">
@@ -1141,7 +1229,7 @@ export function DesktopCmSessionPanel({
               </p>
             )}
             <p className="text-xs font-semibold text-[rgba(60,60,67,0.58)]">
-              session id, group, favorite, collapsed group만 저장 · search/diagnostic/runtime/credential 제외
+              session id, group, favorite, collapsed group만 저장 · search/diagnostic/runtime/credential/export session metadata 제외
             </p>
           </div>
 
@@ -1841,6 +1929,75 @@ function writeDesktopCmSessionLayoutPresets(presets: DesktopCmSessionLayoutPrese
   } catch {
     // Session layouts are only a UI preference; storage failures should not break CM sessions.
   }
+}
+
+function createDesktopCmSessionLayoutExportBundle(presets: DesktopCmSessionLayoutPreset[]) {
+  return {
+    schemaVersion: 1,
+    kind: desktopCmSessionLayoutExportKind,
+    exportedAt: Date.now(),
+    items: normalizeDesktopCmSessionLayoutPresets(presets),
+  };
+}
+
+function parseDesktopCmSessionLayoutImportBundle(value: unknown, sessions: DesktopCmSession[]) {
+  const rawItems = readDesktopCmSessionLayoutImportItems(value);
+  let skipped = Math.max(0, rawItems.length - maxDesktopCmSessionLayoutPresets);
+  let invalid = 0;
+  const seenNames = new Set<string>();
+  const items: DesktopCmSessionLayoutPreset[] = [];
+
+  for (const rawItem of rawItems.slice(0, maxDesktopCmSessionLayoutPresets)) {
+    if (!rawItem || typeof rawItem !== 'object') {
+      invalid += 1;
+      continue;
+    }
+    const candidate = rawItem as Partial<DesktopCmSessionLayoutPreset>;
+    const rawName = typeof candidate.name === 'string' ? candidate.name : '';
+    if (!rawName.trim()) {
+      invalid += 1;
+      continue;
+    }
+    const name = normalizeDesktopCmSessionLayoutPresetName(rawName);
+    const nameKey = name.toLowerCase();
+    if (seenNames.has(nameKey)) {
+      skipped += 1;
+      continue;
+    }
+    const viewPreferences = pruneDesktopCmSessionViewPreferences(normalizeDesktopCmSessionViewPreferences(candidate.viewPreferences), sessions);
+    if (viewPreferences.sessions.length === 0) {
+      invalid += 1;
+      continue;
+    }
+    seenNames.add(nameKey);
+    items.push({
+      name,
+      viewPreferences,
+      updatedAt: typeof candidate.updatedAt === 'number' && Number.isFinite(candidate.updatedAt) ? candidate.updatedAt : Date.now(),
+    });
+  }
+
+  return { items, skipped, invalid };
+}
+
+function readDesktopCmSessionLayoutImportItems(value: unknown): unknown[] {
+  if (Array.isArray(value)) {
+    return value;
+  }
+  if (!value || typeof value !== 'object') {
+    throw new Error('desktop_cm_session_layout_import_invalid');
+  }
+  const candidate = value as { schemaVersion?: unknown; kind?: unknown; items?: unknown };
+  if (candidate.kind !== undefined && candidate.kind !== desktopCmSessionLayoutExportKind) {
+    throw new Error('desktop_cm_session_layout_import_invalid_kind');
+  }
+  if (candidate.schemaVersion !== undefined && candidate.schemaVersion !== 1) {
+    throw new Error('desktop_cm_session_layout_import_invalid_version');
+  }
+  if (!Array.isArray(candidate.items)) {
+    throw new Error('desktop_cm_session_layout_import_invalid_items');
+  }
+  return candidate.items;
 }
 
 function normalizeDesktopCmSessionLayoutPresets(value: unknown): DesktopCmSessionLayoutPreset[] {

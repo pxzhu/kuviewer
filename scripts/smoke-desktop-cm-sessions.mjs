@@ -379,6 +379,20 @@ async function smokeDesktopRuntime(browser, url) {
     for (const forbiddenField of ['host', 'remoteApiHost', 'credentialAvailable', 'runtimeStatus', 'diagnosticMessage', 'serverUrl', 'adminToken', 'BEGIN OPENSSH PRIVATE KEY']) {
       requireCondition(!sessionLayoutStorage.includes(forbiddenField), `desktop CM session layout preset must not include ${forbiddenField}`);
     }
+    const layoutDownloadPromise = page.waitForEvent('download');
+    await page.getByTestId('desktop-cm-session-layout-export').click();
+    const layoutDownload = await layoutDownloadPromise;
+    const layoutExportPath = await layoutDownload.path();
+    requireCondition(typeof layoutExportPath === 'string', 'desktop CM session layout export must create a downloadable JSON file');
+    const layoutExportBundle = JSON.parse(await readFile(layoutExportPath, 'utf8'));
+    requireCondition(layoutExportBundle.schemaVersion === 1, 'desktop CM session layout export bundle must include schemaVersion 1');
+    requireCondition(layoutExportBundle.kind === 'kuviewer.desktop.cmSessionLayouts', 'desktop CM session layout export bundle must include the layout kind');
+    requireCondition(Array.isArray(layoutExportBundle.items) && layoutExportBundle.items.length === 1, 'desktop CM session layout export must include saved layout presets only');
+    const layoutExportJson = JSON.stringify(layoutExportBundle);
+    requireCondition(!layoutExportJson.includes('cm.example.internal'), 'desktop CM session layout export must not include session endpoint metadata');
+    for (const forbiddenField of ['host', 'remoteApiHost', 'credentialAvailable', 'runtimeStatus', 'diagnosticMessage', 'serverUrl', 'adminToken', 'BEGIN OPENSSH PRIVATE KEY']) {
+      requireCondition(!layoutExportJson.includes(forbiddenField), `desktop CM session layout export must not include ${forbiddenField}`);
+    }
     await page.getByTestId('desktop-cm-session-group-toggle-production').click();
     await page.getByTestId('desktop-cm-session-group-items-production').waitFor({ state: 'visible', timeout: 10_000 });
     await page.getByTestId(`desktop-cm-session-group-input-${sessionId}`).fill('Temporary');
@@ -392,6 +406,55 @@ async function smokeDesktopRuntime(browser, url) {
     await page.getByTestId('desktop-cm-session-group-items-production').waitFor({ state: 'hidden', timeout: 10_000 });
     await page.getByTestId('desktop-cm-session-group-toggle-production').click();
     await page.getByTestId('desktop-cm-session-group-items-production').waitFor({ state: 'visible', timeout: 10_000 });
+    const layoutImportDir = await mkdtemp(path.join(os.tmpdir(), 'kuviewer-cm-layout-import-'));
+    const layoutImportPath = path.join(layoutImportDir, 'cm-session-layouts.json');
+    await writeFile(layoutImportPath, JSON.stringify({
+      schemaVersion: 1,
+      kind: 'kuviewer.desktop.cmSessionLayouts',
+      exportedAt: Date.now(),
+      items: [
+        {
+          name: 'Ops View',
+          viewPreferences: {
+            sessions: [{ sessionId, group: 'Imported', favorite: true, updatedAt: Date.now() }],
+            collapsedGroups: [],
+          },
+          updatedAt: Date.now(),
+          host: 'cm.example.internal',
+          diagnosticMessage: 'should-not-persist',
+        },
+        {
+          name: 'Review View',
+          viewPreferences: {
+            sessions: [
+              { sessionId, group: 'Review', favorite: false, updatedAt: Date.now() },
+              { sessionId: 'missing-session-id', group: 'Ghost', favorite: true, updatedAt: Date.now() },
+            ],
+            collapsedGroups: ['Review'],
+          },
+          updatedAt: Date.now(),
+        },
+        {
+          name: 'Ghost View',
+          viewPreferences: {
+            sessions: [{ sessionId: 'missing-session-id', group: 'Ghost', favorite: true, updatedAt: Date.now() }],
+            collapsedGroups: ['Ghost'],
+          },
+          updatedAt: Date.now(),
+        },
+      ],
+    }));
+    await page.getByTestId('desktop-cm-session-layout-import').setInputFiles(layoutImportPath);
+    await page.getByTestId('desktop-cm-session-layout-import-summary').waitFor({ state: 'visible', timeout: 10_000 });
+    const layoutImportSummary = await page.getByTestId('desktop-cm-session-layout-import-summary').textContent();
+    requireCondition(layoutImportSummary?.includes('new 1') && layoutImportSummary.includes('updated 1') && layoutImportSummary.includes('invalid 1'), 'desktop CM session layout import must report layout updates');
+    await page.getByTestId('desktop-cm-session-layout-review-view').waitFor({ state: 'visible', timeout: 10_000 });
+    sessionLayoutStorage = await page.evaluate(() => window.localStorage.getItem('kuviewer_desktop_cm_session_layout_presets') || '');
+    requireCondition(sessionLayoutStorage.includes('Review View'), 'desktop CM session layout import must persist new layout presets');
+    requireCondition(sessionLayoutStorage.includes('Imported'), 'desktop CM session layout import must update same-name layout presets');
+    requireCondition(!sessionLayoutStorage.includes('missing-session-id') && !sessionLayoutStorage.includes('Ghost'), 'desktop CM session layout import must prune unknown session ids');
+    requireCondition(!sessionLayoutStorage.includes('cm.example.internal') && !sessionLayoutStorage.includes('should-not-persist'), 'desktop CM session layout import must not persist endpoint or diagnostic metadata');
+    await rm(layoutImportDir, { force: true, recursive: true });
     await page.getByTestId('desktop-cm-session-diagnostic-stage-filter').selectOption('metadata');
     sessionSearchCount = await page.getByTestId('desktop-cm-session-search-count').textContent();
     requireCondition(sessionSearchCount?.includes('1 / 전체 1'), 'desktop CM diagnostic stage filter must match metadata sessions');
@@ -541,6 +604,7 @@ async function smokeDesktopRuntime(browser, url) {
       'favorite',
       'kuviewer_desktop_cm_session_view_preferences',
       'kuviewer_desktop_cm_session_layout_presets',
+      'kuviewer.desktop.cmSessionLayouts',
       'serverUrl',
       'adminToken',
       'private-key-imported',
@@ -549,6 +613,7 @@ async function smokeDesktopRuntime(browser, url) {
       requireCondition(!exportedJson.includes(forbiddenField), `desktop CM export must not include ${forbiddenField}`);
     }
     requireCondition(!exportedJson.includes('viewPreferences'), 'desktop CM export must not include saved layout preferences');
+    requireCondition(!exportedJson.includes('cmSessionLayouts'), 'desktop CM session export must not include layout import/export metadata');
 
     const importDir = await mkdtemp(path.join(os.tmpdir(), 'kuviewer-cm-import-'));
     const importPath = path.join(importDir, 'cm-sessions.json');
@@ -635,6 +700,7 @@ async function smokeDesktopRuntime(browser, url) {
       'favorite',
       'kuviewer_desktop_cm_session_view_preferences',
       'kuviewer_desktop_cm_session_layout_presets',
+      'kuviewer.desktop.cmSessionLayouts',
       'Ops View',
       'viewPreferences',
       'credentialAvailable',
@@ -674,6 +740,7 @@ async function smokeDesktopRuntime(browser, url) {
     bulkDeleteState = await page.evaluate(() => window.__kuviewerCmSessions.length);
     requireCondition(bulkDeleteState === 2, 'desktop CM bulk delete confirmation must remove selected sessions');
     await page.getByTestId('desktop-cm-session-layout-delete-ops-view').click();
+    await page.getByTestId('desktop-cm-session-layout-delete-review-view').click();
     await page.getByTestId('desktop-cm-session-layout-empty').waitFor({ state: 'visible', timeout: 10_000 });
     sessionLayoutStorage = await page.evaluate(() => window.localStorage.getItem('kuviewer_desktop_cm_session_layout_presets') || '');
     requireCondition(!sessionLayoutStorage.includes('Ops View'), 'desktop CM session layout delete must remove saved layout');
