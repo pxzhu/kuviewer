@@ -43,7 +43,7 @@ jobs:
         working-directory: website
         run: npx playwright install --with-deps chromium
 
-      - name: Desktop native credential runtime smoke
+      - name: Desktop CM session runtime smoke
         shell: bash
         run: |
           PREVIEW_LOG="$RUNNER_TEMP/kuviewer-desktop-smoke-preview.log"
@@ -54,7 +54,7 @@ jobs:
             rm -f "$PREVIEW_LOG"
           }
           trap cleanup EXIT
-          node scripts/smoke-desktop-keychain-runtime.mjs --url http://127.0.0.1:4174/
+          node scripts/smoke-desktop-cm-sessions.mjs --url http://127.0.0.1:4174/
 
       - name: Desktop packaging spec check
         run: node scripts/check-desktop-packaging-spec.mjs

@@ -1,18 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Boxes, GitBranch, LockKeyhole, Palette, Pause, Play, RefreshCw, SearchCode, SlidersHorizontal, Workflow } from 'lucide-react';
-import { clearAdminToken, getStoredAdminToken, isValidAdminToken, storeAdminToken } from '../features/auth/adminToken';
+import { clearAdminToken, getStoredAdminToken, isValidAdminToken } from '../features/auth/adminToken';
 import {
-  deleteDesktopKubernetesProfileCredential,
-  getDesktopConnectionProfile,
-  getDesktopKubernetesProfiles,
-  getDesktopSidecarProfile,
+  clearDesktopConnectionProfile,
+  deleteDesktopCmSession,
+  getDesktopCmSessions,
   isDesktopRuntime,
-  selectDesktopKubernetesProfile,
-  storeDesktopConnectionProfile,
-  subscribeDesktopConnectionProfile,
-  type DesktopConnectionProfile,
-  type DesktopKubernetesProfile,
-  type DesktopSidecarStatus,
+  saveDesktopCmSession,
+  selectDesktopCmSession,
+  type DesktopCmSession,
+  type DesktopCmSessionInput,
 } from '../features/desktop/desktopConnectionProfile';
 import { useConnectorStatus } from '../features/status/useConnectorStatus';
 import { type ColorMode, type TopologyFilters, type TopologySourceMode, useTopology } from '../features/topology/useTopology';
@@ -69,10 +66,8 @@ function Dashboard() {
   const [sourceMode, setSourceMode] = useState<TopologySourceMode>(() => initialSourceMode());
   const [resourceUrlFilters, setResourceUrlFilters] = useState<ResourceViewFilters>(() => initialResourceViewFilters());
   const [desktopConnectionAvailable] = useState(() => isDesktopRuntime());
-  const [desktopConnectionProfile, setDesktopConnectionProfile] = useState<DesktopConnectionProfile | null>(() => getDesktopConnectionProfile());
-  const [desktopKubernetesProfiles, setDesktopKubernetesProfiles] = useState<DesktopKubernetesProfile[]>([]);
-  const [desktopKubernetesProfileMessage, setDesktopKubernetesProfileMessage] = useState('');
-  const [desktopSidecarProfile, setDesktopSidecarProfile] = useState<DesktopSidecarStatus | null>(null);
+  const [desktopCmSessions, setDesktopCmSessions] = useState<DesktopCmSession[]>([]);
+  const [desktopCmSessionMessage, setDesktopCmSessionMessage] = useState('');
   const [liveUnlocked, setLiveUnlocked] = useState(() => isValidAdminToken(getStoredAdminToken()));
   const [uploadedState, setUploadedState] = useState<UploadedTopologyState | null>(null);
   const [uploadClusterName, setUploadClusterName] = useState('uploaded-bundle');
@@ -111,10 +106,11 @@ function Dashboard() {
     if (!desktopConnectionAvailable) {
       return;
     }
-    return subscribeDesktopConnectionProfile(() => {
-      setDesktopConnectionProfile(getDesktopConnectionProfile());
-    });
-  }, [desktopConnectionAvailable]);
+    clearDesktopConnectionProfile();
+    clearAdminToken();
+    setLiveUnlocked(false);
+    setAutoRefresh(false);
+  }, [desktopConnectionAvailable, setAutoRefresh]);
 
   useEffect(() => {
     if (!desktopConnectionAvailable) {
@@ -122,59 +118,18 @@ function Dashboard() {
     }
 
     let cancelled = false;
-    void getDesktopSidecarProfile()
-      .then((sidecarProfile) => {
-        if (cancelled || !sidecarProfile) {
-          return;
-        }
-
-        setDesktopSidecarProfile({
-          serverUrl: sidecarProfile.serverUrl,
-          source: sidecarProfile.source,
-          kubernetesProfileId: sidecarProfile.kubernetesProfileId,
-        });
-
-        const currentProfile = getDesktopConnectionProfile();
-        if (currentProfile && currentProfile.serverUrl !== sidecarProfile.serverUrl) {
-          setLiveSessionMessage('desktop local sidecar 대기 · remote profile 사용 중');
-          return;
-        }
-
-        storeAdminToken(sidecarProfile.adminToken);
-        setDesktopConnectionProfile(storeDesktopConnectionProfile(sidecarProfile.serverUrl));
-        setLiveUnlocked(true);
-        setLiveSessionMessage(`desktop local sidecar 연결됨 · ${sidecarProfile.source} source`);
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setDesktopSidecarProfile(null);
-          setLiveSessionMessage('desktop local sidecar 시작 안 됨 · remote profile 사용 가능');
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [desktopConnectionAvailable]);
-
-  useEffect(() => {
-    if (!desktopConnectionAvailable) {
-      return;
-    }
-
-    let cancelled = false;
-    void getDesktopKubernetesProfiles()
-      .then((profiles) => {
+    void getDesktopCmSessions()
+      .then((sessions) => {
         if (cancelled) {
           return;
         }
-        setDesktopKubernetesProfiles(profiles);
-        setDesktopKubernetesProfileMessage(profiles.length > 0 ? 'keychain metadata 준비됨' : 'keychain profile 없음');
+        setDesktopCmSessions(sessions);
+        setDesktopCmSessionMessage(sessions.length > 0 ? 'CM/SSH session metadata 준비됨' : 'CM/SSH session 없음');
       })
       .catch(() => {
         if (!cancelled) {
-          setDesktopKubernetesProfiles([]);
-          setDesktopKubernetesProfileMessage('keychain metadata 읽기 실패');
+          setDesktopCmSessions([]);
+          setDesktopCmSessionMessage('CM/SSH session 읽기 실패');
         }
       });
 
@@ -346,121 +301,35 @@ function Dashboard() {
     }
   }, [resourceUrlFilters, setAutoRefresh, sourceMode, viewMode]);
 
-  const handleDesktopConnectionProfileChange = useCallback(
-    (profile: DesktopConnectionProfile | null) => {
-      setDesktopConnectionProfile(profile);
-      clearAdminToken();
-      setLiveUnlocked(false);
-      setAutoRefresh(false);
-      setLiveSessionMessage(profile ? 'desktop server 변경됨 · token 재입력 필요' : 'desktop server profile 없음');
-    },
-    [setAutoRefresh],
-  );
-
-  const handleUseDesktopSidecar = useCallback(async () => {
-    try {
-      const sidecarProfile = await getDesktopSidecarProfile();
-      if (!sidecarProfile) {
-        setDesktopSidecarProfile(null);
-        setLiveSessionMessage('desktop local sidecar 없음');
-        return;
-      }
-
-      setDesktopSidecarProfile({
-        serverUrl: sidecarProfile.serverUrl,
-        source: sidecarProfile.source,
-        kubernetesProfileId: sidecarProfile.kubernetesProfileId,
-      });
-      storeAdminToken(sidecarProfile.adminToken);
-      setDesktopConnectionProfile(storeDesktopConnectionProfile(sidecarProfile.serverUrl));
-      setLiveUnlocked(true);
-      setSourceMode('live');
-      storeSourceMode('live');
-      setSelectedNodeId('');
-      setAutoRefresh(false);
-      setLiveSessionMessage(`desktop local sidecar 연결됨 · ${sidecarProfile.source} source`);
-      writeAppUrlState({ viewMode, sourceMode: 'live', resourceFilters: resourceUrlFilters }, 'push');
-    } catch {
-      setDesktopSidecarProfile(null);
-      setLiveSessionMessage('desktop local sidecar profile 읽기 실패');
+  const handleDesktopCmSessionSave = useCallback(async (session: DesktopCmSessionInput) => {
+    const savedSession = await saveDesktopCmSession(session);
+    if (!savedSession) {
+      throw new Error('desktop_cm_session_save_failed');
     }
-  }, [resourceUrlFilters, setAutoRefresh, viewMode]);
+    setDesktopCmSessions((currentSessions) => upsertDesktopCmSession(currentSessions, savedSession));
+    setDesktopCmSessionMessage(`${savedSession.name} 저장됨 · metadata-only`);
+  }, []);
 
-  const handleDesktopKubernetesProfileSelect = useCallback(async (profileId: string) => {
-    try {
-      const selectedProfile = await selectDesktopKubernetesProfile(profileId);
-      if (!selectedProfile) {
-        setDesktopKubernetesProfileMessage('keychain profile 선택 실패');
-        return;
-      }
-
-      setDesktopKubernetesProfiles((currentProfiles) =>
-        currentProfiles.map((profile) => ({
-          ...profile,
-          selected: profile.id === selectedProfile.id,
-          status: profile.id === selectedProfile.id ? selectedProfile.status : profile.status,
-        })),
-      );
-      if (selectedProfile.status === 'sidecar-kubernetes-active') {
-        const sidecarProfile = await getDesktopSidecarProfile();
-        if (!sidecarProfile) {
-          setDesktopKubernetesProfileMessage('kubernetes sidecar profile 읽기 실패');
-          return;
-        }
-        setDesktopSidecarProfile({
-          serverUrl: sidecarProfile.serverUrl,
-          source: sidecarProfile.source,
-          kubernetesProfileId: sidecarProfile.kubernetesProfileId,
-        });
-        storeAdminToken(sidecarProfile.adminToken);
-        setDesktopConnectionProfile(storeDesktopConnectionProfile(sidecarProfile.serverUrl));
-        setLiveUnlocked(true);
-        setSourceMode('live');
-        storeSourceMode('live');
-        setSelectedNodeId('');
-        setAutoRefresh(false);
-        setLiveSessionMessage(`desktop local sidecar 연결됨 · ${sidecarProfile.source} source`);
-        writeAppUrlState({ viewMode, sourceMode: 'live', resourceFilters: resourceUrlFilters }, 'push');
-        setDesktopKubernetesProfileMessage(`${selectedProfile.displayName} 연결됨 · token은 native/runtime file 경로만 사용`);
-        return;
-      }
-
-      setDesktopKubernetesProfileMessage(`${selectedProfile.displayName} 선택됨 · secret은 native store에만 보관`);
-    } catch {
-      setDesktopKubernetesProfileMessage('keychain profile 선택 실패');
+  const handleDesktopCmSessionSelect = useCallback(async (sessionId: string) => {
+    const selectedSession = await selectDesktopCmSession(sessionId);
+    if (!selectedSession) {
+      throw new Error('desktop_cm_session_not_found');
     }
-  }, [resourceUrlFilters, setAutoRefresh, viewMode]);
+    setDesktopCmSessions((currentSessions) =>
+      currentSessions.map((session) => ({
+        ...session,
+        selected: session.id === selectedSession.id,
+        status: session.id === selectedSession.id ? selectedSession.status : 'metadata-only',
+      })),
+    );
+    setDesktopCmSessionMessage(`${selectedSession.name} 선택됨 · SSH 연결은 후속`);
+  }, []);
 
-  const handleDesktopKubernetesProfileCredentialDelete = useCallback(async (profileId: string) => {
-    try {
-      const updatedProfile = await deleteDesktopKubernetesProfileCredential(profileId);
-      if (!updatedProfile) {
-        setDesktopKubernetesProfileMessage('credential 삭제 실패');
-        return;
-      }
-
-      setDesktopKubernetesProfiles((currentProfiles) =>
-        currentProfiles.map((profile) => (profile.id === updatedProfile.id ? updatedProfile : profile)),
-      );
-      if (desktopSidecarProfile?.kubernetesProfileId === updatedProfile.id) {
-        clearAdminToken();
-        setLiveUnlocked(false);
-        setAutoRefresh(false);
-        const sidecarProfile = await getDesktopSidecarProfile();
-        if (sidecarProfile) {
-          setDesktopSidecarProfile({
-            serverUrl: sidecarProfile.serverUrl,
-            source: sidecarProfile.source,
-            kubernetesProfileId: sidecarProfile.kubernetesProfileId,
-          });
-        }
-        setLiveSessionMessage('desktop keychain credential 삭제됨 · live token 재확인 필요');
-      }
-      setDesktopKubernetesProfileMessage(`${updatedProfile.displayName} credential 삭제됨`);
-    } catch {
-      setDesktopKubernetesProfileMessage('credential 삭제 실패');
-    }
-  }, [desktopSidecarProfile?.kubernetesProfileId, setAutoRefresh]);
+  const handleDesktopCmSessionDelete = useCallback(async (sessionId: string) => {
+    const sessions = await deleteDesktopCmSession(sessionId);
+    setDesktopCmSessions(sessions);
+    setDesktopCmSessionMessage('CM/SSH session 삭제됨');
+  }, []);
 
   const handleOpenTopologyNode = useCallback((nodeId: string) => {
     setFilters(initialFilters);
@@ -610,10 +479,8 @@ function Dashboard() {
         <SourceModeBar
           canExport={snapshot.nodes.length > 0 || snapshot.edges.length > 0}
           desktopConnectionAvailable={desktopConnectionAvailable}
-          desktopConnectionProfile={desktopConnectionProfile}
-          desktopKubernetesProfileMessage={desktopKubernetesProfileMessage}
-          desktopKubernetesProfiles={desktopKubernetesProfiles}
-          desktopSidecarProfile={desktopSidecarProfile}
+          desktopCmSessionMessage={desktopCmSessionMessage}
+          desktopCmSessions={desktopCmSessions}
           liveSessionMessage={liveSessionMessage}
           liveUnlocked={liveUnlocked}
           mode={sourceMode}
@@ -621,9 +488,9 @@ function Dashboard() {
           uploadClusterName={uploadClusterName}
           uploadedState={uploadedState}
           uploadError={uploadError}
-          onDesktopConnectionProfileChange={handleDesktopConnectionProfileChange}
-          onDesktopKubernetesProfileCredentialDelete={handleDesktopKubernetesProfileCredentialDelete}
-          onDesktopKubernetesProfileSelect={handleDesktopKubernetesProfileSelect}
+          onDesktopCmSessionDelete={handleDesktopCmSessionDelete}
+          onDesktopCmSessionSave={handleDesktopCmSessionSave}
+          onDesktopCmSessionSelect={handleDesktopCmSessionSelect}
           onExportJson={handleExportJson}
           onImportJson={handleImportJson}
           onLiveLock={handleLiveLock}
@@ -632,7 +499,6 @@ function Dashboard() {
             setLiveSessionMessage('');
           }}
           onModeChange={handleSourceModeChange}
-          onUseDesktopSidecar={handleUseDesktopSidecar}
           onUploadClusterIdChange={setUploadClusterId}
           onUploadClusterNameChange={setUploadClusterName}
           onUploadFiles={handleUploadFiles}
@@ -932,6 +798,14 @@ function initialBrandTheme(): BrandTheme {
 
 function storeBrandTheme(theme: BrandTheme) {
   window.localStorage.setItem(brandThemeStorageKey, theme);
+}
+
+function upsertDesktopCmSession(sessions: DesktopCmSession[], savedSession: DesktopCmSession) {
+  const existingIndex = sessions.findIndex((session) => session.id === savedSession.id);
+  if (existingIndex === -1) {
+    return [savedSession, ...sessions];
+  }
+  return sessions.map((session) => (session.id === savedSession.id ? savedSession : session));
 }
 
 function readStoredSourceMode(): TopologySourceMode | null {

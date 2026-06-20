@@ -51,7 +51,24 @@ Build prerequisites, icon source policy, and signing boundaries are tracked in [
 - Treat desktop connection settings as URL-only UI profile state until the dedicated keychain-backed runtime is implemented.
 - The desktop CM/SSH session manager should keep host credentials in the OS credential store and expose only safe session metadata to the UI.
 
-## Remote Server Profile
+## CM/SSH Session Manager
+
+The current desktop product UI is a CM/SSH session manager. It is desktop-only and the web app must not expose SSH.
+
+The first implementation is metadata-only. It supports multiple sessions with safe fields only:
+
+- `name`
+- `host`
+- `port`
+- `user`
+- `description`
+- status, selection, and updated timestamp
+
+The Tauri bridge exposes safe metadata commands only: `desktop_cm_sessions`, `desktop_save_cm_session`, `desktop_select_cm_session`, and `desktop_delete_cm_session`. No password, private key, token, kubeconfig, cloud credential, Secret value, Event, or log is stored or returned. Actual SSH connection checks, credential-store import, and CM tunnel/runtime integration are the next desktop milestones.
+
+The desktop runtime can seed one metadata fixture for smoke work with `KUVIEWER_DESKTOP_CM_SESSION_HOST` plus optional `KUVIEWER_DESKTOP_CM_SESSION_ID`, `KUVIEWER_DESKTOP_CM_SESSION_NAME`, `KUVIEWER_DESKTOP_CM_SESSION_PORT`, `KUVIEWER_DESKTOP_CM_SESSION_USER`, and `KUVIEWER_DESKTOP_CM_SESSION_DESCRIPTION`.
+
+## Prototype-only Remote API Profile
 
 This section records the existing prototype-only remote API path. It is not the primary installable desktop direction; CM/SSH multiple sessions are the product target, and the web app must not expose SSH.
 
@@ -137,21 +154,21 @@ APPLE_SIGNING_IDENTITY="Developer ID Application: Example" node scripts/configur
 WINDOWS_CERTIFICATE_THUMBPRINT=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA node scripts/configure-desktop-signing.mjs --windows --dry-run
 ```
 
-## Local Sidecar Runtime
+## Prototype-only Local Sidecar Runtime
 
-The local sidecar path bundles the existing Go read-only API server as a localhost-only Tauri sidecar for users who want a desktop app that can inspect a connected cluster without a separate hosted Kuviewer server. Tauri builds the sidecar binary before dev/build packaging and registers it as the external binary base name `binaries/kuviewer-sidecar`.
+The local sidecar path bundles the existing Go read-only API server as a localhost-only Tauri sidecar for prototype validation. It is no longer the desktop product default. Tauri still builds the sidecar binary before dev/build packaging and registers it as the external binary base name `binaries/kuviewer-sidecar`.
 
 Runtime boundary:
 
 - Generated sidecar binaries are ignored by git.
 - Tauri `externalBin` is enabled for `binaries/kuviewer-sidecar`.
-- The Rust runtime launches the sidecar; frontend JavaScript still has no shell permission.
+- The Rust runtime launches the sidecar only when `KUVIEWER_DESKTOP_ENABLE_PROTOTYPE_SIDECAR=1`; frontend JavaScript still has no shell permission.
 - The sidecar binds to `127.0.0.1:18086`.
 - A per-launch admin token is generated in memory and exposed to the UI only through the `desktop_sidecar_profile` Tauri command.
 - The browser stores that token in `sessionStorage`, not `localStorage`.
-- Default sidecar source is `mock` so unsigned package smoke runs do not require cluster credentials.
+- Default sidecar source is `mock` when the prototype sidecar is explicitly enabled, so unsigned package smoke runs do not require cluster credentials.
 - `KUVIEWER_DESKTOP_SIDECAR_SOURCE=kubernetes` can opt into the Kubernetes provider when a safe credential source is configured outside the browser.
-- `KUVIEWER_DESKTOP_DISABLE_SIDECAR=1` disables local sidecar startup for remote-only testing.
+- `KUVIEWER_DESKTOP_DISABLE_SIDECAR=1` still disables local sidecar startup for prototype testing.
 - Browser-side kubeconfig entry remains out of scope.
 - Secret values, kubeconfigs, cloud credentials, Events, logs, and admin tokens must not be persisted.
 - Operational actions remain out of scope.
@@ -169,23 +186,21 @@ Local binary smoke builds can target a temporary directory so the repository sta
 node scripts/build-desktop-sidecar.mjs --target aarch64-apple-darwin --out-dir /tmp/kuviewer-sidecar-smoke
 ```
 
-Remote server profile remains available. If the user has already selected a different remote server URL, the desktop app does not overwrite that profile with the sidecar URL; clearing the remote profile allows the local sidecar profile to take over on the next launch.
+The old remote server profile and local sidecar switch panel are hidden from the current product UI. They remain in source only as prototype scaffolding while the CM/SSH session manager takes over the desktop path.
 
-The desktop server profile panel also displays the detected local sidecar source and exposes a `로컬 sidecar 사용` action. That action explicitly replaces the selected remote URL with the local sidecar URL, re-reads the per-launch token through the Tauri command, stores it in `sessionStorage`, and switches the app to live mode. The UI passes only the safe sidecar URL/source descriptor into the panel; the token is not stored as profile metadata.
-
-## Keychain Credential Design
+## Prototype-only Keychain Credential Design
 
 The direct-cluster desktop path is documented in [KEYCHAIN_CREDENTIAL_DESIGN.md](KEYCHAIN_CREDENTIAL_DESIGN.md). It keeps Kubernetes credentials out of browser JavaScript and stores secret material only in macOS Keychain or Windows Credential Manager.
 
 The first runtime scope is bearer-token Kubernetes profiles. Rust reads the selected OS credential, creates a private runtime temp token file, passes `KUVIEWER_KUBE_TOKEN_FILE` to the localhost sidecar, and deletes that temp file on sidecar stop or restart. Browser `localStorage` remains safe profile metadata only, and operational actions remain out of scope.
 
-The current runtime prototype exposes safe metadata through `desktop_kubernetes_profiles` and `desktop_select_kubernetes_profile`, and the UI renders that metadata in `DesktopKubernetesProfilePanel`. It can also delete stored native credentials with `desktop_delete_kubernetes_profile_credential`. Local smoke tests can provide metadata only with `KUVIEWER_DESKTOP_KUBE_API_SERVER`, optional `KUVIEWER_DESKTOP_KUBE_PROFILE_ID`, and optional `KUVIEWER_DESKTOP_KUBE_PROFILE_NAME`.
+The current runtime prototype exposes safe metadata through `desktop_kubernetes_profiles` and `desktop_select_kubernetes_profile`, but `DesktopKubernetesProfilePanel` is hidden from the current product UI. It can also delete stored native credentials with `desktop_delete_kubernetes_profile_credential`. Local smoke tests can provide metadata only with `KUVIEWER_DESKTOP_KUBE_API_SERVER`, optional `KUVIEWER_DESKTOP_KUBE_PROFILE_ID`, and optional `KUVIEWER_DESKTOP_KUBE_PROFILE_NAME`.
 
 For native secret import smoke, Rust can read a local token file and write it to macOS Keychain or Windows Credential Manager when `KUVIEWER_DESKTOP_KUBE_TOKEN_FILE` and `KUVIEWER_DESKTOP_KUBE_IMPORT_TOKEN_FILE=1` are set before startup. The token file content is never sent to browser JavaScript; the UI sees only safe metadata such as `credentialAvailable`.
 
 Selecting a profile with a stored credential restarts the local sidecar with `KUVIEWER_SOURCE=kubernetes`, `KUVIEWER_KUBE_API_SERVER`, and `KUVIEWER_KUBE_TOKEN_FILE`. The returned profile status becomes `sidecar-kubernetes-active`, and the UI switches to live mode using only the sidecar URL/source descriptor plus the per-launch sidecar admin token in `sessionStorage`. Runtime token files follow `0600-temp-dir-delete-on-sidecar-stop`: they are written outside the repository and deleted when the sidecar stops or restarts. Deleting the active native credential stops the Kubernetes sidecar, clears the live token, deletes runtime token files, and falls back to the default local sidecar. Bearer tokens, kubeconfig bodies, private keys, cloud credentials, and Secret values must not be passed through browser state.
 
-`scripts/smoke-desktop-keychain-runtime.mjs` automates the safe UI/runtime handoff path with a stubbed Tauri bridge. It verifies `desktop_kubernetes_profiles`, `desktop_select_kubernetes_profile`, `desktop_sidecar_profile`, `desktop_delete_kubernetes_profile_credential`, session-only token storage, live mode switching, and active credential delete fallback without touching a real macOS Keychain or Windows Credential Manager item.
+`scripts/smoke-desktop-cm-sessions.mjs` is the active CI desktop smoke. It verifies metadata-only CM/SSH session save/select/delete, confirms the web runtime does not expose SSH session UI, and checks that old sidecar/keychain panels are hidden. `scripts/smoke-desktop-keychain-runtime.mjs` remains as a historical prototype smoke helper.
 
 ## Verified Dry Runs
 
