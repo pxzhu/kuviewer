@@ -13,7 +13,7 @@ import {
   UploadCloud,
 } from 'lucide-react';
 import { clearAdminToken, getStoredAdminToken, storeAdminToken } from '../features/auth/adminToken';
-import type { DesktopCmSession, DesktopCmSessionInput } from '../features/desktop/desktopConnectionProfile';
+import type { DesktopCmSession, DesktopCmSessionInput, DesktopCmSessionRuntimeProfile } from '../features/desktop/desktopConnectionProfile';
 import type { TopologySourceMode } from '../features/topology/useTopology';
 import type { UploadedTopologyState } from '../features/upload/parseKubernetesFiles';
 import { fetchConnectorStatusWithToken } from '../services/statusApi';
@@ -21,6 +21,7 @@ import { DesktopCmSessionPanel } from './DesktopCmSessionPanel';
 
 interface SourceModeBarProps {
   desktopConnectionAvailable: boolean;
+  desktopCmRuntimeProfile: DesktopCmSessionRuntimeProfile | null;
   desktopCmSessionMessage: string;
   desktopCmSessions: DesktopCmSession[];
   mode: TopologySourceMode;
@@ -41,6 +42,8 @@ interface SourceModeBarProps {
   onDesktopCmSessionCredentialDelete: (sessionId: string) => Promise<void>;
   onDesktopCmSessionCheck: (sessionId: string) => Promise<void>;
   onDesktopCmSessionPrivateKeyImport: (sessionId: string, keyFilePath: string) => Promise<void>;
+  onDesktopCmSessionRuntimeStart: (sessionId: string) => Promise<void>;
+  onDesktopCmSessionRuntimeStop: () => Promise<void>;
   onDesktopCmSessionSave: (session: DesktopCmSessionInput) => Promise<void>;
   onDesktopCmSessionSelect: (sessionId: string) => Promise<void>;
   onLiveUnlock: () => void;
@@ -55,6 +58,7 @@ const modeOptions: Array<{ mode: TopologySourceMode; label: string; icon: typeof
 
 export function SourceModeBar({
   desktopConnectionAvailable,
+  desktopCmRuntimeProfile,
   desktopCmSessionMessage,
   desktopCmSessions,
   mode,
@@ -75,6 +79,8 @@ export function SourceModeBar({
   onDesktopCmSessionCredentialDelete,
   onDesktopCmSessionCheck,
   onDesktopCmSessionPrivateKeyImport,
+  onDesktopCmSessionRuntimeStart,
+  onDesktopCmSessionRuntimeStop,
   onDesktopCmSessionSave,
   onDesktopCmSessionSelect,
   onLiveUnlock,
@@ -245,11 +251,14 @@ export function SourceModeBar({
       {desktopConnectionAvailable ? (
         <DesktopCmSessionPanel
           message={desktopCmSessionMessage}
+          runtimeProfile={desktopCmRuntimeProfile}
           sessions={desktopCmSessions}
           onDeleteSession={onDesktopCmSessionDelete}
           onDeleteSessionCredential={onDesktopCmSessionCredentialDelete}
           onCheckSession={onDesktopCmSessionCheck}
           onImportPrivateKey={onDesktopCmSessionPrivateKeyImport}
+          onStartSessionRuntime={onDesktopCmSessionRuntimeStart}
+          onStopSessionRuntime={onDesktopCmSessionRuntimeStop}
           onSaveSession={onDesktopCmSessionSave}
           onSelectSession={onDesktopCmSessionSelect}
         />

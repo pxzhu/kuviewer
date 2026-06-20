@@ -1,14 +1,23 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Activity, CheckCircle2, KeyRound, Pencil, Plus, ServerCog, ShieldCheck, Trash2, Unplug } from 'lucide-react';
-import type { DesktopCmSession, DesktopCmSessionInput } from '../features/desktop/desktopConnectionProfile';
+import { Activity, CheckCircle2, KeyRound, Pencil, Play, Plus, ServerCog, ShieldCheck, Square, Trash2, Unplug } from 'lucide-react';
+import {
+  desktopCmDefaultRemoteApiHost,
+  desktopCmDefaultRemoteApiPort,
+  type DesktopCmSession,
+  type DesktopCmSessionInput,
+  type DesktopCmSessionRuntimeProfile,
+} from '../features/desktop/desktopConnectionProfile';
 
 interface DesktopCmSessionPanelProps {
   message: string;
+  runtimeProfile: DesktopCmSessionRuntimeProfile | null;
   sessions: DesktopCmSession[];
   onDeleteSession: (sessionId: string) => Promise<void>;
   onDeleteSessionCredential: (sessionId: string) => Promise<void>;
   onCheckSession: (sessionId: string) => Promise<void>;
   onImportPrivateKey: (sessionId: string, keyFilePath: string) => Promise<void>;
+  onStartSessionRuntime: (sessionId: string) => Promise<void>;
+  onStopSessionRuntime: () => Promise<void>;
   onSaveSession: (session: DesktopCmSessionInput) => Promise<void>;
   onSelectSession: (sessionId: string) => Promise<void>;
 }
@@ -18,20 +27,26 @@ const emptyForm: DesktopCmSessionInput = {
   host: '',
   port: 22,
   user: '',
+  remoteApiHost: desktopCmDefaultRemoteApiHost,
+  remoteApiPort: desktopCmDefaultRemoteApiPort,
   description: '',
 };
 
 export function DesktopCmSessionPanel({
   message,
+  runtimeProfile,
   sessions,
   onDeleteSession,
   onDeleteSessionCredential,
   onCheckSession,
   onImportPrivateKey,
+  onStartSessionRuntime,
+  onStopSessionRuntime,
   onSaveSession,
   onSelectSession,
 }: DesktopCmSessionPanelProps) {
   const selectedSession = useMemo(() => sessions.find((session) => session.selected), [sessions]);
+  const activeRuntimeSessionId = runtimeProfile?.sessionId || '';
   const [form, setForm] = useState<DesktopCmSessionInput>(emptyForm);
   const [error, setError] = useState('');
   const [busyAction, setBusyAction] = useState('');
@@ -135,6 +150,30 @@ export function DesktopCmSessionPanel({
     }
   };
 
+  const handleStartRuntime = async (sessionId: string) => {
+    setError('');
+    setBusyAction(`start-runtime:${sessionId}`);
+    try {
+      await onStartSessionRuntime(sessionId);
+    } catch (requestError) {
+      setError(formatCmSessionError(requestError instanceof Error ? requestError.message : 'desktop_cm_runtime_start_failed'));
+    } finally {
+      setBusyAction('');
+    }
+  };
+
+  const handleStopRuntime = async () => {
+    setError('');
+    setBusyAction('stop-runtime');
+    try {
+      await onStopSessionRuntime();
+    } catch (requestError) {
+      setError(formatCmSessionError(requestError instanceof Error ? requestError.message : 'desktop_cm_runtime_stop_failed'));
+    } finally {
+      setBusyAction('');
+    }
+  };
+
   return (
     <div
       className="grid gap-3 border-t border-[rgba(60,60,67,0.1)] bg-[rgba(247,250,255,0.48)] px-3 py-3 lg:px-4"
@@ -161,6 +200,12 @@ export function DesktopCmSessionPanel({
           <KeyRound size={13} aria-hidden="true" />
           credential store 사용
         </span>
+        {runtimeProfile ? (
+          <span className="ku-chip max-w-full border-[rgba(0,122,255,0.18)] bg-[rgba(0,122,255,0.08)] text-[#0066cc]" title={runtimeProfile.serverUrl}>
+            <Play size={13} aria-hidden="true" />
+            <span className="truncate">runtime active · {runtimeProfile.sessionName}</span>
+          </span>
+        ) : null}
         {message ? (
           <span className="ku-chip max-w-full border-[rgba(0,122,255,0.18)] bg-[rgba(0,122,255,0.08)] text-[#0066cc]">
             <ServerCog size={13} aria-hidden="true" />
@@ -174,7 +219,7 @@ export function DesktopCmSessionPanel({
         ) : null}
       </div>
 
-      <div className="grid gap-2 md:grid-cols-[minmax(130px,1fr)_minmax(160px,1.4fr)_90px_minmax(110px,0.8fr)_minmax(140px,1fr)_auto] md:items-end">
+      <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-[minmax(130px,1fr)_minmax(160px,1.3fr)_88px_minmax(110px,0.8fr)_minmax(140px,1fr)_88px_minmax(140px,1fr)_auto] xl:items-end">
         <label className="min-w-0">
           <span className="ku-meta">Name</span>
           <input
@@ -228,6 +273,32 @@ export function DesktopCmSessionPanel({
           />
         </label>
         <label className="min-w-0">
+          <span className="ku-meta">API host</span>
+          <input
+            className="ku-field mt-1 h-9 w-full font-mono"
+            data-testid="desktop-cm-session-remote-api-host"
+            placeholder={desktopCmDefaultRemoteApiHost}
+            value={form.remoteApiHost || desktopCmDefaultRemoteApiHost}
+            onChange={(event) => {
+              setForm((current) => ({ ...current, remoteApiHost: event.target.value }));
+              setError('');
+            }}
+          />
+        </label>
+        <label className="min-w-0">
+          <span className="ku-meta">API port</span>
+          <input
+            className="ku-field mt-1 h-9 w-full font-mono"
+            data-testid="desktop-cm-session-remote-api-port"
+            inputMode="numeric"
+            value={form.remoteApiPort || desktopCmDefaultRemoteApiPort}
+            onChange={(event) => {
+              setForm((current) => ({ ...current, remoteApiPort: Number(event.target.value || 0) }));
+              setError('');
+            }}
+          />
+        </label>
+        <label className="min-w-0">
           <span className="ku-meta">Description</span>
           <input
             className="ku-field mt-1 h-9 w-full"
@@ -273,8 +344,11 @@ export function DesktopCmSessionPanel({
                 <span className="mt-1 block truncate font-mono text-xs font-semibold text-[rgba(60,60,67,0.62)]">
                   {session.user}@{session.host}:{session.port}
                 </span>
+                <span className="mt-1 block truncate font-mono text-xs font-semibold text-[rgba(60,60,67,0.58)]">
+                  API {session.remoteApiHost}:{session.remoteApiPort}
+                </span>
                 <span className="mt-1 block truncate text-xs font-semibold text-[rgba(60,60,67,0.58)]">
-                  {session.authType} · {session.status}
+                  {session.authType} · {session.status} · {session.runtimeStatus}
                 </span>
                 <span className={`mt-1 flex min-w-0 items-center gap-1 truncate text-xs font-semibold ${session.credentialAvailable ? 'text-[#248a3d]' : 'text-[rgba(60,60,67,0.58)]'}`}>
                   <KeyRound className="shrink-0" size={12} aria-hidden="true" />
@@ -325,6 +399,29 @@ export function DesktopCmSessionPanel({
                     <Activity size={13} aria-hidden="true" />
                     연결 확인
                   </button>
+                  {activeRuntimeSessionId === session.id ? (
+                    <button
+                      className="ku-control w-fit text-[11px]"
+                      data-testid={`desktop-cm-session-stop-runtime-${session.id}`}
+                      type="button"
+                      disabled={busyAction === 'stop-runtime'}
+                      onClick={() => void handleStopRuntime()}
+                    >
+                      <Square size={13} aria-hidden="true" />
+                      runtime 중지
+                    </button>
+                  ) : (
+                    <button
+                      className="ku-control w-fit text-[11px]"
+                      data-testid={`desktop-cm-session-start-runtime-${session.id}`}
+                      type="button"
+                      disabled={!session.credentialAvailable || busyAction === `start-runtime:${session.id}`}
+                      onClick={() => void handleStartRuntime(session.id)}
+                    >
+                      <Play size={13} aria-hidden="true" />
+                      runtime 시작
+                    </button>
+                  )}
                   <button
                     className="ku-control w-fit text-[11px]"
                     data-testid={`desktop-cm-session-delete-credential-${session.id}`}
@@ -349,6 +446,8 @@ export function DesktopCmSessionPanel({
                       host: session.host,
                       port: session.port,
                       user: session.user,
+                      remoteApiHost: session.remoteApiHost,
+                      remoteApiPort: session.remoteApiPort,
                       description: session.description || '',
                     });
                     setError('');
@@ -381,6 +480,18 @@ export function DesktopCmSessionPanel({
 }
 
 function formatCmSessionError(error: string) {
+  if (error.includes('remote_api_host')) {
+    return 'API host 형식 오류';
+  }
+  if (error.includes('remote_api_port')) {
+    return 'API port 1-65535';
+  }
+  if (error.includes('runtime_health')) {
+    return 'API health 확인 실패';
+  }
+  if (error.includes('runtime_tunnel') || error.includes('process_start')) {
+    return 'runtime 터널 실패';
+  }
   if (error.includes('host')) {
     return 'host 형식 오류';
   }

@@ -1,9 +1,9 @@
 use serde::{Deserialize, Serialize};
 use std::fs::{self, OpenOptions};
 use std::io::{Read, Write};
-use std::net::{TcpStream, ToSocketAddrs};
+use std::net::{SocketAddr, TcpListener, TcpStream, ToSocketAddrs};
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::{Child, Command, Stdio};
 use std::sync::Mutex;
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -19,6 +19,9 @@ const DESKTOP_KUBE_CREDENTIAL_SERVICE: &str = "com.kuviewer.desktop.kubernetes";
 const DESKTOP_CM_SSH_CREDENTIAL_SERVICE: &str = "com.kuviewer.desktop.cm-ssh";
 const MAX_DESKTOP_KUBE_TOKEN_BYTES: u64 = 64 * 1024;
 const MAX_DESKTOP_CM_PRIVATE_KEY_BYTES: u64 = 128 * 1024;
+const DESKTOP_CM_DEFAULT_REMOTE_API_HOST: &str = "127.0.0.1";
+const DESKTOP_CM_DEFAULT_REMOTE_API_PORT: u16 = 18085;
+const DESKTOP_CM_RUNTIME_HEALTH_TIMEOUT_SECS: u64 = 10;
 
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -50,10 +53,13 @@ struct DesktopCmSessionMetadata {
     host: String,
     port: u16,
     user: String,
+    remote_api_host: String,
+    remote_api_port: u16,
     auth_type: String,
     credential_store: String,
     credential_available: bool,
     status: String,
+    runtime_status: String,
     updated_at: u64,
     selected: bool,
     description: Option<String>,
@@ -70,7 +76,23 @@ struct DesktopCmSessionInput {
     host: String,
     port: u16,
     user: String,
+    remote_api_host: Option<String>,
+    remote_api_port: Option<u16>,
     description: Option<String>,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DesktopCmSessionRuntimeProfile {
+    session_id: String,
+    session_name: String,
+    server_url: String,
+    remote_api_host: String,
+    remote_api_port: u16,
+    local_port: u16,
+    status: String,
+    started_at: u64,
+    last_error: Option<String>,
 }
 
 #[derive(Default)]
@@ -82,6 +104,9 @@ struct DesktopSidecarState {
     cm_sessions: Mutex<Vec<DesktopCmSessionMetadata>>,
     selected_cm_session_id: Mutex<Option<String>>,
     runtime_temp_files: Mutex<Vec<PathBuf>>,
+    cm_runtime_child: Mutex<Option<Child>>,
+    cm_runtime_profile: Mutex<Option<DesktopCmSessionRuntimeProfile>>,
+    cm_runtime_temp_files: Mutex<Vec<PathBuf>>,
 }
 
 struct DesktopSidecarRuntimeConfig {
@@ -208,6 +233,43 @@ fn desktop_cm_sessions(state: State<'_, DesktopSidecarState>) -> Vec<DesktopCmSe
 }
 
 #[tauri::command]
+fn desktop_cm_session_runtime(state: State<'_, DesktopSidecarState>) -> Option<DesktopCmSessionRuntimeProfile> {
+    state.cm_runtime_profile.lock().ok().and_then(|profile| profile.clone())
+}
+
+#[tauri::command]
+fn desktop_start_cm_session_runtime(
+    session_id: String,
+    state: State<'_, DesktopSidecarState>,
+) -> Result<DesktopCmSessionRuntimeProfile, String> {
+    let session_id = normalize_cm_session_id(&session_id)?;
+    let session_snapshot = {
+        let sessions = state
+            .cm_sessions
+            .lock()
+            .map_err(|_| "desktop_cm_sessions_unavailable".to_string())?;
+        sessions
+            .iter()
+            .find(|session| session.id == session_id)
+            .cloned()
+            .ok_or_else(|| "desktop_cm_session_not_found".to_string())?
+    };
+    let private_key = os_credential_store::read_secret(DESKTOP_CM_SSH_CREDENTIAL_SERVICE, &session_id)
+        .map_err(|_| "desktop_cm_runtime_credential_unavailable".to_string())?
+        .filter(|value| !value.trim().is_empty())
+        .ok_or_else(|| "desktop_cm_runtime_credential_missing".to_string())?;
+
+    stop_cm_session_runtime_state(&state);
+    start_cm_session_ssh_tunnel(&state, session_snapshot, &private_key)
+}
+
+#[tauri::command]
+fn desktop_stop_cm_session_runtime(state: State<'_, DesktopSidecarState>) -> Result<Option<DesktopCmSessionRuntimeProfile>, String> {
+    stop_cm_session_runtime_state(&state);
+    Ok(None)
+}
+
+#[tauri::command]
 fn desktop_save_cm_session(
     session: DesktopCmSessionInput,
     state: State<'_, DesktopSidecarState>,
@@ -219,6 +281,9 @@ fn desktop_save_cm_session(
         .ok()
         .and_then(|selected| selected.clone());
     next_session.selected = selected_id.as_deref().is_some_and(|id| id == next_session.id);
+    if is_active_cm_runtime_session(&state, &next_session.id) {
+        stop_cm_session_runtime_state(&state);
+    }
 
     let mut sessions = state
         .cm_sessions
@@ -252,7 +317,13 @@ fn desktop_select_cm_session(
     let mut selected_session = None;
     for session in sessions.iter_mut() {
         session.selected = session.id == session_id;
-        session.status = "metadata-only".to_string();
+        if session.selected && is_active_cm_runtime_session(&state, &session.id) {
+            session.status = "runtime-active".to_string();
+            session.runtime_status = "runtime-active".to_string();
+        } else {
+            session.status = "metadata-only".to_string();
+            session.runtime_status = "stopped".to_string();
+        }
         if session.selected {
             selected_session = Some(session.clone());
         }
@@ -266,6 +337,9 @@ fn desktop_delete_cm_session(
     state: State<'_, DesktopSidecarState>,
 ) -> Result<Vec<DesktopCmSessionMetadata>, String> {
     let session_id = normalize_cm_session_id(&session_id)?;
+    if is_active_cm_runtime_session(&state, &session_id) {
+        stop_cm_session_runtime_state(&state);
+    }
     let mut sessions = state
         .cm_sessions
         .lock()
@@ -324,6 +398,9 @@ fn desktop_delete_cm_session_credential(
     state: State<'_, DesktopSidecarState>,
 ) -> Result<DesktopCmSessionMetadata, String> {
     let session_id = normalize_cm_session_id(&session_id)?;
+    if is_active_cm_runtime_session(&state, &session_id) {
+        stop_cm_session_runtime_state(&state);
+    }
     os_credential_store::delete_secret(DESKTOP_CM_SSH_CREDENTIAL_SERVICE, &session_id)?;
 
     let mut sessions = state
@@ -334,6 +411,7 @@ fn desktop_delete_cm_session_credential(
     session.credential_store = os_credential_store::store_name().to_string();
     session.credential_available = false;
     session.status = "credential-deleted".to_string();
+    session.runtime_status = "stopped".to_string();
     session.updated_at = current_unix_millis();
     session.last_check_status = "credential-deleted".to_string();
     session.last_check_at = Some(session.updated_at);
@@ -398,6 +476,9 @@ fn main() {
             desktop_select_kubernetes_profile,
             desktop_delete_kubernetes_profile_credential,
             desktop_cm_sessions,
+            desktop_cm_session_runtime,
+            desktop_start_cm_session_runtime,
+            desktop_stop_cm_session_runtime,
             desktop_save_cm_session,
             desktop_select_cm_session,
             desktop_delete_cm_session,
@@ -417,6 +498,7 @@ fn main() {
         })
         .on_window_event(|window, event| {
             if matches!(event, tauri::WindowEvent::CloseRequested { .. }) {
+                stop_cm_session_runtime(window.app_handle());
                 stop_desktop_sidecar(window.app_handle());
             }
         })
@@ -594,6 +676,225 @@ fn cleanup_runtime_files(state: &DesktopSidecarState) {
     }
 }
 
+fn stop_cm_session_runtime(app: &tauri::AppHandle) {
+    let state = app.state::<DesktopSidecarState>();
+    stop_cm_session_runtime_state(&state);
+}
+
+fn stop_cm_session_runtime_state(state: &DesktopSidecarState) {
+    let stopped_profile = state
+        .cm_runtime_profile
+        .lock()
+        .ok()
+        .and_then(|mut profile| profile.take());
+
+    if let Ok(mut child) = state.cm_runtime_child.lock() {
+        if let Some(mut child) = child.take() {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+    }
+
+    cleanup_cm_runtime_files(state);
+
+    if let Some(profile) = stopped_profile {
+        mark_cm_session_runtime_stopped(state, &profile.session_id);
+    }
+}
+
+fn cleanup_cm_runtime_files(state: &DesktopSidecarState) {
+    if let Ok(mut runtime_files) = state.cm_runtime_temp_files.lock() {
+        for path in runtime_files.drain(..) {
+            remove_runtime_file(&path);
+        }
+    }
+}
+
+fn is_active_cm_runtime_session(state: &DesktopSidecarState, session_id: &str) -> bool {
+    state
+        .cm_runtime_profile
+        .lock()
+        .ok()
+        .and_then(|profile| profile.clone())
+        .is_some_and(|profile| profile.session_id == session_id)
+}
+
+fn mark_cm_session_runtime_stopped(state: &DesktopSidecarState, session_id: &str) {
+    if let Ok(mut sessions) = state.cm_sessions.lock() {
+        if let Some(session) = sessions.iter_mut().find(|session| session.id == session_id) {
+            session.runtime_status = "stopped".to_string();
+            session.status = if session.credential_available {
+                "credential-ready".to_string()
+            } else {
+                "metadata-only".to_string()
+            };
+            session.updated_at = current_unix_millis();
+        }
+    }
+}
+
+fn start_cm_session_ssh_tunnel(
+    state: &DesktopSidecarState,
+    session: DesktopCmSessionMetadata,
+    private_key: &str,
+) -> Result<DesktopCmSessionRuntimeProfile, String> {
+    let key_file = write_runtime_cm_private_key_file(&session.id, private_key)?;
+    let local_port = reserve_cm_runtime_local_port()?;
+    let mut command = Command::new("ssh");
+    command
+        .arg("-i")
+        .arg(&key_file)
+        .arg("-p")
+        .arg(session.port.to_string())
+        .arg("-o")
+        .arg("BatchMode=yes")
+        .arg("-o")
+        .arg("ExitOnForwardFailure=yes")
+        .arg("-o")
+        .arg("ConnectTimeout=6")
+        .arg("-o")
+        .arg("StrictHostKeyChecking=no")
+        .arg("-o")
+        .arg(format!("UserKnownHostsFile={}", platform_null_file()))
+        .arg("-o")
+        .arg("LogLevel=ERROR")
+        .arg("-N")
+        .arg("-L")
+        .arg(format!(
+            "127.0.0.1:{local_port}:{}:{}",
+            session.remote_api_host, session.remote_api_port
+        ))
+        .arg(format!("{}@{}", session.user, session.host))
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+
+    let mut child = match command.spawn() {
+        Ok(child) => child,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            remove_runtime_file(&key_file);
+            return Err("desktop_cm_runtime_ssh_binary_missing".to_string());
+        }
+        Err(_) => {
+            remove_runtime_file(&key_file);
+            return Err("desktop_cm_runtime_process_start_failed".to_string());
+        }
+    };
+
+    if let Err(error) = wait_for_cm_runtime_health(&mut child, local_port) {
+        let _ = child.kill();
+        let _ = child.wait();
+        remove_runtime_file(&key_file);
+        return Err(error);
+    }
+
+    let profile = DesktopCmSessionRuntimeProfile {
+        session_id: session.id.clone(),
+        session_name: session.name.clone(),
+        server_url: format!("http://127.0.0.1:{local_port}"),
+        remote_api_host: session.remote_api_host.clone(),
+        remote_api_port: session.remote_api_port,
+        local_port,
+        status: "runtime-active".to_string(),
+        started_at: current_unix_millis(),
+        last_error: None,
+    };
+
+    if let Ok(mut runtime_files) = state.cm_runtime_temp_files.lock() {
+        runtime_files.push(key_file);
+    } else {
+        let _ = child.kill();
+        let _ = child.wait();
+        remove_runtime_file(&key_file);
+        return Err("desktop_cm_runtime_temp_state_unavailable".to_string());
+    }
+
+    if let Ok(mut child_slot) = state.cm_runtime_child.lock() {
+        *child_slot = Some(child);
+    } else {
+        let _ = child.kill();
+        let _ = child.wait();
+        cleanup_cm_runtime_files(state);
+        return Err("desktop_cm_runtime_child_state_unavailable".to_string());
+    }
+
+    if let Ok(mut profile_slot) = state.cm_runtime_profile.lock() {
+        *profile_slot = Some(profile.clone());
+    } else {
+        stop_cm_session_runtime_state(state);
+        return Err("desktop_cm_runtime_profile_state_unavailable".to_string());
+    }
+
+    if let Ok(mut selected_id) = state.selected_cm_session_id.lock() {
+        *selected_id = Some(session.id.clone());
+    }
+    if let Ok(mut sessions) = state.cm_sessions.lock() {
+        for stored_session in sessions.iter_mut() {
+            stored_session.selected = stored_session.id == session.id;
+            if stored_session.id == session.id {
+                stored_session.runtime_status = "runtime-active".to_string();
+                stored_session.status = "runtime-active".to_string();
+                stored_session.credential_available = true;
+                stored_session.updated_at = profile.started_at;
+            } else if stored_session.runtime_status == "runtime-active" {
+                stored_session.runtime_status = "stopped".to_string();
+            }
+        }
+    }
+
+    Ok(profile)
+}
+
+fn reserve_cm_runtime_local_port() -> Result<u16, String> {
+    let listener = TcpListener::bind("127.0.0.1:0").map_err(|_| "desktop_cm_runtime_local_port_unavailable".to_string())?;
+    let port = listener
+        .local_addr()
+        .map_err(|_| "desktop_cm_runtime_local_port_unavailable".to_string())?
+        .port();
+    drop(listener);
+    Ok(port)
+}
+
+fn wait_for_cm_runtime_health(child: &mut Child, local_port: u16) -> Result<(), String> {
+    let deadline = Instant::now() + Duration::from_secs(DESKTOP_CM_RUNTIME_HEALTH_TIMEOUT_SECS);
+    loop {
+        match child.try_wait() {
+            Ok(Some(_)) => return Err("desktop_cm_runtime_tunnel_failed".to_string()),
+            Ok(None) => {
+                if probe_cm_runtime_health(local_port) {
+                    return Ok(());
+                }
+                if Instant::now() >= deadline {
+                    return Err("desktop_cm_runtime_health_timeout".to_string());
+                }
+                thread::sleep(Duration::from_millis(150));
+            }
+            Err(_) => return Err("desktop_cm_runtime_tunnel_failed".to_string()),
+        }
+    }
+}
+
+fn probe_cm_runtime_health(local_port: u16) -> bool {
+    let address = SocketAddr::from(([127, 0, 0, 1], local_port));
+    let Ok(mut stream) = TcpStream::connect_timeout(&address, Duration::from_millis(500)) else {
+        return false;
+    };
+    let _ = stream.set_read_timeout(Some(Duration::from_millis(700)));
+    let _ = stream.set_write_timeout(Some(Duration::from_millis(700)));
+    if stream
+        .write_all(b"GET /healthz HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n")
+        .is_err()
+    {
+        return false;
+    }
+    let mut buffer = [0u8; 4096];
+    let Ok(count) = stream.read(&mut buffer) else {
+        return false;
+    };
+    let response = String::from_utf8_lossy(&buffer[..count]);
+    response.contains("200 OK") && response.contains("\"ok\":true")
+}
+
 fn initialize_desktop_cm_sessions(app: &tauri::AppHandle) {
     let sessions = load_desktop_cm_sessions_from_env();
     let selected_session_id = sessions.first().map(|session| session.id.clone());
@@ -619,6 +920,9 @@ fn load_desktop_cm_sessions_from_env() -> Vec<DesktopCmSessionMetadata> {
             .and_then(|port| port.parse::<u16>().ok())
             .unwrap_or(22),
         user: read_safe_env("KUVIEWER_DESKTOP_CM_SESSION_USER").unwrap_or_else(|| "ubuntu".to_string()),
+        remote_api_host: read_safe_env("KUVIEWER_DESKTOP_CM_SESSION_REMOTE_API_HOST"),
+        remote_api_port: read_safe_env("KUVIEWER_DESKTOP_CM_SESSION_REMOTE_API_PORT")
+            .and_then(|port| port.parse::<u16>().ok()),
         description: read_safe_env("KUVIEWER_DESKTOP_CM_SESSION_DESCRIPTION"),
     };
 
@@ -635,8 +939,20 @@ fn normalize_cm_session_input(input: DesktopCmSessionInput) -> Result<DesktopCmS
     let name = normalize_bounded_text(&input.name, 60, "desktop_cm_session_name")?;
     let host = normalize_cm_session_host(&input.host)?;
     let user = normalize_cm_session_user(&input.user)?;
+    let remote_api_host = input
+        .remote_api_host
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(normalize_cm_session_remote_api_host)
+        .transpose()?
+        .unwrap_or_else(|| DESKTOP_CM_DEFAULT_REMOTE_API_HOST.to_string());
+    let remote_api_port = input.remote_api_port.unwrap_or(DESKTOP_CM_DEFAULT_REMOTE_API_PORT);
     if input.port == 0 {
         return Err("desktop_cm_session_port_invalid".to_string());
+    }
+    if remote_api_port == 0 {
+        return Err("desktop_cm_session_remote_api_port_invalid".to_string());
     }
     let description = input
         .description
@@ -660,10 +976,13 @@ fn normalize_cm_session_input(input: DesktopCmSessionInput) -> Result<DesktopCmS
         host,
         port: input.port,
         user,
+        remote_api_host,
+        remote_api_port,
         auth_type: "os-credential-store".to_string(),
         credential_store: os_credential_store::store_name().to_string(),
         credential_available: false,
         status: "metadata-only".to_string(),
+        runtime_status: "stopped".to_string(),
         updated_at: current_unix_millis(),
         selected: false,
         description,
@@ -695,6 +1014,30 @@ fn normalize_cm_session_host(value: &str) -> Result<String, String> {
             .is_some_and(|character| character.is_ascii_lowercase() || character.is_ascii_digit())
     {
         return Err("desktop_cm_session_host_invalid".to_string());
+    }
+    Ok(host)
+}
+
+fn normalize_cm_session_remote_api_host(value: &str) -> Result<String, String> {
+    let host = normalize_bounded_text(value, 180, "desktop_cm_session_remote_api_host")?.to_ascii_lowercase();
+    if host.contains("://")
+        || host.contains('/')
+        || host.contains('?')
+        || host.contains('#')
+        || host.contains('@')
+        || host.contains(':')
+    {
+        return Err("desktop_cm_session_remote_api_host_invalid".to_string());
+    }
+    if !host
+        .chars()
+        .all(|character| character.is_ascii_lowercase() || character.is_ascii_digit() || matches!(character, '-' | '.'))
+        || !host
+            .chars()
+            .next()
+            .is_some_and(|character| character.is_ascii_lowercase() || character.is_ascii_digit())
+    {
+        return Err("desktop_cm_session_remote_api_host_invalid".to_string());
     }
     Ok(host)
 }

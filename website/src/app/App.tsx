@@ -3,16 +3,24 @@ import { Boxes, GitBranch, LockKeyhole, Palette, Pause, Play, RefreshCw, SearchC
 import { clearAdminToken, getStoredAdminToken, isValidAdminToken } from '../features/auth/adminToken';
 import {
   checkDesktopCmSession,
+  clearDesktopCmRuntimeProfile,
   clearDesktopConnectionProfile,
   deleteDesktopCmSession,
   deleteDesktopCmSessionCredential,
+  getDesktopCmRuntimeProfile,
+  getDesktopCmSessionRuntime,
   getDesktopCmSessions,
   importDesktopCmSessionPrivateKey,
   isDesktopRuntime,
   saveDesktopCmSession,
   selectDesktopCmSession,
+  startDesktopCmSessionRuntime,
+  stopDesktopCmSessionRuntime,
+  storeDesktopCmRuntimeProfile,
+  subscribeDesktopCmRuntimeProfile,
   type DesktopCmSession,
   type DesktopCmSessionInput,
+  type DesktopCmSessionRuntimeProfile,
 } from '../features/desktop/desktopConnectionProfile';
 import { useConnectorStatus } from '../features/status/useConnectorStatus';
 import { type ColorMode, type TopologyFilters, type TopologySourceMode, useTopology } from '../features/topology/useTopology';
@@ -70,6 +78,7 @@ function Dashboard() {
   const [resourceUrlFilters, setResourceUrlFilters] = useState<ResourceViewFilters>(() => initialResourceViewFilters());
   const [desktopConnectionAvailable] = useState(() => isDesktopRuntime());
   const [desktopCmSessions, setDesktopCmSessions] = useState<DesktopCmSession[]>([]);
+  const [desktopCmRuntimeProfile, setDesktopCmRuntimeProfile] = useState<DesktopCmSessionRuntimeProfile | null>(null);
   const [desktopCmSessionMessage, setDesktopCmSessionMessage] = useState('');
   const [liveUnlocked, setLiveUnlocked] = useState(() => isValidAdminToken(getStoredAdminToken()));
   const [uploadedState, setUploadedState] = useState<UploadedTopologyState | null>(null);
@@ -110,6 +119,7 @@ function Dashboard() {
       return;
     }
     clearDesktopConnectionProfile();
+    clearDesktopCmRuntimeProfile();
     clearAdminToken();
     setLiveUnlocked(false);
     setAutoRefresh(false);
@@ -138,6 +148,42 @@ function Dashboard() {
 
     return () => {
       cancelled = true;
+    };
+  }, [desktopConnectionAvailable]);
+
+  useEffect(() => {
+    if (!desktopConnectionAvailable) {
+      return;
+    }
+
+    let cancelled = false;
+    void getDesktopCmSessionRuntime()
+      .then((profile) => {
+        if (cancelled) {
+          return;
+        }
+        if (profile) {
+          storeDesktopCmRuntimeProfile(profile);
+          setDesktopCmRuntimeProfile(profile);
+        } else {
+          clearDesktopCmRuntimeProfile();
+          setDesktopCmRuntimeProfile(null);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          clearDesktopCmRuntimeProfile();
+          setDesktopCmRuntimeProfile(null);
+        }
+      });
+
+    const unsubscribe = subscribeDesktopCmRuntimeProfile(() => {
+      setDesktopCmRuntimeProfile(getDesktopCmRuntimeProfile());
+    });
+
+    return () => {
+      cancelled = true;
+      unsubscribe();
     };
   }, [desktopConnectionAvailable]);
 
@@ -331,8 +377,18 @@ function Dashboard() {
   const handleDesktopCmSessionDelete = useCallback(async (sessionId: string) => {
     const sessions = await deleteDesktopCmSession(sessionId);
     setDesktopCmSessions(sessions);
+    if (desktopCmRuntimeProfile?.sessionId === sessionId) {
+      clearDesktopCmRuntimeProfile();
+      setDesktopCmRuntimeProfile(null);
+      if (sourceMode === 'live') {
+        setSourceMode('upload');
+        storeSourceMode('upload');
+        writeAppUrlState({ viewMode, sourceMode: 'upload', resourceFilters: resourceUrlFilters }, 'push');
+        setAutoRefresh(false);
+      }
+    }
     setDesktopCmSessionMessage('CM/SSH session 삭제됨');
-  }, []);
+  }, [desktopCmRuntimeProfile?.sessionId, resourceUrlFilters, setAutoRefresh, sourceMode, viewMode]);
 
   const handleDesktopCmSessionPrivateKeyImport = useCallback(async (sessionId: string, keyFilePath: string) => {
     const updatedSession = await importDesktopCmSessionPrivateKey(sessionId, keyFilePath);
@@ -348,9 +404,19 @@ function Dashboard() {
     if (!updatedSession) {
       throw new Error('desktop_cm_credential_delete_failed');
     }
+    if (desktopCmRuntimeProfile?.sessionId === sessionId) {
+      clearDesktopCmRuntimeProfile();
+      setDesktopCmRuntimeProfile(null);
+      if (sourceMode === 'live') {
+        setSourceMode('upload');
+        storeSourceMode('upload');
+        writeAppUrlState({ viewMode, sourceMode: 'upload', resourceFilters: resourceUrlFilters }, 'push');
+        setAutoRefresh(false);
+      }
+    }
     setDesktopCmSessions((currentSessions) => upsertDesktopCmSession(currentSessions, updatedSession));
     setDesktopCmSessionMessage(`${updatedSession.name} credential 삭제됨`);
-  }, []);
+  }, [desktopCmRuntimeProfile?.sessionId, resourceUrlFilters, setAutoRefresh, sourceMode, viewMode]);
 
   const handleDesktopCmSessionCheck = useCallback(async (sessionId: string) => {
     const updatedSession = await checkDesktopCmSession(sessionId);
@@ -360,6 +426,48 @@ function Dashboard() {
     setDesktopCmSessions((currentSessions) => upsertDesktopCmSession(currentSessions, updatedSession));
     setDesktopCmSessionMessage(`${updatedSession.name} 확인 · ${formatCmSessionStatus(updatedSession.lastCheckStatus)}`);
   }, []);
+
+  const handleDesktopCmSessionRuntimeStart = useCallback(async (sessionId: string) => {
+    const profile = await startDesktopCmSessionRuntime(sessionId);
+    if (!profile) {
+      throw new Error('desktop_cm_runtime_start_failed');
+    }
+    storeDesktopCmRuntimeProfile(profile);
+    setDesktopCmRuntimeProfile(profile);
+    setDesktopCmSessions((currentSessions) =>
+      currentSessions.map((session) => ({
+        ...session,
+        selected: session.id === profile.sessionId,
+        status: session.id === profile.sessionId ? 'runtime-active' : session.status,
+        runtimeStatus: session.id === profile.sessionId ? 'runtime-active' : 'stopped',
+      })),
+    );
+    setSourceMode('live');
+    storeSourceMode('live');
+    writeAppUrlState({ viewMode, sourceMode: 'live', resourceFilters: resourceUrlFilters }, 'push');
+    setDesktopCmSessionMessage(`${profile.sessionName} runtime 시작됨`);
+  }, [resourceUrlFilters, viewMode]);
+
+  const handleDesktopCmSessionRuntimeStop = useCallback(async () => {
+    await stopDesktopCmSessionRuntime();
+    const stoppedSessionId = desktopCmRuntimeProfile?.sessionId;
+    clearDesktopCmRuntimeProfile();
+    setDesktopCmRuntimeProfile(null);
+    setDesktopCmSessions((currentSessions) =>
+      currentSessions.map((session) => ({
+        ...session,
+        status: session.id === stoppedSessionId && session.credentialAvailable ? 'credential-ready' : session.status,
+        runtimeStatus: session.id === stoppedSessionId ? 'stopped' : session.runtimeStatus,
+      })),
+    );
+    if (sourceMode === 'live') {
+      setSourceMode('upload');
+      storeSourceMode('upload');
+      writeAppUrlState({ viewMode, sourceMode: 'upload', resourceFilters: resourceUrlFilters }, 'push');
+      setAutoRefresh(false);
+    }
+    setDesktopCmSessionMessage('CM/SSH runtime 중지됨');
+  }, [desktopCmRuntimeProfile?.sessionId, resourceUrlFilters, setAutoRefresh, sourceMode, viewMode]);
 
   const handleOpenTopologyNode = useCallback((nodeId: string) => {
     setFilters(initialFilters);
@@ -509,6 +617,7 @@ function Dashboard() {
         <SourceModeBar
           canExport={snapshot.nodes.length > 0 || snapshot.edges.length > 0}
           desktopConnectionAvailable={desktopConnectionAvailable}
+          desktopCmRuntimeProfile={desktopCmRuntimeProfile}
           desktopCmSessionMessage={desktopCmSessionMessage}
           desktopCmSessions={desktopCmSessions}
           liveSessionMessage={liveSessionMessage}
@@ -522,6 +631,8 @@ function Dashboard() {
           onDesktopCmSessionCredentialDelete={handleDesktopCmSessionCredentialDelete}
           onDesktopCmSessionCheck={handleDesktopCmSessionCheck}
           onDesktopCmSessionPrivateKeyImport={handleDesktopCmSessionPrivateKeyImport}
+          onDesktopCmSessionRuntimeStart={handleDesktopCmSessionRuntimeStart}
+          onDesktopCmSessionRuntimeStop={handleDesktopCmSessionRuntimeStop}
           onDesktopCmSessionSave={handleDesktopCmSessionSave}
           onDesktopCmSessionSelect={handleDesktopCmSessionSelect}
           onExportJson={handleExportJson}
