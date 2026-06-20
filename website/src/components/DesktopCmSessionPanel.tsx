@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Activity, Bookmark, CheckCircle2, Download, Filter, KeyRound, Pencil, Play, Plus, Search, ServerCog, ShieldCheck, Square, Trash2, Unplug, Upload, XCircle } from 'lucide-react';
+import { Activity, Bookmark, CheckCircle2, Download, Filter, KeyRound, Pencil, Play, Plus, RotateCcw, Search, ServerCog, ShieldCheck, Square, Trash2, Unplug, Upload, XCircle } from 'lucide-react';
 import {
   createDesktopCmSessionExportBundle,
   desktopCmDefaultRemoteApiHost,
@@ -35,6 +35,12 @@ const emptyForm: DesktopCmSessionInput = {
   remoteApiPort: desktopCmDefaultRemoteApiPort,
   description: '',
 };
+
+const desktopCmQuickApiEndpoints = [
+  { label: '127.0.0.1:18085', host: desktopCmDefaultRemoteApiHost, port: desktopCmDefaultRemoteApiPort, testId: 'desktop-cm-session-api-preset-local-18085' },
+  { label: 'localhost:18085', host: 'localhost', port: desktopCmDefaultRemoteApiPort, testId: 'desktop-cm-session-api-preset-localhost-18085' },
+  { label: '127.0.0.1:8080', host: desktopCmDefaultRemoteApiHost, port: 8080, testId: 'desktop-cm-session-api-preset-local-8080' },
+] as const;
 
 interface DesktopCmSessionImportSummary {
   fileName: string;
@@ -106,6 +112,7 @@ export function DesktopCmSessionPanel({
     () => diagnosticFilterPresets.find((preset) => preset.diagnosticStage === diagnosticStageFilter && preset.diagnosticSeverity === diagnosticSeverityFilter)?.name || '',
     [diagnosticFilterPresets, diagnosticSeverityFilter, diagnosticStageFilter],
   );
+  const connectionPreview = `${form.user || 'user'}@${form.host || 'host'}:${form.port || 22} -> ${form.remoteApiHost || desktopCmDefaultRemoteApiHost}:${form.remoteApiPort || desktopCmDefaultRemoteApiPort}`;
   const selectedRuntimeActive = Boolean(selectedSession && runtimeProfile?.sessionId === selectedSession.id);
   const selectedRuntimeStatus = selectedRuntimeActive ? runtimeProfile?.status || selectedSession?.runtimeStatus || 'runtime-active' : selectedSession?.runtimeStatus || 'stopped';
 
@@ -117,6 +124,11 @@ export function DesktopCmSessionPanel({
 
   const handleSave = async () => {
     setError('');
+    const validationError = validateDesktopCmSessionForm(form);
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
     setBusyAction('save');
     try {
       await onSaveSession(form);
@@ -126,6 +138,28 @@ export function DesktopCmSessionPanel({
     } finally {
       setBusyAction('');
     }
+  };
+
+  const applyRemoteApiEndpoint = (host: string, port: number) => {
+    setForm((current) => ({ ...current, remoteApiHost: host, remoteApiPort: port }));
+    setError('');
+  };
+
+  const fillSelectedSession = () => {
+    if (!selectedSession) {
+      return;
+    }
+    setForm({
+      id: selectedSession.id,
+      name: selectedSession.name,
+      host: selectedSession.host,
+      port: selectedSession.port,
+      user: selectedSession.user,
+      remoteApiHost: selectedSession.remoteApiHost,
+      remoteApiPort: selectedSession.remoteApiPort,
+      description: selectedSession.description || '',
+    });
+    setError('');
   };
 
   const handleSelect = async (sessionId: string) => {
@@ -368,108 +402,152 @@ export function DesktopCmSessionPanel({
         ) : null}
       </div>
 
-      <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-[minmax(130px,1fr)_minmax(160px,1.3fr)_88px_minmax(110px,0.8fr)_minmax(140px,1fr)_88px_minmax(140px,1fr)_auto] xl:items-end">
-        <label className="min-w-0">
-          <span className="ku-meta">Name</span>
-          <input
-            className="ku-field mt-1 h-9 w-full"
-            data-testid="desktop-cm-session-name"
-            placeholder="prod cm"
-            value={form.name}
-            onChange={(event) => {
-              setForm((current) => ({ ...current, name: event.target.value }));
-              setError('');
-            }}
-          />
-        </label>
-        <label className="min-w-0">
-          <span className="ku-meta">Host</span>
-          <input
-            className="ku-field mt-1 h-9 w-full font-mono"
-            data-testid="desktop-cm-session-host"
-            placeholder="cm.example.internal"
-            value={form.host}
-            onChange={(event) => {
-              setForm((current) => ({ ...current, host: event.target.value }));
-              setError('');
-            }}
-          />
-        </label>
-        <label className="min-w-0">
-          <span className="ku-meta">Port</span>
-          <input
-            className="ku-field mt-1 h-9 w-full font-mono"
-            data-testid="desktop-cm-session-port"
-            inputMode="numeric"
-            value={form.port}
-            onChange={(event) => {
-              setForm((current) => ({ ...current, port: Number(event.target.value || 0) }));
-              setError('');
-            }}
-          />
-        </label>
-        <label className="min-w-0">
-          <span className="ku-meta">User</span>
-          <input
-            className="ku-field mt-1 h-9 w-full font-mono"
-            data-testid="desktop-cm-session-user"
-            placeholder="ubuntu"
-            value={form.user}
-            onChange={(event) => {
-              setForm((current) => ({ ...current, user: event.target.value }));
-              setError('');
-            }}
-          />
-        </label>
-        <label className="min-w-0">
-          <span className="ku-meta">API host</span>
-          <input
-            className="ku-field mt-1 h-9 w-full font-mono"
-            data-testid="desktop-cm-session-remote-api-host"
-            placeholder={desktopCmDefaultRemoteApiHost}
-            value={form.remoteApiHost || desktopCmDefaultRemoteApiHost}
-            onChange={(event) => {
-              setForm((current) => ({ ...current, remoteApiHost: event.target.value }));
-              setError('');
-            }}
-          />
-        </label>
-        <label className="min-w-0">
-          <span className="ku-meta">API port</span>
-          <input
-            className="ku-field mt-1 h-9 w-full font-mono"
-            data-testid="desktop-cm-session-remote-api-port"
-            inputMode="numeric"
-            value={form.remoteApiPort || desktopCmDefaultRemoteApiPort}
-            onChange={(event) => {
-              setForm((current) => ({ ...current, remoteApiPort: Number(event.target.value || 0) }));
-              setError('');
-            }}
-          />
-        </label>
-        <label className="min-w-0">
-          <span className="ku-meta">Description</span>
-          <input
-            className="ku-field mt-1 h-9 w-full"
-            data-testid="desktop-cm-session-description"
-            placeholder="readonly entry"
-            value={form.description || ''}
-            onChange={(event) => {
-              setForm((current) => ({ ...current, description: event.target.value }));
-              setError('');
-            }}
-          />
-        </label>
-        <div className="flex gap-2">
-          <button className="ku-control-primary h-9" data-testid="desktop-cm-session-save" type="button" disabled={busyAction === 'save'} onClick={() => void handleSave()}>
-            <Plus size={15} aria-hidden="true" />
-            {form.id ? '수정' : '저장'}
-          </button>
-          {form.id ? (
-            <button className="ku-control h-9" type="button" onClick={() => setForm(emptyForm)}>
-              취소
+      <div className="grid gap-3 rounded-[10px] border border-[rgba(60,60,67,0.1)] bg-white/68 px-3 py-3" data-testid="desktop-cm-connection-profile-form">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <span className="ku-meta">Connection profile</span>
+          <span className="ku-chip max-w-full font-mono" data-testid="desktop-cm-session-connection-preview" title={connectionPreview}>
+            <ServerCog size={13} aria-hidden="true" />
+            <span className="truncate">{connectionPreview}</span>
+          </span>
+          {selectedSession ? (
+            <button className="ku-control h-8 text-xs" data-testid="desktop-cm-session-fill-selected" type="button" onClick={fillSelectedSession}>
+              <CheckCircle2 size={13} aria-hidden="true" />
+              선택 세션으로 채우기
             </button>
           ) : null}
+        </div>
+
+        <div className="grid gap-3 xl:grid-cols-[minmax(280px,1.4fr)_minmax(260px,1fr)_minmax(220px,0.9fr)] xl:items-start" data-testid="desktop-cm-session-form-sections">
+          <section className="grid gap-2" data-testid="desktop-cm-session-form-ssh-endpoint">
+            <span className="ku-meta">SSH endpoint</span>
+            <div className="grid gap-2 sm:grid-cols-[minmax(120px,1fr)_minmax(160px,1.3fr)_88px_minmax(110px,0.9fr)]">
+              <label className="min-w-0">
+                <span className="ku-meta">Name</span>
+                <input
+                  className="ku-field mt-1 h-9 w-full"
+                  data-testid="desktop-cm-session-name"
+                  placeholder="prod cm"
+                  value={form.name}
+                  onChange={(event) => {
+                    setForm((current) => ({ ...current, name: event.target.value }));
+                    setError('');
+                  }}
+                />
+              </label>
+              <label className="min-w-0">
+                <span className="ku-meta">Host</span>
+                <input
+                  className="ku-field mt-1 h-9 w-full font-mono"
+                  data-testid="desktop-cm-session-host"
+                  placeholder="cm.internal"
+                  value={form.host}
+                  onChange={(event) => {
+                    setForm((current) => ({ ...current, host: event.target.value }));
+                    setError('');
+                  }}
+                />
+              </label>
+              <label className="min-w-0">
+                <span className="ku-meta">Port</span>
+                <input
+                  className="ku-field mt-1 h-9 w-full font-mono"
+                  data-testid="desktop-cm-session-port"
+                  inputMode="numeric"
+                  value={form.port}
+                  onChange={(event) => {
+                    setForm((current) => ({ ...current, port: Number(event.target.value || 0) }));
+                    setError('');
+                  }}
+                />
+              </label>
+              <label className="min-w-0">
+                <span className="ku-meta">User</span>
+                <input
+                  className="ku-field mt-1 h-9 w-full font-mono"
+                  data-testid="desktop-cm-session-user"
+                  placeholder="ubuntu"
+                  value={form.user}
+                  onChange={(event) => {
+                    setForm((current) => ({ ...current, user: event.target.value }));
+                    setError('');
+                  }}
+                />
+              </label>
+            </div>
+          </section>
+
+          <section className="grid gap-2" data-testid="desktop-cm-session-form-api-endpoint">
+            <div className="flex min-w-0 flex-wrap items-center gap-2">
+              <span className="ku-meta">Remote Kuviewer API</span>
+              <button className="ku-control h-8 text-xs" data-testid="desktop-cm-session-api-default-reset" type="button" onClick={() => applyRemoteApiEndpoint(desktopCmDefaultRemoteApiHost, desktopCmDefaultRemoteApiPort)}>
+                <RotateCcw size={13} aria-hidden="true" />
+                기본 API로 초기화
+              </button>
+            </div>
+            <div className="grid gap-2 sm:grid-cols-[minmax(140px,1fr)_88px]">
+              <label className="min-w-0">
+                <span className="ku-meta">API host</span>
+                <input
+                  className="ku-field mt-1 h-9 w-full font-mono"
+                  data-testid="desktop-cm-session-remote-api-host"
+                  placeholder={desktopCmDefaultRemoteApiHost}
+                  value={form.remoteApiHost || desktopCmDefaultRemoteApiHost}
+                  onChange={(event) => {
+                    setForm((current) => ({ ...current, remoteApiHost: event.target.value }));
+                    setError('');
+                  }}
+                />
+              </label>
+              <label className="min-w-0">
+                <span className="ku-meta">API port</span>
+                <input
+                  className="ku-field mt-1 h-9 w-full font-mono"
+                  data-testid="desktop-cm-session-remote-api-port"
+                  inputMode="numeric"
+                  value={form.remoteApiPort || desktopCmDefaultRemoteApiPort}
+                  onChange={(event) => {
+                    setForm((current) => ({ ...current, remoteApiPort: Number(event.target.value || 0) }));
+                    setError('');
+                  }}
+                />
+              </label>
+            </div>
+            <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+              {desktopCmQuickApiEndpoints.map((endpoint) => (
+                <button className="ku-control h-8 text-xs" data-testid={endpoint.testId} key={endpoint.testId} type="button" onClick={() => applyRemoteApiEndpoint(endpoint.host, endpoint.port)}>
+                  {endpoint.label}
+                </button>
+              ))}
+            </div>
+          </section>
+
+          <section className="grid gap-2" data-testid="desktop-cm-session-form-notes">
+            <span className="ku-meta">Notes</span>
+            <label className="min-w-0">
+              <span className="ku-meta">Description</span>
+              <input
+                className="ku-field mt-1 h-9 w-full"
+                data-testid="desktop-cm-session-description"
+                placeholder="readonly entry"
+                value={form.description || ''}
+                onChange={(event) => {
+                  setForm((current) => ({ ...current, description: event.target.value }));
+                  setError('');
+                }}
+              />
+            </label>
+            <div className="flex flex-wrap gap-2">
+              <button className="ku-control-primary h-9" data-testid="desktop-cm-session-save" type="button" disabled={busyAction === 'save'} onClick={() => void handleSave()}>
+                <Plus size={15} aria-hidden="true" />
+                {form.id ? '수정' : '저장'}
+              </button>
+              {form.id ? (
+                <button className="ku-control h-9" type="button" onClick={() => setForm(emptyForm)}>
+                  취소
+                </button>
+              ) : null}
+            </div>
+          </section>
         </div>
       </div>
 
@@ -937,6 +1015,26 @@ function DesktopCmDiagnostics({
       </p>
     </div>
   );
+}
+
+function validateDesktopCmSessionForm(form: DesktopCmSessionInput) {
+  if (!form.name.trim()) {
+    return 'name 필요';
+  }
+  if (!form.host.trim()) {
+    return 'host 필요';
+  }
+  if (!form.user.trim()) {
+    return 'user 필요';
+  }
+  if (!Number.isInteger(form.port) || form.port < 1 || form.port > 65535) {
+    return 'port 1-65535';
+  }
+  const remoteApiPort = form.remoteApiPort || desktopCmDefaultRemoteApiPort;
+  if (!Number.isInteger(remoteApiPort) || remoteApiPort < 1 || remoteApiPort > 65535) {
+    return 'API port 1-65535';
+  }
+  return '';
 }
 
 function formatCmSessionError(error: string) {

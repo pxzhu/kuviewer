@@ -38,6 +38,7 @@ requireCondition(
     'desktop-cm-session-export-import',
     'desktop-cm-diagnostics-filtering',
     'desktop-cm-diagnostics-saved-filters',
+    'desktop-cm-connection-profile-polish',
   ].includes(spec.status),
   'status must be a known desktop packaging milestone'
 );
@@ -80,6 +81,7 @@ requireCondition(phases.includes('desktop-cm-advanced-diagnostics'), 'phaseOrder
 requireCondition(phases.includes('desktop-cm-session-export-import'), 'phaseOrder must include desktop-cm-session-export-import');
 requireCondition(phases.includes('desktop-cm-diagnostics-filtering'), 'phaseOrder must include desktop-cm-diagnostics-filtering');
 requireCondition(phases.includes('desktop-cm-diagnostics-saved-filters'), 'phaseOrder must include desktop-cm-diagnostics-saved-filters');
+requireCondition(phases.includes('desktop-cm-connection-profile-polish'), 'phaseOrder must include desktop-cm-connection-profile-polish');
 
 await validateBuildPrerequisites(spec);
 await validateDesktopDistributionPolicy(spec);
@@ -108,6 +110,7 @@ if (
     'desktop-cm-session-export-import',
     'desktop-cm-diagnostics-filtering',
     'desktop-cm-diagnostics-saved-filters',
+    'desktop-cm-connection-profile-polish',
   ].includes(spec.status)
 ) {
   await validateTauriScaffold(spec.tauri || {});
@@ -709,8 +712,8 @@ async function validateCredentialStorageDesign(spec) {
 async function validateCmSshSessionManager(spec) {
   const manager = spec.cmSshSessionManager || {};
   requireCondition(
-    ['runtime-health-details', 'advanced-diagnostics', 'session-export-import', 'diagnostics-filtering', 'diagnostics-saved-filters'].includes(manager.status),
-    'cmSshSessionManager.status must be runtime-health-details, advanced-diagnostics, session-export-import, diagnostics-filtering, or diagnostics-saved-filters'
+    ['runtime-health-details', 'advanced-diagnostics', 'session-export-import', 'diagnostics-filtering', 'diagnostics-saved-filters', 'connection-profile-polish'].includes(manager.status),
+    'cmSshSessionManager.status must be runtime-health-details, advanced-diagnostics, session-export-import, diagnostics-filtering, diagnostics-saved-filters, or connection-profile-polish'
   );
   requireCondition(manager.desktopOnly === true, 'cmSshSessionManager.desktopOnly must be true');
   requireCondition(manager.webExposed === false, 'cmSshSessionManager.webExposed must be false');
@@ -838,6 +841,28 @@ async function validateCmSshSessionManager(spec) {
   for (const flag of ['noSessionSearch', 'noSessionData', 'noCredentialPayload', 'noRuntimeProfile', 'noDiagnosticHistory', 'noExportImportPayload']) {
     requireCondition(diagnosticSavedFilters[flag] === true, `cmSshSessionManager.diagnosticSavedFilters.${flag} must be true`);
   }
+  const connectionProfilePolish = manager.connectionProfilePolish || {};
+  requireCondition(connectionProfilePolish.desktopOnly === true, 'cmSshSessionManager.connectionProfilePolish.desktopOnly must be true');
+  requireCondition(connectionProfilePolish.uiOnly === true, 'cmSshSessionManager.connectionProfilePolish.uiOnly must be true');
+  requireCondition(connectionProfilePolish.noNewStorage === true, 'cmSshSessionManager.connectionProfilePolish.noNewStorage must be true');
+  requireCondition(connectionProfilePolish.noExportImportSchemaChange === true, 'cmSshSessionManager.connectionProfilePolish.noExportImportSchemaChange must be true');
+  requireCondition(connectionProfilePolish.noCredentialPayload === true, 'cmSshSessionManager.connectionProfilePolish.noCredentialPayload must be true');
+  requireCondition(connectionProfilePolish.noRuntimeProfile === true, 'cmSshSessionManager.connectionProfilePolish.noRuntimeProfile must be true');
+  const quickApiPresets = Array.isArray(connectionProfilePolish.quickApiPresets) ? connectionProfilePolish.quickApiPresets : [];
+  for (const preset of [
+    ['127.0.0.1', 18085],
+    ['localhost', 18085],
+    ['127.0.0.1', 8080],
+  ]) {
+    requireCondition(
+      quickApiPresets.some((candidate) => candidate && candidate.host === preset[0] && candidate.port === preset[1]),
+      `cmSshSessionManager.connectionProfilePolish.quickApiPresets must include ${preset[0]}:${preset[1]}`
+    );
+  }
+  const validationFields = new Set(Array.isArray(connectionProfilePolish.frontendValidation) ? connectionProfilePolish.frontendValidation : []);
+  for (const field of ['name', 'host', 'user', 'port', 'remoteApiPort']) {
+    requireCondition(validationFields.has(field), `cmSshSessionManager.connectionProfilePolish.frontendValidation must include ${field}`);
+  }
   const hiddenPrototypeUi = new Set(Array.isArray(manager.hiddenPrototypeUi) ? manager.hiddenPrototypeUi : []);
   for (const marker of ['DesktopConnectionProfilePanel', 'DesktopKubernetesProfilePanel', 'desktop-use-sidecar-profile']) {
     requireCondition(hiddenPrototypeUi.has(marker), `cmSshSessionManager.hiddenPrototypeUi must include ${marker}`);
@@ -926,6 +951,17 @@ async function validateCmSshSessionManager(spec) {
     'Desktop CM/SSH sessions',
     'desktop-cm-session-panel',
     'desktop-cm-session-save',
+    'desktop-cm-connection-profile-form',
+    'desktop-cm-session-connection-preview',
+    'desktop-cm-session-form-ssh-endpoint',
+    'desktop-cm-session-form-api-endpoint',
+    'desktop-cm-session-form-notes',
+    'desktop-cm-session-api-preset-local-18085',
+    'desktop-cm-session-api-preset-localhost-18085',
+    'desktop-cm-session-api-preset-local-8080',
+    'desktop-cm-session-api-default-reset',
+    'desktop-cm-session-fill-selected',
+    'validateDesktopCmSessionForm',
     'secret 저장 없음',
     'credential store 사용',
     'desktop-cm-session-import-key',
@@ -1009,6 +1045,12 @@ async function validateCmSshSessionManager(spec) {
     'desktop CM diagnostic saved filters must apply after reload',
     'desktop CM diagnostic saved filters must not include credentialAvailable',
     'desktop CM diagnostic saved filter update must keep same-name presets unique',
+    'desktop CM connection profile preview must reflect safe metadata',
+    'desktop CM connection profile quick API preset must update host and port',
+    'desktop CM connection profile default reset must restore API defaults',
+    'desktop CM selected session fill must copy safe metadata',
+    'desktop CM connection profile validation must block missing name before save',
+    'desktop CM connection profile polish must not change export schema',
     'desktop CM session summary must show active runtime status',
     'desktop CM diagnostics must show runtime-lost message',
     'desktop CM session search must match diagnostic message',
