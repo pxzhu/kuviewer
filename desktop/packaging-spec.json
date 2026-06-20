@@ -29,6 +29,7 @@
     "preflightBeforeBuild": true,
     "strictHostKeyChecking": true,
     "optionalPinnedKnownHostsSecret": "SERVER_SSH_KNOWN_HOSTS",
+    "optionalPinnedKnownHostsVariable": "SERVER_SSH_KNOWN_HOSTS",
     "knownHostsHelper": "scripts/prepare-deploy-known-hosts.mjs",
     "knownHostsHelperSupportsPublicKeyFiles": true,
     "sshTcpReachabilityProbe": true,

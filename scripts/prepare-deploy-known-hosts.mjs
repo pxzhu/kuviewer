@@ -4,12 +4,13 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
-const args = parseArgs(process.argv.slice(2));
 const keyTypes = ['ed25519', 'ecdsa', 'rsa'];
 const secretName = 'SERVER_SSH_KNOWN_HOSTS';
-const outPath = path.resolve(args.out || path.join(tmpdir(), 'kuviewer-known-hosts'));
+const variableName = 'SERVER_SSH_KNOWN_HOSTS';
 
 try {
+  const args = parseArgs(process.argv.slice(2));
+  const outPath = path.resolve(args.out || path.join(tmpdir(), 'kuviewer-known-hosts'));
   const knownHosts = args.fromFile
     ? validateKnownHosts(await readFile(path.resolve(args.fromFile), 'utf8'))
     : args.publicKeyFiles.length > 0
@@ -27,8 +28,12 @@ try {
   if (args.setSecret) {
     setGithubSecret(knownHosts, args.repo);
     console.log(`updated GitHub Actions secret: ${secretName}`);
+  } else if (args.setVariable) {
+    setGithubVariable(knownHosts, args.repo);
+    console.log(`updated GitHub Actions variable: ${variableName}`);
   } else {
     console.log(`to store it: gh secret set ${secretName} < ${outPath}`);
+    console.log(`or as a public host-key variable: gh variable set ${variableName} < ${outPath}`);
   }
 } catch (error) {
   console.error(error instanceof Error ? error.message : String(error));
@@ -44,12 +49,17 @@ function parseArgs(argv) {
     publicKeyFiles: [],
     repo: '',
     setSecret: false,
+    setVariable: false,
   };
 
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === '--set-secret') {
       parsed.setSecret = true;
+      continue;
+    }
+    if (arg === '--set-variable') {
+      parsed.setVariable = true;
       continue;
     }
     const next = argv[index + 1];
@@ -70,7 +80,10 @@ function parseArgs(argv) {
     throw new Error('--from-file cannot be combined with --host or --from-public-key');
   }
   if (!parsed.fromFile && !parsed.host) {
-    throw new Error('usage: node scripts/prepare-deploy-known-hosts.mjs --host <host> [--port <port>] [--from-public-key <file>...] [--out <file>] [--set-secret]');
+    throw new Error('usage: node scripts/prepare-deploy-known-hosts.mjs --host <host> [--port <port>] [--from-public-key <file>...] [--out <file>] [--set-secret|--set-variable]');
+  }
+  if (parsed.setSecret && parsed.setVariable) {
+    throw new Error('--set-secret and --set-variable cannot be combined');
   }
   if (!/^[1-9][0-9]{0,4}$/.test(parsed.port) || Number(parsed.port) > 65535) {
     throw new Error('--port must be a number between 1 and 65535');
@@ -196,5 +209,20 @@ function setGithubSecret(knownHosts, repo) {
   });
   if (result.status !== 0) {
     throw new Error(`gh secret set ${secretName} failed`);
+  }
+}
+
+function setGithubVariable(knownHosts, repo) {
+  const args = ['variable', 'set', variableName];
+  if (repo) {
+    args.push('-R', repo);
+  }
+  const result = spawnSync('gh', args, {
+    input: knownHosts,
+    encoding: 'utf8',
+    stdio: ['pipe', 'inherit', 'inherit'],
+  });
+  if (result.status !== 0) {
+    throw new Error(`gh variable set ${variableName} failed`);
   }
 }
