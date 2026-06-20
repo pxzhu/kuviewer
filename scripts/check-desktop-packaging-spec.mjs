@@ -41,6 +41,7 @@ requireCondition(
     'desktop-cm-connection-profile-polish',
     'desktop-cm-session-clone-polish',
     'desktop-cm-session-groups-favorites',
+    'desktop-cm-session-bulk-actions',
   ].includes(spec.status),
   'status must be a known desktop packaging milestone'
 );
@@ -86,6 +87,7 @@ requireCondition(phases.includes('desktop-cm-diagnostics-saved-filters'), 'phase
 requireCondition(phases.includes('desktop-cm-connection-profile-polish'), 'phaseOrder must include desktop-cm-connection-profile-polish');
 requireCondition(phases.includes('desktop-cm-session-clone-polish'), 'phaseOrder must include desktop-cm-session-clone-polish');
 requireCondition(phases.includes('desktop-cm-session-groups-favorites'), 'phaseOrder must include desktop-cm-session-groups-favorites');
+requireCondition(phases.includes('desktop-cm-session-bulk-actions'), 'phaseOrder must include desktop-cm-session-bulk-actions');
 
 await validateBuildPrerequisites(spec);
 await validateDesktopDistributionPolicy(spec);
@@ -117,6 +119,7 @@ if (
     'desktop-cm-connection-profile-polish',
     'desktop-cm-session-clone-polish',
     'desktop-cm-session-groups-favorites',
+    'desktop-cm-session-bulk-actions',
   ].includes(spec.status)
 ) {
   await validateTauriScaffold(spec.tauri || {});
@@ -718,7 +721,7 @@ async function validateCredentialStorageDesign(spec) {
 async function validateCmSshSessionManager(spec) {
   const manager = spec.cmSshSessionManager || {};
   requireCondition(
-    ['runtime-health-details', 'advanced-diagnostics', 'session-export-import', 'diagnostics-filtering', 'diagnostics-saved-filters', 'connection-profile-polish', 'session-clone-polish', 'session-groups-favorites'].includes(manager.status),
+    ['runtime-health-details', 'advanced-diagnostics', 'session-export-import', 'diagnostics-filtering', 'diagnostics-saved-filters', 'connection-profile-polish', 'session-clone-polish', 'session-groups-favorites', 'session-bulk-actions'].includes(manager.status),
     'cmSshSessionManager.status must be a known CM/SSH session manager milestone'
   );
   requireCondition(manager.desktopOnly === true, 'cmSshSessionManager.desktopOnly must be true');
@@ -897,6 +900,21 @@ async function validateCmSshSessionManager(spec) {
   for (const flag of ['collapseStateStored', 'noTauriSchemaChange', 'noExportImportSchemaChange', 'noCredentialPayload', 'noRuntimeProfile', 'noDiagnosticHistory', 'noToken', 'noKubeconfig', 'noSecretValues', 'noEventsOrLogs']) {
     requireCondition(sessionGroupingFavorites[flag] === true, `cmSshSessionManager.sessionGroupingFavorites.${flag} must be true`);
   }
+  const sessionBulkActions = manager.sessionBulkActions || {};
+  requireCondition(sessionBulkActions.desktopOnly === true, 'cmSshSessionManager.sessionBulkActions.desktopOnly must be true');
+  requireCondition(sessionBulkActions.uiOnly === true, 'cmSshSessionManager.sessionBulkActions.uiOnly must be true');
+  requireCondition(sessionBulkActions.selectionStorage === 'memory-only', 'cmSshSessionManager.sessionBulkActions.selectionStorage must be memory-only');
+  requireCondition(sessionBulkActions.selectionPersisted === false, 'cmSshSessionManager.sessionBulkActions.selectionPersisted must be false');
+  requireCondition(sessionBulkActions.selectionExported === false, 'cmSshSessionManager.sessionBulkActions.selectionExported must be false');
+  requireCondition(sessionBulkActions.groupAndFavoriteStorage === 'kuviewer_desktop_cm_session_view_preferences', 'cmSshSessionManager.sessionBulkActions.groupAndFavoriteStorage must be kuviewer_desktop_cm_session_view_preferences');
+  requireCondition(sessionBulkActions.deleteConfirmation === 'inline-two-step', 'cmSshSessionManager.sessionBulkActions.deleteConfirmation must be inline-two-step');
+  const bulkActions = new Set(Array.isArray(sessionBulkActions.actions) ? sessionBulkActions.actions : []);
+  for (const action of ['select-visible', 'select-group-visible', 'selected-export', 'move-group', 'favorite-on', 'favorite-off', 'delete-confirm']) {
+    requireCondition(bulkActions.has(action), `cmSshSessionManager.sessionBulkActions.actions must include ${action}`);
+  }
+  for (const flag of ['noTauriSchemaChange', 'noExportImportSchemaChange', 'noCredentialPayload', 'noRuntimeProfile', 'noDiagnosticHistory', 'noToken', 'noKubeconfig', 'noSecretValues', 'noEventsOrLogs']) {
+    requireCondition(sessionBulkActions[flag] === true, `cmSshSessionManager.sessionBulkActions.${flag} must be true`);
+  }
   const hiddenPrototypeUi = new Set(Array.isArray(manager.hiddenPrototypeUi) ? manager.hiddenPrototypeUi : []);
   for (const marker of ['DesktopConnectionProfilePanel', 'DesktopKubernetesProfilePanel', 'desktop-use-sidecar-profile']) {
     requireCondition(hiddenPrototypeUi.has(marker), `cmSshSessionManager.hiddenPrototypeUi must include ${marker}`);
@@ -910,6 +928,10 @@ async function validateCmSshSessionManager(spec) {
     'desktop-cm-session-group-',
     'desktop-cm-session-favorite-',
     'desktop-cm-session-group-input-',
+    'desktop-cm-session-bulk-toolbar',
+    'desktop-cm-session-bulk-select-visible',
+    'desktop-cm-session-bulk-group-apply',
+    'desktop-cm-session-bulk-delete',
   ]) {
     requireCondition(desktopCmSessionPanel.includes(marker), `DesktopCmSessionPanel must include ${marker}`);
   }
@@ -1036,6 +1058,15 @@ async function validateCmSshSessionManager(spec) {
     'desktop-cm-session-summary-diagnostics',
     'desktop-cm-session-export',
     'desktop-cm-session-import',
+    'desktop-cm-session-bulk-toolbar',
+    'desktop-cm-session-bulk-select-visible',
+    'desktop-cm-session-group-select-',
+    'desktop-cm-session-bulk-select-',
+    'desktop-cm-session-bulk-export',
+    'desktop-cm-session-bulk-group-apply',
+    'desktop-cm-session-bulk-favorite-on',
+    'desktop-cm-session-bulk-favorite-off',
+    'desktop-cm-session-bulk-delete',
     'kuviewer.desktop.cmSessions',
   ]) {
     requireCondition(sessionPanel.includes(marker), `desktop CM session panel must include ${marker}`);
@@ -1107,6 +1138,11 @@ async function validateCmSshSessionManager(spec) {
     'desktop CM diagnostics must show runtime-lost message',
     'desktop CM session search must match diagnostic message',
     'desktop CM export must not include credentialAvailable',
+    'desktop CM bulk select visible must select current results',
+    'desktop CM bulk group move must update selected session groups',
+    'desktop CM bulk favorite must update selected favorite counts',
+    'desktop CM selected export must not include grouping preferences',
+    'desktop CM bulk delete must require inline confirmation',
     'desktop CM import must report newly imported sessions',
   ]) {
     requireCondition(smokeScript.includes(marker), `desktop CM session smoke script must include ${marker}`);
@@ -1141,6 +1177,7 @@ async function validateCmSshSessionManager(spec) {
     requireCondition(text.includes('diagnostic filtering') || text.includes('diagnostics filtering'), `${label} must document desktop CM diagnostic filtering`);
     requireCondition(text.includes('diagnostic saved filters') || text.includes('saved diagnostic filters'), `${label} must document desktop CM diagnostic saved filters`);
     requireCondition(text.includes('session clone') || text.includes('clone draft') || text.includes('세션 복제'), `${label} must document desktop CM session clone behavior`);
+    requireCondition(text.includes('bulk actions') || text.includes('bulk selection'), `${label} must document desktop CM session bulk actions`);
     requireCondition(text.includes('export/import') || text.includes('session export'), `${label} must document desktop CM session export/import`);
     requireCondition(text.includes('web app must not expose SSH'), `${label} must document that the web app must not expose SSH`);
   }
