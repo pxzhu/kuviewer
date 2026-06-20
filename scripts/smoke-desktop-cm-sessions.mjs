@@ -290,10 +290,30 @@ async function smokeDesktopRuntime(browser, url) {
 
     await page.goto(url, { waitUntil: 'domcontentloaded' });
     await page.getByTestId('desktop-cm-session-panel').waitFor({ state: 'visible', timeout: 10_000 });
+    await page.getByTestId('desktop-cm-session-save').click();
+    await page.getByText('name 필요').waitFor({ state: 'visible', timeout: 10_000 });
+    const validationErrorText = await page.getByTestId('desktop-cm-session-panel').textContent();
+    requireCondition(validationErrorText?.includes('name 필요'), 'desktop CM connection profile validation must block missing name before save');
+    let connectionPreview = await page.getByTestId('desktop-cm-session-connection-preview').textContent();
+    requireCondition(connectionPreview?.includes('user@host:22'), 'desktop CM connection profile preview must reflect safe metadata');
     await page.getByTestId('desktop-cm-session-name').fill('Prod CM');
     await page.getByTestId('desktop-cm-session-host').fill('cm.example.internal');
     await page.getByTestId('desktop-cm-session-port').fill('22');
     await page.getByTestId('desktop-cm-session-user').fill('ubuntu');
+    await page.getByTestId('desktop-cm-session-api-preset-localhost-18085').click();
+    let apiHostValue = await page.getByTestId('desktop-cm-session-remote-api-host').inputValue();
+    let apiPortValue = await page.getByTestId('desktop-cm-session-remote-api-port').inputValue();
+    requireCondition(apiHostValue === 'localhost' && apiPortValue === '18085', 'desktop CM connection profile quick API preset must update host and port');
+    await page.getByTestId('desktop-cm-session-api-preset-local-8080').click();
+    apiHostValue = await page.getByTestId('desktop-cm-session-remote-api-host').inputValue();
+    apiPortValue = await page.getByTestId('desktop-cm-session-remote-api-port').inputValue();
+    requireCondition(apiHostValue === '127.0.0.1' && apiPortValue === '8080', 'desktop CM connection profile quick API preset must update host and port');
+    await page.getByTestId('desktop-cm-session-api-default-reset').click();
+    apiHostValue = await page.getByTestId('desktop-cm-session-remote-api-host').inputValue();
+    apiPortValue = await page.getByTestId('desktop-cm-session-remote-api-port').inputValue();
+    requireCondition(apiHostValue === '127.0.0.1' && apiPortValue === '18085', 'desktop CM connection profile default reset must restore API defaults');
+    connectionPreview = await page.getByTestId('desktop-cm-session-connection-preview').textContent();
+    requireCondition(connectionPreview?.includes('ubuntu@cm.example.internal:22') && connectionPreview.includes('127.0.0.1:18085'), 'desktop CM connection profile preview must reflect safe metadata');
     await page.getByTestId('desktop-cm-session-remote-api-host').fill('127.0.0.1');
     await page.getByTestId('desktop-cm-session-remote-api-port').fill('18085');
     await page.getByTestId('desktop-cm-session-description').fill('readonly entry');
@@ -360,6 +380,24 @@ async function smokeDesktopRuntime(browser, url) {
     requireCondition(summaryText?.includes('Prod CM'), 'desktop CM session summary must show the selected session name');
     requireCondition(summaryText?.includes('credential 필요'), 'desktop CM session summary must show credential availability');
     requireCondition(summaryText?.includes('runtime stopped'), 'desktop CM session summary must show stopped runtime status');
+    await page.getByTestId('desktop-cm-session-name').fill('Scratch');
+    await page.getByTestId('desktop-cm-session-host').fill('scratch.internal');
+    await page.getByTestId('desktop-cm-session-fill-selected').click();
+    const selectedFillState = {
+      name: await page.getByTestId('desktop-cm-session-name').inputValue(),
+      host: await page.getByTestId('desktop-cm-session-host').inputValue(),
+      user: await page.getByTestId('desktop-cm-session-user').inputValue(),
+      apiHost: await page.getByTestId('desktop-cm-session-remote-api-host').inputValue(),
+      apiPort: await page.getByTestId('desktop-cm-session-remote-api-port').inputValue(),
+    };
+    requireCondition(
+      selectedFillState.name === 'Prod CM' &&
+        selectedFillState.host === 'cm.example.internal' &&
+        selectedFillState.user === 'ubuntu' &&
+        selectedFillState.apiHost === '127.0.0.1' &&
+        selectedFillState.apiPort === '18085',
+      'desktop CM selected session fill must copy safe metadata'
+    );
     await page.getByTestId('desktop-cm-session-summary-diagnostics').waitFor({ state: 'visible', timeout: 10_000 });
     let diagnosticMessage = await page.getByTestId('desktop-cm-session-summary-diagnostics-message').textContent();
     let diagnosticStage = await page.getByTestId('desktop-cm-session-summary-diagnostics-stage').textContent();
@@ -409,6 +447,11 @@ async function smokeDesktopRuntime(browser, url) {
     requireCondition(exportedBundle.schemaVersion === 1, 'desktop CM export bundle must include schemaVersion 1');
     requireCondition(exportedBundle.kind === 'kuviewer.desktop.cmSessions', 'desktop CM export bundle must include the CM sessions kind');
     requireCondition(Array.isArray(exportedBundle.items) && exportedBundle.items.length === 1, 'desktop CM export must include saved session metadata');
+    const exportedItemKeys = Object.keys(exportedBundle.items[0]).sort();
+    requireCondition(
+      JSON.stringify(exportedItemKeys) === JSON.stringify(['description', 'host', 'name', 'port', 'remoteApiHost', 'remoteApiPort', 'user']),
+      'desktop CM connection profile polish must not change export schema'
+    );
     const exportedJson = JSON.stringify(exportedBundle);
     requireCondition(!exportedJson.includes('credentialAvailable'), 'desktop CM export must not include credentialAvailable');
     for (const forbiddenField of [

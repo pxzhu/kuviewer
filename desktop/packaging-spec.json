@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "name": "Kuviewer Desktop CM Session Explorer",
   "goal": "desktop-cm-session-prototype",
-  "status": "desktop-cm-diagnostics-saved-filters",
+  "status": "desktop-cm-connection-profile-polish",
   "recommendedPackager": "tauri",
   "fallbackPackager": "electron",
   "tauri": {
@@ -52,7 +52,7 @@
     "noOperationalActions": true
   },
   "cmSshSessionManager": {
-    "status": "diagnostics-saved-filters",
+    "status": "connection-profile-polish",
     "desktopOnly": true,
     "webExposed": false,
     "storage": "tauri-state-safe-metadata-with-os-credential-store-and-session-runtime",
@@ -163,13 +163,28 @@
       "noDiagnosticHistory": true,
       "noExportImportPayload": true
     },
+    "connectionProfilePolish": {
+      "desktopOnly": true,
+      "uiOnly": true,
+      "noNewStorage": true,
+      "noExportImportSchemaChange": true,
+      "noCredentialPayload": true,
+      "noRuntimeProfile": true,
+      "quickApiPresets": [
+        { "host": "127.0.0.1", "port": 18085 },
+        { "host": "localhost", "port": 18085 },
+        { "host": "127.0.0.1", "port": 8080 }
+      ],
+      "frontendValidation": ["name", "host", "user", "port", "remoteApiPort"]
+    },
     "hiddenPrototypeUi": [
       "DesktopConnectionProfilePanel",
       "DesktopKubernetesProfilePanel",
       "desktop-use-sidecar-profile"
     ],
     "next": [
-      "CM session connection profile polish"
+      "desktop CM session duplicate/clone polish",
+      "desktop deploy SSH preflight hardening"
     ]
   },
   "remoteConnectionProfile": {
@@ -423,6 +438,7 @@
     "desktop-cm-advanced-diagnostics",
     "desktop-cm-session-export-import",
     "desktop-cm-diagnostics-filtering",
-    "desktop-cm-diagnostics-saved-filters"
+    "desktop-cm-diagnostics-saved-filters",
+    "desktop-cm-connection-profile-polish"
   ]
 }
