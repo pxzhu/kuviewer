@@ -36,6 +36,9 @@ async function smokeDesktopRuntime(browser, url) {
       if (window.localStorage.getItem('kuviewer_desktop_cm_session_view_preferences_smoke_keep') !== '1') {
         window.localStorage.removeItem('kuviewer_desktop_cm_session_view_preferences');
       }
+      if (window.localStorage.getItem('kuviewer_desktop_cm_session_layout_presets_smoke_keep') !== '1') {
+        window.localStorage.removeItem('kuviewer_desktop_cm_session_layout_presets');
+      }
       window.sessionStorage.removeItem('kuviewer_admin_token');
       window.sessionStorage.removeItem('kuviewer_desktop_cm_runtime_profile');
       window.sessionStorage.removeItem('kuviewer_source_mode');
@@ -365,6 +368,28 @@ async function smokeDesktopRuntime(browser, url) {
     await page.getByTestId('desktop-cm-session-group-items-production').waitFor({ state: 'hidden', timeout: 10_000 });
     sessionViewPreferenceStorage = await page.evaluate(() => window.localStorage.getItem('kuviewer_desktop_cm_session_view_preferences') || '');
     requireCondition(sessionViewPreferenceStorage.includes('collapsedGroups'), 'desktop CM session view preferences must persist collapsed group UI state');
+    await page.getByTestId('desktop-cm-session-layout-name').fill('Ops View');
+    await page.getByTestId('desktop-cm-session-layout-save').click();
+    await page.getByTestId('desktop-cm-session-layout-ops-view').waitFor({ state: 'visible', timeout: 10_000 });
+    let sessionLayoutStorage = await page.evaluate(() => window.localStorage.getItem('kuviewer_desktop_cm_session_layout_presets') || '');
+    requireCondition(sessionLayoutStorage.includes('Ops View'), 'desktop CM session layout save must persist safe layout metadata');
+    requireCondition(sessionLayoutStorage.includes('collapsedGroups'), 'desktop CM session layout save must persist collapsed group preferences');
+    requireCondition(sessionLayoutStorage.includes('"favorite":true'), 'desktop CM session layout save must persist favorite preferences');
+    requireCondition(!sessionLayoutStorage.includes('cm.example.internal'), 'desktop CM session layout preset must not include session endpoint metadata');
+    for (const forbiddenField of ['host', 'remoteApiHost', 'credentialAvailable', 'runtimeStatus', 'diagnosticMessage', 'serverUrl', 'adminToken', 'BEGIN OPENSSH PRIVATE KEY']) {
+      requireCondition(!sessionLayoutStorage.includes(forbiddenField), `desktop CM session layout preset must not include ${forbiddenField}`);
+    }
+    await page.getByTestId('desktop-cm-session-group-toggle-production').click();
+    await page.getByTestId('desktop-cm-session-group-items-production').waitFor({ state: 'visible', timeout: 10_000 });
+    await page.getByTestId(`desktop-cm-session-group-input-${sessionId}`).fill('Temporary');
+    await page.getByTestId(`desktop-cm-session-group-input-${sessionId}`).press('Enter');
+    await page.getByTestId('desktop-cm-session-group-temporary').waitFor({ state: 'visible', timeout: 10_000 });
+    await page.getByTestId(`desktop-cm-session-favorite-${sessionId}`).click();
+    await page.getByTestId('desktop-cm-session-layout-ops-view').getByRole('button', { name: /^Ops View .*sessions/ }).click();
+    await page.getByTestId('desktop-cm-session-group-production').waitFor({ state: 'visible', timeout: 10_000 });
+    const restoredFavoriteCount = await page.getByTestId('desktop-cm-session-group-favorites-production').textContent();
+    requireCondition(restoredFavoriteCount?.includes('favorite 1'), 'desktop CM session layout apply must restore group and favorite preferences');
+    await page.getByTestId('desktop-cm-session-group-items-production').waitFor({ state: 'hidden', timeout: 10_000 });
     await page.getByTestId('desktop-cm-session-group-toggle-production').click();
     await page.getByTestId('desktop-cm-session-group-items-production').waitFor({ state: 'visible', timeout: 10_000 });
     await page.getByTestId('desktop-cm-session-diagnostic-stage-filter').selectOption('metadata');
@@ -393,6 +418,7 @@ async function smokeDesktopRuntime(browser, url) {
     await page.evaluate(() => {
       window.localStorage.setItem('kuviewer_desktop_cm_diagnostic_filter_presets_smoke_keep', '1');
       window.localStorage.setItem('kuviewer_desktop_cm_session_view_preferences_smoke_keep', '1');
+      window.localStorage.setItem('kuviewer_desktop_cm_session_layout_presets_smoke_keep', '1');
     });
     await page.reload({ waitUntil: 'domcontentloaded' });
     await page.getByTestId('desktop-cm-session-panel').waitFor({ state: 'visible', timeout: 10_000 });
@@ -406,6 +432,7 @@ async function smokeDesktopRuntime(browser, url) {
     await page.getByTestId('desktop-cm-session-save').click();
     await page.getByTestId(/^desktop-cm-session-prod-cm-/).waitFor({ state: 'visible', timeout: 10_000 });
     await page.getByTestId('desktop-cm-diagnostic-filter-preset-meta-info').waitFor({ state: 'visible', timeout: 10_000 });
+    await page.getByTestId('desktop-cm-session-layout-ops-view').waitFor({ state: 'visible', timeout: 10_000 });
     await page.getByTestId('desktop-cm-session-group-production').waitFor({ state: 'visible', timeout: 10_000 });
     const reloadedFavoriteCount = await page.getByTestId('desktop-cm-session-group-favorites-production').textContent();
     requireCondition(reloadedFavoriteCount?.includes('favorite 1'), 'desktop CM group/favorite preferences must apply after reload');
@@ -509,9 +536,11 @@ async function smokeDesktopRuntime(browser, url) {
       'lastCheckStatus',
       'diagnosticStage',
       'Meta Info',
+      'Ops View',
       'Production',
       'favorite',
       'kuviewer_desktop_cm_session_view_preferences',
+      'kuviewer_desktop_cm_session_layout_presets',
       'serverUrl',
       'adminToken',
       'private-key-imported',
@@ -519,6 +548,7 @@ async function smokeDesktopRuntime(browser, url) {
     ]) {
       requireCondition(!exportedJson.includes(forbiddenField), `desktop CM export must not include ${forbiddenField}`);
     }
+    requireCondition(!exportedJson.includes('viewPreferences'), 'desktop CM export must not include saved layout preferences');
 
     const importDir = await mkdtemp(path.join(os.tmpdir(), 'kuviewer-cm-import-'));
     const importPath = path.join(importDir, 'cm-sessions.json');
@@ -600,7 +630,18 @@ async function smokeDesktopRuntime(browser, url) {
     const selectedExportBundle = JSON.parse(await readFile(selectedExportPath, 'utf8'));
     requireCondition(Array.isArray(selectedExportBundle.items) && selectedExportBundle.items.length === 2, 'desktop CM selected export must include selected sessions only');
     const selectedExportJson = JSON.stringify(selectedExportBundle);
-    for (const forbiddenField of ['Operations', 'favorite', 'kuviewer_desktop_cm_session_view_preferences', 'credentialAvailable', 'diagnosticMessage', 'serverUrl', 'adminToken']) {
+    for (const forbiddenField of [
+      'Operations',
+      'favorite',
+      'kuviewer_desktop_cm_session_view_preferences',
+      'kuviewer_desktop_cm_session_layout_presets',
+      'Ops View',
+      'viewPreferences',
+      'credentialAvailable',
+      'diagnosticMessage',
+      'serverUrl',
+      'adminToken',
+    ]) {
       requireCondition(!selectedExportJson.includes(forbiddenField), `desktop CM selected export must not include ${forbiddenField}`);
     }
     requireCondition(!selectedExportJson.includes('kuviewer_desktop_cm_session_view_preferences'), 'desktop CM selected export must not include grouping preferences');
@@ -632,6 +673,10 @@ async function smokeDesktopRuntime(browser, url) {
     await page.getByText('CM/SSH session 삭제됨').waitFor({ state: 'visible', timeout: 10_000 });
     bulkDeleteState = await page.evaluate(() => window.__kuviewerCmSessions.length);
     requireCondition(bulkDeleteState === 2, 'desktop CM bulk delete confirmation must remove selected sessions');
+    await page.getByTestId('desktop-cm-session-layout-delete-ops-view').click();
+    await page.getByTestId('desktop-cm-session-layout-empty').waitFor({ state: 'visible', timeout: 10_000 });
+    sessionLayoutStorage = await page.evaluate(() => window.localStorage.getItem('kuviewer_desktop_cm_session_layout_presets') || '');
+    requireCondition(!sessionLayoutStorage.includes('Ops View'), 'desktop CM session layout delete must remove saved layout');
 
     await page.getByTestId(`desktop-cm-session-start-runtime-${sessionId}`).click();
     await page.getByText('Prod CM runtime 시작됨').waitFor({ state: 'visible', timeout: 10_000 });
@@ -783,6 +828,8 @@ async function smokeDesktopRuntime(browser, url) {
       window.localStorage.removeItem('kuviewer_desktop_cm_diagnostic_filter_presets_smoke_keep');
       window.localStorage.removeItem('kuviewer_desktop_cm_session_view_preferences');
       window.localStorage.removeItem('kuviewer_desktop_cm_session_view_preferences_smoke_keep');
+      window.localStorage.removeItem('kuviewer_desktop_cm_session_layout_presets');
+      window.localStorage.removeItem('kuviewer_desktop_cm_session_layout_presets_smoke_keep');
     });
     requireCommandOrder(state.invocations, [
       'desktop_cm_sessions',

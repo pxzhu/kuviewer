@@ -69,6 +69,12 @@ interface DesktopCmSessionViewPreferences {
   collapsedGroups: string[];
 }
 
+interface DesktopCmSessionLayoutPreset {
+  name: string;
+  viewPreferences: DesktopCmSessionViewPreferences;
+  updatedAt: number;
+}
+
 interface DesktopCmSessionGroup {
   group: string;
   slug: string;
@@ -82,8 +88,11 @@ const cmDiagnosticStageFilterOptions = ['all', 'metadata', 'credential', 'reacha
 const cmDiagnosticSeverityFilterOptions = ['all', 'info', 'warning', 'error'] as const;
 const desktopCmDiagnosticFilterPresetStorageKey = 'kuviewer_desktop_cm_diagnostic_filter_presets';
 const desktopCmSessionViewPreferenceStorageKey = 'kuviewer_desktop_cm_session_view_preferences';
+const desktopCmSessionLayoutPresetStorageKey = 'kuviewer_desktop_cm_session_layout_presets';
 const maxDesktopCmDiagnosticFilterPresets = 8;
 const maxDesktopCmDiagnosticFilterPresetNameLength = 40;
+const maxDesktopCmSessionLayoutPresets = 8;
+const maxDesktopCmSessionLayoutPresetNameLength = 40;
 const maxDesktopCmSessionCloneNameLength = 60;
 const maxDesktopCmSessionGroupNameLength = 40;
 const defaultDesktopCmSessionGroup = 'General';
@@ -119,6 +128,8 @@ export function DesktopCmSessionPanel({
   const [diagnosticFilterPresetName, setDiagnosticFilterPresetName] = useState('');
   const [diagnosticFilterPresets, setDiagnosticFilterPresets] = useState<DesktopCmDiagnosticFilterPreset[]>(() => readDesktopCmDiagnosticFilterPresets());
   const [sessionViewPreferences, setSessionViewPreferences] = useState<DesktopCmSessionViewPreferences>(() => readDesktopCmSessionViewPreferences());
+  const [sessionLayoutPresetName, setSessionLayoutPresetName] = useState('');
+  const [sessionLayoutPresets, setSessionLayoutPresets] = useState<DesktopCmSessionLayoutPreset[]>(() => readDesktopCmSessionLayoutPresets());
   const [selectedBulkSessionIds, setSelectedBulkSessionIds] = useState<Set<string>>(() => new Set());
   const [bulkGroupName, setBulkGroupName] = useState(defaultDesktopCmSessionGroup);
   const [bulkDeleteConfirm, setBulkDeleteConfirm] = useState(false);
@@ -151,6 +162,10 @@ export function DesktopCmSessionPanel({
     () => diagnosticFilterPresets.find((preset) => preset.diagnosticStage === diagnosticStageFilter && preset.diagnosticSeverity === diagnosticSeverityFilter)?.name || '',
     [diagnosticFilterPresets, diagnosticSeverityFilter, diagnosticStageFilter],
   );
+  const activeSessionLayoutPresetName = useMemo(() => {
+    const currentLayout = pruneDesktopCmSessionViewPreferences(sessionViewPreferences, sessions);
+    return sessionLayoutPresets.find((preset) => desktopCmSessionLayoutEqual(currentLayout, pruneDesktopCmSessionViewPreferences(preset.viewPreferences, sessions)))?.name || '';
+  }, [sessionLayoutPresets, sessionViewPreferences, sessions]);
   const connectionPreview = `${form.user || 'user'}@${form.host || 'host'}:${form.port || 22} -> ${form.remoteApiHost || desktopCmDefaultRemoteApiHost}:${form.remoteApiPort || desktopCmDefaultRemoteApiPort}`;
   const selectedRuntimeActive = Boolean(selectedSession && runtimeProfile?.sessionId === selectedSession.id);
   const selectedRuntimeStatus = selectedRuntimeActive ? runtimeProfile?.status || selectedSession?.runtimeStatus || 'runtime-active' : selectedSession?.runtimeStatus || 'stopped';
@@ -447,6 +462,38 @@ export function DesktopCmSessionPanel({
     setDiagnosticFilterPresets((current) => {
       const nextPresets = current.filter((preset) => preset.name !== presetName);
       writeDesktopCmDiagnosticFilterPresets(nextPresets);
+      return nextPresets;
+    });
+  };
+
+  const handleSaveSessionLayoutPreset = () => {
+    const presetName = normalizeDesktopCmSessionLayoutPresetName(sessionLayoutPresetName || `Layout ${sessionLayoutPresets.length + 1}`);
+    const preset: DesktopCmSessionLayoutPreset = {
+      name: presetName,
+      viewPreferences: pruneDesktopCmSessionViewPreferences(sessionViewPreferences, sessions),
+      updatedAt: Date.now(),
+    };
+    setSessionLayoutPresets((current) => {
+      const withoutSameName = current.filter((item) => item.name.toLowerCase() !== preset.name.toLowerCase());
+      const nextPresets = normalizeDesktopCmSessionLayoutPresets([preset, ...withoutSameName]).slice(0, maxDesktopCmSessionLayoutPresets);
+      writeDesktopCmSessionLayoutPresets(nextPresets);
+      return nextPresets;
+    });
+    setSessionLayoutPresetName('');
+  };
+
+  const handleApplySessionLayoutPreset = (preset: DesktopCmSessionLayoutPreset) => {
+    const nextPreferences = pruneDesktopCmSessionViewPreferences(preset.viewPreferences, sessions);
+    setSessionViewPreferences(nextPreferences);
+    writeDesktopCmSessionViewPreferences(nextPreferences);
+    setBulkDeleteConfirm(false);
+    setSelectedBulkSessionIds(new Set());
+  };
+
+  const handleDeleteSessionLayoutPreset = (presetName: string) => {
+    setSessionLayoutPresets((current) => {
+      const nextPresets = current.filter((preset) => preset.name !== presetName);
+      writeDesktopCmSessionLayoutPresets(nextPresets);
       return nextPresets;
     });
   };
@@ -1034,6 +1081,68 @@ export function DesktopCmSessionPanel({
                 저장된 진단 필터 없음
               </p>
             )}
+          </div>
+
+          <div
+            className="grid gap-2 rounded-[10px] border border-[rgba(60,60,67,0.1)] bg-white/68 px-3 py-2"
+            data-testid="desktop-cm-session-saved-layouts"
+          >
+            <div className="flex min-w-0 flex-wrap items-center gap-2">
+              <span className="ku-meta">Saved session layouts</span>
+              <label className="min-w-[180px] flex-1">
+                <input
+                  className="ku-field h-9 w-full"
+                  data-testid="desktop-cm-session-layout-name"
+                  maxLength={maxDesktopCmSessionLayoutPresetNameLength}
+                  placeholder={`Layout ${sessionLayoutPresets.length + 1}`}
+                  value={sessionLayoutPresetName}
+                  onChange={(event) => setSessionLayoutPresetName(event.target.value)}
+                />
+              </label>
+              <button className="ku-control h-9" data-testid="desktop-cm-session-layout-save" type="button" onClick={handleSaveSessionLayoutPreset}>
+                <Bookmark size={14} aria-hidden="true" />
+                현재 layout 저장
+              </button>
+              <span className="ku-chip" data-testid="desktop-cm-session-layout-count">
+                {sessionLayoutPresets.length} / {maxDesktopCmSessionLayoutPresets}
+              </span>
+            </div>
+            {sessionLayoutPresets.length > 0 ? (
+              <div className="flex min-w-0 flex-wrap items-center gap-2" data-testid="desktop-cm-session-layout-list">
+                {sessionLayoutPresets.map((preset) => {
+                  const active = preset.name === activeSessionLayoutPresetName;
+                  return (
+                    <span
+                      key={preset.name}
+                      className={`ku-chip max-w-full gap-1 ${active ? 'border-[rgba(52,199,89,0.22)] bg-[rgba(52,199,89,0.1)] text-[#248a3d]' : ''}`}
+                      data-testid={`desktop-cm-session-layout-${slugifyTestId(preset.name)}`}
+                    >
+                      <button className="flex min-w-0 items-center gap-1 truncate" type="button" onClick={() => handleApplySessionLayoutPreset(preset)}>
+                        <Folder size={12} aria-hidden="true" />
+                        <span className="truncate">{preset.name}</span>
+                        <span className="truncate font-mono text-[10px]">{formatDesktopCmSessionLayoutSummary(preset.viewPreferences)}</span>
+                      </button>
+                      <button
+                        className="ml-1 rounded-full p-0.5 hover:bg-[rgba(60,60,67,0.08)]"
+                        data-testid={`desktop-cm-session-layout-delete-${slugifyTestId(preset.name)}`}
+                        type="button"
+                        title={`${preset.name} 삭제`}
+                        onClick={() => handleDeleteSessionLayoutPreset(preset.name)}
+                      >
+                        <XCircle size={12} aria-hidden="true" />
+                      </button>
+                    </span>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="text-xs font-semibold text-[rgba(60,60,67,0.58)]" data-testid="desktop-cm-session-layout-empty">
+                저장된 session layout 없음
+              </p>
+            )}
+            <p className="text-xs font-semibold text-[rgba(60,60,67,0.58)]">
+              session id, group, favorite, collapsed group만 저장 · search/diagnostic/runtime/credential 제외
+            </p>
           </div>
 
           {selectedBulkSessionIds.size > 0 ? (
@@ -1700,6 +1809,97 @@ function pruneDesktopCmSessionViewPreferences(preferences: DesktopCmSessionViewP
 
 function desktopCmSessionViewPreferencesEqual(left: DesktopCmSessionViewPreferences, right: DesktopCmSessionViewPreferences) {
   return JSON.stringify(normalizeDesktopCmSessionViewPreferences(left)) === JSON.stringify(normalizeDesktopCmSessionViewPreferences(right));
+}
+
+function readDesktopCmSessionLayoutPresets(): DesktopCmSessionLayoutPreset[] {
+  if (typeof window === 'undefined') {
+    return [];
+  }
+  try {
+    const rawValue = window.localStorage.getItem(desktopCmSessionLayoutPresetStorageKey);
+    if (!rawValue) {
+      return [];
+    }
+    const parsedValue = JSON.parse(rawValue);
+    if (!Array.isArray(parsedValue)) {
+      window.localStorage.removeItem(desktopCmSessionLayoutPresetStorageKey);
+      return [];
+    }
+    return normalizeDesktopCmSessionLayoutPresets(parsedValue);
+  } catch {
+    window.localStorage.removeItem(desktopCmSessionLayoutPresetStorageKey);
+    return [];
+  }
+}
+
+function writeDesktopCmSessionLayoutPresets(presets: DesktopCmSessionLayoutPreset[]) {
+  if (typeof window === 'undefined') {
+    return;
+  }
+  try {
+    window.localStorage.setItem(desktopCmSessionLayoutPresetStorageKey, JSON.stringify(normalizeDesktopCmSessionLayoutPresets(presets)));
+  } catch {
+    // Session layouts are only a UI preference; storage failures should not break CM sessions.
+  }
+}
+
+function normalizeDesktopCmSessionLayoutPresets(value: unknown): DesktopCmSessionLayoutPreset[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  const seenNames = new Set<string>();
+  const presets: DesktopCmSessionLayoutPreset[] = [];
+  for (const item of value) {
+    if (!item || typeof item !== 'object') {
+      continue;
+    }
+    const candidate = item as Partial<DesktopCmSessionLayoutPreset>;
+    const name = normalizeDesktopCmSessionLayoutPresetName(candidate.name || '');
+    const nameKey = name.toLowerCase();
+    if (!name || seenNames.has(nameKey)) {
+      continue;
+    }
+    seenNames.add(nameKey);
+    presets.push({
+      name,
+      viewPreferences: normalizeDesktopCmSessionViewPreferences(candidate.viewPreferences),
+      updatedAt: typeof candidate.updatedAt === 'number' && Number.isFinite(candidate.updatedAt) ? candidate.updatedAt : Date.now(),
+    });
+    if (presets.length >= maxDesktopCmSessionLayoutPresets) {
+      break;
+    }
+  }
+  return presets;
+}
+
+function normalizeDesktopCmSessionLayoutPresetName(value: string) {
+  const normalized = value.trim().replace(/\s+/g, ' ').slice(0, maxDesktopCmSessionLayoutPresetNameLength);
+  return normalized || 'Session layout';
+}
+
+function desktopCmSessionLayoutEqual(left: DesktopCmSessionViewPreferences, right: DesktopCmSessionViewPreferences) {
+  return JSON.stringify(normalizeDesktopCmSessionLayoutComparable(left)) === JSON.stringify(normalizeDesktopCmSessionLayoutComparable(right));
+}
+
+function normalizeDesktopCmSessionLayoutComparable(preferences: DesktopCmSessionViewPreferences) {
+  const normalized = normalizeDesktopCmSessionViewPreferences(preferences);
+  return {
+    sessions: normalized.sessions
+      .map((preference) => ({
+        sessionId: preference.sessionId,
+        group: preference.group,
+        favorite: preference.favorite,
+      }))
+      .sort((left, right) => left.sessionId.localeCompare(right.sessionId)),
+    collapsedGroups: [...normalized.collapsedGroups].sort((left, right) => left.localeCompare(right)),
+  };
+}
+
+function formatDesktopCmSessionLayoutSummary(preferences: DesktopCmSessionViewPreferences) {
+  const normalized = normalizeDesktopCmSessionViewPreferences(preferences);
+  const favoriteCount = normalized.sessions.filter((preference) => preference.favorite).length;
+  const groupCount = new Set(normalized.sessions.map((preference) => preference.group)).size || 1;
+  return `${normalized.sessions.length} sessions · ${groupCount} groups · ${favoriteCount} favorites`;
 }
 
 function getDesktopCmSessionPreference(sessionId: string, preferences: Map<string, DesktopCmSessionViewPreference>) {
