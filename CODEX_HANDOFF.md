@@ -175,7 +175,8 @@ https://kuviewer.example.com/
    - Desktop CM diagnostics filtering은 완료됐다.
    - Desktop CM diagnostic saved filters는 완료됐다.
    - Desktop CM session connection profile polish는 완료됐다.
-   - 다음 확장 후보는 Desktop CM session duplicate/clone polish 또는 desktop deploy SSH preflight hardening이다.
+   - Desktop CM session duplicate/clone polish는 완료됐다. 세션 복제는 desktop-only clone draft로 동작하며 safe editable metadata만 복사하고 credential/runtime/diagnostic history는 복제하지 않는다.
+   - 다음 확장 후보는 desktop deploy SSH preflight hardening이다.
 
 4. 실제 Kubernetes 연결 설계
    - 브라우저에 kube credential을 직접 넣지 않는 방향 유지.

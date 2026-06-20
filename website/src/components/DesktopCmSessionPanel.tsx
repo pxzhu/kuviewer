@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Activity, Bookmark, CheckCircle2, Download, Filter, KeyRound, Pencil, Play, Plus, RotateCcw, Search, ServerCog, ShieldCheck, Square, Trash2, Unplug, Upload, XCircle } from 'lucide-react';
+import { Activity, Bookmark, CheckCircle2, Copy, Download, Filter, KeyRound, Pencil, Play, Plus, RotateCcw, Search, ServerCog, ShieldCheck, Square, Trash2, Unplug, Upload, XCircle } from 'lucide-react';
 import {
   createDesktopCmSessionExportBundle,
   desktopCmDefaultRemoteApiHost,
@@ -62,6 +62,7 @@ const cmDiagnosticSeverityFilterOptions = ['all', 'info', 'warning', 'error'] as
 const desktopCmDiagnosticFilterPresetStorageKey = 'kuviewer_desktop_cm_diagnostic_filter_presets';
 const maxDesktopCmDiagnosticFilterPresets = 8;
 const maxDesktopCmDiagnosticFilterPresetNameLength = 40;
+const maxDesktopCmSessionCloneNameLength = 60;
 
 type CmDiagnosticStageFilter = (typeof cmDiagnosticStageFilterOptions)[number];
 type CmDiagnosticSeverityFilter = (typeof cmDiagnosticSeverityFilterOptions)[number];
@@ -94,6 +95,7 @@ export function DesktopCmSessionPanel({
   const [diagnosticFilterPresetName, setDiagnosticFilterPresetName] = useState('');
   const [diagnosticFilterPresets, setDiagnosticFilterPresets] = useState<DesktopCmDiagnosticFilterPreset[]>(() => readDesktopCmDiagnosticFilterPresets());
   const [importSummary, setImportSummary] = useState<DesktopCmSessionImportSummary | null>(null);
+  const [cloneDraftSourceName, setCloneDraftSourceName] = useState('');
   const importInputRef = useRef<HTMLInputElement | null>(null);
   const normalizedSessionSearchQuery = normalizeSearchValue(sessionSearchQuery);
   const visibleSessions = useMemo(
@@ -119,6 +121,7 @@ export function DesktopCmSessionPanel({
   useEffect(() => {
     if (form.id && !sessions.some((session) => session.id === form.id)) {
       setForm(emptyForm);
+      setCloneDraftSourceName('');
     }
   }, [form.id, sessions]);
 
@@ -133,6 +136,7 @@ export function DesktopCmSessionPanel({
     try {
       await onSaveSession(form);
       setForm(emptyForm);
+      setCloneDraftSourceName('');
     } catch (requestError) {
       setError(formatCmSessionError(requestError instanceof Error ? requestError.message : 'desktop_cm_session_save_failed'));
     } finally {
@@ -159,6 +163,23 @@ export function DesktopCmSessionPanel({
       remoteApiPort: selectedSession.remoteApiPort,
       description: selectedSession.description || '',
     });
+    setCloneDraftSourceName('');
+    setError('');
+  };
+
+  const handleCloneSession = (session: DesktopCmSession) => {
+    setForm({
+      name: buildDesktopCmSessionCloneName(session.name, sessions),
+      host: session.host,
+      port: session.port,
+      user: session.user,
+      remoteApiHost: session.remoteApiHost,
+      remoteApiPort: session.remoteApiPort,
+      description: session.description || '',
+    });
+    setCloneDraftSourceName(session.name);
+    setDeleteConfirmId('');
+    setCredentialDeleteConfirmId('');
     setError('');
   };
 
@@ -187,6 +208,7 @@ export function DesktopCmSessionPanel({
       setDeleteConfirmId('');
       if (form.id === sessionId) {
         setForm(emptyForm);
+        setCloneDraftSourceName('');
       }
     } catch (requestError) {
       setError(formatCmSessionError(requestError instanceof Error ? requestError.message : 'desktop_cm_session_delete_failed'));
@@ -415,6 +437,12 @@ export function DesktopCmSessionPanel({
               선택 세션으로 채우기
             </button>
           ) : null}
+          {cloneDraftSourceName ? (
+            <span className="ku-chip max-w-full border-[rgba(0,122,255,0.18)] bg-[rgba(0,122,255,0.08)] text-[#0066cc]" data-testid="desktop-cm-session-clone-draft">
+              <Copy size={13} aria-hidden="true" />
+              <span className="truncate">clone draft · {cloneDraftSourceName} · credential/runtime 제외</span>
+            </span>
+          ) : null}
         </div>
 
         <div className="grid gap-3 xl:grid-cols-[minmax(280px,1.4fr)_minmax(260px,1fr)_minmax(220px,0.9fr)] xl:items-start" data-testid="desktop-cm-session-form-sections">
@@ -542,7 +570,17 @@ export function DesktopCmSessionPanel({
                 {form.id ? '수정' : '저장'}
               </button>
               {form.id ? (
-                <button className="ku-control h-9" type="button" onClick={() => setForm(emptyForm)}>
+                <button className="ku-control h-9" type="button" onClick={() => {
+                  setForm(emptyForm);
+                  setCloneDraftSourceName('');
+                }}>
+                  취소
+                </button>
+              ) : cloneDraftSourceName ? (
+                <button className="ku-control h-9" data-testid="desktop-cm-session-clone-cancel" type="button" onClick={() => {
+                  setForm(emptyForm);
+                  setCloneDraftSourceName('');
+                }}>
                   취소
                 </button>
               ) : null}
@@ -949,11 +987,21 @@ export function DesktopCmSessionPanel({
                       remoteApiPort: session.remoteApiPort,
                       description: session.description || '',
                     });
+                    setCloneDraftSourceName('');
                     setError('');
                   }}
                 >
                   <Pencil size={13} aria-hidden="true" />
                   수정
+                </button>
+                <button
+                  className="ku-control w-fit text-[11px]"
+                  data-testid={`desktop-cm-session-clone-${session.id}`}
+                  type="button"
+                  onClick={() => handleCloneSession(session)}
+                >
+                  <Copy size={13} aria-hidden="true" />
+                  복제
                 </button>
                 <button
                   className="ku-control w-fit text-[11px]"
@@ -1193,6 +1241,21 @@ function cmDiagnosticSeverityClass(severity: string) {
 
 function normalizeSearchValue(value: string) {
   return value.trim().toLowerCase();
+}
+
+function buildDesktopCmSessionCloneName(sourceName: string, sessions: DesktopCmSession[]) {
+  const existingNames = new Set(sessions.map((session) => session.name.trim().toLowerCase()).filter(Boolean));
+  const sourceBase = sourceName.trim() || 'CM session';
+  for (let copyIndex = 1; copyIndex <= 99; copyIndex += 1) {
+    const suffix = copyIndex === 1 ? ' copy' : ` copy ${copyIndex}`;
+    const maxBaseLength = Math.max(1, maxDesktopCmSessionCloneNameLength - suffix.length);
+    const candidateBase = sourceBase.slice(0, maxBaseLength).trimEnd() || 'CM';
+    const candidate = `${candidateBase}${suffix}`;
+    if (!existingNames.has(candidate.toLowerCase())) {
+      return candidate;
+    }
+  }
+  return `${sourceBase.slice(0, 42).trimEnd() || 'CM'} copy ${Date.now().toString(36).slice(-6)}`;
 }
 
 function readDesktopCmDiagnosticFilterPresets(): DesktopCmDiagnosticFilterPreset[] {
