@@ -445,25 +445,25 @@ SERVER_PORT
 SERVER_SSH_KEY
 ```
 
-Optional non-credential SSH pin:
+Optional non-credential SSH pin. A repository variable is preferred because this is public host-key data, not a credential; the workflow also accepts a secret with the same name for compatibility:
 
 ```text
 SERVER_SSH_KNOWN_HOSTS
 ```
 
-Deploy SSH preflight uses the same required secrets and does not require a registry or extra credential. It validates the SSH port range, checks TCP reachability to the SSH endpoint before host key scanning, pins the SSH host key with `StrictHostKeyChecking=yes`, checks remote `git`, `curl`, `gzip`, Docker/Compose availability, verifies `DEPLOY_PATH` and `/tmp` writability, and confirms `deploy/standalone/.env` when an existing checkout is already present. When `SERVER_SSH_KNOWN_HOSTS` is set, the workflow writes that pinned public host key data directly to `known_hosts`. Otherwise, host key scan retries run six times, scan `ed25519`, `ecdsa`, then `rsa` sequentially, accept non-empty scan output even when one scan command exits non-zero, and include an IPv4 keyscan fallback without disabling strict host key checking. Runner-side image archives and temporary SSH material are removed in an always-run cleanup step.
+Deploy SSH preflight uses the same required secrets and does not require a registry or extra credential. It validates the SSH port range, checks TCP reachability to the SSH endpoint before host key scanning, pins the SSH host key with `StrictHostKeyChecking=yes`, checks remote `git`, `curl`, `gzip`, Docker/Compose availability, verifies `DEPLOY_PATH` and `/tmp` writability, and confirms `deploy/standalone/.env` when an existing checkout is already present. When `SERVER_SSH_KNOWN_HOSTS` is set as a repository variable or secret, the workflow writes that pinned public host key data directly to `known_hosts`, preferring the secret if both exist. Otherwise, host key scan retries run six times, scan `ed25519`, `ecdsa`, then `rsa` sequentially, accept non-empty scan output even when one scan command exits non-zero, and include an IPv4 keyscan fallback without disabling strict host key checking. Runner-side image archives and temporary SSH material are removed in an always-run cleanup step.
 
 To prepare the optional host key pin without printing the key body in logs:
 
 ```bash
 node scripts/prepare-deploy-known-hosts.mjs --host <server-host> --port <server-port> --out /tmp/kuviewer-known-hosts
-gh secret set SERVER_SSH_KNOWN_HOSTS < /tmp/kuviewer-known-hosts
+gh variable set SERVER_SSH_KNOWN_HOSTS < /tmp/kuviewer-known-hosts
 ```
 
-The helper also supports validating an existing known_hosts file and setting the repository secret directly:
+The helper also supports validating an existing known_hosts file and setting the repository variable or secret directly:
 
 ```bash
-node scripts/prepare-deploy-known-hosts.mjs --from-file /tmp/kuviewer-known-hosts --set-secret
+node scripts/prepare-deploy-known-hosts.mjs --from-file /tmp/kuviewer-known-hosts --set-variable
 ```
 
 If `ssh-keyscan` is blocked but you can run commands on the server, generate the same pin from public SSH host key files. These `.pub` files are public keys, not private keys:
@@ -475,7 +475,7 @@ node scripts/prepare-deploy-known-hosts.mjs \
   --from-public-key /etc/ssh/ssh_host_ed25519_key.pub \
   --from-public-key /etc/ssh/ssh_host_ecdsa_key.pub \
   --from-public-key /etc/ssh/ssh_host_rsa_key.pub \
-  --set-secret
+  --set-variable
 ```
 
 If both the workflow keyscan fallback and the helper cannot collect host keys, SSH is not reachable from that network path; verify the server SSH service, port, DNS/IP, and firewall before rerunning the tag deploy.

@@ -34,9 +34,11 @@ jobs:
           test -n "${{ secrets.SERVER_PORT }}"
           test -n "${{ secrets.SERVER_SSH_KEY }}"
           if [ -n "${{ secrets.SERVER_SSH_KNOWN_HOSTS }}" ]; then
-            echo "SERVER_SSH_KNOWN_HOSTS present"
+            echo "SERVER_SSH_KNOWN_HOSTS secret present"
+          elif [ -n "${{ vars.SERVER_SSH_KNOWN_HOSTS }}" ]; then
+            echo "SERVER_SSH_KNOWN_HOSTS variable present"
           else
-            echo "SERVER_SSH_KNOWN_HOSTS missing; keyscan fallback will be used"
+            echo "SERVER_SSH_KNOWN_HOSTS not set; keyscan fallback will be used"
           fi
           case "${{ secrets.SERVER_PORT }}" in
             ''|*[!0-9]*)
@@ -64,9 +66,10 @@ jobs:
             echo "ssh-tcp-unreachable; verify SERVER_FHOST/SERVER_PORT firewall and SSH service"
             exit 1
           fi
-          if [ -n "${{ secrets.SERVER_SSH_KNOWN_HOSTS }}" ]; then
-            echo "Using pinned SSH known_hosts secret"
-            printf '%s\n' "${{ secrets.SERVER_SSH_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+          KNOWN_HOSTS_PIN="${{ secrets.SERVER_SSH_KNOWN_HOSTS || vars.SERVER_SSH_KNOWN_HOSTS }}"
+          if [ -n "$KNOWN_HOSTS_PIN" ]; then
+            echo "Using pinned SSH known_hosts input"
+            printf '%s\n' "$KNOWN_HOSTS_PIN" > ~/.ssh/known_hosts
             sort -u ~/.ssh/known_hosts -o ~/.ssh/known_hosts
           else
             scanned=false
