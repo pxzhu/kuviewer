@@ -92,6 +92,12 @@ jobs:
             echo "ssh-tcp-unreachable; verify SERVER_FHOST/SERVER_PORT firewall and SSH service"
             exit 1
           fi
+          if timeout 12 bash -c 'exec 3<>/dev/tcp/"$0"/"$1"; IFS= read -r -t 10 banner <&3; case "$banner" in SSH-*) exit 0 ;; *) exit 1 ;; esac' "${{ secrets.SERVER_FHOST }}" "${{ secrets.SERVER_PORT }}" 2>/dev/null; then
+            echo "ssh-banner-received"
+          else
+            echo "ssh-banner-timeout; TCP opened but SSH banner was not received"
+            exit 1
+          fi
           KNOWN_HOSTS_PIN="${{ secrets.SERVER_SSH_KNOWN_HOSTS || vars.SERVER_SSH_KNOWN_HOSTS }}"
           if [ -n "$KNOWN_HOSTS_PIN" ]; then
             echo "Using pinned SSH known_hosts input"
