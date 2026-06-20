@@ -176,7 +176,8 @@ https://kuviewer.example.com/
    - Desktop CM diagnostic saved filters는 완료됐다.
    - Desktop CM session connection profile polish는 완료됐다.
    - Desktop CM session duplicate/clone polish는 완료됐다. 세션 복제는 desktop-only clone draft로 동작하며 safe editable metadata만 복사하고 credential/runtime/diagnostic history는 복제하지 않는다.
-   - 다음 확장 후보는 desktop deploy SSH preflight hardening이다.
+   - Desktop deploy SSH preflight hardening은 완료됐다. 태그 배포는 Docker build 전에 SSH/host key/remote git-curl-gzip-Docker-compose/deploy path/.env/tmp write preflight를 실행하고, strict host key checking과 upload retry, always cleanup을 사용한다.
+   - 다음 확장 후보는 desktop deploy rollback/observability hardening 또는 Desktop CM session grouping/favorites다.
 
 4. 실제 Kubernetes 연결 설계
    - 브라우저에 kube credential을 직접 넣지 않는 방향 유지.
