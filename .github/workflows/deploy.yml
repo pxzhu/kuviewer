@@ -79,6 +79,12 @@ jobs:
           printf '%s\n' "${{ secrets.SERVER_SSH_KEY }}" > ~/.ssh/deploy_key.pem
           chmod 600 ~/.ssh/deploy_key.pem
           : > ~/.ssh/known_hosts
+          if timeout 10 bash -c ':</dev/tcp/"$0"/"$1"' "${{ secrets.SERVER_FHOST }}" "${{ secrets.SERVER_PORT }}" 2>/dev/null; then
+            echo "ssh-tcp-reachable"
+          else
+            echo "ssh-tcp-unreachable; verify SERVER_FHOST/SERVER_PORT firewall and SSH service"
+            exit 1
+          fi
           if [ -n "${{ secrets.SERVER_SSH_KNOWN_HOSTS }}" ]; then
             echo "Using pinned SSH known_hosts secret"
             printf '%s\n' "${{ secrets.SERVER_SSH_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
