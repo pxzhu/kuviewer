@@ -108,7 +108,10 @@ jobs:
               sleep 5
             done
             rm -f ~/.ssh/known_hosts.tmp
-            test "$scanned" = true
+            if [ "$scanned" != true ]; then
+              echo "SSH host key scan failed; set SERVER_SSH_KNOWN_HOSTS or verify SERVER_FHOST/SERVER_PORT reachability"
+              exit 1
+            fi
           fi
           test -s ~/.ssh/known_hosts
 

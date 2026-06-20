@@ -8,6 +8,7 @@ const failures = [];
 
 const deployWorkflow = await readTextFile('.github/workflows/deploy.yml');
 const ciWorkflow = await readTextFile('.github/workflows/ci.yml');
+const knownHostsHelper = await readTextFile('scripts/prepare-deploy-known-hosts.mjs');
 const packagingSpec = JSON.parse(await readTextFile('desktop/packaging-spec.json'));
 
 requireIncludes(deployWorkflow, 'Validate required secrets', 'deploy workflow must validate required secrets');
@@ -21,6 +22,7 @@ requireIncludes(deployWorkflow, 'SSH host key scan attempt ${attempt}/6', 'deplo
 requireIncludes(deployWorkflow, 'for key_type in ed25519 ecdsa rsa', 'deploy workflow must scan key types sequentially');
 requireIncludes(deployWorkflow, 'ssh-keyscan -4 -T 10 -t "${key_type}"', 'deploy workflow must include IPv4 host key scan fallback');
 requireIncludes(deployWorkflow, 'if test -s ~/.ssh/known_hosts.tmp; then', 'deploy workflow must accept non-empty keyscan output even if a scan command exits non-zero');
+requireIncludes(deployWorkflow, 'SSH host key scan failed; set SERVER_SSH_KNOWN_HOSTS or verify SERVER_FHOST/SERVER_PORT reachability', 'deploy workflow must explain keyscan failures safely');
 requireIncludes(deployWorkflow, 'Remote SSH preflight', 'deploy workflow must include remote SSH preflight');
 requireIncludes(deployWorkflow, 'remote-preflight-ok', 'deploy workflow must report safe preflight success');
 requireIncludes(deployWorkflow, 'compose version >/dev/null', 'deploy preflight must verify docker compose availability');
@@ -63,6 +65,14 @@ requireOrder(deployWorkflow, ['Deploy on server', 'Cleanup deploy runner secrets
 requireIncludes(ciWorkflow, 'Deploy workflow preflight check', 'CI must run deploy workflow preflight check');
 requireIncludes(ciWorkflow, 'node scripts/check-deploy-workflow.mjs', 'CI must execute deploy workflow checker');
 
+requireIncludes(knownHostsHelper, 'SERVER_SSH_KNOWN_HOSTS', 'known_hosts helper must target SERVER_SSH_KNOWN_HOSTS');
+requireIncludes(knownHostsHelper, 'ssh-keyscan', 'known_hosts helper must generate host keys with ssh-keyscan');
+requireIncludes(knownHostsHelper, '--from-file', 'known_hosts helper must support validating an existing file');
+requireIncludes(knownHostsHelper, '--set-secret', 'known_hosts helper must support optional gh secret set');
+requireIncludes(knownHostsHelper, 'known_hosts content must not contain private key material', 'known_hosts helper must reject private key material');
+requireIncludes(knownHostsHelper, 'console.log(`known_hosts entries:', 'known_hosts helper must print safe summary counts');
+requireNotIncludes(knownHostsHelper, 'console.log(knownHosts', 'known_hosts helper must not print known_hosts body');
+
 const deployWorkflowPolicy = packagingSpec.deployWorkflowPolicy || {};
 requireCondition(deployWorkflowPolicy.status === 'rollback-observability-hardened', 'deployWorkflowPolicy.status must be rollback-observability-hardened');
 requireCondition(deployWorkflowPolicy.workflowPath === '.github/workflows/deploy.yml', 'deployWorkflowPolicy.workflowPath must point to deploy workflow');
@@ -70,6 +80,7 @@ requireCondition(deployWorkflowPolicy.staticCheck === 'scripts/check-deploy-work
 requireCondition(deployWorkflowPolicy.preflightBeforeBuild === true, 'deployWorkflowPolicy.preflightBeforeBuild must be true');
 requireCondition(deployWorkflowPolicy.strictHostKeyChecking === true, 'deployWorkflowPolicy.strictHostKeyChecking must be true');
 requireCondition(deployWorkflowPolicy.optionalPinnedKnownHostsSecret === 'SERVER_SSH_KNOWN_HOSTS', 'deployWorkflowPolicy.optionalPinnedKnownHostsSecret must document SERVER_SSH_KNOWN_HOSTS');
+requireCondition(deployWorkflowPolicy.knownHostsHelper === 'scripts/prepare-deploy-known-hosts.mjs', 'deployWorkflowPolicy.knownHostsHelper must document helper script');
 requireCondition(deployWorkflowPolicy.hostKeyScanAttempts === 6, 'deployWorkflowPolicy.hostKeyScanAttempts must be 6');
 requireCondition(deployWorkflowPolicy.keyscanTimeoutSeconds === 10, 'deployWorkflowPolicy.keyscanTimeoutSeconds must be 10');
 requireCondition(deployWorkflowPolicy.acceptNonEmptyKeyscanOutput === true, 'deployWorkflowPolicy.acceptNonEmptyKeyscanOutput must be true');

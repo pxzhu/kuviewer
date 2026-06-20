@@ -28,6 +28,7 @@
     "preflightBeforeBuild": true,
     "strictHostKeyChecking": true,
     "optionalPinnedKnownHostsSecret": "SERVER_SSH_KNOWN_HOSTS",
+    "knownHostsHelper": "scripts/prepare-deploy-known-hosts.mjs",
     "hostKeyScanAttempts": 6,
     "keyscanTimeoutSeconds": 10,
     "keyscanTypes": ["ed25519", "ecdsa", "rsa"],
