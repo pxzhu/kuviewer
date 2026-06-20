@@ -94,8 +94,11 @@ requireNotIncludes(deployPreflightWorkflow, 'StrictHostKeyChecking=no', 'deploy 
 requireIncludes(knownHostsHelper, 'SERVER_SSH_KNOWN_HOSTS', 'known_hosts helper must target SERVER_SSH_KNOWN_HOSTS');
 requireIncludes(knownHostsHelper, 'ssh-keyscan', 'known_hosts helper must generate host keys with ssh-keyscan');
 requireIncludes(knownHostsHelper, '--from-file', 'known_hosts helper must support validating an existing file');
+requireIncludes(knownHostsHelper, '--from-public-key', 'known_hosts helper must support rendering known_hosts from server public host keys');
 requireIncludes(knownHostsHelper, '--set-secret', 'known_hosts helper must support optional gh secret set');
 requireIncludes(knownHostsHelper, 'known_hosts content must not contain private key material', 'known_hosts helper must reject private key material');
+requireIncludes(knownHostsHelper, 'public host key input must not contain private key material', 'known_hosts helper must reject private key material in public key mode');
+requireIncludes(knownHostsHelper, 'renderKnownHostsFromPublicKeys', 'known_hosts helper must render public host key files into known_hosts lines');
 requireIncludes(knownHostsHelper, 'console.log(`known_hosts entries:', 'known_hosts helper must print safe summary counts');
 requireNotIncludes(knownHostsHelper, 'console.log(knownHosts', 'known_hosts helper must not print known_hosts body');
 
@@ -108,6 +111,7 @@ requireCondition(deployWorkflowPolicy.preflightBeforeBuild === true, 'deployWork
 requireCondition(deployWorkflowPolicy.strictHostKeyChecking === true, 'deployWorkflowPolicy.strictHostKeyChecking must be true');
 requireCondition(deployWorkflowPolicy.optionalPinnedKnownHostsSecret === 'SERVER_SSH_KNOWN_HOSTS', 'deployWorkflowPolicy.optionalPinnedKnownHostsSecret must document SERVER_SSH_KNOWN_HOSTS');
 requireCondition(deployWorkflowPolicy.knownHostsHelper === 'scripts/prepare-deploy-known-hosts.mjs', 'deployWorkflowPolicy.knownHostsHelper must document helper script');
+requireCondition(deployWorkflowPolicy.knownHostsHelperSupportsPublicKeyFiles === true, 'deployWorkflowPolicy.knownHostsHelperSupportsPublicKeyFiles must be true');
 requireCondition(deployWorkflowPolicy.sshTcpReachabilityProbe === true, 'deployWorkflowPolicy.sshTcpReachabilityProbe must be true');
 requireCondition(deployWorkflowPolicy.hostKeyScanAttempts === 6, 'deployWorkflowPolicy.hostKeyScanAttempts must be 6');
 requireCondition(deployWorkflowPolicy.keyscanTimeoutSeconds === 10, 'deployWorkflowPolicy.keyscanTimeoutSeconds must be 10');

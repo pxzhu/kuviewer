@@ -12,6 +12,8 @@ const outPath = path.resolve(args.out || path.join(tmpdir(), 'kuviewer-known-hos
 try {
   const knownHosts = args.fromFile
     ? validateKnownHosts(await readFile(path.resolve(args.fromFile), 'utf8'))
+    : args.publicKeyFiles.length > 0
+      ? await renderKnownHostsFromPublicKeys(args)
     : await scanKnownHosts(args);
 
   await mkdir(path.dirname(outPath), { recursive: true });
@@ -39,6 +41,7 @@ function parseArgs(argv) {
     port: '22',
     out: '',
     fromFile: '',
+    publicKeyFiles: [],
     repo: '',
     setSecret: false,
   };
@@ -58,15 +61,16 @@ function parseArgs(argv) {
     else if (arg === '--port') parsed.port = next;
     else if (arg === '--out') parsed.out = next;
     else if (arg === '--from-file') parsed.fromFile = next;
+    else if (arg === '--from-public-key') parsed.publicKeyFiles.push(next);
     else if (arg === '--repo') parsed.repo = next;
     else throw new Error(`unknown argument: ${arg}`);
   }
 
-  if (parsed.fromFile && parsed.host) {
-    throw new Error('--from-file cannot be combined with --host');
+  if (parsed.fromFile && (parsed.host || parsed.publicKeyFiles.length > 0)) {
+    throw new Error('--from-file cannot be combined with --host or --from-public-key');
   }
   if (!parsed.fromFile && !parsed.host) {
-    throw new Error('usage: node scripts/prepare-deploy-known-hosts.mjs --host <host> [--port <port>] [--out <file>] [--set-secret]');
+    throw new Error('usage: node scripts/prepare-deploy-known-hosts.mjs --host <host> [--port <port>] [--from-public-key <file>...] [--out <file>] [--set-secret]');
   }
   if (!/^[1-9][0-9]{0,4}$/.test(parsed.port) || Number(parsed.port) > 65535) {
     throw new Error('--port must be a number between 1 and 65535');
@@ -100,6 +104,37 @@ async function scanKnownHosts({ host, port }) {
   return validateKnownHosts(lines.join('\n'));
 }
 
+async function renderKnownHostsFromPublicKeys({ host, port, publicKeyFiles }) {
+  const hostMarker = port === '22' ? host : `[${host}]:${port}`;
+  const lines = [];
+  for (const publicKeyFile of publicKeyFiles) {
+    const raw = await readFile(path.resolve(publicKeyFile), 'utf8');
+    if (/BEGIN (?:RSA |DSA |EC |OPENSSH )?PRIVATE KEY/.test(raw)) {
+      throw new Error('public host key input must not contain private key material');
+    }
+    for (const line of raw.split('\n')) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#')) continue;
+      const publicKey = parsePublicKeyLine(trimmed);
+      lines.push(`${hostMarker} ${publicKey.keyType} ${publicKey.key}`);
+    }
+  }
+
+  return validateKnownHosts(lines.join('\n'));
+}
+
+function parsePublicKeyLine(line) {
+  const parts = line.split(/\s+/);
+  if (parts.length < 2) {
+    throw new Error('public host key input has an unsupported line format');
+  }
+  const [keyType, key] = parts;
+  if (!isSupportedKeyType(keyType) || !/^[A-Za-z0-9+/]+={0,2}$/.test(key)) {
+    throw new Error('public host key input has an unsupported line format');
+  }
+  return { keyType, key };
+}
+
 function validateKnownHosts(raw) {
   if (raw.length > 16_384) {
     throw new Error('known_hosts content is unexpectedly large');
@@ -131,9 +166,13 @@ function isKnownHostLine(line) {
   if (parts.length < 3) return false;
   const [hosts, keyType, key] = parts;
   if (!hosts || hosts.includes('=') || hosts.startsWith('@')) return false;
-  if (!['ssh-ed25519', 'ssh-rsa', 'ecdsa-sha2-nistp256', 'ecdsa-sha2-nistp384', 'ecdsa-sha2-nistp521'].includes(keyType)) return false;
+  if (!isSupportedKeyType(keyType)) return false;
   if (!/^[A-Za-z0-9+/]+={0,2}$/.test(key)) return false;
   return true;
+}
+
+function isSupportedKeyType(keyType) {
+  return ['ssh-ed25519', 'ssh-rsa', 'ecdsa-sha2-nistp256', 'ecdsa-sha2-nistp384', 'ecdsa-sha2-nistp521'].includes(keyType);
 }
 
 function summarizeKnownHosts(knownHosts) {
