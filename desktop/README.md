@@ -61,14 +61,17 @@ The current implementation supports multiple sessions with safe metadata fields 
 - `host`
 - `port`
 - `user`
+- remote API host and port, defaulting to `127.0.0.1:18085`
 - `description`
-- status, selection, updated timestamp, credential availability, credential store label, and last connection check status/message
+- status, runtime status, selection, updated timestamp, credential availability, credential store label, and last connection check status/message
 
-The Tauri bridge exposes safe session commands: `desktop_cm_sessions`, `desktop_save_cm_session`, `desktop_select_cm_session`, `desktop_delete_cm_session`, `desktop_import_cm_session_private_key`, `desktop_delete_cm_session_credential`, and `desktop_check_cm_session`. Private keys are imported from a local file path by Rust and written to macOS Keychain or Windows Credential Manager under the desktop CM/SSH credential service. Private key bodies are never returned to browser JavaScript, localStorage, JSON export, app logs, or repository files. Passwords, passphrases, tokens, kubeconfigs, cloud credentials, Secret values, Events, and logs are not stored or returned.
+The Tauri bridge exposes safe session commands: `desktop_cm_sessions`, `desktop_save_cm_session`, `desktop_select_cm_session`, `desktop_delete_cm_session`, `desktop_import_cm_session_private_key`, `desktop_delete_cm_session_credential`, `desktop_check_cm_session`, `desktop_cm_session_runtime`, `desktop_start_cm_session_runtime`, and `desktop_stop_cm_session_runtime`. Private keys are imported from a local file path by Rust and written to macOS Keychain or Windows Credential Manager under the desktop CM/SSH credential service. Private key bodies are never returned to browser JavaScript, localStorage, JSON export, app logs, or repository files. Passwords, passphrases, tokens, kubeconfigs, cloud credentials, Secret values, Events, and logs are not stored or returned.
 
-`desktop_check_cm_session` performs a bounded connection check. If a private key is available it runs an SSH no-op check with a temporary owner-only key file outside the repository and deletes that file after the check. If no private key is available it falls back to TCP/SSH banner reachability. Deleting a CM/SSH session also removes its stored credential when present. The UI receives only coarse statuses such as `reachable`, `unreachable`, or `credential-missing`, plus safe messages. CM tunnel/runtime integration is the next desktop milestone.
+`desktop_check_cm_session` performs a bounded connection check. If a private key is available it runs an SSH no-op check with a temporary owner-only key file outside the repository and deletes that file after the check. If no private key is available it falls back to TCP/SSH banner reachability. Deleting a CM/SSH session also removes its stored credential when present. The UI receives only coarse statuses such as `reachable`, `unreachable`, or `credential-missing`, plus safe messages.
 
-The desktop runtime can seed one metadata fixture for smoke work with `KUVIEWER_DESKTOP_CM_SESSION_HOST` plus optional `KUVIEWER_DESKTOP_CM_SESSION_ID`, `KUVIEWER_DESKTOP_CM_SESSION_NAME`, `KUVIEWER_DESKTOP_CM_SESSION_PORT`, `KUVIEWER_DESKTOP_CM_SESSION_USER`, and `KUVIEWER_DESKTOP_CM_SESSION_DESCRIPTION`.
+The CM tunnel/runtime uses the stored private key only inside Rust. On start, Rust writes a temporary owner-only key file outside the repository, launches `ssh -N -L 127.0.0.1:{ephemeral-port}:{remoteApiHost}:{remoteApiPort}`, verifies `/healthz` through the tunnel, and returns only a safe localhost profile to the UI. The frontend stores that runtime profile in `sessionStorage` only, switches the source mode to Live Cluster, and still requires the normal admin token. The runtime SSH child and temporary key file are removed on stop, start failure, app close, session delete, and credential delete. This is tracked as `desktop-cm-ssh-runtime` / CM tunnel/runtime.
+
+The desktop runtime can seed one metadata fixture for smoke work with `KUVIEWER_DESKTOP_CM_SESSION_HOST` plus optional `KUVIEWER_DESKTOP_CM_SESSION_ID`, `KUVIEWER_DESKTOP_CM_SESSION_NAME`, `KUVIEWER_DESKTOP_CM_SESSION_PORT`, `KUVIEWER_DESKTOP_CM_SESSION_USER`, `KUVIEWER_DESKTOP_CM_SESSION_REMOTE_API_HOST`, `KUVIEWER_DESKTOP_CM_SESSION_REMOTE_API_PORT`, and `KUVIEWER_DESKTOP_CM_SESSION_DESCRIPTION`.
 
 ## Prototype-only Remote API Profile
 
@@ -202,7 +205,7 @@ For native secret import smoke, Rust can read a local token file and write it to
 
 Selecting a profile with a stored credential restarts the local sidecar with `KUVIEWER_SOURCE=kubernetes`, `KUVIEWER_KUBE_API_SERVER`, and `KUVIEWER_KUBE_TOKEN_FILE`. The returned profile status becomes `sidecar-kubernetes-active`, and the UI switches to live mode using only the sidecar URL/source descriptor plus the per-launch sidecar admin token in `sessionStorage`. Runtime token files follow `0600-temp-dir-delete-on-sidecar-stop`: they are written outside the repository and deleted when the sidecar stops or restarts. Deleting the active native credential stops the Kubernetes sidecar, clears the live token, deletes runtime token files, and falls back to the default local sidecar. Bearer tokens, kubeconfig bodies, private keys, cloud credentials, and Secret values must not be passed through browser state.
 
-`scripts/smoke-desktop-cm-sessions.mjs` is the active CI desktop smoke. It verifies metadata-only CM/SSH session save/select/delete, confirms the web runtime does not expose SSH session UI, and checks that old sidecar/keychain panels are hidden. `scripts/smoke-desktop-keychain-runtime.mjs` remains as a historical prototype smoke helper.
+`scripts/smoke-desktop-cm-sessions.mjs` is the active CI desktop smoke. It verifies CM/SSH session save/select/delete, private-key import command flow, connection check, CM tunnel/runtime start/stop, sessionStorage-only runtime profile cleanup, confirms the web runtime does not expose SSH session UI, and checks that old sidecar/keychain panels are hidden. `scripts/smoke-desktop-keychain-runtime.mjs` remains as a historical prototype smoke helper.
 
 ## Verified Dry Runs
 

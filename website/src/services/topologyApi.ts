@@ -1,8 +1,13 @@
 import type { TopologySnapshot } from '../types/topology';
 import { getStoredAdminToken } from '../features/auth/adminToken';
-import { getDesktopConnectionProfile } from '../features/desktop/desktopConnectionProfile';
+import { getDesktopCmRuntimeProfile, getDesktopConnectionProfile } from '../features/desktop/desktopConnectionProfile';
 
 export function getTopologyApiBaseUrl() {
+  const desktopCmRuntimeProfile = getDesktopCmRuntimeProfile();
+  if (desktopCmRuntimeProfile) {
+    return desktopCmRuntimeProfile.serverUrl;
+  }
+
   const desktopProfile = getDesktopConnectionProfile();
   if (desktopProfile) {
     return desktopProfile.serverUrl;

@@ -33,10 +33,13 @@ export interface DesktopCmSession {
   host: string;
   port: number;
   user: string;
+  remoteApiHost: string;
+  remoteApiPort: number;
   authType: string;
   credentialStore: string;
   credentialAvailable: boolean;
   status: string;
+  runtimeStatus: string;
   updatedAt: number;
   selected: boolean;
   description?: string;
@@ -51,17 +54,35 @@ export interface DesktopCmSessionInput {
   host: string;
   port: number;
   user: string;
+  remoteApiHost?: string;
+  remoteApiPort?: number;
   description?: string;
+}
+
+export interface DesktopCmSessionRuntimeProfile {
+  sessionId: string;
+  sessionName: string;
+  serverUrl: string;
+  remoteApiHost: string;
+  remoteApiPort: number;
+  localPort: number;
+  status: string;
+  startedAt: number;
+  lastError?: string;
 }
 
 const desktopConnectionProfileStorageKey = 'kuviewer_desktop_connection_profile';
 const desktopConnectionProfileChangedEvent = 'kuviewer-desktop-connection-profile-changed';
+const desktopCmRuntimeProfileStorageKey = 'kuviewer_desktop_cm_runtime_profile';
+const desktopCmRuntimeProfileChangedEvent = 'kuviewer-desktop-cm-runtime-profile-changed';
 const maxServerUrlLength = 220;
 const maxCmSessionNameLength = 60;
 const maxCmSessionHostLength = 180;
 const maxCmSessionUserLength = 80;
 const maxCmSessionDescriptionLength = 160;
 const maxCmSessionKeyFilePathLength = 1024;
+export const desktopCmDefaultRemoteApiHost = '127.0.0.1';
+export const desktopCmDefaultRemoteApiPort = 18085;
 
 type TauriInvoke = <Response>(command: string, args?: Record<string, unknown>) => Promise<Response>;
 
@@ -139,6 +160,60 @@ export function subscribeDesktopConnectionProfile(listener: () => void) {
   return () => {
     window.removeEventListener('storage', handleStorage);
     window.removeEventListener(desktopConnectionProfileChangedEvent, handleLocalChange);
+  };
+}
+
+export function getDesktopCmRuntimeProfile(): DesktopCmSessionRuntimeProfile | null {
+  if (!isDesktopRuntime()) {
+    return null;
+  }
+
+  try {
+    const rawValue = window.sessionStorage.getItem(desktopCmRuntimeProfileStorageKey);
+    if (!rawValue) {
+      return null;
+    }
+    const parsedValue = JSON.parse(rawValue) as Partial<DesktopCmSessionRuntimeProfile>;
+    const runtimeProfile = parseDesktopCmSessionRuntimeProfile(parsedValue);
+    if (!runtimeProfile) {
+      clearDesktopCmRuntimeProfile();
+      return null;
+    }
+    return runtimeProfile;
+  } catch {
+    clearDesktopCmRuntimeProfile();
+    return null;
+  }
+}
+
+export function storeDesktopCmRuntimeProfile(profile: DesktopCmSessionRuntimeProfile) {
+  const runtimeProfile = parseDesktopCmSessionRuntimeProfile(profile);
+  if (!runtimeProfile) {
+    throw new Error('desktop_cm_runtime_profile_invalid');
+  }
+  window.sessionStorage.setItem(desktopCmRuntimeProfileStorageKey, JSON.stringify(runtimeProfile));
+  dispatchDesktopCmRuntimeProfileChanged();
+  return runtimeProfile;
+}
+
+export function clearDesktopCmRuntimeProfile() {
+  window.sessionStorage.removeItem(desktopCmRuntimeProfileStorageKey);
+  dispatchDesktopCmRuntimeProfileChanged();
+}
+
+export function subscribeDesktopCmRuntimeProfile(listener: () => void) {
+  const handleStorage = (event: StorageEvent) => {
+    if (event.key === desktopCmRuntimeProfileStorageKey) {
+      listener();
+    }
+  };
+  const handleLocalChange = () => listener();
+
+  window.addEventListener('storage', handleStorage);
+  window.addEventListener(desktopCmRuntimeProfileChangedEvent, handleLocalChange);
+  return () => {
+    window.removeEventListener('storage', handleStorage);
+    window.removeEventListener(desktopCmRuntimeProfileChangedEvent, handleLocalChange);
   };
 }
 
@@ -325,6 +400,47 @@ export async function checkDesktopCmSession(sessionId: string): Promise<DesktopC
   return parseDesktopCmSession(session);
 }
 
+export async function getDesktopCmSessionRuntime(): Promise<DesktopCmSessionRuntimeProfile | null> {
+  if (!isDesktopRuntime()) {
+    return null;
+  }
+
+  const invoke = getTauriInvoke();
+  if (!invoke) {
+    return null;
+  }
+
+  const profile = await invoke<unknown>('desktop_cm_session_runtime');
+  return parseDesktopCmSessionRuntimeProfile(profile);
+}
+
+export async function startDesktopCmSessionRuntime(sessionId: string): Promise<DesktopCmSessionRuntimeProfile | null> {
+  if (!isDesktopRuntime()) {
+    return null;
+  }
+
+  const invoke = getTauriInvoke();
+  if (!invoke) {
+    return null;
+  }
+
+  const profile = await invoke<unknown>('desktop_start_cm_session_runtime', { sessionId: normalizeDesktopCmSessionId(sessionId) });
+  return parseDesktopCmSessionRuntimeProfile(profile);
+}
+
+export async function stopDesktopCmSessionRuntime(): Promise<void> {
+  if (!isDesktopRuntime()) {
+    return;
+  }
+
+  const invoke = getTauriInvoke();
+  if (!invoke) {
+    return;
+  }
+
+  await invoke<unknown>('desktop_stop_cm_session_runtime');
+}
+
 export function normalizeDesktopServerUrl(value: string) {
   const input = value.trim();
   if (!input) {
@@ -363,11 +479,15 @@ export function normalizeDesktopCmSessionInput(input: DesktopCmSessionInput): De
   const host = normalizeDesktopCmSessionHost(input.host);
   const user = normalizeDesktopCmSessionUser(input.user);
   const port = normalizeDesktopCmSessionPort(input.port);
+  const remoteApiHost = input.remoteApiHost?.trim()
+    ? normalizeDesktopCmRemoteApiHost(input.remoteApiHost)
+    : desktopCmDefaultRemoteApiHost;
+  const remoteApiPort = normalizeDesktopCmRemoteApiPort(input.remoteApiPort ?? desktopCmDefaultRemoteApiPort);
   const id = input.id?.trim() ? normalizeDesktopCmSessionId(input.id) : undefined;
   const description = input.description?.trim()
     ? normalizeBoundedText(input.description, maxCmSessionDescriptionLength, 'desktop_cm_session_description')
     : undefined;
-  return { id, name, host, port, user, description };
+  return { id, name, host, port, user, remoteApiHost, remoteApiPort, description };
 }
 
 export function normalizeDesktopCmSessionHost(value: string) {
@@ -377,6 +497,17 @@ export function normalizeDesktopCmSessionHost(value: string) {
   }
   if (!/^[a-z0-9][a-z0-9.-]*$/.test(host) && !/^\d{1,3}(\.\d{1,3}){3}$/.test(host)) {
     throw new Error('desktop_cm_session_host_invalid');
+  }
+  return host;
+}
+
+export function normalizeDesktopCmRemoteApiHost(value: string) {
+  const host = normalizeBoundedText(value, maxCmSessionHostLength, 'desktop_cm_session_remote_api_host').toLowerCase();
+  if (host.includes('://') || host.includes('/') || host.includes('?') || host.includes('#') || host.includes('@') || host.includes(':')) {
+    throw new Error('desktop_cm_session_remote_api_host_invalid');
+  }
+  if (!/^[a-z0-9][a-z0-9.-]*$/.test(host) && !/^\d{1,3}(\.\d{1,3}){3}$/.test(host)) {
+    throw new Error('desktop_cm_session_remote_api_host_invalid');
   }
   return host;
 }
@@ -393,6 +524,14 @@ export function normalizeDesktopCmSessionPort(value: number) {
   const port = Number(value);
   if (!Number.isInteger(port) || port < 1 || port > 65535) {
     throw new Error('desktop_cm_session_port_invalid');
+  }
+  return port;
+}
+
+export function normalizeDesktopCmRemoteApiPort(value: number) {
+  const port = Number(value);
+  if (!Number.isInteger(port) || port < 1 || port > 65535) {
+    throw new Error('desktop_cm_session_remote_api_port_invalid');
   }
   return port;
 }
@@ -467,10 +606,19 @@ function parseDesktopCmSession(value: unknown): DesktopCmSession | null {
       host: normalizeDesktopCmSessionHost(session.host),
       port: normalizeDesktopCmSessionPort(session.port),
       user: normalizeDesktopCmSessionUser(session.user),
+      remoteApiHost:
+        typeof session.remoteApiHost === 'string' && session.remoteApiHost.trim()
+          ? normalizeDesktopCmRemoteApiHost(session.remoteApiHost)
+          : desktopCmDefaultRemoteApiHost,
+      remoteApiPort:
+        typeof session.remoteApiPort === 'number'
+          ? normalizeDesktopCmRemoteApiPort(session.remoteApiPort)
+          : desktopCmDefaultRemoteApiPort,
       authType: session.authType.trim() || 'os-credential-store',
       credentialStore: typeof session.credentialStore === 'string' && session.credentialStore.trim() ? session.credentialStore.trim() : 'os-credential-store',
       credentialAvailable: typeof session.credentialAvailable === 'boolean' ? session.credentialAvailable : false,
       status: session.status.trim() || 'metadata-only',
+      runtimeStatus: typeof session.runtimeStatus === 'string' && session.runtimeStatus.trim() ? session.runtimeStatus.trim() : 'stopped',
       updatedAt: session.updatedAt,
       selected: session.selected,
       description:
@@ -482,6 +630,43 @@ function parseDesktopCmSession(value: unknown): DesktopCmSession | null {
       lastCheckMessage:
         typeof session.lastCheckMessage === 'string' && session.lastCheckMessage.trim()
           ? normalizeBoundedText(session.lastCheckMessage, 120, 'desktop_cm_session_last_check_message')
+          : undefined,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function parseDesktopCmSessionRuntimeProfile(value: unknown): DesktopCmSessionRuntimeProfile | null {
+  if (!value || typeof value !== 'object') {
+    return null;
+  }
+  const profile = value as Partial<DesktopCmSessionRuntimeProfile>;
+  if (
+    typeof profile.sessionId !== 'string' ||
+    typeof profile.sessionName !== 'string' ||
+    typeof profile.serverUrl !== 'string' ||
+    typeof profile.remoteApiHost !== 'string' ||
+    typeof profile.remoteApiPort !== 'number' ||
+    typeof profile.localPort !== 'number' ||
+    typeof profile.status !== 'string' ||
+    typeof profile.startedAt !== 'number'
+  ) {
+    return null;
+  }
+  try {
+    return {
+      sessionId: normalizeDesktopCmSessionId(profile.sessionId),
+      sessionName: normalizeBoundedText(profile.sessionName, maxCmSessionNameLength, 'desktop_cm_session_name'),
+      serverUrl: normalizeDesktopServerUrl(profile.serverUrl),
+      remoteApiHost: normalizeDesktopCmRemoteApiHost(profile.remoteApiHost),
+      remoteApiPort: normalizeDesktopCmRemoteApiPort(profile.remoteApiPort),
+      localPort: normalizeDesktopCmRemoteApiPort(profile.localPort),
+      status: profile.status.trim() || 'runtime-active',
+      startedAt: profile.startedAt,
+      lastError:
+        typeof profile.lastError === 'string' && profile.lastError.trim()
+          ? normalizeBoundedText(profile.lastError, 120, 'desktop_cm_runtime_last_error')
           : undefined,
     };
   } catch {
@@ -512,4 +697,8 @@ function getTauriInvoke(): TauriInvoke | null {
 
 function dispatchDesktopConnectionProfileChanged() {
   window.dispatchEvent(new Event(desktopConnectionProfileChangedEvent));
+}
+
+function dispatchDesktopCmRuntimeProfileChanged() {
+  window.dispatchEvent(new Event(desktopCmRuntimeProfileChangedEvent));
 }
