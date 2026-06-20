@@ -16,7 +16,7 @@ function requireCondition(condition, message) {
 }
 
 requireCondition(spec.schemaVersion === 1, 'schemaVersion must be 1');
-requireCondition(spec.goal === 'installable-read-only-desktop-cluster-explorer', 'goal must describe the installable read-only desktop explorer');
+requireCondition(spec.goal === 'installable-read-only-cm-ssh-session-explorer', 'goal must describe the installable read-only CM/SSH session explorer');
 requireCondition(
   [
     'packaging-spike',
@@ -33,6 +33,7 @@ requireCondition(
     'desktop-os-credential-store',
     'desktop-keychain-sidecar-runtime',
     'desktop-native-credential-runtime-smoke',
+    'desktop-package-smoke-matrix',
   ].includes(spec.status),
   'status must be a known desktop packaging milestone'
 );
@@ -45,9 +46,11 @@ requireCondition(targetArtifacts.has('macos:dmg'), 'targets must include macos:d
 requireCondition(targetArtifacts.has('windows:exe'), 'targets must include windows:exe');
 
 const connectionModes = new Set((Array.isArray(spec.connectionModes) ? spec.connectionModes : []).map((mode) => mode.id));
+requireCondition(connectionModes.has('cm-ssh-session'), 'connectionModes must include cm-ssh-session as the primary desktop direction');
 requireCondition(connectionModes.has('remote-api'), 'connectionModes must include remote-api');
 requireCondition(connectionModes.has('local-sidecar'), 'connectionModes must include local-sidecar as a future evaluation path');
 requireCondition(connectionModes.has('local-kubernetes-keychain'), 'connectionModes must include local-kubernetes-keychain as the desktop credential design path');
+await validateDesktopProductDirection(spec);
 
 const security = spec.security || {};
 requireCondition(security.readOnly === true, 'security.readOnly must be true');
@@ -71,6 +74,7 @@ requireCondition(phases.includes('keychain-profile-runtime'), 'phaseOrder must i
 requireCondition(phases.includes('os-credential-store'), 'phaseOrder must include os-credential-store');
 requireCondition(phases.includes('keychain-sidecar-runtime'), 'phaseOrder must include keychain-sidecar-runtime');
 requireCondition(phases.includes('native-credential-runtime-smoke'), 'phaseOrder must include native-credential-runtime-smoke');
+requireCondition(phases.includes('desktop-package-smoke-matrix'), 'phaseOrder must include desktop-package-smoke-matrix');
 requireCondition(phases.includes('macos-dmg-build'), 'phaseOrder must include macos-dmg-build');
 requireCondition(phases.includes('windows-exe-build'), 'phaseOrder must include windows-exe-build');
 
@@ -79,6 +83,7 @@ await validateRemoteConnectionProfile(spec);
 await validateReleaseVersioning(spec);
 await validateLocalSidecar(spec);
 await validateCredentialStorageDesign(spec);
+await validatePackageSmokeMatrix(spec);
 validateDryRuns(spec);
 
 if (
@@ -96,6 +101,7 @@ if (
     'desktop-os-credential-store',
     'desktop-keychain-sidecar-runtime',
     'desktop-native-credential-runtime-smoke',
+    'desktop-package-smoke-matrix',
   ].includes(spec.status)
 ) {
   await validateTauriScaffold(spec.tauri || {});
@@ -110,6 +116,36 @@ if (failures.length > 0) {
 }
 
 console.log(`desktop packaging spec check passed: ${specPath}`);
+
+async function validateDesktopProductDirection(spec) {
+  const direction = spec.desktopProductDirection || {};
+  requireCondition(direction.primaryConnectionMode === 'cm-ssh-session', 'desktopProductDirection.primaryConnectionMode must be cm-ssh-session');
+  requireCondition(direction.desktopOnly === true, 'desktopProductDirection.desktopOnly must be true');
+  requireCondition(direction.webSshFeature === false, 'desktopProductDirection.webSshFeature must be false');
+  requireCondition(direction.multipleSessions === true, 'desktopProductDirection.multipleSessions must be true');
+  requireCondition(direction.sessionModel === 'vscode-ssh-extension-style', 'desktopProductDirection.sessionModel must be vscode-ssh-extension-style');
+  requireCondition(direction.localSidecarPolicy === 'prototype-only-not-product-default', 'desktopProductDirection.localSidecarPolicy must be prototype-only-not-product-default');
+  requireCondition(direction.directApiPolicy === 'not-desktop-primary', 'desktopProductDirection.directApiPolicy must be not-desktop-primary');
+  requireCondition(direction.credentialStorage === 'os-credential-store', 'desktopProductDirection.credentialStorage must be os-credential-store');
+  requireCondition(direction.noBrowserSsh === true, 'desktopProductDirection.noBrowserSsh must be true');
+  requireCondition(direction.noOperationalActions === true, 'desktopProductDirection.noOperationalActions must be true');
+
+  const rootReadme = await readTextFile('README.md', 'root README');
+  const desktopReadme = await readTextFile('desktop/README.md', 'desktop README');
+  const prerequisitesDoc = await readTextFile('desktop/BUILD_PREREQUISITES.md', 'desktop build prerequisites doc');
+  const handoff = await readTextFile('CODEX_HANDOFF.md', 'Codex handoff');
+  for (const [label, text] of [
+    ['root README', rootReadme],
+    ['desktop README', desktopReadme],
+    ['desktop build prerequisites doc', prerequisitesDoc],
+    ['Codex handoff', handoff],
+  ]) {
+    requireCondition(text.includes('CM/SSH'), `${label} must document the CM/SSH desktop direction`);
+    requireCondition(text.includes('multiple sessions'), `${label} must document multiple sessions`);
+    requireCondition(text.includes('web app must not expose SSH'), `${label} must document that the web app must not expose SSH`);
+    requireCondition(text.includes('prototype-only'), `${label} must mark local sidecar/API paths as prototype-only`);
+  }
+}
 
 async function validateTauriScaffold(tauri) {
   const desktopPackage = await readJsonFile(tauri.packagePath, 'tauri.packagePath');
@@ -712,6 +748,54 @@ async function validateCredentialStorageDesign(spec) {
   const app = await readTextFile('website/src/app/App.tsx', 'app shell');
   for (const marker of ['sidecar-kubernetes-active', 'getDesktopSidecarProfile', 'storeAdminToken', 'storeSourceMode', 'token은 native/runtime file 경로만 사용']) {
     requireCondition(app.includes(marker), `app shell must include ${marker}`);
+  }
+}
+
+async function validatePackageSmokeMatrix(spec) {
+  const matrix = spec.packageSmokeMatrix || {};
+  requireCondition(matrix.status === 'manual-unsigned-matrix', 'packageSmokeMatrix.status must be manual-unsigned-matrix');
+  requireCondition(matrix.workflowPath === '.github/workflows/desktop-package.yml', 'packageSmokeMatrix.workflowPath must point at desktop-package workflow');
+  requireCondition(matrix.workflowInput === 'smoke_matrix', 'packageSmokeMatrix.workflowInput must be smoke_matrix');
+  requireCondition(matrix.manualOnly === true, 'packageSmokeMatrix.manualOnly must be true');
+  requireCondition(matrix.signedAllowed === false, 'packageSmokeMatrix.signedAllowed must be false');
+  requireCondition(matrix.artifactNamePattern === 'kuviewer-{platform}-{artifact}-{version}', 'packageSmokeMatrix artifactNamePattern must include version');
+  requireCondition(matrix.artifactStorage === 'github-actions-artifact-only', 'packageSmokeMatrix artifactStorage must be github-actions-artifact-only');
+  requireCondition(matrix.releaseAsset === false, 'packageSmokeMatrix.releaseAsset must be false');
+
+  const targetMap = new Map((Array.isArray(matrix.targets) ? matrix.targets : []).map((target) => [`${target.platform}:${target.artifact}`, target]));
+  const macosTarget = targetMap.get('macos:dmg');
+  const windowsTarget = targetMap.get('windows:exe');
+  requireCondition(macosTarget?.job === 'macos-dmg', 'packageSmokeMatrix must map macos:dmg to macos-dmg');
+  requireCondition(windowsTarget?.job === 'windows-exe', 'packageSmokeMatrix must map windows:exe to windows-exe');
+
+  const workflow = await readTextFile(matrix.workflowPath, 'desktop package workflow');
+  for (const marker of [
+    'smoke_matrix:',
+    'Build unsigned macOS dmg and Windows exe smoke matrix',
+    'Validate unsigned smoke matrix mode',
+    'if: ${{ inputs.smoke_matrix && inputs.signed }}',
+    'smoke_matrix builds unsigned artifacts only; set signed=false.',
+    'if: ${{ inputs.build_macos || inputs.smoke_matrix }}',
+    'if: ${{ inputs.build_windows || inputs.smoke_matrix }}',
+    'kuviewer-macos-dmg-${{ steps.desktop-version.outputs.version }}',
+    'kuviewer-windows-exe-${{ steps.desktop-version.outputs.version }}',
+  ]) {
+    requireCondition(workflow.includes(marker), `desktop package workflow must include ${marker}`);
+  }
+
+  const rootReadme = await readTextFile('README.md', 'root README');
+  const desktopReadme = await readTextFile('desktop/README.md', 'desktop README');
+  const prerequisitesDoc = await readTextFile('desktop/BUILD_PREREQUISITES.md', 'desktop build prerequisites doc');
+  const handoff = await readTextFile('CODEX_HANDOFF.md', 'Codex handoff');
+  for (const [label, text] of [
+    ['root README', rootReadme],
+    ['desktop README', desktopReadme],
+    ['desktop build prerequisites doc', prerequisitesDoc],
+    ['Codex handoff', handoff],
+  ]) {
+    requireCondition(text.includes('smoke_matrix'), `${label} must document the smoke_matrix workflow input`);
+    requireCondition(text.includes('unsigned'), `${label} must document that desktop smoke matrix artifacts are unsigned`);
+    requireCondition(text.includes('GitHub Actions artifact'), `${label} must document smoke matrix artifact storage`);
   }
 }
 

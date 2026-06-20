@@ -1,6 +1,6 @@
 # Kuviewer Desktop Packaging Spike
 
-This folder tracks the installable read-only desktop cluster explorer goal.
+This folder tracks the installable read-only desktop CM/SSH session explorer goal.
 
 The recommended packaging path is Tauri first, with Electron kept as a fallback if the desktop shell needs browser APIs or extension behavior that Tauri cannot cover cleanly. The first installable targets are macOS `.dmg` and Windows `.exe`.
 
@@ -9,8 +9,10 @@ The recommended packaging path is Tauri first, with Electron kept as a fallback 
 - Reuse the existing React/Vite UI and Go read-only API.
 - Keep the desktop app read-only: resource inventory, topology, relations, Events, and Pod logs.
 - Keep upload/mock mode available without a server.
-- Start with remote API connection to an existing Kuviewer server.
-- Launch a local Go sidecar from the Tauri runtime for localhost-only read-only API access.
+- Make the product direction desktop-only CM/SSH server connection profiles.
+- Support multiple sessions in a VS Code Remote SSH style session list.
+- The web app must not expose SSH.
+- Treat existing local sidecar/API paths as prototype-only scaffolds, not the desktop product default.
 
 ## Scaffold
 
@@ -47,8 +49,11 @@ Build prerequisites, icon source policy, and signing boundaries are tracked in [
 - Do not persist kubeconfigs, admin tokens, cloud credentials, private keys, Secret values, Events, or logs in the app bundle.
 - Do not add operational actions such as exec, port-forward, restart, scale, delete, apply, or edit in the packaging spike.
 - Treat desktop connection settings as URL-only UI profile state until the dedicated keychain-backed runtime is implemented.
+- The desktop CM/SSH session manager should keep host credentials in the OS credential store and expose only safe session metadata to the UI.
 
 ## Remote Server Profile
+
+This section records the existing prototype-only remote API path. It is not the primary installable desktop direction; CM/SSH multiple sessions are the product target, and the web app must not expose SSH.
 
 The desktop shell can store a single remote Kuviewer server URL profile at runtime. The profile is URL-only metadata under browser `localStorage` key `kuviewer_desktop_connection_profile`; it does not store admin tokens, kubeconfigs, cloud credentials, Secret values, Events, or logs.
 
@@ -95,8 +100,11 @@ GitHub Actions includes a `desktop-package` workflow for installer experiments:
 - manual `workflow_dispatch` only
 - unsigned macOS `.dmg` build by default
 - optional Windows `.exe` build
+- `smoke_matrix` input for one-dispatch unsigned macOS `.dmg` and Windows `.exe` package smoke
 - signed macOS `.dmg` build with Apple Developer ID certificate import and Apple notarization credentials when `signed` is enabled
 - signed Windows NSIS `.exe` build with CurrentUser certificate-store import when `signed` is enabled
+
+The `smoke_matrix` input is unsigned-only and cannot be combined with `signed`. It uploads package outputs as GitHub Actions artifact records for validation only; it does not publish release assets.
 
 The workflow references secret names only. Certificate files, private keys, passwords, kubeconfigs, admin tokens, cloud credentials, Secret values, Events, and logs must remain outside the repository.
 

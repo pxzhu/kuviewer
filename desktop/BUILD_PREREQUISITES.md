@@ -27,6 +27,8 @@ npm run tauri:build
 
 The Tauri config builds the existing `website` app and the Go sidecar binary before packaging. The desktop shell remains read-only and must not request browser-side kube credentials.
 
+The installable product direction is desktop-only CM/SSH session management with multiple sessions, similar to VS Code Remote SSH. The web app must not expose SSH. Existing local sidecar/API packaging paths remain prototype-only scaffolds for validation and are not the desktop product default.
+
 Remote server profile UX is runtime-only. It stores only the selected Kuviewer server URL in browser `localStorage`; admin tokens remain session-only, and profile changes clear the current token. Remote hosts should use `https`; plain `http` is limited to loopback development servers. Remote servers that are not same-origin must set `KUVIEWER_CORS_ORIGIN` for the desktop app origin.
 
 ## Package Versioning
@@ -39,6 +41,8 @@ node scripts/set-desktop-package-version.mjs --version 0.1.0 --check
 ```
 
 The manual `desktop-package` workflow accepts a `package_version` input and otherwise derives the version from a `v*` tag ref or falls back to `0.1.0`. The workflow mutates only its build workspace before packaging so release artifact names and Tauri installer metadata match the selected version. Do not commit certificates, private keys, credentials, kubeconfigs, admin tokens, Secret values, Events, logs, or accidental local version bumps.
+
+Set `smoke_matrix=true` on the manual workflow to build both unsigned macOS `.dmg` and Windows `.exe` packages in one dispatch. Smoke matrix mode cannot be combined with signing and uploads outputs only as GitHub Actions artifact records, not release assets.
 
 ## Local Sidecar Runtime
 
