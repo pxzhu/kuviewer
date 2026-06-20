@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "name": "Kuviewer Desktop CM Session Explorer",
   "goal": "desktop-cm-session-prototype",
-  "status": "desktop-cm-advanced-diagnostics",
+  "status": "desktop-cm-session-export-import",
   "recommendedPackager": "tauri",
   "fallbackPackager": "electron",
   "tauri": {
@@ -52,7 +52,7 @@
     "noOperationalActions": true
   },
   "cmSshSessionManager": {
-    "status": "advanced-diagnostics",
+    "status": "session-export-import",
     "desktopOnly": true,
     "webExposed": false,
     "storage": "tauri-state-safe-metadata-with-os-credential-store-and-session-runtime",
@@ -125,13 +125,28 @@
       "noSecretValues": true,
       "noCloudCredentials": true
     },
+    "exportImportPolicy": {
+      "desktopOnly": true,
+      "schemaVersion": 1,
+      "kind": "kuviewer.desktop.cmSessions",
+      "maxImportItems": 50,
+      "safeEditableFieldsOnly": true,
+      "fields": ["name", "host", "port", "user", "remoteApiHost", "remoteApiPort", "description"],
+      "noPrivateKeyBody": true,
+      "noCredentialPayload": true,
+      "noRuntimeProfile": true,
+      "noDiagnosticHistory": true,
+      "noToken": true,
+      "noKubeconfig": true,
+      "noSecretValues": true,
+      "noEventsOrLogs": true
+    },
     "hiddenPrototypeUi": [
       "DesktopConnectionProfilePanel",
       "DesktopKubernetesProfilePanel",
       "desktop-use-sidecar-profile"
     ],
     "next": [
-      "desktop CM session export/import",
       "desktop CM diagnostics filtering"
     ]
   },
@@ -383,6 +398,7 @@
     "desktop-cm-ssh-runtime",
     "desktop-cm-runtime-health-details",
     "desktop-download-descope",
-    "desktop-cm-advanced-diagnostics"
+    "desktop-cm-advanced-diagnostics",
+    "desktop-cm-session-export-import"
   ]
 }

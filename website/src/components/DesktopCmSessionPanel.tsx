@@ -1,8 +1,11 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Activity, CheckCircle2, KeyRound, Pencil, Play, Plus, Search, ServerCog, ShieldCheck, Square, Trash2, Unplug, XCircle } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Activity, CheckCircle2, Download, KeyRound, Pencil, Play, Plus, Search, ServerCog, ShieldCheck, Square, Trash2, Unplug, Upload, XCircle } from 'lucide-react';
 import {
+  createDesktopCmSessionExportBundle,
   desktopCmDefaultRemoteApiHost,
   desktopCmDefaultRemoteApiPort,
+  desktopCmSessionEndpointKey,
+  parseDesktopCmSessionImportBundle,
   type DesktopCmSession,
   type DesktopCmSessionInput,
   type DesktopCmSessionRuntimeProfile,
@@ -33,6 +36,14 @@ const emptyForm: DesktopCmSessionInput = {
   description: '',
 };
 
+interface DesktopCmSessionImportSummary {
+  fileName: string;
+  imported: number;
+  updated: number;
+  skipped: number;
+  invalid: number;
+}
+
 export function DesktopCmSessionPanel({
   message,
   runtimeProfile,
@@ -56,6 +67,8 @@ export function DesktopCmSessionPanel({
   const [credentialDeleteConfirmId, setCredentialDeleteConfirmId] = useState('');
   const [keyFilePaths, setKeyFilePaths] = useState<Record<string, string>>({});
   const [sessionSearchQuery, setSessionSearchQuery] = useState('');
+  const [importSummary, setImportSummary] = useState<DesktopCmSessionImportSummary | null>(null);
+  const importInputRef = useRef<HTMLInputElement | null>(null);
   const normalizedSessionSearchQuery = normalizeSearchValue(sessionSearchQuery);
   const visibleSessions = useMemo(
     () => sessions.filter((session) => matchesCmSessionSearch(session, normalizedSessionSearchQuery)),
@@ -196,6 +209,51 @@ export function DesktopCmSessionPanel({
     }
   };
 
+  const handleExportSessions = () => {
+    setError('');
+    const bundle = createDesktopCmSessionExportBundle(sessions);
+    const blob = new Blob([`${JSON.stringify(bundle, null, 2)}\n`], { type: 'application/json' });
+    const url = window.URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = `kuviewer-desktop-cm-sessions-${new Date(bundle.exportedAt).toISOString().slice(0, 10)}.json`;
+    anchor.click();
+    window.URL.revokeObjectURL(url);
+  };
+
+  const handleImportSessions = async (file: File | null) => {
+    if (!file) {
+      return;
+    }
+    setError('');
+    setBusyAction('import-sessions');
+    try {
+      const parsed = parseDesktopCmSessionImportBundle(JSON.parse(await file.text()));
+      let imported = 0;
+      let updated = 0;
+      const knownSessionIds = new Map(sessions.map((session) => [desktopCmSessionEndpointKey(session), session.id]));
+      for (const item of parsed.items) {
+        const endpointKey = desktopCmSessionEndpointKey(item);
+        const existingSessionId = knownSessionIds.get(endpointKey);
+        await onSaveSession(existingSessionId ? { ...item, id: existingSessionId } : item);
+        if (existingSessionId) {
+          updated += 1;
+        } else {
+          imported += 1;
+        }
+        knownSessionIds.set(endpointKey, existingSessionId || endpointKey);
+      }
+      setImportSummary({ fileName: file.name, imported, updated, skipped: parsed.skipped, invalid: parsed.invalid });
+    } catch (requestError) {
+      setError(formatCmSessionError(requestError instanceof Error ? requestError.message : 'desktop_cm_session_import_failed'));
+    } finally {
+      setBusyAction('');
+      if (importInputRef.current) {
+        importInputRef.current.value = '';
+      }
+    }
+  };
+
   return (
     <div
       className="grid gap-3 border-t border-[rgba(60,60,67,0.1)] bg-[rgba(247,250,255,0.48)] px-3 py-3 lg:px-4"
@@ -237,6 +295,11 @@ export function DesktopCmSessionPanel({
         {error ? (
           <span className="ku-chip max-w-full border-[rgba(255,149,0,0.24)] bg-[rgba(255,149,0,0.12)] text-[#b05f00]">
             {error}
+          </span>
+        ) : null}
+        {importSummary ? (
+          <span className="ku-chip max-w-full" data-testid="desktop-cm-session-import-summary">
+            import {importSummary.fileName} · new {importSummary.imported} · updated {importSummary.updated} · skipped {importSummary.skipped} · invalid {importSummary.invalid}
           </span>
         ) : null}
       </div>
@@ -418,6 +481,35 @@ export function DesktopCmSessionPanel({
             </span>
           </div>
         )}
+      </div>
+
+      <div className="flex min-w-0 flex-wrap items-center gap-2" data-testid="desktop-cm-session-transfer-bar">
+        <button
+          className="ku-control h-9"
+          data-testid="desktop-cm-session-export"
+          type="button"
+          disabled={sessions.length === 0 || busyAction === 'import-sessions'}
+          onClick={handleExportSessions}
+        >
+          <Download size={14} aria-hidden="true" />
+          세션 export
+        </button>
+        <label className={`ku-control h-9 ${busyAction === 'import-sessions' ? 'opacity-60' : ''}`} data-testid="desktop-cm-session-import-label">
+          <Upload size={14} aria-hidden="true" />
+          세션 import
+          <input
+            ref={importInputRef}
+            className="hidden"
+            data-testid="desktop-cm-session-import"
+            type="file"
+            accept="application/json,.json"
+            disabled={busyAction === 'import-sessions'}
+            onChange={(event) => void handleImportSessions(event.currentTarget.files?.[0] || null)}
+          />
+        </label>
+        <span className="text-xs font-semibold text-[rgba(60,60,67,0.58)]">
+          safe metadata only · kuviewer.desktop.cmSessions · credential/runtime/logs 제외
+        </span>
       </div>
 
       {sessions.length > 0 ? (
@@ -687,6 +779,9 @@ function formatCmSessionError(error: string) {
   }
   if (error.includes('runtime_tunnel') || error.includes('process_start')) {
     return 'runtime 터널 실패';
+  }
+  if (error.includes('import')) {
+    return 'import 파일 오류';
   }
   if (error.includes('host')) {
     return 'host 형식 오류';

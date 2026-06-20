@@ -760,7 +760,7 @@ fn mark_cm_session_runtime_stopped(state: &DesktopSidecarState, session_id: &str
                 "metadata-only".to_string()
             };
             session.updated_at = current_unix_millis();
-            apply_cm_session_diagnostic(session, cm_session_diagnostic("runtime", "info", "runtime-stopped", "필요하면 runtime을 다시 시작하세요."));
+            apply_cm_session_diagnostic(session, cm_session_diagnostic("runtime", "info", "runtime-stopped", "Start runtime again when needed."));
         }
     }
 }
@@ -771,7 +771,7 @@ fn mark_cm_session_runtime_lost(state: &DesktopSidecarState, session_id: &str) {
             session.runtime_status = "runtime-lost".to_string();
             session.status = "runtime-lost".to_string();
             session.updated_at = current_unix_millis();
-            apply_cm_session_diagnostic(session, cm_session_diagnostic("runtime", "error", "runtime-lost", "SSH 터널 프로세스가 종료됐습니다. runtime을 다시 시작하세요."));
+            apply_cm_session_diagnostic(session, cm_session_diagnostic("runtime", "error", "runtime-lost", "SSH tunnel process exited. Start the runtime again."));
         }
     }
 }
