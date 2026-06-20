@@ -32,6 +32,7 @@ requireCondition(
     'desktop-keychain-profile-runtime',
     'desktop-os-credential-store',
     'desktop-keychain-sidecar-runtime',
+    'desktop-native-credential-runtime-smoke',
   ].includes(spec.status),
   'status must be a known desktop packaging milestone'
 );
@@ -69,6 +70,7 @@ requireCondition(phases.includes('keychain-credential-design'), 'phaseOrder must
 requireCondition(phases.includes('keychain-profile-runtime'), 'phaseOrder must include keychain-profile-runtime');
 requireCondition(phases.includes('os-credential-store'), 'phaseOrder must include os-credential-store');
 requireCondition(phases.includes('keychain-sidecar-runtime'), 'phaseOrder must include keychain-sidecar-runtime');
+requireCondition(phases.includes('native-credential-runtime-smoke'), 'phaseOrder must include native-credential-runtime-smoke');
 requireCondition(phases.includes('macos-dmg-build'), 'phaseOrder must include macos-dmg-build');
 requireCondition(phases.includes('windows-exe-build'), 'phaseOrder must include windows-exe-build');
 
@@ -93,6 +95,7 @@ if (
     'desktop-keychain-profile-runtime',
     'desktop-os-credential-store',
     'desktop-keychain-sidecar-runtime',
+    'desktop-native-credential-runtime-smoke',
   ].includes(spec.status)
 ) {
   await validateTauriScaffold(spec.tauri || {});
@@ -581,6 +584,14 @@ async function validateCredentialStorageDesign(spec) {
   requireCondition(runtimePrototype.importTokenFileFlagEnv === 'KUVIEWER_DESKTOP_KUBE_IMPORT_TOKEN_FILE', 'credentialStorageDesign.runtimePrototype.importTokenFileFlagEnv must be KUVIEWER_DESKTOP_KUBE_IMPORT_TOKEN_FILE');
   requireCondition(runtimePrototype.runtimeTokenFileEnv === 'KUVIEWER_KUBE_TOKEN_FILE', 'credentialStorageDesign.runtimePrototype.runtimeTokenFileEnv must be KUVIEWER_KUBE_TOKEN_FILE');
   requireCondition(runtimePrototype.runtimeTokenFilePolicy === '0600-temp-dir-delete-on-sidecar-stop', 'credentialStorageDesign.runtimePrototype.runtimeTokenFilePolicy must be 0600-temp-dir-delete-on-sidecar-stop');
+  const runtimeSmoke = runtimePrototype.runtimeSmoke || {};
+  requireCondition(runtimeSmoke.status === 'automated-stubbed-tauri-bridge', 'credentialStorageDesign.runtimePrototype.runtimeSmoke.status must be automated-stubbed-tauri-bridge');
+  requireCondition(runtimeSmoke.script === 'scripts/smoke-desktop-keychain-runtime.mjs', 'credentialStorageDesign.runtimePrototype.runtimeSmoke.script must point at smoke-desktop-keychain-runtime');
+  requireCondition(runtimeSmoke.ciWorkflow === '.github/workflows/ci.yml', 'credentialStorageDesign.runtimePrototype.runtimeSmoke.ciWorkflow must point at ci workflow');
+  requireCondition(runtimeSmoke.requiresRealCredentialStore === false, 'credentialStorageDesign.runtimePrototype.runtimeSmoke.requiresRealCredentialStore must be false');
+  const smokeFlows = new Set(Array.isArray(runtimeSmoke.verifiedFlows) ? runtimeSmoke.verifiedFlows : []);
+  requireCondition(smokeFlows.has('select-profile-restarts-sidecar-live'), 'credentialStorageDesign.runtimePrototype.runtimeSmoke.verifiedFlows must include select-profile-restarts-sidecar-live');
+  requireCondition(smokeFlows.has('delete-active-credential-clears-live-token'), 'credentialStorageDesign.runtimePrototype.runtimeSmoke.verifiedFlows must include delete-active-credential-clears-live-token');
   const fixtureEnv = new Set(Array.isArray(runtimePrototype.envMetadataFixture) ? runtimePrototype.envMetadataFixture : []);
   for (const envName of ['KUVIEWER_DESKTOP_KUBE_API_SERVER', 'KUVIEWER_DESKTOP_KUBE_PROFILE_ID', 'KUVIEWER_DESKTOP_KUBE_PROFILE_NAME']) {
     requireCondition(fixtureEnv.has(envName), `credentialStorageDesign.runtimePrototype.envMetadataFixture must include ${envName}`);
@@ -642,6 +653,32 @@ async function validateCredentialStorageDesign(spec) {
   }
   requireCondition(!mainRs.includes('KUVIEWER_DESKTOP_KUBE_BEARER_TOKEN'), 'desktop Tauri main must not read bearer tokens from desktop env metadata fixture');
 
+  const smokeScript = await readTextFile(runtimeSmoke.script, 'desktop native credential runtime smoke script');
+  for (const marker of [
+    'desktop_kubernetes_profiles',
+    'desktop_select_kubernetes_profile',
+    'desktop_sidecar_profile',
+    'desktop_delete_kubernetes_profile_credential',
+    'sidecar-kubernetes-active',
+    'token은 native/runtime file 경로만 사용',
+    'kuviewer_admin_token',
+    'kuviewer_source_mode',
+    'desktop smoke must not store admin token in localStorage',
+    'active credential delete must clear sessionStorage admin token',
+  ]) {
+    requireCondition(smokeScript.includes(marker), `desktop native credential runtime smoke script must include ${marker}`);
+  }
+
+  const ciWorkflow = await readTextFile(runtimeSmoke.ciWorkflow, 'ci workflow');
+  for (const marker of [
+    'Desktop native credential runtime smoke',
+    'scripts/smoke-desktop-keychain-runtime.mjs',
+    'npx playwright install --with-deps chromium',
+    'http://127.0.0.1:4174/',
+  ]) {
+    requireCondition(ciWorkflow.includes(marker), `ci workflow must include ${marker}`);
+  }
+
   const desktopReadme = await readTextFile('desktop/README.md', 'desktop README');
   const prerequisitesDoc = await readTextFile('desktop/BUILD_PREREQUISITES.md', 'desktop build prerequisites doc');
   const handoff = await readTextFile('CODEX_HANDOFF.md', 'Codex handoff');
@@ -655,6 +692,7 @@ async function validateCredentialStorageDesign(spec) {
     requireCondition(text.includes('Windows Credential Manager'), `${label} must mention Windows Credential Manager`);
     requireCondition(text.includes('desktop_kubernetes_profiles'), `${label} must mention desktop_kubernetes_profiles`);
     requireCondition(text.includes('KUVIEWER_DESKTOP_KUBE_TOKEN_FILE'), `${label} must mention KUVIEWER_DESKTOP_KUBE_TOKEN_FILE`);
+    requireCondition(text.includes('smoke-desktop-keychain-runtime.mjs'), `${label} must mention smoke-desktop-keychain-runtime.mjs`);
   }
 
   const profileModule = await readTextFile('website/src/features/desktop/desktopConnectionProfile.ts', 'desktop connection profile frontend module');

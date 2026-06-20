@@ -39,6 +39,23 @@ jobs:
         working-directory: website
         run: VITE_BASE_PATH=/ npm run build
 
+      - name: Install Playwright Chromium
+        working-directory: website
+        run: npx playwright install --with-deps chromium
+
+      - name: Desktop native credential runtime smoke
+        shell: bash
+        run: |
+          PREVIEW_LOG="$RUNNER_TEMP/kuviewer-desktop-smoke-preview.log"
+          (cd website && VITE_BASE_PATH=/ npm run preview) > "$PREVIEW_LOG" 2>&1 &
+          PREVIEW_PID=$!
+          cleanup() {
+            kill "$PREVIEW_PID" >/dev/null 2>&1 || true
+            rm -f "$PREVIEW_LOG"
+          }
+          trap cleanup EXIT
+          node scripts/smoke-desktop-keychain-runtime.mjs --url http://127.0.0.1:4174/
+
       - name: Desktop packaging spec check
         run: node scripts/check-desktop-packaging-spec.mjs
 

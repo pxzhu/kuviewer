@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "name": "Kuviewer Desktop Cluster Explorer",
   "goal": "installable-read-only-desktop-cluster-explorer",
-  "status": "desktop-keychain-sidecar-runtime",
+  "status": "desktop-native-credential-runtime-smoke",
   "recommendedPackager": "tauri",
   "fallbackPackager": "electron",
   "tauri": {
@@ -162,6 +162,16 @@
       "importTokenFileFlagEnv": "KUVIEWER_DESKTOP_KUBE_IMPORT_TOKEN_FILE",
       "runtimeTokenFileEnv": "KUVIEWER_KUBE_TOKEN_FILE",
       "runtimeTokenFilePolicy": "0600-temp-dir-delete-on-sidecar-stop",
+      "runtimeSmoke": {
+        "status": "automated-stubbed-tauri-bridge",
+        "script": "scripts/smoke-desktop-keychain-runtime.mjs",
+        "ciWorkflow": ".github/workflows/ci.yml",
+        "requiresRealCredentialStore": false,
+        "verifiedFlows": [
+          "select-profile-restarts-sidecar-live",
+          "delete-active-credential-clears-live-token"
+        ]
+      },
       "envMetadataFixture": [
         "KUVIEWER_DESKTOP_KUBE_API_SERVER",
         "KUVIEWER_DESKTOP_KUBE_PROFILE_ID",
@@ -358,6 +368,7 @@
     "keychain-profile-runtime",
     "os-credential-store",
     "keychain-sidecar-runtime",
+    "native-credential-runtime-smoke",
     "macos-dmg-build",
     "windows-exe-build",
     "signing-and-release"
