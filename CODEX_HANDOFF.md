@@ -167,7 +167,9 @@ https://kuviewer.example.com/
    - Desktop SSH credential store + connection check는 완료됐다.
    - Desktop CM tunnel/runtime integration은 완료됐다.
    - Desktop CM runtime health/details polish는 완료됐다.
-   - 다음 확장 후보는 desktop signed package release path다.
+   - Desktop signed package release readiness는 완료됐다.
+   - `publish_release_assets=true`는 signed Release asset publishing 전용이며 `signed=true`, `smoke_matrix=false`, `v* tag` ref, 성공한 signed package job이 필요하다.
+   - 다음 확장 후보는 real repository signing secrets로 signed desktop release dry-run이다.
 
 4. 실제 Kubernetes 연결 설계
    - 브라우저에 kube credential을 직접 넣지 않는 방향 유지.
