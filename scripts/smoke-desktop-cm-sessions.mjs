@@ -33,6 +33,9 @@ async function smokeDesktopRuntime(browser, url) {
       if (window.localStorage.getItem('kuviewer_desktop_cm_diagnostic_filter_presets_smoke_keep') !== '1') {
         window.localStorage.removeItem('kuviewer_desktop_cm_diagnostic_filter_presets');
       }
+      if (window.localStorage.getItem('kuviewer_desktop_cm_session_view_preferences_smoke_keep') !== '1') {
+        window.localStorage.removeItem('kuviewer_desktop_cm_session_view_preferences');
+      }
       window.sessionStorage.removeItem('kuviewer_admin_token');
       window.sessionStorage.removeItem('kuviewer_desktop_cm_runtime_profile');
       window.sessionStorage.removeItem('kuviewer_source_mode');
@@ -52,11 +55,24 @@ async function smokeDesktopRuntime(browser, url) {
             }
             if (command === 'desktop_save_cm_session') {
               const now = Date.now();
+              const stableId = [
+                args.session.name,
+                args.session.host,
+                args.session.port,
+                args.session.user,
+                args.session.remoteApiHost || '127.0.0.1',
+                args.session.remoteApiPort || 18085,
+              ]
+                .join('-')
+                .toLowerCase()
+                .replace(/[^a-z0-9]+/g, '-')
+                .replace(/^-|-$/g, '')
+                .slice(0, 80);
               const existingSession = args.session.id
                 ? window.__kuviewerCmSessions.find((item) => item.id === args.session.id)
                 : null;
               const session = {
-                id: args.session.id || `prod-cm-${now}`,
+                id: args.session.id || stableId || `cm-session-${now}`,
                 name: args.session.name,
                 host: args.session.host,
                 port: args.session.port,
@@ -322,6 +338,35 @@ async function smokeDesktopRuntime(browser, url) {
     await page.getByTestId('desktop-cm-session-search-count').waitFor({ state: 'visible', timeout: 10_000 });
     let sessionSearchCount = await page.getByTestId('desktop-cm-session-search-count').textContent();
     requireCondition(sessionSearchCount?.includes('1 / 전체 1'), 'desktop CM session search count must include visible and total session counts');
+    const sessionId = await page.evaluate(() => window.__kuviewerCmSessions[0]?.id);
+    requireCondition(typeof sessionId === 'string' && sessionId.startsWith('prod-cm-'), 'saved CM session id must be generated');
+    await page.getByTestId('desktop-cm-session-group-general').waitFor({ state: 'visible', timeout: 10_000 });
+    let groupCount = await page.getByTestId('desktop-cm-session-group-count-general').textContent();
+    requireCondition(groupCount?.includes('1 / 1'), 'desktop CM sessions must default into the General group');
+    await page.getByTestId(`desktop-cm-session-group-input-${sessionId}`).fill('Production');
+    await page.getByTestId(`desktop-cm-session-group-input-${sessionId}`).press('Enter');
+    await page.getByTestId('desktop-cm-session-group-production').waitFor({ state: 'visible', timeout: 10_000 });
+    groupCount = await page.getByTestId('desktop-cm-session-group-count-production').textContent();
+    requireCondition(groupCount?.includes('1 / 1'), 'desktop CM session group move must update group counts');
+    await page.getByTestId(`desktop-cm-session-favorite-${sessionId}`).click();
+    const favoriteCount = await page.getByTestId('desktop-cm-session-group-favorites-production').textContent();
+    requireCondition(favoriteCount?.includes('favorite 1'), 'desktop CM favorite toggle must update group favorite count');
+    let sessionViewPreferenceStorage = await page.evaluate(() => window.localStorage.getItem('kuviewer_desktop_cm_session_view_preferences') || '');
+    requireCondition(sessionViewPreferenceStorage.includes('Production'), 'desktop CM session view preferences must persist safe group metadata');
+    requireCondition(sessionViewPreferenceStorage.includes('"favorite":true'), 'desktop CM session view preferences must persist favorite metadata');
+    for (const forbiddenField of ['credentialAvailable', 'runtimeStatus', 'diagnosticMessage', 'serverUrl', 'adminToken', 'BEGIN OPENSSH PRIVATE KEY']) {
+      requireCondition(!sessionViewPreferenceStorage.includes(forbiddenField), `desktop CM session view preferences must not include ${forbiddenField}`);
+    }
+    await page.getByTestId('desktop-cm-session-search').fill('favorite');
+    sessionSearchCount = await page.getByTestId('desktop-cm-session-search-count').textContent();
+    requireCondition(sessionSearchCount?.includes('1 / 전체 1'), 'desktop CM session search must match favorite preference metadata');
+    await page.getByTestId('desktop-cm-session-search-clear').click();
+    await page.getByTestId('desktop-cm-session-group-toggle-production').click();
+    await page.getByTestId('desktop-cm-session-group-items-production').waitFor({ state: 'hidden', timeout: 10_000 });
+    sessionViewPreferenceStorage = await page.evaluate(() => window.localStorage.getItem('kuviewer_desktop_cm_session_view_preferences') || '');
+    requireCondition(sessionViewPreferenceStorage.includes('collapsedGroups'), 'desktop CM session view preferences must persist collapsed group UI state');
+    await page.getByTestId('desktop-cm-session-group-toggle-production').click();
+    await page.getByTestId('desktop-cm-session-group-items-production').waitFor({ state: 'visible', timeout: 10_000 });
     await page.getByTestId('desktop-cm-session-diagnostic-stage-filter').selectOption('metadata');
     sessionSearchCount = await page.getByTestId('desktop-cm-session-search-count').textContent();
     requireCondition(sessionSearchCount?.includes('1 / 전체 1'), 'desktop CM diagnostic stage filter must match metadata sessions');
@@ -347,6 +392,7 @@ async function smokeDesktopRuntime(browser, url) {
     }
     await page.evaluate(() => {
       window.localStorage.setItem('kuviewer_desktop_cm_diagnostic_filter_presets_smoke_keep', '1');
+      window.localStorage.setItem('kuviewer_desktop_cm_session_view_preferences_smoke_keep', '1');
     });
     await page.reload({ waitUntil: 'domcontentloaded' });
     await page.getByTestId('desktop-cm-session-panel').waitFor({ state: 'visible', timeout: 10_000 });
@@ -360,6 +406,9 @@ async function smokeDesktopRuntime(browser, url) {
     await page.getByTestId('desktop-cm-session-save').click();
     await page.getByTestId(/^desktop-cm-session-prod-cm-/).waitFor({ state: 'visible', timeout: 10_000 });
     await page.getByTestId('desktop-cm-diagnostic-filter-preset-meta-info').waitFor({ state: 'visible', timeout: 10_000 });
+    await page.getByTestId('desktop-cm-session-group-production').waitFor({ state: 'visible', timeout: 10_000 });
+    const reloadedFavoriteCount = await page.getByTestId('desktop-cm-session-group-favorites-production').textContent();
+    requireCondition(reloadedFavoriteCount?.includes('favorite 1'), 'desktop CM group/favorite preferences must apply after reload');
     await page.getByTestId('desktop-cm-diagnostic-filter-preset-meta-info').getByRole('button', { name: /Meta Info metadata \/ info/ }).click();
     sessionSearchCount = await page.getByTestId('desktop-cm-session-search-count').textContent();
     requireCondition(sessionSearchCount?.includes('1 / 전체 1'), 'desktop CM diagnostic saved filters must apply after reload');
@@ -404,8 +453,6 @@ async function smokeDesktopRuntime(browser, url) {
     requireCondition(diagnosticStage?.includes('metadata'), 'desktop CM diagnostics must start at metadata stage');
     requireCondition(diagnosticMessage?.includes('not-checked'), 'desktop CM diagnostics must show not-checked message');
 
-    const sessionId = await page.evaluate(() => window.__kuviewerCmSessions[0]?.id);
-    requireCondition(typeof sessionId === 'string' && sessionId.startsWith('prod-cm-'), 'saved CM session id must be generated');
     await page.getByTestId(`desktop-cm-session-key-path-${sessionId}`).fill('/tmp/kuviewer-smoke-id_ed25519');
     await page.getByTestId(`desktop-cm-session-import-key-${sessionId}`).click();
     await page.getByText('Prod CM credential 저장됨').waitFor({ state: 'visible', timeout: 10_000 });
@@ -462,6 +509,9 @@ async function smokeDesktopRuntime(browser, url) {
       'lastCheckStatus',
       'diagnosticStage',
       'Meta Info',
+      'Production',
+      'favorite',
+      'kuviewer_desktop_cm_session_view_preferences',
       'serverUrl',
       'adminToken',
       'private-key-imported',
@@ -678,6 +728,8 @@ async function smokeDesktopRuntime(browser, url) {
     await page.evaluate(() => {
       window.localStorage.removeItem('kuviewer_desktop_cm_diagnostic_filter_presets');
       window.localStorage.removeItem('kuviewer_desktop_cm_diagnostic_filter_presets_smoke_keep');
+      window.localStorage.removeItem('kuviewer_desktop_cm_session_view_preferences');
+      window.localStorage.removeItem('kuviewer_desktop_cm_session_view_preferences_smoke_keep');
     });
     requireCommandOrder(state.invocations, [
       'desktop_cm_sessions',

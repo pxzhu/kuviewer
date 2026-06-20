@@ -40,6 +40,7 @@ requireCondition(
     'desktop-cm-diagnostics-saved-filters',
     'desktop-cm-connection-profile-polish',
     'desktop-cm-session-clone-polish',
+    'desktop-cm-session-groups-favorites',
   ].includes(spec.status),
   'status must be a known desktop packaging milestone'
 );
@@ -84,6 +85,7 @@ requireCondition(phases.includes('desktop-cm-diagnostics-filtering'), 'phaseOrde
 requireCondition(phases.includes('desktop-cm-diagnostics-saved-filters'), 'phaseOrder must include desktop-cm-diagnostics-saved-filters');
 requireCondition(phases.includes('desktop-cm-connection-profile-polish'), 'phaseOrder must include desktop-cm-connection-profile-polish');
 requireCondition(phases.includes('desktop-cm-session-clone-polish'), 'phaseOrder must include desktop-cm-session-clone-polish');
+requireCondition(phases.includes('desktop-cm-session-groups-favorites'), 'phaseOrder must include desktop-cm-session-groups-favorites');
 
 await validateBuildPrerequisites(spec);
 await validateDesktopDistributionPolicy(spec);
@@ -114,6 +116,7 @@ if (
     'desktop-cm-diagnostics-saved-filters',
     'desktop-cm-connection-profile-polish',
     'desktop-cm-session-clone-polish',
+    'desktop-cm-session-groups-favorites',
   ].includes(spec.status)
 ) {
   await validateTauriScaffold(spec.tauri || {});
@@ -715,8 +718,8 @@ async function validateCredentialStorageDesign(spec) {
 async function validateCmSshSessionManager(spec) {
   const manager = spec.cmSshSessionManager || {};
   requireCondition(
-    ['runtime-health-details', 'advanced-diagnostics', 'session-export-import', 'diagnostics-filtering', 'diagnostics-saved-filters', 'connection-profile-polish', 'session-clone-polish'].includes(manager.status),
-    'cmSshSessionManager.status must be runtime-health-details, advanced-diagnostics, session-export-import, diagnostics-filtering, diagnostics-saved-filters, connection-profile-polish, or session-clone-polish'
+    ['runtime-health-details', 'advanced-diagnostics', 'session-export-import', 'diagnostics-filtering', 'diagnostics-saved-filters', 'connection-profile-polish', 'session-clone-polish', 'session-groups-favorites'].includes(manager.status),
+    'cmSshSessionManager.status must be a known CM/SSH session manager milestone'
   );
   requireCondition(manager.desktopOnly === true, 'cmSshSessionManager.desktopOnly must be true');
   requireCondition(manager.webExposed === false, 'cmSshSessionManager.webExposed must be false');
@@ -880,12 +883,36 @@ async function validateCmSshSessionManager(spec) {
   for (const flag of ['clearsId', 'noCredentialPayload', 'noCredentialAvailabilityCopy', 'noRuntimeProfile', 'noDiagnosticHistory', 'noToken', 'noKubeconfig', 'noSecretValues']) {
     requireCondition(sessionClonePolish[flag] === true, `cmSshSessionManager.sessionClonePolish.${flag} must be true`);
   }
+  const sessionGroupingFavorites = manager.sessionGroupingFavorites || {};
+  requireCondition(sessionGroupingFavorites.desktopOnly === true, 'cmSshSessionManager.sessionGroupingFavorites.desktopOnly must be true');
+  requireCondition(sessionGroupingFavorites.uiOnly === true, 'cmSshSessionManager.sessionGroupingFavorites.uiOnly must be true');
+  requireCondition(sessionGroupingFavorites.storage === 'localStorage-ui-preference', 'cmSshSessionManager.sessionGroupingFavorites.storage must be localStorage-ui-preference');
+  requireCondition(sessionGroupingFavorites.storageKey === 'kuviewer_desktop_cm_session_view_preferences', 'cmSshSessionManager.sessionGroupingFavorites.storageKey must be kuviewer_desktop_cm_session_view_preferences');
+  requireCondition(sessionGroupingFavorites.defaultGroup === 'General', 'cmSshSessionManager.sessionGroupingFavorites.defaultGroup must be General');
+  requireCondition(sessionGroupingFavorites.maxGroupNameLength === 40, 'cmSshSessionManager.sessionGroupingFavorites.maxGroupNameLength must be 40');
+  const groupingFields = new Set(Array.isArray(sessionGroupingFavorites.fields) ? sessionGroupingFavorites.fields : []);
+  for (const field of ['sessionId', 'group', 'favorite', 'updatedAt']) {
+    requireCondition(groupingFields.has(field), `cmSshSessionManager.sessionGroupingFavorites.fields must include ${field}`);
+  }
+  for (const flag of ['collapseStateStored', 'noTauriSchemaChange', 'noExportImportSchemaChange', 'noCredentialPayload', 'noRuntimeProfile', 'noDiagnosticHistory', 'noToken', 'noKubeconfig', 'noSecretValues', 'noEventsOrLogs']) {
+    requireCondition(sessionGroupingFavorites[flag] === true, `cmSshSessionManager.sessionGroupingFavorites.${flag} must be true`);
+  }
   const hiddenPrototypeUi = new Set(Array.isArray(manager.hiddenPrototypeUi) ? manager.hiddenPrototypeUi : []);
   for (const marker of ['DesktopConnectionProfilePanel', 'DesktopKubernetesProfilePanel', 'desktop-use-sidecar-profile']) {
     requireCondition(hiddenPrototypeUi.has(marker), `cmSshSessionManager.hiddenPrototypeUi must include ${marker}`);
   }
 
   const mainRs = await readTextFile('desktop/src-tauri/src/main.rs', 'desktop Tauri main');
+  const desktopCmSessionPanel = await readTextFile('website/src/components/DesktopCmSessionPanel.tsx', 'desktop CM session panel');
+  for (const marker of [
+    'kuviewer_desktop_cm_session_view_preferences',
+    'desktop-cm-session-groups',
+    'desktop-cm-session-group-',
+    'desktop-cm-session-favorite-',
+    'desktop-cm-session-group-input-',
+  ]) {
+    requireCondition(desktopCmSessionPanel.includes(marker), `DesktopCmSessionPanel must include ${marker}`);
+  }
   for (const marker of [
     'DesktopCmSessionMetadata',
     'DesktopCmSessionInput',

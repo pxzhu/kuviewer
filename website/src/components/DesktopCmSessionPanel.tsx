@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Activity, Bookmark, CheckCircle2, Copy, Download, Filter, KeyRound, Pencil, Play, Plus, RotateCcw, Search, ServerCog, ShieldCheck, Square, Trash2, Unplug, Upload, XCircle } from 'lucide-react';
+import { Activity, Bookmark, CheckCircle2, ChevronDown, ChevronRight, Copy, Download, Filter, Folder, KeyRound, Pencil, Play, Plus, RotateCcw, Search, ServerCog, ShieldCheck, Square, Star, Trash2, Unplug, Upload, XCircle } from 'lucide-react';
 import {
   createDesktopCmSessionExportBundle,
   desktopCmDefaultRemoteApiHost,
@@ -57,12 +57,36 @@ interface DesktopCmDiagnosticFilterPreset {
   updatedAt: number;
 }
 
+interface DesktopCmSessionViewPreference {
+  sessionId: string;
+  group: string;
+  favorite: boolean;
+  updatedAt: number;
+}
+
+interface DesktopCmSessionViewPreferences {
+  sessions: DesktopCmSessionViewPreference[];
+  collapsedGroups: string[];
+}
+
+interface DesktopCmSessionGroup {
+  group: string;
+  slug: string;
+  sessions: DesktopCmSession[];
+  totalCount: number;
+  favoriteCount: number;
+  collapsed: boolean;
+}
+
 const cmDiagnosticStageFilterOptions = ['all', 'metadata', 'credential', 'reachability', 'ssh-auth', 'tunnel', 'health', 'runtime'] as const;
 const cmDiagnosticSeverityFilterOptions = ['all', 'info', 'warning', 'error'] as const;
 const desktopCmDiagnosticFilterPresetStorageKey = 'kuviewer_desktop_cm_diagnostic_filter_presets';
+const desktopCmSessionViewPreferenceStorageKey = 'kuviewer_desktop_cm_session_view_preferences';
 const maxDesktopCmDiagnosticFilterPresets = 8;
 const maxDesktopCmDiagnosticFilterPresetNameLength = 40;
 const maxDesktopCmSessionCloneNameLength = 60;
+const maxDesktopCmSessionGroupNameLength = 40;
+const defaultDesktopCmSessionGroup = 'General';
 
 type CmDiagnosticStageFilter = (typeof cmDiagnosticStageFilterOptions)[number];
 type CmDiagnosticSeverityFilter = (typeof cmDiagnosticSeverityFilterOptions)[number];
@@ -94,20 +118,27 @@ export function DesktopCmSessionPanel({
   const [diagnosticSeverityFilter, setDiagnosticSeverityFilter] = useState<CmDiagnosticSeverityFilter>('all');
   const [diagnosticFilterPresetName, setDiagnosticFilterPresetName] = useState('');
   const [diagnosticFilterPresets, setDiagnosticFilterPresets] = useState<DesktopCmDiagnosticFilterPreset[]>(() => readDesktopCmDiagnosticFilterPresets());
+  const [sessionViewPreferences, setSessionViewPreferences] = useState<DesktopCmSessionViewPreferences>(() => readDesktopCmSessionViewPreferences());
   const [importSummary, setImportSummary] = useState<DesktopCmSessionImportSummary | null>(null);
   const [cloneDraftSourceName, setCloneDraftSourceName] = useState('');
   const importInputRef = useRef<HTMLInputElement | null>(null);
   const normalizedSessionSearchQuery = normalizeSearchValue(sessionSearchQuery);
+  const sessionPreferenceMap = useMemo(() => new Map(sessionViewPreferences.sessions.map((preference) => [preference.sessionId, preference])), [sessionViewPreferences.sessions]);
   const visibleSessions = useMemo(
     () =>
       sessions.filter((session) => {
         const diagnostic = getDisplayedCmDiagnostic(session, runtimeProfile, activeRuntimeSessionId);
+        const preference = getDesktopCmSessionPreference(session.id, sessionPreferenceMap);
         return (
-          matchesCmSessionSearch(session, normalizedSessionSearchQuery, diagnostic) &&
+          matchesCmSessionSearch(session, normalizedSessionSearchQuery, diagnostic, preference) &&
           matchesCmDiagnosticFilters(diagnostic, diagnosticStageFilter, diagnosticSeverityFilter)
         );
       }),
-    [activeRuntimeSessionId, diagnosticSeverityFilter, diagnosticStageFilter, normalizedSessionSearchQuery, runtimeProfile, sessions],
+    [activeRuntimeSessionId, diagnosticSeverityFilter, diagnosticStageFilter, normalizedSessionSearchQuery, runtimeProfile, sessionPreferenceMap, sessions],
+  );
+  const groupedSessions = useMemo(
+    () => buildDesktopCmSessionGroups(sessions, visibleSessions, sessionPreferenceMap, sessionViewPreferences.collapsedGroups),
+    [sessionPreferenceMap, sessionViewPreferences.collapsedGroups, sessions, visibleSessions],
   );
   const diagnosticFiltersActive = diagnosticStageFilter !== 'all' || diagnosticSeverityFilter !== 'all';
   const activeDiagnosticFilterPresetName = useMemo(
@@ -124,6 +155,20 @@ export function DesktopCmSessionPanel({
       setCloneDraftSourceName('');
     }
   }, [form.id, sessions]);
+
+  useEffect(() => {
+    if (sessions.length === 0) {
+      return;
+    }
+    setSessionViewPreferences((current) => {
+      const nextPreferences = pruneDesktopCmSessionViewPreferences(current, sessions);
+      if (desktopCmSessionViewPreferencesEqual(current, nextPreferences)) {
+        return current;
+      }
+      writeDesktopCmSessionViewPreferences(nextPreferences);
+      return nextPreferences;
+    });
+  }, [sessions]);
 
   const handleSave = async () => {
     setError('');
@@ -371,6 +416,30 @@ export function DesktopCmSessionPanel({
       const nextPresets = current.filter((preset) => preset.name !== presetName);
       writeDesktopCmDiagnosticFilterPresets(nextPresets);
       return nextPresets;
+    });
+  };
+
+  const handleSetSessionGroup = (sessionId: string, group: string) => {
+    setSessionViewPreferences((current) => {
+      const nextPreferences = setDesktopCmSessionGroupPreference(current, sessionId, group);
+      writeDesktopCmSessionViewPreferences(nextPreferences);
+      return nextPreferences;
+    });
+  };
+
+  const handleToggleSessionFavorite = (sessionId: string) => {
+    setSessionViewPreferences((current) => {
+      const nextPreferences = toggleDesktopCmSessionFavoritePreference(current, sessionId);
+      writeDesktopCmSessionViewPreferences(nextPreferences);
+      return nextPreferences;
+    });
+  };
+
+  const handleToggleGroupCollapsed = (group: string) => {
+    setSessionViewPreferences((current) => {
+      const nextPreferences = toggleDesktopCmSessionGroupCollapsed(current, group);
+      writeDesktopCmSessionViewPreferences(nextPreferences);
+      return nextPreferences;
     });
   };
 
@@ -824,197 +893,259 @@ export function DesktopCmSessionPanel({
 
       {sessions.length > 0 ? (
         visibleSessions.length > 0 ? (
-          <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
-            {visibleSessions.map((session) => (
-            <div
-              key={session.id}
-              className={`grid min-w-0 gap-2 rounded-[8px] border px-3 py-2 text-left transition ${
-                session.selected
-                  ? 'border-[rgba(52,199,89,0.28)] bg-[rgba(52,199,89,0.09)]'
-                  : 'border-[rgba(60,60,67,0.13)] bg-white/72 hover:bg-white'
-              }`}
-              data-testid={`desktop-cm-session-${session.id}`}
-            >
-              <button className="min-w-0 text-left" type="button" onClick={() => void handleSelect(session.id)}>
-                <span className="flex min-w-0 items-center gap-2">
-                  <ServerCog className="shrink-0 text-[rgba(60,60,67,0.48)]" size={15} aria-hidden="true" />
-                  <span className="truncate text-sm font-semibold text-[#1d1d1f]">{session.name}</span>
-                </span>
-                <span className="mt-1 block truncate font-mono text-xs font-semibold text-[rgba(60,60,67,0.62)]">
-                  {session.user}@{session.host}:{session.port}
-                </span>
-                <span className="mt-1 block truncate font-mono text-xs font-semibold text-[rgba(60,60,67,0.58)]">
-                  API {session.remoteApiHost}:{session.remoteApiPort}
-                </span>
-                <span className="mt-1 block truncate text-xs font-semibold text-[rgba(60,60,67,0.58)]">
-                  {session.authType} · {session.status} · {session.runtimeStatus}
-                </span>
-                <span className={`mt-1 flex min-w-0 items-center gap-1 truncate text-xs font-semibold ${session.credentialAvailable ? 'text-[#248a3d]' : 'text-[rgba(60,60,67,0.58)]'}`}>
-                  <KeyRound className="shrink-0" size={12} aria-hidden="true" />
-                  <span className="truncate">
-                    {session.credentialAvailable ? `${session.credentialStore} · credential ready` : `${session.credentialStore} · credential 없음`}
+          <div className="grid gap-3" data-testid="desktop-cm-session-groups">
+            {groupedSessions.map((group) => (
+              <section
+                key={group.group}
+                className="grid gap-2 rounded-[10px] border border-[rgba(60,60,67,0.1)] bg-white/58 px-3 py-3"
+                data-testid={`desktop-cm-session-group-${group.slug}`}
+              >
+                <div className="flex min-w-0 flex-wrap items-center gap-2">
+                  <button
+                    className="ku-control h-8 text-xs"
+                    data-testid={`desktop-cm-session-group-toggle-${group.slug}`}
+                    type="button"
+                    onClick={() => handleToggleGroupCollapsed(group.group)}
+                  >
+                    {group.collapsed ? <ChevronRight size={13} aria-hidden="true" /> : <ChevronDown size={13} aria-hidden="true" />}
+                    <Folder size={13} aria-hidden="true" />
+                    <span className="truncate">{group.group}</span>
+                  </button>
+                  <span className="ku-chip" data-testid={`desktop-cm-session-group-count-${group.slug}`}>
+                    {group.sessions.length} / {group.totalCount}
                   </span>
-                </span>
-                <span className="mt-1 flex min-w-0 items-center gap-1 truncate text-xs font-semibold text-[rgba(60,60,67,0.58)]">
-                  <Activity className="shrink-0" size={12} aria-hidden="true" />
-                  <span className="truncate">
-                    {formatCmSessionCheckStatus(session.lastCheckStatus)}
-                    {session.lastCheckAt ? ` · ${new Date(session.lastCheckAt).toLocaleTimeString()}` : ''}
+                  <span className="ku-chip" data-testid={`desktop-cm-session-group-favorites-${group.slug}`}>
+                    <Star size={12} aria-hidden="true" />
+                    favorite {group.favoriteCount}
                   </span>
-                </span>
-              </button>
-              <DesktopCmDiagnostics diagnostic={getDisplayedCmDiagnostic(session, runtimeProfile, activeRuntimeSessionId)} testId={`desktop-cm-session-diagnostics-${session.id}`} />
-              {activeRuntimeSessionId === session.id && runtimeProfile ? (
-                <div
-                  className="grid gap-1 rounded-[8px] border border-[rgba(0,122,255,0.18)] bg-[rgba(0,122,255,0.07)] px-2.5 py-2 text-xs font-semibold text-[#0066cc]"
-                  data-testid={`desktop-cm-session-runtime-detail-${session.id}`}
-                >
-                  <div className="flex min-w-0 flex-wrap items-center gap-2">
-                    <span className={`ku-chip max-w-full ${runtimeProfile.healthStatus === 'healthy' ? 'border-[rgba(52,199,89,0.22)] bg-[rgba(52,199,89,0.1)] text-[#248a3d]' : 'border-[rgba(255,149,0,0.24)] bg-[rgba(255,149,0,0.12)] text-[#b05f00]'}`}>
-                      <Activity size={12} aria-hidden="true" />
-                      {formatRuntimeHealthStatus(runtimeProfile.healthStatus)}
-                    </span>
-                    <span className="truncate font-mono" title={runtimeProfile.serverUrl}>
-                      {runtimeProfile.serverUrl}
-                    </span>
-                  </div>
-                  <div className="truncate font-mono text-[rgba(0,78,140,0.78)]">
-                    remote {runtimeProfile.remoteApiHost}:{runtimeProfile.remoteApiPort}
-                  </div>
-                  <div className="flex min-w-0 flex-wrap items-center gap-2 text-[rgba(0,78,140,0.74)]">
-                    <span className="truncate">
-                      {runtimeProfile.lastHealthAt ? `health ${new Date(runtimeProfile.lastHealthAt).toLocaleTimeString()}` : 'health 미확인'}
-                    </span>
-                    {runtimeProfile.lastHealthMessage ? <span className="truncate">{runtimeProfile.lastHealthMessage}</span> : null}
-                  </div>
                 </div>
-              ) : null}
-              <div className="grid gap-2">
-                <label className="min-w-0">
-                  <span className="ku-meta">Private key path</span>
-                  <input
-                    className="ku-field mt-1 h-8 w-full font-mono text-xs"
-                    data-testid={`desktop-cm-session-key-path-${session.id}`}
-                    placeholder="~/.ssh/id_ed25519"
-                    value={keyFilePaths[session.id] || ''}
-                    onChange={(event) => {
-                      setKeyFilePaths((current) => ({ ...current, [session.id]: event.target.value }));
-                      setError('');
-                    }}
-                  />
-                </label>
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    className="ku-control w-fit text-[11px]"
-                    data-testid={`desktop-cm-session-import-key-${session.id}`}
-                    type="button"
-                    disabled={busyAction === `import-key:${session.id}`}
-                    onClick={() => void handleImportPrivateKey(session.id)}
-                  >
-                    <KeyRound size={13} aria-hidden="true" />
-                    credential 가져오기
-                  </button>
-                  <button
-                    className="ku-control w-fit text-[11px]"
-                    data-testid={`desktop-cm-session-check-${session.id}`}
-                    type="button"
-                    disabled={busyAction === `check:${session.id}`}
-                    onClick={() => void handleCheckSession(session.id)}
-                  >
-                    <Activity size={13} aria-hidden="true" />
-                    연결 확인
-                  </button>
-                  {activeRuntimeSessionId === session.id ? (
-                    <>
-                      <button
-                        className="ku-control w-fit text-[11px]"
-                        data-testid={`desktop-cm-session-check-runtime-${session.id}`}
-                        type="button"
-                        disabled={busyAction === 'check-runtime'}
-                        onClick={() => void handleCheckRuntime()}
-                      >
-                        <Activity size={13} aria-hidden="true" />
-                        health 재확인
-                      </button>
-                      <button
-                        className="ku-control w-fit text-[11px]"
-                        data-testid={`desktop-cm-session-stop-runtime-${session.id}`}
-                        type="button"
-                        disabled={busyAction === 'stop-runtime'}
-                        onClick={() => void handleStopRuntime()}
-                      >
-                        <Square size={13} aria-hidden="true" />
-                        runtime 중지
-                      </button>
-                    </>
-                  ) : (
-                    <button
-                      className="ku-control w-fit text-[11px]"
-                      data-testid={`desktop-cm-session-start-runtime-${session.id}`}
-                      type="button"
-                      disabled={!session.credentialAvailable || busyAction === `start-runtime:${session.id}`}
-                      onClick={() => void handleStartRuntime(session.id)}
-                    >
-                      <Play size={13} aria-hidden="true" />
-                      runtime 시작
-                    </button>
-                  )}
-                  <button
-                    className="ku-control w-fit text-[11px]"
-                    data-testid={`desktop-cm-session-delete-credential-${session.id}`}
-                    type="button"
-                    disabled={!session.credentialAvailable || busyAction === `delete-credential:${session.id}`}
-                    onClick={() => void handleCredentialDelete(session.id)}
-                  >
-                    <Trash2 size={13} aria-hidden="true" />
-                    {credentialDeleteConfirmId === session.id ? 'credential 삭제 확인' : 'credential 삭제'}
-                  </button>
-                </div>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <button
-                  className="ku-control w-fit text-[11px]"
-                  data-testid={`desktop-cm-session-edit-${session.id}`}
-                  type="button"
-                  onClick={() => {
-                    setForm({
-                      id: session.id,
-                      name: session.name,
-                      host: session.host,
-                      port: session.port,
-                      user: session.user,
-                      remoteApiHost: session.remoteApiHost,
-                      remoteApiPort: session.remoteApiPort,
-                      description: session.description || '',
-                    });
-                    setCloneDraftSourceName('');
-                    setError('');
-                  }}
-                >
-                  <Pencil size={13} aria-hidden="true" />
-                  수정
-                </button>
-                <button
-                  className="ku-control w-fit text-[11px]"
-                  data-testid={`desktop-cm-session-clone-${session.id}`}
-                  type="button"
-                  onClick={() => handleCloneSession(session)}
-                >
-                  <Copy size={13} aria-hidden="true" />
-                  복제
-                </button>
-                <button
-                  className="ku-control w-fit text-[11px]"
-                  data-testid={`desktop-cm-session-delete-${session.id}`}
-                  type="button"
-                  disabled={busyAction === `delete:${session.id}` || busyAction === `select:${session.id}`}
-                  onClick={() => void handleDelete(session.id)}
-                >
-                  <Trash2 size={13} aria-hidden="true" />
-                  {deleteConfirmId === session.id ? '삭제 확인' : '삭제'}
-                </button>
-              </div>
-            </div>
+                {group.collapsed ? null : (
+                  <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3" data-testid={`desktop-cm-session-group-items-${group.slug}`}>
+                    {group.sessions.map((session) => {
+                      const preference = getDesktopCmSessionPreference(session.id, sessionPreferenceMap);
+                      return (
+                        <div
+                          key={session.id}
+                          className={`grid min-w-0 gap-2 rounded-[8px] border px-3 py-2 text-left transition ${
+                            session.selected
+                              ? 'border-[rgba(52,199,89,0.28)] bg-[rgba(52,199,89,0.09)]'
+                              : 'border-[rgba(60,60,67,0.13)] bg-white/72 hover:bg-white'
+                          }`}
+                          data-testid={`desktop-cm-session-${session.id}`}
+                        >
+                          <div className="flex min-w-0 flex-wrap items-center gap-2">
+                            <button
+                              className={`ku-control w-fit text-[11px] ${preference.favorite ? 'border-[rgba(255,204,0,0.32)] bg-[rgba(255,204,0,0.14)] text-[#8a6500]' : ''}`}
+                              data-testid={`desktop-cm-session-favorite-${session.id}`}
+                              type="button"
+                              onClick={() => handleToggleSessionFavorite(session.id)}
+                            >
+                              <Star size={13} aria-hidden="true" fill={preference.favorite ? 'currentColor' : 'none'} />
+                              {preference.favorite ? '즐겨찾기' : '즐겨찾기 추가'}
+                            </button>
+                            <label className="min-w-[150px] flex-1">
+                              <span className="ku-meta">Group</span>
+                              <input
+                                key={`${session.id}:${preference.group}`}
+                                className="ku-field mt-1 h-8 w-full text-xs"
+                                data-testid={`desktop-cm-session-group-input-${session.id}`}
+                                maxLength={maxDesktopCmSessionGroupNameLength}
+                                placeholder={defaultDesktopCmSessionGroup}
+                                defaultValue={preference.group}
+                                onBlur={(event) => handleSetSessionGroup(session.id, event.target.value)}
+                                onKeyDown={(event) => {
+                                  if (event.key === 'Enter') {
+                                    event.currentTarget.blur();
+                                  }
+                                }}
+                              />
+                            </label>
+                          </div>
+                          <button className="min-w-0 text-left" type="button" onClick={() => void handleSelect(session.id)}>
+                            <span className="flex min-w-0 items-center gap-2">
+                              <ServerCog className="shrink-0 text-[rgba(60,60,67,0.48)]" size={15} aria-hidden="true" />
+                              <span className="truncate text-sm font-semibold text-[#1d1d1f]">{session.name}</span>
+                            </span>
+                            <span className="mt-1 block truncate font-mono text-xs font-semibold text-[rgba(60,60,67,0.62)]">
+                              {session.user}@{session.host}:{session.port}
+                            </span>
+                            <span className="mt-1 block truncate font-mono text-xs font-semibold text-[rgba(60,60,67,0.58)]">
+                              API {session.remoteApiHost}:{session.remoteApiPort}
+                            </span>
+                            <span className="mt-1 block truncate text-xs font-semibold text-[rgba(60,60,67,0.58)]">
+                              {session.authType} · {session.status} · {session.runtimeStatus}
+                            </span>
+                            <span className={`mt-1 flex min-w-0 items-center gap-1 truncate text-xs font-semibold ${session.credentialAvailable ? 'text-[#248a3d]' : 'text-[rgba(60,60,67,0.58)]'}`}>
+                              <KeyRound className="shrink-0" size={12} aria-hidden="true" />
+                              <span className="truncate">
+                                {session.credentialAvailable ? `${session.credentialStore} · credential ready` : `${session.credentialStore} · credential 없음`}
+                              </span>
+                            </span>
+                            <span className="mt-1 flex min-w-0 items-center gap-1 truncate text-xs font-semibold text-[rgba(60,60,67,0.58)]">
+                              <Activity className="shrink-0" size={12} aria-hidden="true" />
+                              <span className="truncate">
+                                {formatCmSessionCheckStatus(session.lastCheckStatus)}
+                                {session.lastCheckAt ? ` · ${new Date(session.lastCheckAt).toLocaleTimeString()}` : ''}
+                              </span>
+                            </span>
+                          </button>
+                          <DesktopCmDiagnostics diagnostic={getDisplayedCmDiagnostic(session, runtimeProfile, activeRuntimeSessionId)} testId={`desktop-cm-session-diagnostics-${session.id}`} />
+                          {activeRuntimeSessionId === session.id && runtimeProfile ? (
+                            <div
+                              className="grid gap-1 rounded-[8px] border border-[rgba(0,122,255,0.18)] bg-[rgba(0,122,255,0.07)] px-2.5 py-2 text-xs font-semibold text-[#0066cc]"
+                              data-testid={`desktop-cm-session-runtime-detail-${session.id}`}
+                            >
+                              <div className="flex min-w-0 flex-wrap items-center gap-2">
+                                <span className={`ku-chip max-w-full ${runtimeProfile.healthStatus === 'healthy' ? 'border-[rgba(52,199,89,0.22)] bg-[rgba(52,199,89,0.1)] text-[#248a3d]' : 'border-[rgba(255,149,0,0.24)] bg-[rgba(255,149,0,0.12)] text-[#b05f00]'}`}>
+                                  <Activity size={12} aria-hidden="true" />
+                                  {formatRuntimeHealthStatus(runtimeProfile.healthStatus)}
+                                </span>
+                                <span className="truncate font-mono" title={runtimeProfile.serverUrl}>
+                                  {runtimeProfile.serverUrl}
+                                </span>
+                              </div>
+                              <div className="truncate font-mono text-[rgba(0,78,140,0.78)]">
+                                remote {runtimeProfile.remoteApiHost}:{runtimeProfile.remoteApiPort}
+                              </div>
+                              <div className="flex min-w-0 flex-wrap items-center gap-2 text-[rgba(0,78,140,0.74)]">
+                                <span className="truncate">
+                                  {runtimeProfile.lastHealthAt ? `health ${new Date(runtimeProfile.lastHealthAt).toLocaleTimeString()}` : 'health 미확인'}
+                                </span>
+                                {runtimeProfile.lastHealthMessage ? <span className="truncate">{runtimeProfile.lastHealthMessage}</span> : null}
+                              </div>
+                            </div>
+                          ) : null}
+                          <div className="grid gap-2">
+                            <label className="min-w-0">
+                              <span className="ku-meta">Private key path</span>
+                              <input
+                                className="ku-field mt-1 h-8 w-full font-mono text-xs"
+                                data-testid={`desktop-cm-session-key-path-${session.id}`}
+                                placeholder="~/.ssh/id_ed25519"
+                                value={keyFilePaths[session.id] || ''}
+                                onChange={(event) => {
+                                  setKeyFilePaths((current) => ({ ...current, [session.id]: event.target.value }));
+                                  setError('');
+                                }}
+                              />
+                            </label>
+                            <div className="flex flex-wrap gap-2">
+                              <button
+                                className="ku-control w-fit text-[11px]"
+                                data-testid={`desktop-cm-session-import-key-${session.id}`}
+                                type="button"
+                                disabled={busyAction === `import-key:${session.id}`}
+                                onClick={() => void handleImportPrivateKey(session.id)}
+                              >
+                                <KeyRound size={13} aria-hidden="true" />
+                                credential 가져오기
+                              </button>
+                              <button
+                                className="ku-control w-fit text-[11px]"
+                                data-testid={`desktop-cm-session-check-${session.id}`}
+                                type="button"
+                                disabled={busyAction === `check:${session.id}`}
+                                onClick={() => void handleCheckSession(session.id)}
+                              >
+                                <Activity size={13} aria-hidden="true" />
+                                연결 확인
+                              </button>
+                              {activeRuntimeSessionId === session.id ? (
+                                <>
+                                  <button
+                                    className="ku-control w-fit text-[11px]"
+                                    data-testid={`desktop-cm-session-check-runtime-${session.id}`}
+                                    type="button"
+                                    disabled={busyAction === 'check-runtime'}
+                                    onClick={() => void handleCheckRuntime()}
+                                  >
+                                    <Activity size={13} aria-hidden="true" />
+                                    health 재확인
+                                  </button>
+                                  <button
+                                    className="ku-control w-fit text-[11px]"
+                                    data-testid={`desktop-cm-session-stop-runtime-${session.id}`}
+                                    type="button"
+                                    disabled={busyAction === 'stop-runtime'}
+                                    onClick={() => void handleStopRuntime()}
+                                  >
+                                    <Square size={13} aria-hidden="true" />
+                                    runtime 중지
+                                  </button>
+                                </>
+                              ) : (
+                                <button
+                                  className="ku-control w-fit text-[11px]"
+                                  data-testid={`desktop-cm-session-start-runtime-${session.id}`}
+                                  type="button"
+                                  disabled={!session.credentialAvailable || busyAction === `start-runtime:${session.id}`}
+                                  onClick={() => void handleStartRuntime(session.id)}
+                                >
+                                  <Play size={13} aria-hidden="true" />
+                                  runtime 시작
+                                </button>
+                              )}
+                              <button
+                                className="ku-control w-fit text-[11px]"
+                                data-testid={`desktop-cm-session-delete-credential-${session.id}`}
+                                type="button"
+                                disabled={!session.credentialAvailable || busyAction === `delete-credential:${session.id}`}
+                                onClick={() => void handleCredentialDelete(session.id)}
+                              >
+                                <Trash2 size={13} aria-hidden="true" />
+                                {credentialDeleteConfirmId === session.id ? 'credential 삭제 확인' : 'credential 삭제'}
+                              </button>
+                            </div>
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            <button
+                              className="ku-control w-fit text-[11px]"
+                              data-testid={`desktop-cm-session-edit-${session.id}`}
+                              type="button"
+                              onClick={() => {
+                                setForm({
+                                  id: session.id,
+                                  name: session.name,
+                                  host: session.host,
+                                  port: session.port,
+                                  user: session.user,
+                                  remoteApiHost: session.remoteApiHost,
+                                  remoteApiPort: session.remoteApiPort,
+                                  description: session.description || '',
+                                });
+                                setCloneDraftSourceName('');
+                                setError('');
+                              }}
+                            >
+                              <Pencil size={13} aria-hidden="true" />
+                              수정
+                            </button>
+                            <button
+                              className="ku-control w-fit text-[11px]"
+                              data-testid={`desktop-cm-session-clone-${session.id}`}
+                              type="button"
+                              onClick={() => handleCloneSession(session)}
+                            >
+                              <Copy size={13} aria-hidden="true" />
+                              복제
+                            </button>
+                            <button
+                              className="ku-control w-fit text-[11px]"
+                              data-testid={`desktop-cm-session-delete-${session.id}`}
+                              type="button"
+                              disabled={busyAction === `delete:${session.id}` || busyAction === `select:${session.id}`}
+                              onClick={() => void handleDelete(session.id)}
+                            >
+                              <Trash2 size={13} aria-hidden="true" />
+                              {deleteConfirmId === session.id ? '삭제 확인' : '삭제'}
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </section>
             ))}
           </div>
         ) : (
@@ -1258,6 +1389,204 @@ function buildDesktopCmSessionCloneName(sourceName: string, sessions: DesktopCmS
   return `${sourceBase.slice(0, 42).trimEnd() || 'CM'} copy ${Date.now().toString(36).slice(-6)}`;
 }
 
+function readDesktopCmSessionViewPreferences(): DesktopCmSessionViewPreferences {
+  if (typeof window === 'undefined') {
+    return { sessions: [], collapsedGroups: [] };
+  }
+  try {
+    const rawValue = window.localStorage.getItem(desktopCmSessionViewPreferenceStorageKey);
+    if (!rawValue) {
+      return { sessions: [], collapsedGroups: [] };
+    }
+    const parsedValue = JSON.parse(rawValue);
+    return normalizeDesktopCmSessionViewPreferences(parsedValue);
+  } catch {
+    window.localStorage.removeItem(desktopCmSessionViewPreferenceStorageKey);
+    return { sessions: [], collapsedGroups: [] };
+  }
+}
+
+function writeDesktopCmSessionViewPreferences(preferences: DesktopCmSessionViewPreferences) {
+  if (typeof window === 'undefined') {
+    return;
+  }
+  try {
+    window.localStorage.setItem(desktopCmSessionViewPreferenceStorageKey, JSON.stringify(normalizeDesktopCmSessionViewPreferences(preferences)));
+  } catch {
+    // Session grouping is only a UI preference; storage failures should not break CM sessions.
+  }
+}
+
+function normalizeDesktopCmSessionViewPreferences(value: unknown): DesktopCmSessionViewPreferences {
+  if (!value || typeof value !== 'object') {
+    return { sessions: [], collapsedGroups: [] };
+  }
+  const candidate = value as Partial<DesktopCmSessionViewPreferences>;
+  const seenSessionIds = new Set<string>();
+  const sessions: DesktopCmSessionViewPreference[] = [];
+  if (Array.isArray(candidate.sessions)) {
+    for (const item of candidate.sessions) {
+      if (!item || typeof item !== 'object') {
+        continue;
+      }
+      const preference = item as Partial<DesktopCmSessionViewPreference>;
+      if (typeof preference.sessionId !== 'string' || !preference.sessionId.trim()) {
+        continue;
+      }
+      const sessionId = preference.sessionId.trim().slice(0, 120);
+      if (seenSessionIds.has(sessionId)) {
+        continue;
+      }
+      seenSessionIds.add(sessionId);
+      sessions.push({
+        sessionId,
+        group: normalizeDesktopCmSessionGroupName(preference.group || ''),
+        favorite: preference.favorite === true,
+        updatedAt: typeof preference.updatedAt === 'number' && Number.isFinite(preference.updatedAt) ? preference.updatedAt : Date.now(),
+      });
+    }
+  }
+
+  const collapsedGroups = Array.isArray(candidate.collapsedGroups)
+    ? [...new Set(candidate.collapsedGroups.filter((group): group is string => typeof group === 'string').map(normalizeDesktopCmSessionGroupName))]
+    : [];
+
+  return { sessions, collapsedGroups };
+}
+
+function pruneDesktopCmSessionViewPreferences(preferences: DesktopCmSessionViewPreferences, sessions: DesktopCmSession[]) {
+  const validSessionIds = new Set(sessions.map((session) => session.id));
+  return normalizeDesktopCmSessionViewPreferences({
+    sessions: preferences.sessions.filter((preference) => validSessionIds.has(preference.sessionId)),
+    collapsedGroups: preferences.collapsedGroups,
+  });
+}
+
+function desktopCmSessionViewPreferencesEqual(left: DesktopCmSessionViewPreferences, right: DesktopCmSessionViewPreferences) {
+  return JSON.stringify(normalizeDesktopCmSessionViewPreferences(left)) === JSON.stringify(normalizeDesktopCmSessionViewPreferences(right));
+}
+
+function getDesktopCmSessionPreference(sessionId: string, preferences: Map<string, DesktopCmSessionViewPreference>) {
+  return preferences.get(sessionId) || {
+    sessionId,
+    group: defaultDesktopCmSessionGroup,
+    favorite: false,
+    updatedAt: 0,
+  };
+}
+
+function setDesktopCmSessionGroupPreference(preferences: DesktopCmSessionViewPreferences, sessionId: string, group: string) {
+  const current = getDesktopCmSessionPreference(sessionId, new Map(preferences.sessions.map((preference) => [preference.sessionId, preference])));
+  return upsertDesktopCmSessionViewPreference(preferences, {
+    ...current,
+    group: normalizeDesktopCmSessionGroupName(group),
+    updatedAt: Date.now(),
+  });
+}
+
+function toggleDesktopCmSessionFavoritePreference(preferences: DesktopCmSessionViewPreferences, sessionId: string) {
+  const current = getDesktopCmSessionPreference(sessionId, new Map(preferences.sessions.map((preference) => [preference.sessionId, preference])));
+  return upsertDesktopCmSessionViewPreference(preferences, {
+    ...current,
+    favorite: !current.favorite,
+    updatedAt: Date.now(),
+  });
+}
+
+function toggleDesktopCmSessionGroupCollapsed(preferences: DesktopCmSessionViewPreferences, group: string) {
+  const normalizedGroup = normalizeDesktopCmSessionGroupName(group);
+  const collapsedGroups = new Set(preferences.collapsedGroups.map(normalizeDesktopCmSessionGroupName));
+  if (collapsedGroups.has(normalizedGroup)) {
+    collapsedGroups.delete(normalizedGroup);
+  } else {
+    collapsedGroups.add(normalizedGroup);
+  }
+  return normalizeDesktopCmSessionViewPreferences({
+    sessions: preferences.sessions,
+    collapsedGroups: [...collapsedGroups],
+  });
+}
+
+function upsertDesktopCmSessionViewPreference(preferences: DesktopCmSessionViewPreferences, nextPreference: DesktopCmSessionViewPreference) {
+  const normalizedPreference = normalizeDesktopCmSessionViewPreferences({ sessions: [nextPreference], collapsedGroups: [] }).sessions[0];
+  if (!normalizedPreference) {
+    return preferences;
+  }
+  const withoutCurrent = preferences.sessions.filter((preference) => preference.sessionId !== normalizedPreference.sessionId);
+  const nextSessions =
+    normalizedPreference.group === defaultDesktopCmSessionGroup && !normalizedPreference.favorite
+      ? withoutCurrent
+      : [normalizedPreference, ...withoutCurrent];
+  return normalizeDesktopCmSessionViewPreferences({
+    sessions: nextSessions,
+    collapsedGroups: preferences.collapsedGroups,
+  });
+}
+
+function normalizeDesktopCmSessionGroupName(value: string) {
+  const normalized = value.trim().replace(/\s+/g, ' ').slice(0, maxDesktopCmSessionGroupNameLength);
+  return normalized || defaultDesktopCmSessionGroup;
+}
+
+function buildDesktopCmSessionGroups(
+  allSessions: DesktopCmSession[],
+  visibleSessions: DesktopCmSession[],
+  preferences: Map<string, DesktopCmSessionViewPreference>,
+  collapsedGroups: string[],
+): DesktopCmSessionGroup[] {
+  const collapsedGroupSet = new Set(collapsedGroups.map(normalizeDesktopCmSessionGroupName));
+  const allGroupCounts = new Map<string, { totalCount: number; favoriteCount: number }>();
+  for (const session of allSessions) {
+    const preference = getDesktopCmSessionPreference(session.id, preferences);
+    const counts = allGroupCounts.get(preference.group) || { totalCount: 0, favoriteCount: 0 };
+    counts.totalCount += 1;
+    if (preference.favorite) {
+      counts.favoriteCount += 1;
+    }
+    allGroupCounts.set(preference.group, counts);
+  }
+
+  const visibleGroupSessions = new Map<string, DesktopCmSession[]>();
+  for (const session of visibleSessions) {
+    const preference = getDesktopCmSessionPreference(session.id, preferences);
+    const groupSessions = visibleGroupSessions.get(preference.group) || [];
+    groupSessions.push(session);
+    visibleGroupSessions.set(preference.group, groupSessions);
+  }
+
+  return [...visibleGroupSessions.entries()]
+    .map(([group, groupSessions]) => ({
+      group,
+      slug: slugifyTestId(group),
+      sessions: sortDesktopCmSessionsForGroup(groupSessions, preferences),
+      totalCount: allGroupCounts.get(group)?.totalCount || groupSessions.length,
+      favoriteCount: allGroupCounts.get(group)?.favoriteCount || 0,
+      collapsed: collapsedGroupSet.has(group),
+    }))
+    .sort((left, right) => compareDesktopCmSessionGroupNames(left.group, right.group));
+}
+
+function sortDesktopCmSessionsForGroup(sessions: DesktopCmSession[], preferences: Map<string, DesktopCmSessionViewPreference>) {
+  return [...sessions].sort((left, right) => {
+    const leftFavorite = getDesktopCmSessionPreference(left.id, preferences).favorite;
+    const rightFavorite = getDesktopCmSessionPreference(right.id, preferences).favorite;
+    if (leftFavorite !== rightFavorite) {
+      return leftFavorite ? -1 : 1;
+    }
+    return 0;
+  });
+}
+
+function compareDesktopCmSessionGroupNames(left: string, right: string) {
+  if (left === defaultDesktopCmSessionGroup && right !== defaultDesktopCmSessionGroup) {
+    return -1;
+  }
+  if (right === defaultDesktopCmSessionGroup && left !== defaultDesktopCmSessionGroup) {
+    return 1;
+  }
+  return left.localeCompare(right);
+}
+
 function readDesktopCmDiagnosticFilterPresets(): DesktopCmDiagnosticFilterPreset[] {
   if (typeof window === 'undefined') {
     return [];
@@ -1354,6 +1683,7 @@ function matchesCmSessionSearch(
   session: DesktopCmSession,
   normalizedQuery: string,
   diagnostic: Pick<DesktopCmSession, 'diagnosticStage' | 'diagnosticSeverity' | 'diagnosticMessage' | 'diagnosticHint'> | Pick<DesktopCmSessionRuntimeProfile, 'diagnosticStage' | 'diagnosticSeverity' | 'diagnosticMessage' | 'diagnosticHint'>,
+  preference: DesktopCmSessionViewPreference,
 ) {
   if (!normalizedQuery) {
     return true;
@@ -1372,6 +1702,8 @@ function matchesCmSessionSearch(
     session.credentialAvailable ? 'credential ready' : 'credential missing',
     formatCmSessionCheckStatus(session.lastCheckStatus),
     formatRuntimeStatus(session.runtimeStatus),
+    preference.group,
+    preference.favorite ? 'favorite 즐겨찾기' : '',
     diagnostic.diagnosticStage || '',
     diagnostic.diagnosticSeverity || '',
     diagnostic.diagnosticMessage || '',
