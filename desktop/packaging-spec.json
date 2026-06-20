@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
-  "name": "Kuviewer Desktop Cluster Explorer",
-  "goal": "installable-read-only-desktop-cluster-explorer",
-  "status": "desktop-native-credential-runtime-smoke",
+  "name": "Kuviewer Desktop CM Session Explorer",
+  "goal": "installable-read-only-cm-ssh-session-explorer",
+  "status": "desktop-package-smoke-matrix",
   "recommendedPackager": "tauri",
   "fallbackPackager": "electron",
   "tauri": {
@@ -25,18 +25,34 @@
   ],
   "connectionModes": [
     {
+      "id": "cm-ssh-session",
+      "description": "Primary installable-app direction: manage multiple desktop-only sessions to CM or bastion servers over an SSH-style connection model."
+    },
+    {
       "id": "remote-api",
-      "description": "Connect the desktop shell to an existing Kuviewer server URL with the same admin-token flow as the web app."
+      "description": "Prototype compatibility path only; not the primary installable desktop product direction."
     },
     {
       "id": "local-sidecar",
-      "description": "Bundle the Go read-only API server as a localhost-only Tauri sidecar launched by Rust, with a per-launch admin token handed to the UI through a Tauri command."
+      "description": "Historical packaging/runtime scaffold for evaluation only; not the primary installable desktop product direction."
     },
     {
       "id": "local-kubernetes-keychain",
-      "description": "Future direct Kubernetes desktop mode where Rust reads credentials from the OS credential store and starts the localhost sidecar without exposing kubeconfig content to browser JavaScript."
+      "description": "Credential-store prototype path superseded by the CM/SSH session manager direction for product work."
     }
   ],
+  "desktopProductDirection": {
+    "primaryConnectionMode": "cm-ssh-session",
+    "desktopOnly": true,
+    "webSshFeature": false,
+    "multipleSessions": true,
+    "sessionModel": "vscode-ssh-extension-style",
+    "localSidecarPolicy": "prototype-only-not-product-default",
+    "directApiPolicy": "not-desktop-primary",
+    "credentialStorage": "os-credential-store",
+    "noBrowserSsh": true,
+    "noOperationalActions": true
+  },
   "remoteConnectionProfile": {
     "status": "scaffolded",
     "runtimeOnly": true,
@@ -301,6 +317,28 @@
       "WINDOWS_CERTIFICATE_PASSWORD"
     ]
   },
+  "packageSmokeMatrix": {
+    "status": "manual-unsigned-matrix",
+    "workflowPath": ".github/workflows/desktop-package.yml",
+    "workflowInput": "smoke_matrix",
+    "manualOnly": true,
+    "signedAllowed": false,
+    "artifactNamePattern": "kuviewer-{platform}-{artifact}-{version}",
+    "artifactStorage": "github-actions-artifact-only",
+    "releaseAsset": false,
+    "targets": [
+      {
+        "platform": "macos",
+        "artifact": "dmg",
+        "job": "macos-dmg"
+      },
+      {
+        "platform": "windows",
+        "artifact": "exe",
+        "job": "windows-exe"
+      }
+    ]
+  },
   "dryRuns": [
     {
       "id": "macos-dmg-unsigned-2026-06-19",
@@ -369,6 +407,7 @@
     "os-credential-store",
     "keychain-sidecar-runtime",
     "native-credential-runtime-smoke",
+    "desktop-package-smoke-matrix",
     "macos-dmg-build",
     "windows-exe-build",
     "signing-and-release"

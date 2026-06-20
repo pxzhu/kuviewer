@@ -13,6 +13,11 @@ on:
         required: true
         default: false
         type: boolean
+      smoke_matrix:
+        description: Build unsigned macOS dmg and Windows exe smoke matrix
+        required: true
+        default: false
+        type: boolean
       signed:
         description: Build with code signing and macOS notarization secrets
         required: true
@@ -47,11 +52,17 @@ jobs:
           KUVIEWER_DESKTOP_VERSION: ${{ inputs.package_version }}
         run: node scripts/set-desktop-package-version.mjs --print
 
+      - name: Validate unsigned smoke matrix mode
+        if: ${{ inputs.smoke_matrix && inputs.signed }}
+        run: |
+          echo "smoke_matrix builds unsigned artifacts only; set signed=false." >&2
+          exit 1
+
       - name: Desktop packaging spec check
         run: node scripts/check-desktop-packaging-spec.mjs
 
   macos-dmg:
-    if: inputs.build_macos
+    if: ${{ inputs.build_macos || inputs.smoke_matrix }}
     needs: validate-desktop
     runs-on: macos-latest
     steps:
@@ -163,7 +174,7 @@ jobs:
           if-no-files-found: error
 
   windows-exe:
-    if: inputs.build_windows
+    if: ${{ inputs.build_windows || inputs.smoke_matrix }}
     needs: validate-desktop
     runs-on: windows-latest
     steps:
