@@ -486,6 +486,12 @@ If a workflow reports `ssh-banner-timeout`, TCP opened but the SSH server did no
 node scripts/check-ssh-banner.mjs --host <server-host> --port <server-port>
 ```
 
+For a broader no-credential check, run the manual `deploy-ssh-endpoint-diagnostics` workflow or the local helper below. It classifies the endpoint as TCP reachable/unreachable, SSH banner detected/missing, HTTP response detected/missing, and TLS handshake detected/missing without using the deploy private key or changing the server:
+
+```bash
+node scripts/diagnose-ssh-endpoint.mjs --host <server-host> --port <server-port>
+```
+
 On the server, check the daemon and listener before retrying the GitHub workflow:
 
 ```bash

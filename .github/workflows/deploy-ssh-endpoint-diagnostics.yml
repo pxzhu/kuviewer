@@ -1,0 +1,50 @@
+name: deploy-ssh-endpoint-diagnostics
+
+on:
+  workflow_dispatch:
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: kuviewer-production-ssh-endpoint-diagnostics
+  cancel-in-progress: true
+
+jobs:
+  diagnostics:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+
+    steps:
+      - name: Report diagnostics scope
+        run: |
+          echo "deploy-ssh-endpoint-diagnostics-only"
+          echo "no SSH key, host key pin, image build, upload, compose rollout, rollback, or server mutation will run"
+
+      - name: Validate endpoint inputs
+        shell: bash
+        run: |
+          test -n "${{ secrets.SERVER_FHOST }}"
+          test -n "${{ secrets.SERVER_PORT }}"
+          case "${{ secrets.SERVER_PORT }}" in
+            ''|*[!0-9]*)
+              echo "SERVER_PORT must be numeric"
+              exit 1
+              ;;
+          esac
+          if [ "${{ secrets.SERVER_PORT }}" -lt 1 ] || [ "${{ secrets.SERVER_PORT }}" -gt 65535 ]; then
+            echo "SERVER_PORT must be between 1 and 65535"
+            exit 1
+          fi
+
+      - name: Checkout diagnostics helper
+        uses: actions/checkout@v4
+
+      - name: Diagnose endpoint protocol
+        env:
+          DEPLOY_SSH_HOST: ${{ secrets.SERVER_FHOST }}
+          DEPLOY_SSH_PORT: ${{ secrets.SERVER_PORT }}
+        run: node scripts/diagnose-ssh-endpoint.mjs --host "$DEPLOY_SSH_HOST" --port "$DEPLOY_SSH_PORT"

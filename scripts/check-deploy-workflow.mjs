@@ -9,9 +9,11 @@ const failures = [];
 const deployWorkflow = await readTextFile('.github/workflows/deploy.yml');
 const deployPreflightWorkflow = await readTextFile('.github/workflows/deploy-preflight.yml');
 const deployKnownHostsBootstrapWorkflow = await readTextFile('.github/workflows/deploy-known-hosts-bootstrap.yml');
+const deploySshEndpointDiagnosticsWorkflow = await readTextFile('.github/workflows/deploy-ssh-endpoint-diagnostics.yml');
 const ciWorkflow = await readTextFile('.github/workflows/ci.yml');
 const knownHostsHelper = await readTextFile('scripts/prepare-deploy-known-hosts.mjs');
 const sshBannerHelper = await readTextFile('scripts/check-ssh-banner.mjs');
+const sshEndpointDiagnosticsHelper = await readTextFile('scripts/diagnose-ssh-endpoint.mjs');
 const packagingSpec = JSON.parse(await readTextFile('desktop/packaging-spec.json'));
 
 requireIncludes(deployWorkflow, 'Validate required secrets', 'deploy workflow must validate required secrets');
@@ -141,6 +143,18 @@ requireNotIncludes(deployKnownHostsBootstrapWorkflow, 'compose --env-file', 'kno
 requireNotIncludes(deployKnownHostsBootstrapWorkflow, 'cat ~/.ssh/known_hosts', 'known_hosts bootstrap workflow must not print known_hosts body');
 requireNotIncludes(deployKnownHostsBootstrapWorkflow, 'StrictHostKeyChecking=no', 'known_hosts bootstrap workflow must not disable strict host key checking');
 
+requireIncludes(deploySshEndpointDiagnosticsWorkflow, 'name: deploy-ssh-endpoint-diagnostics', 'SSH endpoint diagnostics workflow must be named deploy-ssh-endpoint-diagnostics');
+requireIncludes(deploySshEndpointDiagnosticsWorkflow, 'workflow_dispatch:', 'SSH endpoint diagnostics workflow must be manual-only');
+requireIncludes(deploySshEndpointDiagnosticsWorkflow, 'deploy-ssh-endpoint-diagnostics-only', 'SSH endpoint diagnostics workflow must report diagnostics-only scope');
+requireIncludes(deploySshEndpointDiagnosticsWorkflow, 'no SSH key, host key pin, image build, upload, compose rollout, rollback, or server mutation will run', 'SSH endpoint diagnostics workflow must document no deploy side effects');
+requireIncludes(deploySshEndpointDiagnosticsWorkflow, 'node scripts/diagnose-ssh-endpoint.mjs', 'SSH endpoint diagnostics workflow must run the endpoint diagnostics helper');
+requireIncludes(deploySshEndpointDiagnosticsWorkflow, 'SERVER_PORT must be numeric', 'SSH endpoint diagnostics workflow must validate SERVER_PORT');
+requireNotIncludes(deploySshEndpointDiagnosticsWorkflow, 'SERVER_SSH_KEY', 'SSH endpoint diagnostics workflow must not use deploy private keys');
+requireNotIncludes(deploySshEndpointDiagnosticsWorkflow, 'gh variable set', 'SSH endpoint diagnostics workflow must not mutate repository variables');
+requireNotIncludes(deploySshEndpointDiagnosticsWorkflow, 'docker build', 'SSH endpoint diagnostics workflow must not build images');
+requireNotIncludes(deploySshEndpointDiagnosticsWorkflow, 'scp ', 'SSH endpoint diagnostics workflow must not upload files');
+requireNotIncludes(deploySshEndpointDiagnosticsWorkflow, 'compose --env-file', 'SSH endpoint diagnostics workflow must not run compose');
+
 requireIncludes(knownHostsHelper, 'SERVER_SSH_KNOWN_HOSTS', 'known_hosts helper must target SERVER_SSH_KNOWN_HOSTS');
 requireIncludes(knownHostsHelper, 'ssh-keyscan', 'known_hosts helper must generate host keys with ssh-keyscan');
 requireIncludes(knownHostsHelper, '--from-file', 'known_hosts helper must support validating an existing file');
@@ -160,11 +174,20 @@ requireIncludes(sshBannerHelper, 'ssh-tcp-unreachable', 'SSH banner helper must 
 requireIncludes(sshBannerHelper, '--host <host>', 'SSH banner helper must document host usage');
 requireNotIncludes(sshBannerHelper, 'SERVER_SSH_KEY', 'SSH banner helper must not use deploy private keys');
 
+requireIncludes(sshEndpointDiagnosticsHelper, 'diagnostics-scope: tcp, ssh-banner, http-head, tls-clienthello', 'SSH endpoint diagnostics helper must report diagnostic scope');
+requireIncludes(sshEndpointDiagnosticsHelper, 'diagnostics-credentials: none', 'SSH endpoint diagnostics helper must not use credentials');
+requireIncludes(sshEndpointDiagnosticsHelper, 'ssh-banner-detected', 'SSH endpoint diagnostics helper must detect SSH banners');
+requireIncludes(sshEndpointDiagnosticsHelper, 'http-response-detected', 'SSH endpoint diagnostics helper must detect HTTP responses');
+requireIncludes(sshEndpointDiagnosticsHelper, 'tls-handshake-detected', 'SSH endpoint diagnostics helper must detect TLS handshakes');
+requireIncludes(sshEndpointDiagnosticsHelper, '--host <host>', 'SSH endpoint diagnostics helper must document host usage');
+requireNotIncludes(sshEndpointDiagnosticsHelper, 'SERVER_SSH_KEY', 'SSH endpoint diagnostics helper must not use deploy private keys');
+
 const deployWorkflowPolicy = packagingSpec.deployWorkflowPolicy || {};
 requireCondition(deployWorkflowPolicy.status === 'rollback-observability-hardened', 'deployWorkflowPolicy.status must be rollback-observability-hardened');
 requireCondition(deployWorkflowPolicy.workflowPath === '.github/workflows/deploy.yml', 'deployWorkflowPolicy.workflowPath must point to deploy workflow');
 requireCondition(deployWorkflowPolicy.preflightWorkflowPath === '.github/workflows/deploy-preflight.yml', 'deployWorkflowPolicy.preflightWorkflowPath must point to preflight workflow');
 requireCondition(deployWorkflowPolicy.knownHostsBootstrapWorkflowPath === '.github/workflows/deploy-known-hosts-bootstrap.yml', 'deployWorkflowPolicy.knownHostsBootstrapWorkflowPath must point to known_hosts bootstrap workflow');
+requireCondition(deployWorkflowPolicy.sshEndpointDiagnosticsWorkflowPath === '.github/workflows/deploy-ssh-endpoint-diagnostics.yml', 'deployWorkflowPolicy.sshEndpointDiagnosticsWorkflowPath must point to endpoint diagnostics workflow');
 requireCondition(deployWorkflowPolicy.staticCheck === 'scripts/check-deploy-workflow.mjs', 'deployWorkflowPolicy.staticCheck must point to this script');
 requireCondition(deployWorkflowPolicy.preflightBeforeBuild === true, 'deployWorkflowPolicy.preflightBeforeBuild must be true');
 requireCondition(deployWorkflowPolicy.strictHostKeyChecking === true, 'deployWorkflowPolicy.strictHostKeyChecking must be true');
@@ -175,7 +198,9 @@ requireCondition(deployWorkflowPolicy.knownHostsHelperSupportsPublicKeyFiles ===
 requireCondition(deployWorkflowPolicy.sshTcpReachabilityProbe === true, 'deployWorkflowPolicy.sshTcpReachabilityProbe must be true');
 requireCondition(deployWorkflowPolicy.sshBannerProbe === true, 'deployWorkflowPolicy.sshBannerProbe must be true');
 requireCondition(deployWorkflowPolicy.sshBannerDiagnosticHelper === 'scripts/check-ssh-banner.mjs', 'deployWorkflowPolicy.sshBannerDiagnosticHelper must document the helper script');
+requireCondition(deployWorkflowPolicy.sshEndpointDiagnosticsHelper === 'scripts/diagnose-ssh-endpoint.mjs', 'deployWorkflowPolicy.sshEndpointDiagnosticsHelper must document the endpoint diagnostics helper script');
 requireCondition(deployWorkflowPolicy.sshBannerTimeoutGuidance === true, 'deployWorkflowPolicy.sshBannerTimeoutGuidance must be true');
+requireCondition(deployWorkflowPolicy.sshEndpointDiagnosticsManualOnly === true, 'deployWorkflowPolicy.sshEndpointDiagnosticsManualOnly must be true');
 requireCondition(deployWorkflowPolicy.hostKeyScanAttempts === 6, 'deployWorkflowPolicy.hostKeyScanAttempts must be 6');
 requireCondition(deployWorkflowPolicy.keyscanTimeoutSeconds === 10, 'deployWorkflowPolicy.keyscanTimeoutSeconds must be 10');
 requireCondition(deployWorkflowPolicy.acceptNonEmptyKeyscanOutput === true, 'deployWorkflowPolicy.acceptNonEmptyKeyscanOutput must be true');
