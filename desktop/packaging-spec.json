@@ -34,6 +34,7 @@
     "knownHostsHelper": "scripts/prepare-deploy-known-hosts.mjs",
     "knownHostsHelperSupportsPublicKeyFiles": true,
     "sshTcpReachabilityProbe": true,
+    "sshBannerProbe": true,
     "hostKeyScanAttempts": 6,
     "keyscanTimeoutSeconds": 10,
     "keyscanTypes": ["ed25519", "ecdsa", "rsa"],

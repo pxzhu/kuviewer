@@ -22,6 +22,9 @@ requireIncludes(deployWorkflow, 'vars.SERVER_SSH_KNOWN_HOSTS', 'deploy workflow 
 requireIncludes(deployWorkflow, 'ssh-tcp-reachable', 'deploy workflow must report safe SSH TCP reachability');
 requireIncludes(deployWorkflow, 'ssh-tcp-unreachable; verify SERVER_FHOST/SERVER_PORT firewall and SSH service', 'deploy workflow must fail fast on SSH TCP reachability errors');
 requireIncludes(deployWorkflow, ':</dev/tcp/"$0"/"$1"', 'deploy workflow must use a TCP socket probe before keyscan');
+requireIncludes(deployWorkflow, 'ssh-banner-received', 'deploy workflow must report safe SSH banner success');
+requireIncludes(deployWorkflow, 'ssh-banner-timeout; TCP opened but SSH banner was not received', 'deploy workflow must fail fast when TCP opens but SSH banner is unavailable');
+requireIncludes(deployWorkflow, 'case "$banner" in SSH-*)', 'deploy workflow must verify SSH banner before keyscan');
 requireIncludes(deployWorkflow, 'SERVER_SSH_KNOWN_HOSTS variable present', 'deploy workflow must report known_hosts variable presence safely');
 requireIncludes(deployWorkflow, 'KNOWN_HOSTS_PIN="${{ secrets.SERVER_SSH_KNOWN_HOSTS || vars.SERVER_SSH_KNOWN_HOSTS }}"', 'deploy workflow must prefer known_hosts secret and fall back to variable');
 requireIncludes(deployWorkflow, 'Using pinned SSH known_hosts input', 'deploy workflow must report pinned known_hosts use without printing values');
@@ -83,6 +86,9 @@ requireIncludes(deployPreflightWorkflow, 'SERVER_SSH_KNOWN_HOSTS not set; keysca
 requireIncludes(deployPreflightWorkflow, 'ssh-tcp-reachable', 'deploy preflight workflow must report safe SSH TCP reachability');
 requireIncludes(deployPreflightWorkflow, 'ssh-tcp-unreachable; verify SERVER_FHOST/SERVER_PORT firewall and SSH service', 'deploy preflight workflow must fail fast on SSH TCP reachability errors');
 requireIncludes(deployPreflightWorkflow, ':</dev/tcp/"$0"/"$1"', 'deploy preflight workflow must use a TCP socket probe before keyscan');
+requireIncludes(deployPreflightWorkflow, 'ssh-banner-received', 'deploy preflight workflow must report safe SSH banner success');
+requireIncludes(deployPreflightWorkflow, 'ssh-banner-timeout; TCP opened but SSH banner was not received', 'deploy preflight workflow must fail fast when TCP opens but SSH banner is unavailable');
+requireIncludes(deployPreflightWorkflow, 'case "$banner" in SSH-*)', 'deploy preflight workflow must verify SSH banner before keyscan');
 requireIncludes(deployPreflightWorkflow, 'KNOWN_HOSTS_PIN="${{ secrets.SERVER_SSH_KNOWN_HOSTS || vars.SERVER_SSH_KNOWN_HOSTS }}"', 'deploy preflight workflow must prefer known_hosts secret and fall back to variable');
 requireIncludes(deployPreflightWorkflow, 'Using pinned SSH known_hosts input', 'deploy preflight workflow must use pinned known_hosts when present');
 requireIncludes(deployPreflightWorkflow, 'SSH host key scan failed; set SERVER_SSH_KNOWN_HOSTS or verify SERVER_FHOST/SERVER_PORT reachability', 'deploy preflight workflow must explain keyscan failures safely');
@@ -105,6 +111,9 @@ requireIncludes(deployKnownHostsBootstrapWorkflow, 'deploy-known-hosts-bootstrap
 requireIncludes(deployKnownHostsBootstrapWorkflow, 'no image build, upload, compose rollout, rollback, or server mutation will run', 'known_hosts bootstrap workflow must document no deploy side effects');
 requireIncludes(deployKnownHostsBootstrapWorkflow, 'SERVER_PORT must be numeric', 'known_hosts bootstrap workflow must validate SERVER_PORT');
 requireIncludes(deployKnownHostsBootstrapWorkflow, 'ssh-tcp-reachable', 'known_hosts bootstrap workflow must probe SSH TCP reachability');
+requireIncludes(deployKnownHostsBootstrapWorkflow, 'ssh-banner-received', 'known_hosts bootstrap workflow must report safe SSH banner success');
+requireIncludes(deployKnownHostsBootstrapWorkflow, 'ssh-banner-timeout; TCP opened but SSH banner was not received', 'known_hosts bootstrap workflow must fail fast when TCP opens but SSH banner is unavailable');
+requireIncludes(deployKnownHostsBootstrapWorkflow, 'case "$banner" in SSH-*)', 'known_hosts bootstrap workflow must verify SSH banner before key capture');
 requireIncludes(deployKnownHostsBootstrapWorkflow, 'ssh-keyscan -4 -T 10 -t "${key_type}"', 'known_hosts bootstrap workflow must try IPv4 ssh-keyscan first');
 requireIncludes(deployKnownHostsBootstrapWorkflow, 'ssh-keyscan -T 10 -t "${key_type}"', 'known_hosts bootstrap workflow must try normal ssh-keyscan fallback');
 requireIncludes(deployKnownHostsBootstrapWorkflow, 'StrictHostKeyChecking=accept-new', 'known_hosts bootstrap workflow must keep TOFU fallback explicit and scoped');
@@ -145,6 +154,7 @@ requireCondition(deployWorkflowPolicy.optionalPinnedKnownHostsVariable === 'SERV
 requireCondition(deployWorkflowPolicy.knownHostsHelper === 'scripts/prepare-deploy-known-hosts.mjs', 'deployWorkflowPolicy.knownHostsHelper must document helper script');
 requireCondition(deployWorkflowPolicy.knownHostsHelperSupportsPublicKeyFiles === true, 'deployWorkflowPolicy.knownHostsHelperSupportsPublicKeyFiles must be true');
 requireCondition(deployWorkflowPolicy.sshTcpReachabilityProbe === true, 'deployWorkflowPolicy.sshTcpReachabilityProbe must be true');
+requireCondition(deployWorkflowPolicy.sshBannerProbe === true, 'deployWorkflowPolicy.sshBannerProbe must be true');
 requireCondition(deployWorkflowPolicy.hostKeyScanAttempts === 6, 'deployWorkflowPolicy.hostKeyScanAttempts must be 6');
 requireCondition(deployWorkflowPolicy.keyscanTimeoutSeconds === 10, 'deployWorkflowPolicy.keyscanTimeoutSeconds must be 10');
 requireCondition(deployWorkflowPolicy.acceptNonEmptyKeyscanOutput === true, 'deployWorkflowPolicy.acceptNonEmptyKeyscanOutput must be true');
