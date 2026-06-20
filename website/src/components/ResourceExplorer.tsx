@@ -67,6 +67,17 @@ const detailJumpSections: Array<{ id: DetailSectionId; label: string }> = [
   { id: 'logs', label: 'Logs' },
 ];
 const detailKeyboardSections: DetailSectionId[] = ['metadata', 'status', 'safe', 'yaml', 'labels', 'annotations', 'relations', 'events', 'logs'];
+const detailNavigatorSections: Array<{ id: DetailSectionId; label: string }> = [
+  { id: 'metadata', label: 'Metadata' },
+  { id: 'status', label: 'Status' },
+  { id: 'safe', label: 'Safe Preview' },
+  { id: 'yaml', label: 'YAML Preview' },
+  { id: 'labels', label: 'Labels' },
+  { id: 'annotations', label: 'Annotations' },
+  { id: 'relations', label: 'Relations' },
+  { id: 'events', label: 'Events' },
+  { id: 'logs', label: 'Logs' },
+];
 const eventTimeRangeOptions: Array<{ value: EventTimeRangeFilter; label: string; milliseconds?: number }> = [
   { value: 'all', label: '전체' },
   { value: '1h', label: '1h', milliseconds: 60 * 60 * 1000 },
@@ -2849,6 +2860,17 @@ function ResourceExplorerDetail({
     events: eventSectionSummary(filteredEvents.length, events.length, eventSeverityCounts),
     logs: logLines.length > 0 ? `${filteredLogLines.length} / ${logLines.length}` : canFetchLogs ? 'ready' : 'empty',
   };
+  const detailSectionTones: Record<DetailSectionId, DetailSectionTone> = {
+    metadata: 'default',
+    status: healthSectionTone,
+    safe: 'default',
+    yaml: 'default',
+    labels: 'default',
+    annotations: 'default',
+    relations: 'default',
+    events: eventsError || eventHasWarning ? 'warning' : 'default',
+    logs: logsError ? 'error' : logsWarning ? 'warning' : 'default',
+  };
   const overviewItems = resourceDetailOverviewItems({
     canFetchLogs,
     effectiveLogContainer,
@@ -2874,7 +2896,7 @@ function ResourceExplorerDetail({
   const allDetailSectionsOpen = openDetailSectionCount === detailKeyboardSections.length;
   const noDetailSectionsOpen = openDetailSectionCount === 0;
   const defaultDetailSectionsOpen = openDetailSectionCount === defaultOpenDetailSections.length && defaultOpenDetailSections.every((id) => openSections.has(id));
-  const activeDetailSectionLabel = detailJumpSections.find((section) => section.id === activeDetailSectionId)?.label || 'Metadata';
+  const activeDetailSectionLabel = detailNavigatorSections.find((section) => section.id === activeDetailSectionId)?.label || 'Metadata';
   const resourceIdentityName = resource.namespace ? `${resource.namespace}/${resource.name}` : resource.name;
   const isSectionOpen = (id: DetailSectionId) => openSections.has(id);
   const toggleSection = (id: DetailSectionId) => {
@@ -3360,6 +3382,14 @@ function ResourceExplorerDetail({
             </button>
           </div>
         </div>
+        <ResourceDetailSectionNavigator
+          activeId={activeDetailSectionId}
+          openSections={openSections}
+          sections={detailNavigatorSections}
+          summaries={detailSectionSummaries}
+          tones={detailSectionTones}
+          onFocusSection={focusDetailSection}
+        />
         <div className="mt-3 flex flex-wrap items-center gap-1.5">
           {detailJumpSections.map((section) => {
             const jumpTone: DetailSectionTone = section.id === 'events' && eventHasWarning ? 'warning' : section.id === 'status' ? healthSectionTone : 'default';
@@ -6053,6 +6083,82 @@ function isEditableTarget(target: EventTarget | null) {
   return tagName === 'input' || tagName === 'select' || tagName === 'textarea' || tagName === 'button' || target.isContentEditable;
 }
 
+function ResourceDetailSectionNavigator({
+  activeId,
+  onFocusSection,
+  openSections,
+  sections,
+  summaries,
+  tones,
+}: {
+  activeId: DetailSectionId;
+  onFocusSection: (id: DetailSectionId) => void;
+  openSections: Set<DetailSectionId>;
+  sections: Array<{ id: DetailSectionId; label: string }>;
+  summaries: Record<DetailSectionId, string>;
+  tones: Record<DetailSectionId, DetailSectionTone>;
+}) {
+  return (
+    <div
+      className="mt-3 grid gap-2 rounded-[12px] border border-[rgba(60,60,67,0.1)] bg-[rgba(242,242,247,0.42)] p-2"
+      data-testid="resource-detail-section-navigator"
+      aria-label="리소스 상세 섹션 목차"
+    >
+      <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
+        <p className="ku-meta">Detail sections</p>
+        <span className="ku-chip" data-testid="resource-detail-section-navigator-count">
+          {openSections.size} open
+        </span>
+      </div>
+      <div className="flex gap-1.5 overflow-x-auto pb-0.5 md:grid md:grid-cols-3 md:overflow-visible xl:grid-cols-9">
+        {sections.map((section) => {
+          const open = openSections.has(section.id);
+          const active = activeId === section.id;
+          const tone = tones[section.id] || 'default';
+          return (
+            <button
+              key={section.id}
+              className={resourceDetailNavigatorItemClassName(active, open, tone)}
+              type="button"
+              onClick={() => onFocusSection(section.id)}
+              aria-current={active ? 'true' : undefined}
+              aria-expanded={open}
+              data-testid={`resource-detail-section-nav-item-${section.id}`}
+              title={`${section.label} section`}
+            >
+              <span className="truncate">{section.label}</span>
+              <span className="flex items-center gap-1">
+                <span
+                  className={`rounded-full px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase ${
+                    tone === 'error'
+                      ? 'bg-[rgba(255,59,48,0.12)] text-[#b42318]'
+                      : tone === 'warning'
+                        ? 'bg-[rgba(255,149,0,0.14)] text-[#9a5a00]'
+                        : active
+                          ? 'bg-white/85 text-[#0057b8]'
+                          : 'bg-white/72 text-[rgba(60,60,67,0.58)]'
+                  }`}
+                  data-testid={`resource-detail-section-nav-summary-${section.id}`}
+                >
+                  {summaries[section.id]}
+                </span>
+                <span
+                  className={`rounded-full px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase ${
+                    open ? 'bg-[rgba(52,199,89,0.12)] text-[#248a3d]' : 'bg-[rgba(142,142,147,0.1)] text-[#636366]'
+                  }`}
+                  data-testid={`resource-detail-section-nav-state-${section.id}`}
+                >
+                  {open ? 'open' : 'closed'}
+                </span>
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function DetailSection({
   active = false,
   children,
@@ -6207,6 +6313,31 @@ function statusPillClassName(status: string) {
     return 'shrink-0 rounded-full border border-[rgba(255,59,48,0.24)] bg-[rgba(255,59,48,0.1)] px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase text-[#c01f17]';
   }
   return 'shrink-0 rounded-full border border-[rgba(142,142,147,0.22)] bg-[rgba(142,142,147,0.1)] px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase text-[#636366]';
+}
+
+function resourceDetailNavigatorItemClassName(active: boolean, open: boolean, tone: DetailSectionTone) {
+  const base =
+    'flex min-w-[154px] flex-col items-start gap-1 rounded-[10px] border px-2.5 py-2 text-left text-[11px] font-semibold transition md:min-w-0';
+  if (active && tone === 'error') {
+    return `${base} border-[rgba(255,59,48,0.32)] bg-[rgba(255,59,48,0.12)] text-[#b42318] shadow-sm`;
+  }
+  if (active && tone === 'warning') {
+    return `${base} border-[rgba(255,149,0,0.32)] bg-[rgba(255,149,0,0.12)] text-[#9a5a00] shadow-sm`;
+  }
+  if (active) {
+    return `${base} border-[rgba(0,122,255,0.26)] bg-[rgba(0,122,255,0.1)] text-[#0057b8] shadow-sm`;
+  }
+  if (tone === 'error') {
+    return `${base} border-[rgba(255,59,48,0.22)] bg-[rgba(255,59,48,0.08)] text-[#b42318] hover:bg-[rgba(255,59,48,0.12)]`;
+  }
+  if (tone === 'warning') {
+    return `${base} border-[rgba(255,149,0,0.22)] bg-[rgba(255,149,0,0.08)] text-[#8a4d00] hover:bg-[rgba(255,149,0,0.12)]`;
+  }
+  return `${base} ${
+    open
+      ? 'border-[rgba(52,199,89,0.18)] bg-white/80 text-[#1d1d1f] hover:bg-white'
+      : 'border-[rgba(60,60,67,0.1)] bg-white/58 text-[rgba(60,60,67,0.68)] hover:bg-white'
+  }`;
 }
 
 function unique(values: string[]) {
