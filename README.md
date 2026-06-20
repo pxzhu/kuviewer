@@ -468,6 +468,8 @@ node scripts/prepare-deploy-known-hosts.mjs --from-file /tmp/kuviewer-known-host
 
 If both the workflow keyscan fallback and the helper cannot collect host keys, SSH is not reachable from that network path; verify the server SSH service, port, DNS/IP, and firewall before rerunning the tag deploy.
 
+Before creating a new release tag, the manual `deploy-preflight` workflow can validate only the deploy connection path. It checks required secrets, the optional pinned host key, strict SSH connection setup, remote `git`/`curl`/`gzip`/Docker/Compose availability, `DEPLOY_PATH`, existing `deploy/standalone/.env`, and temporary write access. It does not build an image, upload files, run compose, roll back, or change the server deployment.
+
 Deploy rollback is local to the server. Before loading the new `kuviewer:local` image, the workflow preserves the existing image as `kuviewer:rollback-${GITHUB_RUN_ID}` when one exists. If the new compose rollout does not pass the bounded `/healthz` retry loop, the workflow retags that preserved image back to `kuviewer:local`, recreates compose, checks health again, and still fails the GitHub Actions run so the failed release is visible. The server writes safe deploy metadata to `$DEPLOY_PATH/.kuviewer/deploy-state.json`, including run id, ref, sha, timestamps, image ids, result, and rollback result. It does not print raw container logs, `.env` content, tokens, kubeconfigs, private keys, cloud credentials, or Secret values.
 
 Optional repository variables, shown with example values:
