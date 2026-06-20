@@ -46,6 +46,10 @@ export interface DesktopCmSession {
   lastCheckStatus: string;
   lastCheckAt?: number;
   lastCheckMessage?: string;
+  diagnosticStage?: string;
+  diagnosticSeverity?: string;
+  diagnosticMessage?: string;
+  diagnosticHint?: string;
 }
 
 export interface DesktopCmSessionInput {
@@ -72,6 +76,10 @@ export interface DesktopCmSessionRuntimeProfile {
   lastHealthAt?: number;
   lastHealthMessage?: string;
   lastError?: string;
+  diagnosticStage?: string;
+  diagnosticSeverity?: string;
+  diagnosticMessage?: string;
+  diagnosticHint?: string;
 }
 
 const desktopConnectionProfileStorageKey = 'kuviewer_desktop_connection_profile';
@@ -648,6 +656,22 @@ function parseDesktopCmSession(value: unknown): DesktopCmSession | null {
         typeof session.lastCheckMessage === 'string' && session.lastCheckMessage.trim()
           ? normalizeBoundedText(session.lastCheckMessage, 120, 'desktop_cm_session_last_check_message')
           : undefined,
+      diagnosticStage:
+        typeof session.diagnosticStage === 'string' && session.diagnosticStage.trim()
+          ? normalizeBoundedText(session.diagnosticStage, 40, 'desktop_cm_session_diagnostic_stage')
+          : undefined,
+      diagnosticSeverity:
+        typeof session.diagnosticSeverity === 'string' && session.diagnosticSeverity.trim()
+          ? normalizeBoundedText(session.diagnosticSeverity, 20, 'desktop_cm_session_diagnostic_severity')
+          : undefined,
+      diagnosticMessage:
+        typeof session.diagnosticMessage === 'string' && session.diagnosticMessage.trim()
+          ? normalizeBoundedText(session.diagnosticMessage, 160, 'desktop_cm_session_diagnostic_message')
+          : undefined,
+      diagnosticHint:
+        typeof session.diagnosticHint === 'string' && session.diagnosticHint.trim()
+          ? normalizeBoundedText(session.diagnosticHint, 220, 'desktop_cm_session_diagnostic_hint')
+          : undefined,
     };
   } catch {
     return null;
@@ -690,6 +714,22 @@ function parseDesktopCmSessionRuntimeProfile(value: unknown): DesktopCmSessionRu
       lastError:
         typeof profile.lastError === 'string' && profile.lastError.trim()
           ? normalizeBoundedText(profile.lastError, 120, 'desktop_cm_runtime_last_error')
+          : undefined,
+      diagnosticStage:
+        typeof profile.diagnosticStage === 'string' && profile.diagnosticStage.trim()
+          ? normalizeBoundedText(profile.diagnosticStage, 40, 'desktop_cm_runtime_diagnostic_stage')
+          : undefined,
+      diagnosticSeverity:
+        typeof profile.diagnosticSeverity === 'string' && profile.diagnosticSeverity.trim()
+          ? normalizeBoundedText(profile.diagnosticSeverity, 20, 'desktop_cm_runtime_diagnostic_severity')
+          : undefined,
+      diagnosticMessage:
+        typeof profile.diagnosticMessage === 'string' && profile.diagnosticMessage.trim()
+          ? normalizeBoundedText(profile.diagnosticMessage, 160, 'desktop_cm_runtime_diagnostic_message')
+          : undefined,
+      diagnosticHint:
+        typeof profile.diagnosticHint === 'string' && profile.diagnosticHint.trim()
+          ? normalizeBoundedText(profile.diagnosticHint, 220, 'desktop_cm_runtime_diagnostic_hint')
           : undefined,
     };
   } catch {

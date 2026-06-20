@@ -390,6 +390,10 @@ export function DesktopCmSessionPanel({
                   {selectedSession.lastCheckAt ? `last check ${formatTimestamp(selectedSession.lastCheckAt)}` : formatCmSessionCheckStatus(selectedSession.lastCheckStatus)}
                 </span>
               </div>
+              <DesktopCmDiagnostics
+                diagnostic={selectedRuntimeActive && runtimeProfile ? runtimeProfile : selectedSession}
+                testId="desktop-cm-session-summary-diagnostics"
+              />
             </div>
             {selectedRuntimeActive && runtimeProfile ? (
               <div className="min-w-0 text-xs font-semibold text-[rgba(60,60,67,0.62)]" data-testid="desktop-cm-session-summary-runtime-url">
@@ -479,6 +483,7 @@ export function DesktopCmSessionPanel({
                   </span>
                 </span>
               </button>
+              <DesktopCmDiagnostics diagnostic={activeRuntimeSessionId === session.id && runtimeProfile ? runtimeProfile : session} testId={`desktop-cm-session-diagnostics-${session.id}`} />
               {activeRuntimeSessionId === session.id && runtimeProfile ? (
                 <div
                   className="grid gap-1 rounded-[8px] border border-[rgba(0,122,255,0.18)] bg-[rgba(0,122,255,0.07)] px-2.5 py-2 text-xs font-semibold text-[#0066cc]"
@@ -636,6 +641,40 @@ export function DesktopCmSessionPanel({
   );
 }
 
+function DesktopCmDiagnostics({
+  diagnostic,
+  testId,
+}: {
+  diagnostic: Pick<DesktopCmSession, 'diagnosticStage' | 'diagnosticSeverity' | 'diagnosticMessage' | 'diagnosticHint' | 'lastCheckAt'> | Pick<DesktopCmSessionRuntimeProfile, 'diagnosticStage' | 'diagnosticSeverity' | 'diagnosticMessage' | 'diagnosticHint' | 'lastHealthAt'>;
+  testId: string;
+}) {
+  const stage = diagnostic.diagnosticStage || 'metadata';
+  const severity = diagnostic.diagnosticSeverity || 'info';
+  const message = diagnostic.diagnosticMessage || 'not-checked';
+  const hint = diagnostic.diagnosticHint || '연결 확인을 실행해 진단을 갱신하세요.';
+  const timestamp = 'lastHealthAt' in diagnostic ? diagnostic.lastHealthAt : 'lastCheckAt' in diagnostic ? diagnostic.lastCheckAt : undefined;
+  return (
+    <div className="mt-2 grid gap-1.5 rounded-[8px] border border-[rgba(60,60,67,0.1)] bg-white/68 px-2.5 py-2" data-testid={testId}>
+      <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+        <span className="ku-meta">Diagnostics</span>
+        <span className={`ku-chip ${cmDiagnosticSeverityClass(severity)}`} data-testid={`${testId}-severity`}>
+          {formatCmDiagnosticSeverity(severity)}
+        </span>
+        <span className="ku-chip" data-testid={`${testId}-stage`}>
+          {formatCmDiagnosticStage(stage)}
+        </span>
+        {timestamp ? <span className="ku-chip">{formatTimestamp(timestamp)}</span> : null}
+      </div>
+      <p className="break-words font-mono text-[10px] font-semibold text-[rgba(60,60,67,0.64)]" data-testid={`${testId}-message`}>
+        {message}
+      </p>
+      <p className="break-words text-xs font-semibold text-[rgba(60,60,67,0.68)]" data-testid={`${testId}-hint`}>
+        {hint}
+      </p>
+    </div>
+  );
+}
+
 function formatCmSessionError(error: string) {
   if (error.includes('remote_api_host')) {
     return 'API host 형식 오류';
@@ -743,6 +782,50 @@ function formatRuntimeHealthStatus(status: string) {
   }
 }
 
+function formatCmDiagnosticStage(stage: string) {
+  switch (stage) {
+    case 'credential':
+      return 'credential';
+    case 'reachability':
+      return 'reachability';
+    case 'ssh-auth':
+      return 'ssh auth';
+    case 'tunnel':
+      return 'tunnel';
+    case 'health':
+      return 'health';
+    case 'runtime':
+      return 'runtime';
+    case 'metadata':
+      return 'metadata';
+    default:
+      return stage || 'metadata';
+  }
+}
+
+function formatCmDiagnosticSeverity(severity: string) {
+  switch (severity) {
+    case 'error':
+      return 'error';
+    case 'warning':
+      return 'warning';
+    case 'info':
+      return 'info';
+    default:
+      return severity || 'info';
+  }
+}
+
+function cmDiagnosticSeverityClass(severity: string) {
+  if (severity === 'error') {
+    return 'border-[rgba(255,59,48,0.24)] bg-[rgba(255,59,48,0.1)] text-[#b42318]';
+  }
+  if (severity === 'warning') {
+    return 'border-[rgba(255,149,0,0.24)] bg-[rgba(255,149,0,0.12)] text-[#8a4d00]';
+  }
+  return 'border-[rgba(52,199,89,0.22)] bg-[rgba(52,199,89,0.1)] text-[#248a3d]';
+}
+
 function normalizeSearchValue(value: string) {
   return value.trim().toLowerCase();
 }
@@ -765,6 +848,10 @@ function matchesCmSessionSearch(session: DesktopCmSession, normalizedQuery: stri
     session.credentialAvailable ? 'credential ready' : 'credential missing',
     formatCmSessionCheckStatus(session.lastCheckStatus),
     formatRuntimeStatus(session.runtimeStatus),
+    session.diagnosticStage || '',
+    session.diagnosticSeverity || '',
+    session.diagnosticMessage || '',
+    session.diagnosticHint || '',
   ]
     .join(' ')
     .toLowerCase();
