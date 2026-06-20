@@ -37,6 +37,7 @@ requireCondition(
     'desktop-cm-advanced-diagnostics',
     'desktop-cm-session-export-import',
     'desktop-cm-diagnostics-filtering',
+    'desktop-cm-diagnostics-saved-filters',
   ].includes(spec.status),
   'status must be a known desktop packaging milestone'
 );
@@ -78,6 +79,7 @@ requireCondition(phases.includes('desktop-download-descope'), 'phaseOrder must i
 requireCondition(phases.includes('desktop-cm-advanced-diagnostics'), 'phaseOrder must include desktop-cm-advanced-diagnostics');
 requireCondition(phases.includes('desktop-cm-session-export-import'), 'phaseOrder must include desktop-cm-session-export-import');
 requireCondition(phases.includes('desktop-cm-diagnostics-filtering'), 'phaseOrder must include desktop-cm-diagnostics-filtering');
+requireCondition(phases.includes('desktop-cm-diagnostics-saved-filters'), 'phaseOrder must include desktop-cm-diagnostics-saved-filters');
 
 await validateBuildPrerequisites(spec);
 await validateDesktopDistributionPolicy(spec);
@@ -105,6 +107,7 @@ if (
     'desktop-cm-advanced-diagnostics',
     'desktop-cm-session-export-import',
     'desktop-cm-diagnostics-filtering',
+    'desktop-cm-diagnostics-saved-filters',
   ].includes(spec.status)
 ) {
   await validateTauriScaffold(spec.tauri || {});
@@ -706,8 +709,8 @@ async function validateCredentialStorageDesign(spec) {
 async function validateCmSshSessionManager(spec) {
   const manager = spec.cmSshSessionManager || {};
   requireCondition(
-    ['runtime-health-details', 'advanced-diagnostics', 'session-export-import', 'diagnostics-filtering'].includes(manager.status),
-    'cmSshSessionManager.status must be runtime-health-details, advanced-diagnostics, session-export-import, or diagnostics-filtering'
+    ['runtime-health-details', 'advanced-diagnostics', 'session-export-import', 'diagnostics-filtering', 'diagnostics-saved-filters'].includes(manager.status),
+    'cmSshSessionManager.status must be runtime-health-details, advanced-diagnostics, session-export-import, diagnostics-filtering, or diagnostics-saved-filters'
   );
   requireCondition(manager.desktopOnly === true, 'cmSshSessionManager.desktopOnly must be true');
   requireCondition(manager.webExposed === false, 'cmSshSessionManager.webExposed must be false');
@@ -822,6 +825,19 @@ async function validateCmSshSessionManager(spec) {
   for (const field of ['diagnosticStage', 'diagnosticSeverity']) {
     requireCondition(filterFields.has(field), `cmSshSessionManager.diagnosticFiltering.fields must include ${field}`);
   }
+  const diagnosticSavedFilters = manager.diagnosticSavedFilters || {};
+  requireCondition(diagnosticSavedFilters.desktopOnly === true, 'cmSshSessionManager.diagnosticSavedFilters.desktopOnly must be true');
+  requireCondition(diagnosticSavedFilters.storage === 'localStorage-ui-preference', 'cmSshSessionManager.diagnosticSavedFilters.storage must be localStorage-ui-preference');
+  requireCondition(diagnosticSavedFilters.storageKey === 'kuviewer_desktop_cm_diagnostic_filter_presets', 'cmSshSessionManager.diagnosticSavedFilters.storageKey must be kuviewer_desktop_cm_diagnostic_filter_presets');
+  requireCondition(diagnosticSavedFilters.maxPresets === 8, 'cmSshSessionManager.diagnosticSavedFilters.maxPresets must be 8');
+  requireCondition(diagnosticSavedFilters.maxNameLength === 40, 'cmSshSessionManager.diagnosticSavedFilters.maxNameLength must be 40');
+  const savedFilterFields = new Set(Array.isArray(diagnosticSavedFilters.fields) ? diagnosticSavedFilters.fields : []);
+  for (const field of ['name', 'diagnosticStage', 'diagnosticSeverity', 'updatedAt']) {
+    requireCondition(savedFilterFields.has(field), `cmSshSessionManager.diagnosticSavedFilters.fields must include ${field}`);
+  }
+  for (const flag of ['noSessionSearch', 'noSessionData', 'noCredentialPayload', 'noRuntimeProfile', 'noDiagnosticHistory', 'noExportImportPayload']) {
+    requireCondition(diagnosticSavedFilters[flag] === true, `cmSshSessionManager.diagnosticSavedFilters.${flag} must be true`);
+  }
   const hiddenPrototypeUi = new Set(Array.isArray(manager.hiddenPrototypeUi) ? manager.hiddenPrototypeUi : []);
   for (const marker of ['DesktopConnectionProfilePanel', 'DesktopKubernetesProfilePanel', 'desktop-use-sidecar-profile']) {
     requireCondition(hiddenPrototypeUi.has(marker), `cmSshSessionManager.hiddenPrototypeUi must include ${marker}`);
@@ -926,6 +942,11 @@ async function validateCmSshSessionManager(spec) {
     'desktop-cm-session-diagnostic-stage-filter',
     'desktop-cm-session-diagnostic-severity-filter',
     'desktop-cm-session-diagnostic-filter-clear',
+    'kuviewer_desktop_cm_diagnostic_filter_presets',
+    'desktop-cm-diagnostic-filter-preset-name',
+    'desktop-cm-diagnostic-filter-preset-save',
+    'desktop-cm-diagnostic-filter-preset-list',
+    'desktop-cm-diagnostic-filter-preset-count',
     'desktop-cm-session-delete-credential',
     'Diagnostics',
     'desktop-cm-session-summary-diagnostics',
@@ -985,6 +1006,9 @@ async function validateCmSshSessionManager(spec) {
     'desktop CM session search must match session name metadata',
     'desktop CM diagnostic stage filter must match metadata sessions',
     'desktop CM diagnostic filters must match runtime error diagnostics',
+    'desktop CM diagnostic saved filters must apply after reload',
+    'desktop CM diagnostic saved filters must not include credentialAvailable',
+    'desktop CM diagnostic saved filter update must keep same-name presets unique',
     'desktop CM session summary must show active runtime status',
     'desktop CM diagnostics must show runtime-lost message',
     'desktop CM session search must match diagnostic message',
@@ -1021,6 +1045,7 @@ async function validateCmSshSessionManager(spec) {
     requireCondition(text.includes('runtime health') || text.includes('health/details'), `${label} must document CM runtime health/details`);
     requireCondition(text.includes('safe diagnostic') || text.includes('advanced diagnostics'), `${label} must document safe desktop CM diagnostics`);
     requireCondition(text.includes('diagnostic filtering') || text.includes('diagnostics filtering'), `${label} must document desktop CM diagnostic filtering`);
+    requireCondition(text.includes('diagnostic saved filters') || text.includes('saved diagnostic filters'), `${label} must document desktop CM diagnostic saved filters`);
     requireCondition(text.includes('export/import') || text.includes('session export'), `${label} must document desktop CM session export/import`);
     requireCondition(text.includes('web app must not expose SSH'), `${label} must document that the web app must not expose SSH`);
   }
