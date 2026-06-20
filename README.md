@@ -466,6 +466,18 @@ The helper also supports validating an existing known_hosts file and setting the
 node scripts/prepare-deploy-known-hosts.mjs --from-file /tmp/kuviewer-known-hosts --set-secret
 ```
 
+If `ssh-keyscan` is blocked but you can run commands on the server, generate the same pin from public SSH host key files. These `.pub` files are public keys, not private keys:
+
+```bash
+node scripts/prepare-deploy-known-hosts.mjs \
+  --host <server-host> \
+  --port <server-port> \
+  --from-public-key /etc/ssh/ssh_host_ed25519_key.pub \
+  --from-public-key /etc/ssh/ssh_host_ecdsa_key.pub \
+  --from-public-key /etc/ssh/ssh_host_rsa_key.pub \
+  --set-secret
+```
+
 If both the workflow keyscan fallback and the helper cannot collect host keys, SSH is not reachable from that network path; verify the server SSH service, port, DNS/IP, and firewall before rerunning the tag deploy.
 
 Before creating a new release tag, the manual `deploy-preflight` workflow can validate only the deploy connection path. It checks required secrets, SSH TCP reachability, the optional pinned host key, strict SSH connection setup, remote `git`/`curl`/`gzip`/Docker/Compose availability, `DEPLOY_PATH`, existing `deploy/standalone/.env`, and temporary write access. It does not build an image, upload files, run compose, roll back, or change the server deployment.
