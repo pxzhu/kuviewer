@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "name": "Kuviewer Desktop CM Session Explorer",
   "goal": "desktop-cm-session-prototype",
-  "status": "desktop-cm-session-layout-conflict-preview",
+  "status": "desktop-cm-session-layout-row-conflicts",
   "recommendedPackager": "tauri",
   "fallbackPackager": "electron",
   "tauri": {
@@ -71,7 +71,7 @@
     "noOperationalActions": true
   },
   "cmSshSessionManager": {
-    "status": "session-layout-conflict-preview",
+    "status": "session-layout-row-conflicts",
     "desktopOnly": true,
     "webExposed": false,
     "storage": "tauri-state-safe-metadata-with-os-credential-store-and-session-runtime",
@@ -325,13 +325,36 @@
       "noSecretValues": true,
       "noEventsOrLogs": true
     },
+    "sessionLayoutConflictRowActions": {
+      "desktopOnly": true,
+      "uiOnly": true,
+      "stateStorage": "memory-only",
+      "scope": "single-conflict-row",
+      "actions": ["incoming", "keep-current", "rename-incoming"],
+      "updatesSingleConflict": true,
+      "remainingPreviewPersists": true,
+      "lastConflictClosesPreview": true,
+      "summaryCountsUpdatePerRow": true,
+      "noSessionExportImportSchemaChange": true,
+      "noTauriSchemaChange": true,
+      "noSessionSearch": true,
+      "noDiagnosticFilters": true,
+      "noEndpointMetadata": true,
+      "noCredentialPayload": true,
+      "noRuntimeProfile": true,
+      "noDiagnosticHistory": true,
+      "noToken": true,
+      "noKubeconfig": true,
+      "noSecretValues": true,
+      "noEventsOrLogs": true
+    },
     "hiddenPrototypeUi": [
       "DesktopConnectionProfilePanel",
       "DesktopKubernetesProfilePanel",
       "desktop-use-sidecar-profile"
     ],
     "next": [
-      "Desktop CM session layout per-row conflict actions"
+      "Desktop CM session layout conflict summary polish"
     ]
   },
   "remoteConnectionProfile": {
@@ -592,6 +615,7 @@
     "desktop-cm-session-bulk-actions",
     "desktop-cm-session-saved-layouts",
     "desktop-cm-session-layout-import-export",
-    "desktop-cm-session-layout-conflict-preview"
+    "desktop-cm-session-layout-conflict-preview",
+    "desktop-cm-session-layout-row-conflicts"
   ]
 }

@@ -462,11 +462,41 @@ async function smokeDesktopRuntime(browser, url) {
     requireCondition(layoutImportSummary?.includes('skipped 1'), 'desktop CM session layout conflict keep current must count same-name conflicts as skipped');
     sessionLayoutStorage = await page.evaluate(() => window.localStorage.getItem('kuviewer_desktop_cm_session_layout_presets') || '');
     requireCondition(!sessionLayoutStorage.includes('Imported'), 'desktop CM session layout conflict keep current must not overwrite current layout');
-    await page.getByTestId('desktop-cm-session-layout-import').setInputFiles(layoutImportPath);
+    const layoutMultiConflictPath = path.join(layoutImportDir, 'cm-session-layouts-multi-conflict.json');
+    await writeFile(layoutMultiConflictPath, JSON.stringify({
+      schemaVersion: 1,
+      kind: 'kuviewer.desktop.cmSessionLayouts',
+      exportedAt: Date.now(),
+      items: [
+        {
+          name: 'Ops View',
+          viewPreferences: {
+            sessions: [{ sessionId, group: 'Imported', favorite: true, updatedAt: Date.now() }],
+            collapsedGroups: [],
+          },
+          updatedAt: Date.now(),
+        },
+        {
+          name: 'Review View',
+          viewPreferences: {
+            sessions: [{ sessionId, group: 'Review Incoming', favorite: true, updatedAt: Date.now() }],
+            collapsedGroups: [],
+          },
+          updatedAt: Date.now(),
+        },
+      ],
+    }));
+    await page.getByTestId('desktop-cm-session-layout-import').setInputFiles(layoutMultiConflictPath);
     await page.getByTestId('desktop-cm-session-layout-conflict-preview').waitFor({ state: 'visible', timeout: 10_000 });
-    await page.getByTestId('desktop-cm-session-layout-conflict-use-incoming').click();
+    await page.getByTestId('desktop-cm-session-layout-conflict-review-view').waitFor({ state: 'visible', timeout: 10_000 });
+    await page.getByTestId('desktop-cm-session-layout-conflict-row-keep-current-review-view').click();
+    await page.getByTestId('desktop-cm-session-layout-conflict-preview').waitFor({ state: 'visible', timeout: 10_000 });
+    await page.getByTestId('desktop-cm-session-layout-conflict-review-view').waitFor({ state: 'hidden', timeout: 10_000 });
+    sessionLayoutStorage = await page.evaluate(() => window.localStorage.getItem('kuviewer_desktop_cm_session_layout_presets') || '');
+    requireCondition(!sessionLayoutStorage.includes('Review Incoming'), 'desktop CM session layout row keep current must resolve only the selected conflict');
+    await page.getByTestId('desktop-cm-session-layout-conflict-row-use-incoming-ops-view').click();
     layoutImportSummary = await page.getByTestId('desktop-cm-session-layout-import-summary').textContent();
-    requireCondition(layoutImportSummary?.includes('updated 1'), 'desktop CM session layout conflict incoming must update existing layout');
+    requireCondition(layoutImportSummary?.includes('updated 1'), 'desktop CM session layout row incoming must update only the selected layout');
     sessionLayoutStorage = await page.evaluate(() => window.localStorage.getItem('kuviewer_desktop_cm_session_layout_presets') || '');
     requireCondition(sessionLayoutStorage.includes('Imported'), 'desktop CM session layout conflict incoming must persist incoming layout after explicit choice');
     const layoutRenameImportPath = path.join(layoutImportDir, 'cm-session-layouts-rename.json');
@@ -487,10 +517,10 @@ async function smokeDesktopRuntime(browser, url) {
     }));
     await page.getByTestId('desktop-cm-session-layout-import').setInputFiles(layoutRenameImportPath);
     await page.getByTestId('desktop-cm-session-layout-conflict-preview').waitFor({ state: 'visible', timeout: 10_000 });
-    await page.getByTestId('desktop-cm-session-layout-conflict-rename-incoming').click();
+    await page.getByTestId('desktop-cm-session-layout-conflict-row-rename-incoming-ops-view').click();
     await page.getByTestId('desktop-cm-session-layout-ops-view-import').waitFor({ state: 'visible', timeout: 10_000 });
     sessionLayoutStorage = await page.evaluate(() => window.localStorage.getItem('kuviewer_desktop_cm_session_layout_presets') || '');
-    requireCondition(sessionLayoutStorage.includes('Ops View import') && sessionLayoutStorage.includes('Renamed'), 'desktop CM session layout conflict rename must keep both layouts');
+    requireCondition(sessionLayoutStorage.includes('Ops View import') && sessionLayoutStorage.includes('Renamed'), 'desktop CM session layout row rename must keep both layouts');
     requireCondition(!sessionLayoutStorage.includes('conflict-preview'), 'desktop CM session layout conflict resolution must keep conflict state memory-only');
     await rm(layoutImportDir, { force: true, recursive: true });
     await page.getByTestId('desktop-cm-session-diagnostic-stage-filter').selectOption('metadata');

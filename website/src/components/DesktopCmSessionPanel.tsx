@@ -67,6 +67,7 @@ interface DesktopCmSessionLayoutImportConflict {
 interface DesktopCmSessionLayoutImportConflictPreview {
   fileName: string;
   imported: number;
+  updated: number;
   skipped: number;
   invalid: number;
   conflicts: DesktopCmSessionLayoutImportConflict[];
@@ -571,7 +572,7 @@ export function DesktopCmSessionPanel({
       }
       setSessionLayoutImportSummary({ fileName: file.name, imported, updated: 0, skipped, invalid: parsed.invalid });
       if (conflicts.length > 0) {
-        setSessionLayoutImportConflicts({ fileName: file.name, imported, skipped, invalid: parsed.invalid, conflicts });
+        setSessionLayoutImportConflicts({ fileName: file.name, imported, updated: 0, skipped, invalid: parsed.invalid, conflicts });
       }
     } catch (requestError) {
       setError(formatCmSessionError(requestError instanceof Error ? requestError.message : 'desktop_cm_session_layout_import_failed'));
@@ -583,58 +584,62 @@ export function DesktopCmSessionPanel({
     }
   };
 
-  const handleResolveSessionLayoutImportConflicts = (mode: 'incoming' | 'current' | 'rename') => {
+  const handleResolveSessionLayoutImportConflicts = (mode: 'incoming' | 'current' | 'rename', conflictName?: string) => {
     if (!sessionLayoutImportConflicts) {
       return;
     }
-    if (mode === 'current') {
-      setSessionLayoutImportSummary({
-        fileName: sessionLayoutImportConflicts.fileName,
-        imported: sessionLayoutImportConflicts.imported,
-        updated: 0,
-        skipped: sessionLayoutImportConflicts.skipped + sessionLayoutImportConflicts.conflicts.length,
-        invalid: sessionLayoutImportConflicts.invalid,
-      });
-      setSessionLayoutImportConflicts(null);
+    const targetName = conflictName?.toLowerCase();
+    const selectedConflicts = targetName ? sessionLayoutImportConflicts.conflicts.filter((conflict) => conflict.name.toLowerCase() === targetName) : sessionLayoutImportConflicts.conflicts;
+    if (selectedConflicts.length === 0) {
       return;
     }
+    const selectedConflictNames = new Set(selectedConflicts.map((conflict) => conflict.name.toLowerCase()));
+    const remainingConflicts = sessionLayoutImportConflicts.conflicts.filter((conflict) => !selectedConflictNames.has(conflict.name.toLowerCase()));
+    let imported = sessionLayoutImportConflicts.imported;
+    let updated = sessionLayoutImportConflicts.updated;
+    let skipped = sessionLayoutImportConflicts.skipped;
 
-    if (mode === 'incoming') {
-      const conflictNames = new Set(sessionLayoutImportConflicts.conflicts.map((conflict) => conflict.name.toLowerCase()));
+    if (mode === 'current') {
+      skipped += selectedConflicts.length;
+    } else if (mode === 'incoming') {
       const nextPresets = normalizeDesktopCmSessionLayoutPresets([
-        ...sessionLayoutImportConflicts.conflicts.map((conflict) => conflict.incoming),
-        ...sessionLayoutPresets.filter((preset) => !conflictNames.has(preset.name.toLowerCase())),
+        ...selectedConflicts.map((conflict) => conflict.incoming),
+        ...sessionLayoutPresets.filter((preset) => !selectedConflictNames.has(preset.name.toLowerCase())),
       ]);
       setSessionLayoutPresets(nextPresets);
       writeDesktopCmSessionLayoutPresets(nextPresets);
-      setSessionLayoutImportSummary({
-        fileName: sessionLayoutImportConflicts.fileName,
-        imported: sessionLayoutImportConflicts.imported,
-        updated: sessionLayoutImportConflicts.conflicts.length,
-        skipped: sessionLayoutImportConflicts.skipped,
-        invalid: sessionLayoutImportConflicts.invalid,
+      updated += selectedConflicts.length;
+    } else {
+      const existingNames = new Set(sessionLayoutPresets.map((preset) => preset.name.toLowerCase()));
+      const renamedPresets = selectedConflicts.map((conflict) => {
+        const name = buildDesktopCmSessionLayoutImportName(conflict.incoming.name, existingNames);
+        existingNames.add(name.toLowerCase());
+        return { ...conflict.incoming, name, updatedAt: Date.now() };
       });
-      setSessionLayoutImportConflicts(null);
-      return;
+      const nextPresets = normalizeDesktopCmSessionLayoutPresets([...renamedPresets, ...sessionLayoutPresets]);
+      setSessionLayoutPresets(nextPresets);
+      writeDesktopCmSessionLayoutPresets(nextPresets);
+      imported += renamedPresets.length;
     }
 
-    const existingNames = new Set(sessionLayoutPresets.map((preset) => preset.name.toLowerCase()));
-    const renamedPresets = sessionLayoutImportConflicts.conflicts.map((conflict) => {
-      const name = buildDesktopCmSessionLayoutImportName(conflict.incoming.name, existingNames);
-      existingNames.add(name.toLowerCase());
-      return { ...conflict.incoming, name, updatedAt: Date.now() };
-    });
-    const nextPresets = normalizeDesktopCmSessionLayoutPresets([...renamedPresets, ...sessionLayoutPresets]);
-    setSessionLayoutPresets(nextPresets);
-    writeDesktopCmSessionLayoutPresets(nextPresets);
     setSessionLayoutImportSummary({
       fileName: sessionLayoutImportConflicts.fileName,
-      imported: sessionLayoutImportConflicts.imported + renamedPresets.length,
-      updated: 0,
-      skipped: sessionLayoutImportConflicts.skipped,
+      imported,
+      updated,
+      skipped,
       invalid: sessionLayoutImportConflicts.invalid,
     });
-    setSessionLayoutImportConflicts(null);
+    setSessionLayoutImportConflicts(
+      remainingConflicts.length > 0
+        ? {
+            ...sessionLayoutImportConflicts,
+            imported,
+            updated,
+            skipped,
+            conflicts: remainingConflicts,
+          }
+        : null,
+    );
   };
 
   const handleSetSessionGroup = (sessionId: string, group: string) => {
@@ -1320,6 +1325,32 @@ export function DesktopCmSessionPanel({
                       <span className="truncate text-[rgba(60,60,67,0.86)]">{conflict.name}</span>
                       <span className="font-mono">현재 · {formatDesktopCmSessionLayoutSummary(conflict.current.viewPreferences)}</span>
                       <span className="font-mono">incoming · {formatDesktopCmSessionLayoutSummary(conflict.incoming.viewPreferences)}</span>
+                      <span className="flex min-w-0 flex-wrap items-center gap-1">
+                        <button
+                          className="ku-control h-7 text-[11px]"
+                          data-testid={`desktop-cm-session-layout-conflict-row-use-incoming-${slugifyTestId(conflict.name)}`}
+                          type="button"
+                          onClick={() => handleResolveSessionLayoutImportConflicts('incoming', conflict.name)}
+                        >
+                          incoming
+                        </button>
+                        <button
+                          className="ku-control h-7 text-[11px]"
+                          data-testid={`desktop-cm-session-layout-conflict-row-keep-current-${slugifyTestId(conflict.name)}`}
+                          type="button"
+                          onClick={() => handleResolveSessionLayoutImportConflicts('current', conflict.name)}
+                        >
+                          현재 유지
+                        </button>
+                        <button
+                          className="ku-control h-7 text-[11px]"
+                          data-testid={`desktop-cm-session-layout-conflict-row-rename-incoming-${slugifyTestId(conflict.name)}`}
+                          type="button"
+                          onClick={() => handleResolveSessionLayoutImportConflicts('rename', conflict.name)}
+                        >
+                          rename
+                        </button>
+                      </span>
                     </div>
                   ))}
                 </div>
