@@ -39,6 +39,7 @@ requireCondition(
     'desktop-cm-diagnostics-filtering',
     'desktop-cm-diagnostics-saved-filters',
     'desktop-cm-connection-profile-polish',
+    'desktop-cm-session-clone-polish',
   ].includes(spec.status),
   'status must be a known desktop packaging milestone'
 );
@@ -82,6 +83,7 @@ requireCondition(phases.includes('desktop-cm-session-export-import'), 'phaseOrde
 requireCondition(phases.includes('desktop-cm-diagnostics-filtering'), 'phaseOrder must include desktop-cm-diagnostics-filtering');
 requireCondition(phases.includes('desktop-cm-diagnostics-saved-filters'), 'phaseOrder must include desktop-cm-diagnostics-saved-filters');
 requireCondition(phases.includes('desktop-cm-connection-profile-polish'), 'phaseOrder must include desktop-cm-connection-profile-polish');
+requireCondition(phases.includes('desktop-cm-session-clone-polish'), 'phaseOrder must include desktop-cm-session-clone-polish');
 
 await validateBuildPrerequisites(spec);
 await validateDesktopDistributionPolicy(spec);
@@ -111,6 +113,7 @@ if (
     'desktop-cm-diagnostics-filtering',
     'desktop-cm-diagnostics-saved-filters',
     'desktop-cm-connection-profile-polish',
+    'desktop-cm-session-clone-polish',
   ].includes(spec.status)
 ) {
   await validateTauriScaffold(spec.tauri || {});
@@ -712,8 +715,8 @@ async function validateCredentialStorageDesign(spec) {
 async function validateCmSshSessionManager(spec) {
   const manager = spec.cmSshSessionManager || {};
   requireCondition(
-    ['runtime-health-details', 'advanced-diagnostics', 'session-export-import', 'diagnostics-filtering', 'diagnostics-saved-filters', 'connection-profile-polish'].includes(manager.status),
-    'cmSshSessionManager.status must be runtime-health-details, advanced-diagnostics, session-export-import, diagnostics-filtering, diagnostics-saved-filters, or connection-profile-polish'
+    ['runtime-health-details', 'advanced-diagnostics', 'session-export-import', 'diagnostics-filtering', 'diagnostics-saved-filters', 'connection-profile-polish', 'session-clone-polish'].includes(manager.status),
+    'cmSshSessionManager.status must be runtime-health-details, advanced-diagnostics, session-export-import, diagnostics-filtering, diagnostics-saved-filters, connection-profile-polish, or session-clone-polish'
   );
   requireCondition(manager.desktopOnly === true, 'cmSshSessionManager.desktopOnly must be true');
   requireCondition(manager.webExposed === false, 'cmSshSessionManager.webExposed must be false');
@@ -863,6 +866,20 @@ async function validateCmSshSessionManager(spec) {
   for (const field of ['name', 'host', 'user', 'port', 'remoteApiPort']) {
     requireCondition(validationFields.has(field), `cmSshSessionManager.connectionProfilePolish.frontendValidation must include ${field}`);
   }
+  const sessionClonePolish = manager.sessionClonePolish || {};
+  requireCondition(sessionClonePolish.desktopOnly === true, 'cmSshSessionManager.sessionClonePolish.desktopOnly must be true');
+  requireCondition(sessionClonePolish.uiOnly === true, 'cmSshSessionManager.sessionClonePolish.uiOnly must be true');
+  requireCondition(sessionClonePolish.requiresExplicitSave === true, 'cmSshSessionManager.sessionClonePolish.requiresExplicitSave must be true');
+  requireCondition(sessionClonePolish.noNewStorage === true, 'cmSshSessionManager.sessionClonePolish.noNewStorage must be true');
+  requireCondition(sessionClonePolish.noExportImportSchemaChange === true, 'cmSshSessionManager.sessionClonePolish.noExportImportSchemaChange must be true');
+  requireCondition(sessionClonePolish.nameConflictPolicy === 'append-copy-suffix', 'cmSshSessionManager.sessionClonePolish.nameConflictPolicy must be append-copy-suffix');
+  const cloneFields = new Set(Array.isArray(sessionClonePolish.fields) ? sessionClonePolish.fields : []);
+  for (const field of ['name', 'host', 'port', 'user', 'remoteApiHost', 'remoteApiPort', 'description']) {
+    requireCondition(cloneFields.has(field), `cmSshSessionManager.sessionClonePolish.fields must include ${field}`);
+  }
+  for (const flag of ['clearsId', 'noCredentialPayload', 'noCredentialAvailabilityCopy', 'noRuntimeProfile', 'noDiagnosticHistory', 'noToken', 'noKubeconfig', 'noSecretValues']) {
+    requireCondition(sessionClonePolish[flag] === true, `cmSshSessionManager.sessionClonePolish.${flag} must be true`);
+  }
   const hiddenPrototypeUi = new Set(Array.isArray(manager.hiddenPrototypeUi) ? manager.hiddenPrototypeUi : []);
   for (const marker of ['DesktopConnectionProfilePanel', 'DesktopKubernetesProfilePanel', 'desktop-use-sidecar-profile']) {
     requireCondition(hiddenPrototypeUi.has(marker), `cmSshSessionManager.hiddenPrototypeUi must include ${marker}`);
@@ -961,6 +978,10 @@ async function validateCmSshSessionManager(spec) {
     'desktop-cm-session-api-preset-local-8080',
     'desktop-cm-session-api-default-reset',
     'desktop-cm-session-fill-selected',
+    'desktop-cm-session-clone',
+    'desktop-cm-session-clone-draft',
+    'desktop-cm-session-clone-cancel',
+    'buildDesktopCmSessionCloneName',
     'validateDesktopCmSessionForm',
     'secret 저장 없음',
     'credential store 사용',
@@ -1049,6 +1070,10 @@ async function validateCmSshSessionManager(spec) {
     'desktop CM connection profile quick API preset must update host and port',
     'desktop CM connection profile default reset must restore API defaults',
     'desktop CM selected session fill must copy safe metadata',
+    'desktop CM clone draft must copy only safe editable metadata',
+    'desktop CM clone must not copy credential availability',
+    'desktop CM clone must not copy runtime state',
+    'desktop CM clone draft must avoid existing clone names with a copy suffix',
     'desktop CM connection profile validation must block missing name before save',
     'desktop CM connection profile polish must not change export schema',
     'desktop CM session summary must show active runtime status',
@@ -1088,6 +1113,7 @@ async function validateCmSshSessionManager(spec) {
     requireCondition(text.includes('safe diagnostic') || text.includes('advanced diagnostics'), `${label} must document safe desktop CM diagnostics`);
     requireCondition(text.includes('diagnostic filtering') || text.includes('diagnostics filtering'), `${label} must document desktop CM diagnostic filtering`);
     requireCondition(text.includes('diagnostic saved filters') || text.includes('saved diagnostic filters'), `${label} must document desktop CM diagnostic saved filters`);
+    requireCondition(text.includes('session clone') || text.includes('clone draft') || text.includes('세션 복제'), `${label} must document desktop CM session clone behavior`);
     requireCondition(text.includes('export/import') || text.includes('session export'), `${label} must document desktop CM session export/import`);
     requireCondition(text.includes('web app must not expose SSH'), `${label} must document that the web app must not expose SSH`);
   }

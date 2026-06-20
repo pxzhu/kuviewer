@@ -554,6 +554,58 @@ async function smokeDesktopRuntime(browser, url) {
     requireCondition(runtimeState.profile?.remoteApiHost === '127.0.0.1', 'desktop CM runtime profile must include remote API host metadata');
     requireCondition(runtimeState.profile?.healthStatus === 'healthy', 'desktop CM runtime profile must include health status metadata');
     requireCondition(runtimeState.sourceMode === 'live', 'desktop CM runtime start must switch source mode to live');
+
+    await page.getByTestId(`desktop-cm-session-clone-${sessionId}`).click();
+    await page.getByTestId('desktop-cm-session-clone-draft').waitFor({ state: 'visible', timeout: 10_000 });
+    const cloneDraftState = {
+      name: await page.getByTestId('desktop-cm-session-name').inputValue(),
+      host: await page.getByTestId('desktop-cm-session-host').inputValue(),
+      port: await page.getByTestId('desktop-cm-session-port').inputValue(),
+      user: await page.getByTestId('desktop-cm-session-user').inputValue(),
+      apiHost: await page.getByTestId('desktop-cm-session-remote-api-host').inputValue(),
+      apiPort: await page.getByTestId('desktop-cm-session-remote-api-port').inputValue(),
+      description: await page.getByTestId('desktop-cm-session-description').inputValue(),
+      draftText: await page.getByTestId('desktop-cm-session-clone-draft').textContent(),
+    };
+    requireCondition(
+      cloneDraftState.name === 'Prod CM copy' &&
+        cloneDraftState.host === 'cm.example.internal' &&
+        cloneDraftState.port === '22' &&
+        cloneDraftState.user === 'ubuntu' &&
+        cloneDraftState.apiHost === '127.0.0.1' &&
+        cloneDraftState.apiPort === '18085' &&
+        cloneDraftState.description === 'updated readonly entry',
+      'desktop CM clone draft must copy only safe editable metadata'
+    );
+    requireCondition(cloneDraftState.draftText?.includes('credential/runtime 제외'), 'desktop CM clone draft must warn that credentials and runtime are excluded');
+    await page.getByTestId('desktop-cm-session-save').click();
+    await page.getByTestId('desktop-cm-session-clone-draft').waitFor({ state: 'hidden', timeout: 10_000 });
+    const clonedSessionState = await page.evaluate(() => {
+      const cloned = window.__kuviewerCmSessions.find((session) => session.name === 'Prod CM copy');
+      return {
+        count: window.__kuviewerCmSessions.length,
+        cloned,
+        runtimeProfile: window.__kuviewerCmRuntimeProfile,
+        exportedDiagnosticFilters: window.localStorage.getItem('kuviewer_desktop_cm_diagnostic_filter_presets') || '',
+      };
+    });
+    requireCondition(clonedSessionState.count === 3, 'desktop CM clone save must create one additional session after explicit save');
+    requireCondition(clonedSessionState.cloned?.credentialAvailable === false, 'desktop CM clone must not copy credential availability');
+    requireCondition(clonedSessionState.cloned?.runtimeStatus === 'stopped', 'desktop CM clone must not copy runtime state');
+    requireCondition(clonedSessionState.cloned?.lastCheckStatus === 'not-checked', 'desktop CM clone must not copy diagnostic history');
+    requireCondition(clonedSessionState.runtimeProfile?.sessionId === sessionId, 'desktop CM clone must not replace the active runtime profile');
+    requireCondition(!JSON.stringify(clonedSessionState.cloned).includes('healthz-ok'), 'desktop CM clone must not copy runtime diagnostics');
+    requireCondition(!clonedSessionState.exportedDiagnosticFilters.includes('Prod CM copy'), 'desktop CM clone must not write session data into diagnostic saved filters');
+    await page.getByTestId(`desktop-cm-session-clone-${sessionId}`).click();
+    await page.getByTestId('desktop-cm-session-clone-draft').waitFor({ state: 'visible', timeout: 10_000 });
+    const secondCloneDraftName = await page.getByTestId('desktop-cm-session-name').inputValue();
+    requireCondition(secondCloneDraftName === 'Prod CM copy 2', 'desktop CM clone draft must avoid existing clone names with a copy suffix');
+    await page.getByTestId('desktop-cm-session-clone-cancel').click();
+    await page.getByTestId('desktop-cm-session-clone-draft').waitFor({ state: 'hidden', timeout: 10_000 });
+    await page.getByTestId(`desktop-cm-session-delete-${clonedSessionState.cloned.id}`).click();
+    await page.getByTestId(`desktop-cm-session-delete-${clonedSessionState.cloned.id}`).click();
+    await page.getByText('CM/SSH session 삭제됨').waitFor({ state: 'visible', timeout: 10_000 });
+
     await page.getByTestId(`desktop-cm-session-runtime-detail-${sessionId}`).waitFor({ state: 'visible', timeout: 10_000 });
     await page.getByTestId(`desktop-cm-session-check-runtime-${sessionId}`).click();
     await page.getByText('Prod CM health · 정상').waitFor({ state: 'visible', timeout: 10_000 });
