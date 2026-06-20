@@ -12,7 +12,7 @@ Kuviewer는 Kubernetes 리소스를 웹에서 시각적으로 보는 도구다. 
 - 터미널 없이 Cluster, Node, Namespace, Pod, Deployment, StatefulSet, Service, Secret, ConfigMap, PVC/PV 등을 토폴로지로 확인한다.
 - YAML/JSON/ZIP 업로드만으로도 SaaS 정적 사이트처럼 토폴로지와 트래픽 흐름을 볼 수 있어야 한다.
 - 나중에 실제 Kubernetes API, admin token, Azure 인증, 클러스터 내부 agent/백엔드 연결을 확장한다.
-- 서버/클러스터 연결 시 리소스, 관계, Events, Logs를 읽기 전용으로 탐색할 수 있는 설치형 CM/SSH 세션 탐색 앱을 장기 목표에 둔다. macOS `.dmg`와 Windows `.exe` packaging 경로는 Tauri-first로 유지한다. 설치형 앱은 CM/SSH session manager multiple sessions 관리가 목표이며, web app must not expose SSH. 기존 local sidecar/API 경로는 prototype-only로 둔다.
+- 서버/클러스터 연결 시 리소스, 관계, Events, Logs를 읽기 전용으로 탐색할 수 있는 desktop-local CM/SSH session manager prototype은 장기 후보로 남긴다. No desktop installer download path is active. 공개 배포/다운로드 목표는 현재 제품 경로에서 제외하고, CM/SSH multiple sessions 아이디어와 web app must not expose SSH 원칙만 유지한다. 기존 local sidecar/API 경로는 prototype-only로 둔다.
 - 기술 스택은 무료 사용 가능해야 하며, 프론트 디자인은 Tailwind CSS 기반이다.
 
 ## 현재 구현 상태
@@ -30,7 +30,7 @@ Kuviewer는 Kubernetes 리소스를 웹에서 시각적으로 보는 도구다. 
 - `VITE_API_BASE_URL`이 없으면 API base URL은 빈 값으로 처리한다. 정적 업로드/목업 모드는 API 없이 동작한다.
 - 기본 visual smoke URL은 `http://127.0.0.1:4174/kuviewer/`다.
 - standalone 배포는 별도 subdomain을 host gateway에서 내부 `127.0.0.1:18085`로 라우팅하는 구성을 기준으로 한다.
-- 설치형 클러스터 탐색 앱 packaging spike와 Tauri desktop shell scaffold는 `desktop/packaging-spec.json`, `desktop/README.md`, `desktop/package.json`, `desktop/src-tauri/*`, `scripts/check-desktop-packaging-spec.mjs`로 시작했다. 권장 방향은 Tauri-first, fallback은 Electron이며, 첫 대상은 macOS `.dmg`와 Windows `.exe`다. 제품 방향은 CM/SSH session manager multiple sessions를 관리하는 설치형 앱이며, web app must not expose SSH. 현재 구현은 desktop-only CM/SSH session manager로 `desktop_cm_sessions`, `desktop_save_cm_session`, `desktop_select_cm_session`, `desktop_delete_cm_session`, `desktop_import_cm_session_private_key`, `desktop_delete_cm_session_credential`, `desktop_check_cm_session`, `desktop_cm_session_runtime`, `desktop_start_cm_session_runtime`, `desktop_stop_cm_session_runtime` Tauri command를 통해 `name/host/port/user/remoteApiHost/remoteApiPort/status/runtimeStatus/description/credentialAvailable/lastCheckStatus` 같은 safe metadata, 연결 확인 결과, sessionStorage-only localhost runtime profile만 프론트에 반환한다. Private key는 Rust layer가 OS credential store에만 저장하고, CM tunnel/runtime start 시에도 임시 owner-only key file을 repo 밖에 쓰고 SSH child를 띄운 뒤 `/healthz` 확인 후 localhost URL만 브라우저에 넘긴다. Stop/failure/app close/session delete/credential delete 시 SSH child와 temp key file을 정리한다. Browser state/localStorage/export/log에는 private key 본문을 노출하지 않으며 admin token은 계속 sessionStorage만 쓴다. Remote API, local sidecar, direct API/keychain runtime 경로는 prototype-only scaffold로 남기고 desktop product default로 보지 않는다. local sidecar는 `KUVIEWER_DESKTOP_ENABLE_PROTOTYPE_SIDECAR=1`일 때만 시작한다. `desktop-readonly` capability는 shell/fs 권한 없이 `core:default`만 허용한다. Desktop build prerequisites, generated `.icns`/`.ico` icon assets, icon source policy, signing boundaries는 `desktop/BUILD_PREREQUISITES.md`와 machine-checked packaging spec에 기록했다. `.github/workflows/desktop-package.yml`은 manual-only package workflow이며 unsigned build가 기본이다. 2026-06-19에 run `27800527207`로 unsigned macOS DMG dry-run이 성공했고 `Kuviewer_0.1.0_aarch64.dmg` artifact가 업로드됐다. 같은 날 run `27803179419`로 unsigned Windows NSIS EXE dry-run이 성공했고 `Kuviewer_0.1.0_x64-setup.exe` artifact가 업로드됐다. Desktop package workflow는 `package_version` 입력, `KUVIEWER_DESKTOP_VERSION`, `v*` tag ref, fallback `0.1.0` 순서로 package version을 resolve하고 CI workspace의 `desktop/package.json`, `desktop/src-tauri/tauri.conf.json`, `desktop/src-tauri/Cargo.toml`만 빌드 전에 맞춘다. 업로드 artifact 이름은 `kuviewer-macos-dmg-{version}` / `kuviewer-windows-exe-{version}` 형태를 쓴다. `smoke_matrix` 입력은 unsigned macOS DMG와 Windows EXE package smoke를 한 dispatch에서 실행하고 산출물은 GitHub Actions artifact로만 보관한다. `signed` 입력을 켜면 macOS는 CI secrets의 Developer ID `.p12`를 임시 runner keychain에 import하고 Apple notarization env를 Tauri build에 넘긴 뒤 keychain을 삭제한다. Windows는 CI secrets의 PFX를 CurrentUser certificate store에 import하고 thumbprint를 CI workspace Tauri config에 주입한 뒤 certificate를 삭제한다. CI는 desktop packaging spec check, CM/SSH session runtime smoke, sidecar build dry-run check를 실행한다.
+- Desktop-local CM/SSH session manager prototype과 Tauri desktop shell scaffold는 `desktop/packaging-spec.json`, `desktop/README.md`, `desktop/package.json`, `desktop/src-tauri/*`, `scripts/check-desktop-packaging-spec.mjs`로 기록한다. No desktop installer download path is active. 현재 제품 경로는 웹 앱과 standalone 서버 배포이며, desktop code는 공개 다운로드 산출물이 아니라 future local client prototype이다. CM/SSH session manager multiple sessions 아이디어와 web app must not expose SSH 원칙은 유지한다. 현재 구현은 desktop-only CM/SSH session manager로 `desktop_cm_sessions`, `desktop_save_cm_session`, `desktop_select_cm_session`, `desktop_delete_cm_session`, `desktop_import_cm_session_private_key`, `desktop_delete_cm_session_credential`, `desktop_check_cm_session`, `desktop_cm_session_runtime`, `desktop_start_cm_session_runtime`, `desktop_stop_cm_session_runtime` Tauri command를 통해 `name/host/port/user/remoteApiHost/remoteApiPort/status/runtimeStatus/description/credentialAvailable/lastCheckStatus` 같은 safe metadata, 연결 확인 결과, sessionStorage-only localhost runtime profile만 프론트에 반환한다. Private key는 Rust layer가 OS credential store에만 저장하고, CM tunnel/runtime start 시에도 임시 owner-only key file을 repo 밖에 쓰고 SSH child를 띄운 뒤 `/healthz` 확인 후 localhost URL만 브라우저에 넘긴다. Stop/failure/app close/session delete/credential delete 시 SSH child와 temp key file을 정리한다. Browser state/localStorage/export/log에는 private key 본문을 노출하지 않으며 admin token은 계속 sessionStorage만 쓴다. Remote API, local sidecar, direct API/keychain runtime 경로는 prototype-only scaffold로 남기고 desktop product default로 보지 않는다. local sidecar는 `KUVIEWER_DESKTOP_ENABLE_PROTOTYPE_SIDECAR=1`일 때만 시작한다. `desktop-readonly` capability는 shell/fs 권한 없이 `core:default`만 허용한다. Desktop build prerequisites, generated `.icns`/`.ico` icon assets, and icon source policy는 `desktop/BUILD_PREREQUISITES.md`와 machine-checked packaging spec에 기록했다. CI는 desktop packaging spec check, CM/SSH session runtime smoke, sidecar build dry-run check를 실행한다.
 - 기존 keychain prototype 기록은 `desktop/KEYCHAIN_CREDENTIAL_DESIGN.md`에 남아 있다. 해당 prototype은 macOS Keychain과 Windows Credential Manager를 쓰고, `desktop_kubernetes_profiles`, `KUVIEWER_DESKTOP_KUBE_TOKEN_FILE`, `scripts/smoke-desktop-keychain-runtime.mjs`로 safe metadata/runtime smoke를 검증할 수 있지만, 현재 제품 UI에서는 숨겨져 있고 active smoke는 `scripts/smoke-desktop-cm-sessions.mjs`다.
 - NetworkPolicy는 `applies-to`와 함께 `allows-ingress` / `allows-egress` 정책 의도 edge를 표시한다. 이는 실제 CNI traffic 관측이 아니라 spec 기반 해석이며, `matchLabels`와 `In`/`NotIn`/`Exists`/`DoesNotExist` `matchExpressions`를 edge 추론에 사용하고 `ipBlock`은 summary-only로 둔다.
 - `리소스 탐색`은 Kubernetes 리소스용 읽기 전용 목록/상세 패널을 제공한다. 목록은 ArrowUp/ArrowDown, Home/End, Enter-to-detail focus 키보드 탐색과 현재 필터 결과에 대한 memory-only bulk selection을 지원한다. bulk selection은 checkbox, Space toggle, Shift+Arrow/Home/End range selection, Ctrl/⌘+A 전체 선택, Escape 해제를 지원한다. bulk copy/export는 사용자 클릭으로만 실행하고 cluster/namespace/kind/name/status/count/summary key/relation count 같은 safe inventory만 포함한다. 상세에는 scope/age/owner/signals 요약, 섹션 점프 배지, 접기/펼치기 가능한 metadata, labels/annotations, safe status/summary preview, raw manifest가 아닌 safe YAML preview, topology relations, live Events, live Pod logs 영역이 포함된다. Status 섹션은 기존 safe status/summary에서 Pod readiness, restarts, replica gap, Service endpoint gap, Job failure, PVC/PV phase, routing/policy intent 같은 health signals를 계산해 표시한다. 상세 패널은 로컬 키보드 탐색을 제공하지만 리소스 데이터는 저장하지 않는다.
@@ -145,15 +145,11 @@ https://kuviewer.example.com/
    - Resource Explorer saved view team sync polish는 완료됐다.
    - Resource Explorer saved view team compare preview는 완료됐다.
    - Resource Explorer saved view team snapshot metadata는 완료됐다.
-   - 설치형 클러스터 탐색 앱 packaging spike는 완료됐다.
+   - Desktop-local CM/SSH session manager prototype 기록은 완료됐다.
    - Tauri desktop shell scaffold는 완료됐다.
-   - Desktop icon/signing/build prerequisites는 완료됐다.
-   - Desktop generated `.icns`/`.ico` assets and signing CI scaffold는 완료됐다.
-   - Desktop package workflow unsigned macOS DMG dry-run은 완료됐다.
-   - Desktop package workflow unsigned Windows EXE dry-run은 완료됐다.
+   - Desktop icon/build prerequisites는 완료됐다.
+   - Desktop generated `.icns`/`.ico` icon assets는 완료됐다.
    - Desktop remote server connection profile UX는 완료됐다.
-   - Desktop release artifact/versioning polish는 완료됐다.
-   - Desktop signing/notarization CI path는 완료됐다.
    - Local sidecar evaluation scaffold는 완료됐다.
    - Local sidecar runtime launch integration은 완료됐다.
    - Desktop sidecar source/profile 설정 UX는 완료됐다.
@@ -167,9 +163,8 @@ https://kuviewer.example.com/
    - Desktop SSH credential store + connection check는 완료됐다.
    - Desktop CM tunnel/runtime integration은 완료됐다.
    - Desktop CM runtime health/details polish는 완료됐다.
-   - Desktop signed package release readiness는 완료됐다.
-   - `publish_release_assets=true`는 signed Release asset publishing 전용이며 `signed=true`, `smoke_matrix=false`, `v* tag` ref, 성공한 signed package job이 필요하다.
-   - 다음 확장 후보는 real repository signing secrets로 signed desktop release dry-run이다.
+   - Desktop installer/download release path de-scope는 완료됐다.
+   - 다음 확장 후보는 web Resource Explorer polish 또는 CM/server connection UX 재검토다.
 
 4. 실제 Kubernetes 연결 설계
    - 브라우저에 kube credential을 직접 넣지 않는 방향 유지.

@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
   "name": "Kuviewer Desktop CM Session Explorer",
-  "goal": "installable-read-only-cm-ssh-session-explorer",
-  "status": "desktop-signed-release-readiness",
+  "goal": "desktop-cm-session-prototype",
+  "status": "desktop-download-descope",
   "recommendedPackager": "tauri",
   "fallbackPackager": "electron",
   "tauri": {
@@ -13,28 +13,26 @@
     "frontendDist": "../../website/dist",
     "devUrl": "http://127.0.0.1:5174/kuviewer/"
   },
-  "targets": [
-    {
-      "platform": "macos",
-      "artifact": "dmg"
-    },
-    {
-      "platform": "windows",
-      "artifact": "exe"
-    }
-  ],
+  "distributionPolicy": {
+    "status": "download-installer-descope",
+    "installerDownloads": false,
+    "releaseAssetPublishing": false,
+    "desktopPackageWorkflow": false,
+    "signedInstallerRelease": false,
+    "notes": "Desktop code remains a local CM/SSH session prototype. Public downloadable installer artifacts are not part of the active Kuviewer product path."
+  },
   "connectionModes": [
     {
       "id": "cm-ssh-session",
-      "description": "Primary installable-app direction: manage multiple desktop-only sessions to CM or bastion servers over an SSH-style connection model."
+      "description": "Future desktop-local prototype direction: manage multiple desktop-only sessions to CM or bastion servers over an SSH-style connection model."
     },
     {
       "id": "remote-api",
-      "description": "Prototype compatibility path only; not the primary installable desktop product direction."
+      "description": "Prototype compatibility path only; not the primary desktop product direction."
     },
     {
       "id": "local-sidecar",
-      "description": "Historical packaging/runtime scaffold for evaluation only; not the primary installable desktop product direction."
+      "description": "Historical packaging/runtime scaffold for evaluation only; not the primary desktop product direction."
     },
     {
       "id": "local-kubernetes-keychain",
@@ -114,7 +112,7 @@
       "desktop-use-sidecar-profile"
     ],
     "next": [
-      "signed desktop release dry-run with real repository secrets"
+      "desktop CM/server connection UX can be revisited after web resource exploration work stabilizes"
     ]
   },
   "remoteConnectionProfile": {
@@ -129,21 +127,6 @@
     "noKubeconfigPersistence": true,
     "noSecretValues": true,
     "requiresServerCors": true
-  },
-  "releaseVersioning": {
-    "status": "scaffolded",
-    "versionScript": "scripts/set-desktop-package-version.mjs",
-    "sourceFiles": [
-      "desktop/package.json",
-      "desktop/src-tauri/Cargo.toml",
-      "desktop/src-tauri/tauri.conf.json"
-    ],
-    "workflowInput": "package_version",
-    "tagPrefix": "v",
-    "fallbackVersion": "0.1.0",
-    "artifactNamePattern": "kuviewer-{platform}-{artifact}-{version}",
-    "ciWorkspaceOnly": true,
-    "noCredentialPersistence": true
   },
   "localSidecar": {
     "status": "runtime-scaffolded",
@@ -262,38 +245,28 @@
   "buildPrerequisites": [
     {
       "id": "node",
-      "requiredFor": ["macos", "windows"],
+      "requiredFor": ["desktop-shell"],
       "purpose": "Run the existing Vite frontend build before Tauri bundles the app."
     },
     {
       "id": "npm",
-      "requiredFor": ["macos", "windows"],
+      "requiredFor": ["desktop-shell"],
       "purpose": "Install website and desktop package dependencies."
     },
     {
       "id": "go",
-      "requiredFor": ["macos", "windows"],
+      "requiredFor": ["desktop-shell"],
       "purpose": "Build the bundled Kuviewer Go API sidecar before Tauri packaging."
     },
     {
       "id": "rust",
-      "requiredFor": ["macos", "windows"],
+      "requiredFor": ["desktop-shell"],
       "purpose": "Compile the Tauri shell."
     },
     {
       "id": "cargo",
-      "requiredFor": ["macos", "windows"],
+      "requiredFor": ["desktop-shell"],
       "purpose": "Run the Rust build and package commands used by Tauri."
-    },
-    {
-      "id": "xcode-command-line-tools",
-      "requiredFor": ["macos"],
-      "purpose": "Provide the macOS linker and native build tools for .dmg generation."
-    },
-    {
-      "id": "windows-runner",
-      "requiredFor": ["windows"],
-      "purpose": "Build the Windows NSIS .exe on a Windows host or CI runner."
     }
   ],
   "icons": {
@@ -358,115 +331,6 @@
     ],
     "noCroppedCandidateImages": true
   },
-  "signing": {
-    "status": "ci-enabled",
-    "noCertificatesInRepo": true,
-    "noPrivateKeysInRepo": true,
-    "workflowPath": ".github/workflows/desktop-package.yml",
-    "signingConfigScript": "scripts/configure-desktop-signing.mjs",
-    "manualOnly": true,
-    "unsignedBuildDefault": true,
-    "signedBuildRequiresSecrets": true,
-    "macos": "Import an Apple Developer ID .p12 from CI secrets into a temporary GitHub runner keychain, sign with the configured identity, and pass Apple notarization credentials through CI secrets only.",
-    "macosMode": "temporary-keychain-p12",
-    "macosNotarizationMode": "apple-id-env",
-    "macosSecretNames": [
-      "APPLE_CERTIFICATE_BASE64",
-      "APPLE_CERTIFICATE_PASSWORD",
-      "APPLE_SIGNING_IDENTITY",
-      "APPLE_ID",
-      "APPLE_PASSWORD",
-      "APPLE_TEAM_ID"
-    ],
-    "windows": "Import a Windows PFX from CI secrets into the CurrentUser certificate store, inject the certificate thumbprint into the CI workspace Tauri config, and remove the certificate after packaging.",
-    "windowsMode": "current-user-pfx-thumbprint",
-    "windowsTimestampUrlDefault": "http://timestamp.digicert.com",
-    "windowsSecretNames": [
-      "WINDOWS_CERTIFICATE_BASE64",
-      "WINDOWS_CERTIFICATE_PASSWORD"
-    ]
-  },
-  "releaseAssets": {
-    "status": "signed-release-ready",
-    "workflowPath": ".github/workflows/desktop-package.yml",
-    "workflowInput": "publish_release_assets",
-    "manualOnly": true,
-    "requiresSigned": true,
-    "requiresTagRef": true,
-    "tagPrefix": "v",
-    "smokeMatrixAllowed": false,
-    "unsignedAllowed": false,
-    "job": "publish-release",
-    "permission": "contents: write",
-    "releaseCommand": "gh release upload",
-    "artifactPatterns": [
-      "*.dmg",
-      "*.exe"
-    ],
-    "releaseAssetSource": "signed workflow artifacts only"
-  },
-  "packageSmokeMatrix": {
-    "status": "manual-unsigned-matrix",
-    "workflowPath": ".github/workflows/desktop-package.yml",
-    "workflowInput": "smoke_matrix",
-    "manualOnly": true,
-    "signedAllowed": false,
-    "artifactNamePattern": "kuviewer-{platform}-{artifact}-{version}",
-    "artifactStorage": "github-actions-artifact-only",
-    "releaseAsset": false,
-    "targets": [
-      {
-        "platform": "macos",
-        "artifact": "dmg",
-        "job": "macos-dmg"
-      },
-      {
-        "platform": "windows",
-        "artifact": "exe",
-        "job": "windows-exe"
-      }
-    ]
-  },
-  "dryRuns": [
-    {
-      "id": "macos-dmg-unsigned-2026-06-19",
-      "platform": "macos",
-      "artifact": "dmg",
-      "signed": false,
-      "workflow": "desktop-package",
-      "workflowRunId": 27800527207,
-      "workflowRunUrl": "https://github.com/pxzhu/kuviewer/actions/runs/27800527207",
-      "ref": "main",
-      "commit": "d525971d7415a6053eb8f45d92f5a3573654e3cd",
-      "conclusion": "success",
-      "startedAt": "2026-06-19T01:52:03Z",
-      "completedAt": "2026-06-19T01:55:20Z",
-      "outputFile": "Kuviewer_0.1.0_aarch64.dmg",
-      "artifactName": "kuviewer-macos-dmg",
-      "artifactId": 7740045761,
-      "artifactSizeBytes": 7125256,
-      "artifactZipSha256": "3a663ab3e3cba2bd12e14cf692cf699f5ee862f15f4cb80d4840ff98dad173ec"
-    },
-    {
-      "id": "windows-exe-unsigned-2026-06-19",
-      "platform": "windows",
-      "artifact": "exe",
-      "signed": false,
-      "workflow": "desktop-package",
-      "workflowRunId": 27803179419,
-      "workflowRunUrl": "https://github.com/pxzhu/kuviewer/actions/runs/27803179419",
-      "ref": "main",
-      "commit": "b754c549ee2a2766c7f2d32257e4ee66a426aeb2",
-      "conclusion": "success",
-      "startedAt": "2026-06-19T03:16:45Z",
-      "completedAt": "2026-06-19T03:23:53Z",
-      "outputFile": "Kuviewer_0.1.0_x64-setup.exe",
-      "artifactName": "kuviewer-windows-exe",
-      "artifactId": 7741029893,
-      "artifactSizeBytes": 5777828,
-      "artifactZipSha256": "904285edb5307f1426f386ef340d413c81623e41ad57a835f0ea303c778970c4"
-    }
-  ],
   "security": {
     "readOnly": true,
     "noBrowserKubeCredentialEntry": true,
@@ -487,7 +351,6 @@
     "packaging-spec",
     "tauri-scaffold",
     "remote-connection-profile",
-    "release-versioning",
     "local-sidecar-evaluation",
     "local-sidecar-runtime",
     "keychain-credential-design",
@@ -495,14 +358,10 @@
     "os-credential-store",
     "keychain-sidecar-runtime",
     "native-credential-runtime-smoke",
-    "desktop-package-smoke-matrix",
     "desktop-cm-ssh-sessions",
     "desktop-cm-ssh-credential-check",
     "desktop-cm-ssh-runtime",
     "desktop-cm-runtime-health-details",
-    "desktop-signed-release-readiness",
-    "macos-dmg-build",
-    "windows-exe-build",
-    "signing-and-release"
+    "desktop-download-descope"
   ]
 }

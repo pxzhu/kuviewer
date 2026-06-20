@@ -1,6 +1,6 @@
 # Desktop Keychain Credential Design
 
-This document defines the first credential boundary for a future installable Kuviewer desktop app that connects directly to a Kubernetes API server through the local sidecar.
+This document defines the first credential boundary for a future Kuviewer desktop-local prototype that connects directly to a Kubernetes API server through the local sidecar.
 
 The current implementation includes a safe runtime metadata prototype plus native OS credential store helpers. It can expose desktop Kubernetes profile metadata through native Tauri commands and can store/delete bearer-token material in macOS Keychain or Windows Credential Manager without returning the token to browser JavaScript. Selecting a profile with a stored credential restarts the local sidecar in Kubernetes mode through a runtime token file.
 
