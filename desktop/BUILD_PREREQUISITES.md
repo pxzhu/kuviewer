@@ -5,6 +5,7 @@ Kuviewer desktop packaging is Tauri-first. The current repository contains a rea
 ## Required Tools
 
 - Node.js and npm for the existing `website` Vite build and the `desktop` package scripts.
+- Go for compiling the bundled Kuviewer read-only API sidecar during Tauri packaging.
 - Rust and Cargo for compiling the Tauri shell.
 - macOS `.dmg`: Xcode Command Line Tools on a macOS host.
 - Windows `.exe`: a Windows host or CI runner for the NSIS target.

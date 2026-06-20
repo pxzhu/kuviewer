@@ -196,7 +196,9 @@ fn start_desktop_sidecar_with_config(
         return Ok(());
     }
 
-    let admin_token = generate_admin_token()?;
+    let admin_token = generate_admin_token().map_err(|_| {
+        std::io::Error::new(std::io::ErrorKind::Other, "desktop_admin_token_random_failed")
+    })?;
     let runtime_token_file = config.kube_token_file.clone();
     let mut command = app
         .shell()
@@ -361,7 +363,7 @@ fn initialize_desktop_kubernetes_profiles(app: &tauri::AppHandle) {
     }
     if let Ok(mut selected) = state.selected_kubernetes_profile_id.lock() {
         *selected = selected_profile_id;
-    }
+    };
 }
 
 fn load_desktop_kubernetes_profiles_from_env() -> Vec<DesktopKubernetesProfileMetadata> {
@@ -486,7 +488,7 @@ fn update_selected_desktop_kubernetes_profile(
 fn stop_desktop_sidecar(app: &tauri::AppHandle) {
     let state = app.state::<DesktopSidecarState>();
     if let Ok(mut child) = state.child.lock() {
-        if let Some(mut child) = child.take() {
+        if let Some(child) = child.take() {
             let _ = child.kill();
         }
     }

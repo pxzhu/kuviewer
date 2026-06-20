@@ -207,6 +207,11 @@
       "purpose": "Install website and desktop package dependencies."
     },
     {
+      "id": "go",
+      "requiredFor": ["macos", "windows"],
+      "purpose": "Build the bundled Kuviewer Go API sidecar before Tauri packaging."
+    },
+    {
       "id": "rust",
       "requiredFor": ["macos", "windows"],
       "purpose": "Compile the Tauri shell."
