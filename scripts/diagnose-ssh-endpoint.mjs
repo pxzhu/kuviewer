@@ -91,12 +91,15 @@ async function httpProbe({ host, port, timeoutMs }) {
 
 async function tlsProbe({ host, port, timeoutMs }) {
   await new Promise((resolve) => {
-    const socket = tls.connect({
+    const connectOptions = {
       host,
       port: Number(port),
-      servername: host,
       rejectUnauthorized: false,
-    });
+    };
+    if (net.isIP(host) === 0) {
+      connectOptions.servername = host;
+    }
+    const socket = tls.connect(connectOptions);
     let settled = false;
     const finish = (message) => {
       if (settled) return;
