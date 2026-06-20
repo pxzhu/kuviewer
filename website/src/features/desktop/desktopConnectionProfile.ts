@@ -63,6 +63,23 @@ export interface DesktopCmSessionInput {
   description?: string;
 }
 
+export interface DesktopCmSessionExportItem {
+  name: string;
+  host: string;
+  port: number;
+  user: string;
+  remoteApiHost: string;
+  remoteApiPort: number;
+  description?: string;
+}
+
+export interface DesktopCmSessionExportBundle {
+  schemaVersion: 1;
+  kind: 'kuviewer.desktop.cmSessions';
+  exportedAt: number;
+  items: DesktopCmSessionExportItem[];
+}
+
 export interface DesktopCmSessionRuntimeProfile {
   sessionId: string;
   sessionName: string;
@@ -515,6 +532,73 @@ export function normalizeDesktopCmSessionInput(input: DesktopCmSessionInput): De
   return { id, name, host, port, user, remoteApiHost, remoteApiPort, description };
 }
 
+export function createDesktopCmSessionExportBundle(sessions: DesktopCmSession[]): DesktopCmSessionExportBundle {
+  return {
+    schemaVersion: 1,
+    kind: 'kuviewer.desktop.cmSessions',
+    exportedAt: Date.now(),
+    items: sessions.map(toDesktopCmSessionExportItem),
+  };
+}
+
+export function parseDesktopCmSessionImportBundle(value: unknown, maxItems = 50): {
+  items: DesktopCmSessionExportItem[];
+  invalid: number;
+  skipped: number;
+} {
+  let rawItems: unknown[];
+  if (Array.isArray(value)) {
+    rawItems = value;
+  } else if (value && typeof value === 'object' && Array.isArray((value as { items?: unknown }).items)) {
+    rawItems = (value as { items: unknown[] }).items;
+  } else {
+    return { items: [], invalid: 1, skipped: 0 };
+  }
+
+  const items: DesktopCmSessionExportItem[] = [];
+  let invalid = 0;
+  let skipped = 0;
+  const seenKeys = new Set<string>();
+  for (const rawItem of rawItems) {
+    if (items.length >= maxItems) {
+      skipped += 1;
+      continue;
+    }
+    const item = parseDesktopCmSessionExportItem(rawItem);
+    if (!item) {
+      invalid += 1;
+      continue;
+    }
+    const itemKey = desktopCmSessionEndpointKey(item);
+    if (seenKeys.has(itemKey)) {
+      skipped += 1;
+      continue;
+    }
+    seenKeys.add(itemKey);
+    items.push(item);
+  }
+  return { items, invalid, skipped };
+}
+
+export function desktopCmSessionEndpointKey(session: Pick<DesktopCmSessionInput, 'name' | 'host' | 'port' | 'user' | 'remoteApiHost' | 'remoteApiPort'>) {
+  const normalized = normalizeDesktopCmSessionInput({
+    name: session.name,
+    host: session.host,
+    port: session.port,
+    user: session.user,
+    remoteApiHost: session.remoteApiHost,
+    remoteApiPort: session.remoteApiPort,
+  });
+  return [
+    normalized.name.toLowerCase(),
+    normalized.host,
+    normalized.port,
+    normalized.user,
+    normalized.remoteApiHost,
+    normalized.remoteApiPort,
+  ].join('|');
+}
+
 export function normalizeDesktopCmSessionHost(value: string) {
   const host = normalizeBoundedText(value, maxCmSessionHostLength, 'desktop_cm_session_host').toLowerCase();
   if (host.includes('://') || host.includes('/') || host.includes('?') || host.includes('#') || host.includes('@') || host.includes(':')) {
@@ -672,6 +756,39 @@ function parseDesktopCmSession(value: unknown): DesktopCmSession | null {
         typeof session.diagnosticHint === 'string' && session.diagnosticHint.trim()
           ? normalizeBoundedText(session.diagnosticHint, 220, 'desktop_cm_session_diagnostic_hint')
           : undefined,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function toDesktopCmSessionExportItem(session: DesktopCmSession): DesktopCmSessionExportItem {
+  const normalized = normalizeDesktopCmSessionInput(session);
+  return {
+    name: normalized.name,
+    host: normalized.host,
+    port: normalized.port,
+    user: normalized.user,
+    remoteApiHost: normalized.remoteApiHost || desktopCmDefaultRemoteApiHost,
+    remoteApiPort: normalized.remoteApiPort || desktopCmDefaultRemoteApiPort,
+    description: normalized.description,
+  };
+}
+
+function parseDesktopCmSessionExportItem(value: unknown): DesktopCmSessionExportItem | null {
+  if (!value || typeof value !== 'object') {
+    return null;
+  }
+  try {
+    const item = normalizeDesktopCmSessionInput(value as Partial<DesktopCmSessionInput> as DesktopCmSessionInput);
+    return {
+      name: item.name,
+      host: item.host,
+      port: item.port,
+      user: item.user,
+      remoteApiHost: item.remoteApiHost || desktopCmDefaultRemoteApiHost,
+      remoteApiPort: item.remoteApiPort || desktopCmDefaultRemoteApiPort,
+      description: item.description,
     };
   } catch {
     return null;

@@ -35,6 +35,7 @@ requireCondition(
     'desktop-cm-runtime-health-details',
     'desktop-download-descope',
     'desktop-cm-advanced-diagnostics',
+    'desktop-cm-session-export-import',
   ].includes(spec.status),
   'status must be a known desktop packaging milestone'
 );
@@ -74,6 +75,7 @@ requireCondition(phases.includes('desktop-cm-ssh-runtime'), 'phaseOrder must inc
 requireCondition(phases.includes('desktop-cm-runtime-health-details'), 'phaseOrder must include desktop-cm-runtime-health-details');
 requireCondition(phases.includes('desktop-download-descope'), 'phaseOrder must include desktop-download-descope');
 requireCondition(phases.includes('desktop-cm-advanced-diagnostics'), 'phaseOrder must include desktop-cm-advanced-diagnostics');
+requireCondition(phases.includes('desktop-cm-session-export-import'), 'phaseOrder must include desktop-cm-session-export-import');
 
 await validateBuildPrerequisites(spec);
 await validateDesktopDistributionPolicy(spec);
@@ -99,6 +101,7 @@ if (
     'desktop-cm-runtime-health-details',
     'desktop-download-descope',
     'desktop-cm-advanced-diagnostics',
+    'desktop-cm-session-export-import',
   ].includes(spec.status)
 ) {
   await validateTauriScaffold(spec.tauri || {});
@@ -700,8 +703,8 @@ async function validateCredentialStorageDesign(spec) {
 async function validateCmSshSessionManager(spec) {
   const manager = spec.cmSshSessionManager || {};
   requireCondition(
-    ['runtime-health-details', 'advanced-diagnostics'].includes(manager.status),
-    'cmSshSessionManager.status must be runtime-health-details or advanced-diagnostics'
+    ['runtime-health-details', 'advanced-diagnostics', 'session-export-import'].includes(manager.status),
+    'cmSshSessionManager.status must be runtime-health-details, advanced-diagnostics, or session-export-import'
   );
   requireCondition(manager.desktopOnly === true, 'cmSshSessionManager.desktopOnly must be true');
   requireCondition(manager.webExposed === false, 'cmSshSessionManager.webExposed must be false');
@@ -793,6 +796,19 @@ async function validateCmSshSessionManager(spec) {
   requireCondition(diagnosticPolicy.noKubeconfig === true, 'cmSshSessionManager.diagnosticPolicy.noKubeconfig must be true');
   requireCondition(diagnosticPolicy.noSecretValues === true, 'cmSshSessionManager.diagnosticPolicy.noSecretValues must be true');
   requireCondition(diagnosticPolicy.noCloudCredentials === true, 'cmSshSessionManager.diagnosticPolicy.noCloudCredentials must be true');
+  const exportImportPolicy = manager.exportImportPolicy || {};
+  requireCondition(exportImportPolicy.desktopOnly === true, 'cmSshSessionManager.exportImportPolicy.desktopOnly must be true');
+  requireCondition(exportImportPolicy.schemaVersion === 1, 'cmSshSessionManager.exportImportPolicy.schemaVersion must be 1');
+  requireCondition(exportImportPolicy.kind === 'kuviewer.desktop.cmSessions', 'cmSshSessionManager.exportImportPolicy.kind must be kuviewer.desktop.cmSessions');
+  requireCondition(exportImportPolicy.maxImportItems === 50, 'cmSshSessionManager.exportImportPolicy.maxImportItems must be 50');
+  requireCondition(exportImportPolicy.safeEditableFieldsOnly === true, 'cmSshSessionManager.exportImportPolicy.safeEditableFieldsOnly must be true');
+  const exportFields = new Set(Array.isArray(exportImportPolicy.fields) ? exportImportPolicy.fields : []);
+  for (const field of ['name', 'host', 'port', 'user', 'remoteApiHost', 'remoteApiPort', 'description']) {
+    requireCondition(exportFields.has(field), `cmSshSessionManager.exportImportPolicy.fields must include ${field}`);
+  }
+  for (const flag of ['noPrivateKeyBody', 'noCredentialPayload', 'noRuntimeProfile', 'noDiagnosticHistory', 'noToken', 'noKubeconfig', 'noSecretValues', 'noEventsOrLogs']) {
+    requireCondition(exportImportPolicy[flag] === true, `cmSshSessionManager.exportImportPolicy.${flag} must be true`);
+  }
   const hiddenPrototypeUi = new Set(Array.isArray(manager.hiddenPrototypeUi) ? manager.hiddenPrototypeUi : []);
   for (const marker of ['DesktopConnectionProfilePanel', 'DesktopKubernetesProfilePanel', 'desktop-use-sidecar-profile']) {
     requireCondition(hiddenPrototypeUi.has(marker), `cmSshSessionManager.hiddenPrototypeUi must include ${marker}`);
@@ -897,6 +913,9 @@ async function validateCmSshSessionManager(spec) {
     'desktop-cm-session-delete-credential',
     'Diagnostics',
     'desktop-cm-session-summary-diagnostics',
+    'desktop-cm-session-export',
+    'desktop-cm-session-import',
+    'kuviewer.desktop.cmSessions',
   ]) {
     requireCondition(sessionPanel.includes(marker), `desktop CM session panel must include ${marker}`);
   }
@@ -951,6 +970,8 @@ async function validateCmSshSessionManager(spec) {
     'desktop CM session summary must show active runtime status',
     'desktop CM diagnostics must show runtime-lost message',
     'desktop CM session search must match diagnostic message',
+    'desktop CM export must not include credentialAvailable',
+    'desktop CM import must report newly imported sessions',
   ]) {
     requireCondition(smokeScript.includes(marker), `desktop CM session smoke script must include ${marker}`);
   }
@@ -981,6 +1002,7 @@ async function validateCmSshSessionManager(spec) {
     requireCondition(text.includes('CM tunnel/runtime') || text.includes('desktop-cm-ssh-runtime'), `${label} must document CM tunnel/runtime`);
     requireCondition(text.includes('runtime health') || text.includes('health/details'), `${label} must document CM runtime health/details`);
     requireCondition(text.includes('safe diagnostic') || text.includes('advanced diagnostics'), `${label} must document safe desktop CM diagnostics`);
+    requireCondition(text.includes('export/import') || text.includes('session export'), `${label} must document desktop CM session export/import`);
     requireCondition(text.includes('web app must not expose SSH'), `${label} must document that the web app must not expose SSH`);
   }
 }

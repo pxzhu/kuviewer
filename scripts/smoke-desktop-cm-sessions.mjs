@@ -1,6 +1,8 @@
 import { pathToFileURL } from 'node:url';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import os from 'node:os';
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(scriptDir, '..');
@@ -47,6 +49,9 @@ async function smokeDesktopRuntime(browser, url) {
             }
             if (command === 'desktop_save_cm_session') {
               const now = Date.now();
+              const existingSession = args.session.id
+                ? window.__kuviewerCmSessions.find((item) => item.id === args.session.id)
+                : null;
               const session = {
                 id: args.session.id || `prod-cm-${now}`,
                 name: args.session.name,
@@ -58,16 +63,18 @@ async function smokeDesktopRuntime(browser, url) {
                 description: args.session.description,
                 authType: 'os-credential-store',
                 credentialStore: 'native-smoke-store',
-                credentialAvailable: false,
-                status: 'metadata-only',
-                runtimeStatus: 'stopped',
+                credentialAvailable: existingSession?.credentialAvailable || false,
+                status: existingSession?.credentialAvailable ? 'credential-ready' : 'metadata-only',
+                runtimeStatus: existingSession?.runtimeStatus || 'stopped',
                 updatedAt: now,
-                selected: false,
-                lastCheckStatus: 'not-checked',
-                diagnosticStage: 'metadata',
-                diagnosticSeverity: 'info',
-                diagnosticMessage: 'not-checked',
-                diagnosticHint: 'Run connection check to verify SSH reachability.',
+                selected: existingSession?.selected || false,
+                lastCheckStatus: existingSession?.lastCheckStatus || 'not-checked',
+                lastCheckAt: existingSession?.lastCheckAt,
+                lastCheckMessage: existingSession?.lastCheckMessage,
+                diagnosticStage: existingSession?.diagnosticStage || 'metadata',
+                diagnosticSeverity: existingSession?.diagnosticSeverity || 'info',
+                diagnosticMessage: existingSession?.diagnosticMessage || 'not-checked',
+                diagnosticHint: existingSession?.diagnosticHint || 'Run connection check to verify SSH reachability.',
               };
               window.__kuviewerCmSessions = [session, ...window.__kuviewerCmSessions.filter((item) => item.id !== session.id)];
               return session;
@@ -336,6 +343,93 @@ async function smokeDesktopRuntime(browser, url) {
     sessionSearchCount = await page.getByTestId('desktop-cm-session-search-count').textContent();
     requireCondition(sessionSearchCount?.includes('1 / 전체 1'), 'desktop CM session search must match diagnostic message');
     await page.getByTestId('desktop-cm-session-search-clear').click();
+
+    const downloadPromise = page.waitForEvent('download');
+    await page.getByTestId('desktop-cm-session-export').click();
+    const download = await downloadPromise;
+    const exportedPath = await download.path();
+    requireCondition(typeof exportedPath === 'string', 'desktop CM export must create a downloadable JSON file');
+    const exportedBundle = JSON.parse(await readFile(exportedPath, 'utf8'));
+    requireCondition(exportedBundle.schemaVersion === 1, 'desktop CM export bundle must include schemaVersion 1');
+    requireCondition(exportedBundle.kind === 'kuviewer.desktop.cmSessions', 'desktop CM export bundle must include the CM sessions kind');
+    requireCondition(Array.isArray(exportedBundle.items) && exportedBundle.items.length === 1, 'desktop CM export must include saved session metadata');
+    const exportedJson = JSON.stringify(exportedBundle);
+    requireCondition(!exportedJson.includes('credentialAvailable'), 'desktop CM export must not include credentialAvailable');
+    for (const forbiddenField of [
+      'id',
+      'credentialStore',
+      'authType',
+      'runtimeStatus',
+      'lastCheckStatus',
+      'diagnosticStage',
+      'serverUrl',
+      'adminToken',
+      'private-key-imported',
+      'BEGIN OPENSSH PRIVATE KEY',
+    ]) {
+      requireCondition(!exportedJson.includes(forbiddenField), `desktop CM export must not include ${forbiddenField}`);
+    }
+
+    const importDir = await mkdtemp(path.join(os.tmpdir(), 'kuviewer-cm-import-'));
+    const importPath = path.join(importDir, 'cm-sessions.json');
+    await writeFile(importPath, JSON.stringify({
+      schemaVersion: 1,
+      kind: 'kuviewer.desktop.cmSessions',
+      exportedAt: Date.now(),
+      items: [
+        {
+          name: 'Prod CM',
+          host: 'cm.example.internal',
+          port: 22,
+          user: 'ubuntu',
+          remoteApiHost: '127.0.0.1',
+          remoteApiPort: 18085,
+          description: 'updated readonly entry',
+        },
+        {
+          name: 'Staging CM',
+          host: 'staging-cm.example.internal',
+          port: 2222,
+          user: 'deploy',
+          remoteApiHost: '127.0.0.1',
+          remoteApiPort: 18085,
+          description: 'imported readonly entry',
+        },
+        {
+          name: '',
+          host: 'invalid.example.internal',
+          port: 22,
+          user: 'deploy',
+        },
+        {
+          name: 'Staging CM',
+          host: 'staging-cm.example.internal',
+          port: 2222,
+          user: 'deploy',
+          remoteApiHost: '127.0.0.1',
+          remoteApiPort: 18085,
+        },
+      ],
+    }));
+    await page.getByTestId('desktop-cm-session-import').setInputFiles(importPath);
+    await page.getByTestId('desktop-cm-session-import-summary').waitFor({ state: 'visible', timeout: 10_000 });
+    const importSummary = await page.getByTestId('desktop-cm-session-import-summary').textContent();
+    requireCondition(importSummary?.includes('new 1'), 'desktop CM import must report newly imported sessions');
+    requireCondition(importSummary?.includes('updated 1'), 'desktop CM import must report updated sessions');
+    requireCondition(importSummary?.includes('skipped 1'), 'desktop CM import must report skipped duplicate sessions');
+    requireCondition(importSummary?.includes('invalid 1'), 'desktop CM import must report invalid sessions');
+    const importedState = await page.evaluate(() => ({
+      sessions: window.__kuviewerCmSessions,
+      invocations: window.__kuviewerDesktopInvocations,
+    }));
+    requireCondition(importedState.sessions.length === 2, 'desktop CM import must add one session and update the existing matching session');
+    const importedProd = importedState.sessions.find((session) => session.name === 'Prod CM');
+    const importedStaging = importedState.sessions.find((session) => session.name === 'Staging CM');
+    requireCondition(importedProd?.description === 'updated readonly entry', 'desktop CM import must update the matching existing session');
+    requireCondition(importedStaging?.credentialAvailable === false, 'desktop CM import must not import credentials for new sessions');
+    requireCondition(!JSON.stringify(importedState.invocations).includes('BEGIN OPENSSH PRIVATE KEY'), 'desktop CM import must not expose private key bodies');
+    await rm(importDir, { force: true, recursive: true });
+
     await page.getByTestId(`desktop-cm-session-start-runtime-${sessionId}`).click();
     await page.getByText('Prod CM runtime 시작됨').waitFor({ state: 'visible', timeout: 10_000 });
     await page.getByText(/runtime active · Prod CM/).waitFor({ state: 'visible', timeout: 10_000 });
@@ -384,13 +478,18 @@ async function smokeDesktopRuntime(browser, url) {
     requireCondition(diagnosticMessage?.includes('runtime-lost'), 'desktop CM diagnostics must show runtime-lost message');
     await page.getByTestId('desktop-cm-session-search').fill('runtime-lost');
     sessionSearchCount = await page.getByTestId('desktop-cm-session-search-count').textContent();
-    requireCondition(sessionSearchCount?.includes('1 / 전체 1'), 'desktop CM session search must match runtime diagnostic message');
+    requireCondition(sessionSearchCount?.includes('1 / 전체 2'), 'desktop CM session search must match runtime diagnostic message');
     await page.getByTestId('desktop-cm-session-search-clear').click();
     const lostRuntimeProfile = await page.evaluate(() => window.sessionStorage.getItem('kuviewer_desktop_cm_runtime_profile'));
     requireCondition(lostRuntimeProfile === null, 'desktop CM runtime lost must clear the session runtime profile');
     await page.getByTestId(`desktop-cm-session-delete-credential-${sessionId}`).click();
     await page.getByTestId(`desktop-cm-session-delete-credential-${sessionId}`).click();
     await page.getByText('Prod CM credential 삭제됨').waitFor({ state: 'visible', timeout: 10_000 });
+    const stagingSessionId = await page.evaluate(() => window.__kuviewerCmSessions.find((session) => session.name === 'Staging CM')?.id);
+    requireCondition(typeof stagingSessionId === 'string', 'desktop CM import must create a deletable staging session');
+    await page.getByTestId(`desktop-cm-session-delete-${stagingSessionId}`).click();
+    await page.getByTestId(`desktop-cm-session-delete-${stagingSessionId}`).click();
+    await page.getByText('CM/SSH session 삭제됨').waitFor({ state: 'visible', timeout: 10_000 });
     await page.getByTestId(`desktop-cm-session-delete-${sessionId}`).click();
     await page.getByTestId(`desktop-cm-session-delete-${sessionId}`).click();
     await page.getByText('CM/SSH session 삭제됨').waitFor({ state: 'visible', timeout: 10_000 });
