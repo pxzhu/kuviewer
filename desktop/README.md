@@ -125,14 +125,15 @@ GitHub Actions includes a `desktop-package` workflow for installer experiments:
 - `smoke_matrix` input for one-dispatch unsigned macOS `.dmg` and Windows `.exe` package smoke
 - signed macOS `.dmg` build with Apple Developer ID certificate import and Apple notarization credentials when `signed` is enabled
 - signed Windows NSIS `.exe` build with CurrentUser certificate-store import when `signed` is enabled
+- signed Release asset publishing with `publish_release_assets=true`, only when `signed=true`, `smoke_matrix=false`, and the workflow runs from a `v* tag`
 
-The `smoke_matrix` input is unsigned-only and cannot be combined with `signed`. It uploads package outputs as GitHub Actions artifact records for validation only; it does not publish release assets.
+The `smoke_matrix` input is unsigned-only and cannot be combined with `signed`. It uploads package outputs as GitHub Actions artifact records for validation only; it does not publish release assets. `publish_release_assets` is signed-only and tag-only; it creates or updates the matching GitHub Release and uploads only signed `.dmg` / `.exe` outputs from successful package jobs.
 
 The workflow references secret names only. Certificate files, private keys, passwords, kubeconfigs, admin tokens, cloud credentials, Secret values, Events, and logs must remain outside the repository.
 
 ## Signing And Notarization
 
-Signed desktop package builds remain manual and secret-gated. Leave `signed` disabled for unsigned smoke builds.
+Signed desktop package builds remain manual and secret-gated. Leave `signed` disabled for unsigned smoke builds. To publish signed installers to a GitHub Release, run the workflow from a `v* tag` with `signed=true`, `smoke_matrix=false`, and `publish_release_assets=true`.
 
 Required macOS secrets:
 

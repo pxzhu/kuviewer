@@ -23,6 +23,11 @@ on:
         required: true
         default: false
         type: boolean
+      publish_release_assets:
+        description: Upload signed installers to the matching GitHub Release; requires signed=true and a v* tag ref
+        required: true
+        default: false
+        type: boolean
       package_version:
         description: Desktop package version without leading v; defaults to v* ref or 0.1.0
         required: false
@@ -56,6 +61,12 @@ jobs:
         if: ${{ inputs.smoke_matrix && inputs.signed }}
         run: |
           echo "smoke_matrix builds unsigned artifacts only; set signed=false." >&2
+          exit 1
+
+      - name: Validate signed release asset publish mode
+        if: ${{ inputs.publish_release_assets && (!inputs.signed || inputs.smoke_matrix || !startsWith(github.ref, 'refs/tags/v') || (!inputs.build_macos && !inputs.build_windows)) }}
+        run: |
+          echo "publish_release_assets requires signed=true, smoke_matrix=false, a v* tag ref, and at least one package target." >&2
           exit 1
 
       - name: Desktop packaging spec check
@@ -280,3 +291,40 @@ jobs:
           name: kuviewer-windows-exe-${{ steps.desktop-version.outputs.version }}
           path: desktop/src-tauri/target/release/bundle/nsis/*
           if-no-files-found: error
+
+  publish-release:
+    if: ${{ always() && inputs.publish_release_assets && inputs.signed && !inputs.smoke_matrix && startsWith(github.ref, 'refs/tags/v') && (inputs.build_macos || inputs.build_windows) && (!inputs.build_macos || needs.macos-dmg.result == 'success') && (!inputs.build_windows || needs.windows-exe.result == 'success') }}
+    needs:
+      - validate-desktop
+      - macos-dmg
+      - windows-exe
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download signed package artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: kuviewer-*
+          path: desktop-release-assets
+          merge-multiple: true
+
+      - name: Publish signed installers to GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          mapfile -d '' assets < <(find desktop-release-assets -type f \( -name "*.dmg" -o -name "*.exe" \) -print0)
+          if [ "${#assets[@]}" -eq 0 ]; then
+            echo "No signed desktop package assets found." >&2
+            exit 1
+          fi
+
+          if ! gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release create "$GITHUB_REF_NAME" \
+              --verify-tag \
+              --title "Kuviewer $GITHUB_REF_NAME" \
+              --notes "Signed Kuviewer desktop installers for $GITHUB_REF_NAME."
+          fi
+
+          gh release upload "$GITHUB_REF_NAME" "${assets[@]}" --clobber

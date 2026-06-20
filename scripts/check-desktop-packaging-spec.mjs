@@ -38,6 +38,7 @@ requireCondition(
     'desktop-cm-ssh-credential-check',
     'desktop-cm-ssh-runtime',
     'desktop-cm-runtime-health-details',
+    'desktop-signed-release-readiness',
   ].includes(spec.status),
   'status must be a known desktop packaging milestone'
 );
@@ -84,6 +85,7 @@ requireCondition(phases.includes('windows-exe-build'), 'phaseOrder must include 
 requireCondition(phases.includes('desktop-cm-ssh-credential-check'), 'phaseOrder must include desktop-cm-ssh-credential-check');
 requireCondition(phases.includes('desktop-cm-ssh-runtime'), 'phaseOrder must include desktop-cm-ssh-runtime');
 requireCondition(phases.includes('desktop-cm-runtime-health-details'), 'phaseOrder must include desktop-cm-runtime-health-details');
+requireCondition(phases.includes('desktop-signed-release-readiness'), 'phaseOrder must include desktop-signed-release-readiness');
 
 await validateBuildPrerequisites(spec);
 await validateRemoteConnectionProfile(spec);
@@ -91,6 +93,7 @@ await validateReleaseVersioning(spec);
 await validateLocalSidecar(spec);
 await validateCredentialStorageDesign(spec);
 await validatePackageSmokeMatrix(spec);
+await validateReleaseAssets(spec);
 await validateCmSshSessionManager(spec);
 validateDryRuns(spec);
 
@@ -114,6 +117,7 @@ if (
     'desktop-cm-ssh-credential-check',
     'desktop-cm-ssh-runtime',
     'desktop-cm-runtime-health-details',
+    'desktop-signed-release-readiness',
   ].includes(spec.status)
 ) {
   await validateTauriScaffold(spec.tauri || {});
@@ -1099,6 +1103,64 @@ async function validatePackageSmokeMatrix(spec) {
     requireCondition(text.includes('smoke_matrix'), `${label} must document the smoke_matrix workflow input`);
     requireCondition(text.includes('unsigned'), `${label} must document that desktop smoke matrix artifacts are unsigned`);
     requireCondition(text.includes('GitHub Actions artifact'), `${label} must document smoke matrix artifact storage`);
+  }
+}
+
+async function validateReleaseAssets(spec) {
+  const releaseAssets = spec.releaseAssets || {};
+  requireCondition(releaseAssets.status === 'signed-release-ready', 'releaseAssets.status must be signed-release-ready');
+  requireCondition(releaseAssets.workflowPath === '.github/workflows/desktop-package.yml', 'releaseAssets.workflowPath must point at desktop-package workflow');
+  requireCondition(releaseAssets.workflowInput === 'publish_release_assets', 'releaseAssets.workflowInput must be publish_release_assets');
+  requireCondition(releaseAssets.manualOnly === true, 'releaseAssets.manualOnly must be true');
+  requireCondition(releaseAssets.requiresSigned === true, 'releaseAssets.requiresSigned must be true');
+  requireCondition(releaseAssets.requiresTagRef === true, 'releaseAssets.requiresTagRef must be true');
+  requireCondition(releaseAssets.tagPrefix === 'v', 'releaseAssets.tagPrefix must be v');
+  requireCondition(releaseAssets.smokeMatrixAllowed === false, 'releaseAssets.smokeMatrixAllowed must be false');
+  requireCondition(releaseAssets.unsignedAllowed === false, 'releaseAssets.unsignedAllowed must be false');
+  requireCondition(releaseAssets.job === 'publish-release', 'releaseAssets.job must be publish-release');
+  requireCondition(releaseAssets.permission === 'contents: write', 'releaseAssets.permission must be contents: write');
+  requireCondition(releaseAssets.releaseCommand === 'gh release upload', 'releaseAssets.releaseCommand must be gh release upload');
+  requireCondition(releaseAssets.releaseAssetSource === 'signed workflow artifacts only', 'releaseAssets.releaseAssetSource must be signed workflow artifacts only');
+  const assetPatterns = new Set(Array.isArray(releaseAssets.artifactPatterns) ? releaseAssets.artifactPatterns : []);
+  for (const pattern of ['*.dmg', '*.exe']) {
+    requireCondition(assetPatterns.has(pattern), `releaseAssets.artifactPatterns must include ${pattern}`);
+  }
+
+  const workflow = await readTextFile(releaseAssets.workflowPath, 'desktop package workflow');
+  for (const marker of [
+    'publish_release_assets:',
+    'Upload signed installers to the matching GitHub Release; requires signed=true and a v* tag ref',
+    'Validate signed release asset publish mode',
+    'publish_release_assets requires signed=true, smoke_matrix=false, a v* tag ref, and at least one package target.',
+    "startsWith(github.ref, 'refs/tags/v')",
+    'publish-release:',
+    'contents: write',
+    'actions/download-artifact@v4',
+    'pattern: kuviewer-*',
+    'gh release view',
+    'gh release create',
+    '--verify-tag',
+    'gh release upload',
+    '--clobber',
+    '-name "*.dmg"',
+    '-name "*.exe"',
+  ]) {
+    requireCondition(workflow.includes(marker), `desktop package workflow must include signed release marker ${marker}`);
+  }
+
+  const rootReadme = await readTextFile('README.md', 'root README');
+  const desktopReadme = await readTextFile('desktop/README.md', 'desktop README');
+  const prerequisitesDoc = await readTextFile('desktop/BUILD_PREREQUISITES.md', 'desktop build prerequisites doc');
+  const handoff = await readTextFile('CODEX_HANDOFF.md', 'Codex handoff');
+  for (const [label, text] of [
+    ['root README', rootReadme],
+    ['desktop README', desktopReadme],
+    ['desktop build prerequisites doc', prerequisitesDoc],
+    ['Codex handoff', handoff],
+  ]) {
+    requireCondition(text.includes('publish_release_assets'), `${label} must document publish_release_assets`);
+    requireCondition(text.includes('signed') && text.includes('Release'), `${label} must document signed Release asset publishing`);
+    requireCondition(text.includes('v* tag'), `${label} must document the v* tag requirement for signed release assets`);
   }
 }
 

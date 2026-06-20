@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "name": "Kuviewer Desktop CM Session Explorer",
   "goal": "installable-read-only-cm-ssh-session-explorer",
-  "status": "desktop-cm-runtime-health-details",
+  "status": "desktop-signed-release-readiness",
   "recommendedPackager": "tauri",
   "fallbackPackager": "electron",
   "tauri": {
@@ -114,7 +114,7 @@
       "desktop-use-sidecar-profile"
     ],
     "next": [
-      "desktop signed package release path"
+      "signed desktop release dry-run with real repository secrets"
     ]
   },
   "remoteConnectionProfile": {
@@ -386,6 +386,25 @@
       "WINDOWS_CERTIFICATE_PASSWORD"
     ]
   },
+  "releaseAssets": {
+    "status": "signed-release-ready",
+    "workflowPath": ".github/workflows/desktop-package.yml",
+    "workflowInput": "publish_release_assets",
+    "manualOnly": true,
+    "requiresSigned": true,
+    "requiresTagRef": true,
+    "tagPrefix": "v",
+    "smokeMatrixAllowed": false,
+    "unsignedAllowed": false,
+    "job": "publish-release",
+    "permission": "contents: write",
+    "releaseCommand": "gh release upload",
+    "artifactPatterns": [
+      "*.dmg",
+      "*.exe"
+    ],
+    "releaseAssetSource": "signed workflow artifacts only"
+  },
   "packageSmokeMatrix": {
     "status": "manual-unsigned-matrix",
     "workflowPath": ".github/workflows/desktop-package.yml",
@@ -481,6 +500,7 @@
     "desktop-cm-ssh-credential-check",
     "desktop-cm-ssh-runtime",
     "desktop-cm-runtime-health-details",
+    "desktop-signed-release-readiness",
     "macos-dmg-build",
     "windows-exe-build",
     "signing-and-release"

@@ -45,6 +45,8 @@ The manual `desktop-package` workflow accepts a `package_version` input and othe
 
 Set `smoke_matrix=true` on the manual workflow to build both unsigned macOS `.dmg` and Windows `.exe` packages in one dispatch. Smoke matrix mode cannot be combined with signing and uploads outputs only as GitHub Actions artifact records, not release assets.
 
+Set `publish_release_assets=true` only for a signed Release package run from a `v* tag`. It requires `signed=true`, `smoke_matrix=false`, and at least one selected signed package target, then uploads only signed `.dmg` / `.exe` outputs to the matching GitHub Release.
+
 ## Local Sidecar Runtime
 
 The Go API server is still built as a desktop sidecar binary for prototype validation. It is no longer launched by default in the desktop product path. Generated sidecar binaries live under `desktop/src-tauri/binaries` by default and are ignored by git.
@@ -117,7 +119,7 @@ The generator uses macOS `sips` for resizing and writes ICNS/ICO containers dire
 
 ## Signing Policy
 
-Signing is secret-gated in the manual desktop packaging workflow and unsigned builds remain the default. Do not commit certificates, signing identities, password files, PFX files, private key material, kubeconfigs, admin tokens, cloud credentials, Secret values, Events, or logs.
+Signing is secret-gated in the manual desktop packaging workflow and unsigned builds remain the default. Signed Release asset publishing also remains manual and secret-gated through `publish_release_assets`; unsigned artifacts stay in GitHub Actions artifact storage only. Do not commit certificates, signing identities, password files, PFX files, private key material, kubeconfigs, admin tokens, cloud credentials, Secret values, Events, or logs.
 
 Signed CI builds use temporary runner storage only:
 
@@ -131,7 +133,7 @@ APPLE_SIGNING_IDENTITY="Developer ID Application: Example" node scripts/configur
 WINDOWS_CERTIFICATE_THUMBPRINT=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA node scripts/configure-desktop-signing.mjs --windows --dry-run
 ```
 
-Unsigned local test builds are acceptable for packaging development. Public installer release should wait until signing and notarization are explicitly configured and tested.
+Unsigned local test builds are acceptable for packaging development. Public installer release should wait until signing and notarization are explicitly configured and tested, then run from a `v* tag` with `publish_release_assets=true`.
 
 ## Verified Dry Runs
 
