@@ -441,6 +441,10 @@ function Dashboard() {
         selected: session.id === profile.sessionId,
         status: session.id === profile.sessionId ? 'runtime-active' : session.status,
         runtimeStatus: session.id === profile.sessionId ? 'runtime-active' : 'stopped',
+        diagnosticStage: session.id === profile.sessionId ? profile.diagnosticStage : session.diagnosticStage,
+        diagnosticSeverity: session.id === profile.sessionId ? profile.diagnosticSeverity : session.diagnosticSeverity,
+        diagnosticMessage: session.id === profile.sessionId ? profile.diagnosticMessage : session.diagnosticMessage,
+        diagnosticHint: session.id === profile.sessionId ? profile.diagnosticHint : session.diagnosticHint,
       })),
     );
     setSourceMode('live');
@@ -459,6 +463,10 @@ function Dashboard() {
         ...session,
         status: session.id === stoppedSessionId && session.credentialAvailable ? 'credential-ready' : session.status,
         runtimeStatus: session.id === stoppedSessionId ? 'stopped' : session.runtimeStatus,
+        diagnosticStage: session.id === stoppedSessionId ? 'runtime' : session.diagnosticStage,
+        diagnosticSeverity: session.id === stoppedSessionId ? 'info' : session.diagnosticSeverity,
+        diagnosticMessage: session.id === stoppedSessionId ? 'runtime-stopped' : session.diagnosticMessage,
+        diagnosticHint: session.id === stoppedSessionId ? 'Start runtime again when needed.' : session.diagnosticHint,
       })),
     );
     if (sourceMode === 'live') {
@@ -481,6 +489,10 @@ function Dashboard() {
           ...session,
           status: session.id === previousSessionId ? 'runtime-lost' : session.status,
           runtimeStatus: session.id === previousSessionId ? 'runtime-lost' : session.runtimeStatus,
+          diagnosticStage: session.id === previousSessionId ? 'runtime' : session.diagnosticStage,
+          diagnosticSeverity: session.id === previousSessionId ? 'error' : session.diagnosticSeverity,
+          diagnosticMessage: session.id === previousSessionId ? 'runtime-lost' : session.diagnosticMessage,
+          diagnosticHint: session.id === previousSessionId ? 'SSH tunnel process exited. Start the runtime again.' : session.diagnosticHint,
         })),
       );
       if (sourceMode === 'live') {
@@ -499,6 +511,10 @@ function Dashboard() {
         ...session,
         status: session.id === profile.sessionId ? (profile.healthStatus === 'healthy' ? 'runtime-active' : 'runtime-unhealthy') : session.status,
         runtimeStatus: session.id === profile.sessionId ? (profile.healthStatus === 'healthy' ? 'runtime-active' : 'runtime-unhealthy') : session.runtimeStatus,
+        diagnosticStage: session.id === profile.sessionId ? profile.diagnosticStage : session.diagnosticStage,
+        diagnosticSeverity: session.id === profile.sessionId ? profile.diagnosticSeverity : session.diagnosticSeverity,
+        diagnosticMessage: session.id === profile.sessionId ? profile.diagnosticMessage : session.diagnosticMessage,
+        diagnosticHint: session.id === profile.sessionId ? profile.diagnosticHint : session.diagnosticHint,
       })),
     );
     setDesktopCmSessionMessage(`${profile.sessionName} health · ${formatCmRuntimeHealthStatus(profile.healthStatus)}`);

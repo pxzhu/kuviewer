@@ -34,6 +34,7 @@ requireCondition(
     'desktop-cm-ssh-runtime',
     'desktop-cm-runtime-health-details',
     'desktop-download-descope',
+    'desktop-cm-advanced-diagnostics',
   ].includes(spec.status),
   'status must be a known desktop packaging milestone'
 );
@@ -72,6 +73,7 @@ requireCondition(phases.includes('desktop-cm-ssh-credential-check'), 'phaseOrder
 requireCondition(phases.includes('desktop-cm-ssh-runtime'), 'phaseOrder must include desktop-cm-ssh-runtime');
 requireCondition(phases.includes('desktop-cm-runtime-health-details'), 'phaseOrder must include desktop-cm-runtime-health-details');
 requireCondition(phases.includes('desktop-download-descope'), 'phaseOrder must include desktop-download-descope');
+requireCondition(phases.includes('desktop-cm-advanced-diagnostics'), 'phaseOrder must include desktop-cm-advanced-diagnostics');
 
 await validateBuildPrerequisites(spec);
 await validateDesktopDistributionPolicy(spec);
@@ -96,6 +98,7 @@ if (
     'desktop-cm-ssh-runtime',
     'desktop-cm-runtime-health-details',
     'desktop-download-descope',
+    'desktop-cm-advanced-diagnostics',
   ].includes(spec.status)
 ) {
   await validateTauriScaffold(spec.tauri || {});
@@ -696,7 +699,10 @@ async function validateCredentialStorageDesign(spec) {
 
 async function validateCmSshSessionManager(spec) {
   const manager = spec.cmSshSessionManager || {};
-  requireCondition(manager.status === 'runtime-health-details', 'cmSshSessionManager.status must be runtime-health-details');
+  requireCondition(
+    ['runtime-health-details', 'advanced-diagnostics'].includes(manager.status),
+    'cmSshSessionManager.status must be runtime-health-details or advanced-diagnostics'
+  );
   requireCondition(manager.desktopOnly === true, 'cmSshSessionManager.desktopOnly must be true');
   requireCondition(manager.webExposed === false, 'cmSshSessionManager.webExposed must be false');
   requireCondition(
@@ -727,6 +733,10 @@ async function validateCmSshSessionManager(spec) {
     'lastCheckStatus',
     'lastCheckAt',
     'lastCheckMessage',
+    'diagnosticStage',
+    'diagnosticSeverity',
+    'diagnosticMessage',
+    'diagnosticHint',
   ]) {
     requireCondition(fields.has(field), `cmSshSessionManager.safeMetadataFields must include ${field}`);
   }
@@ -760,9 +770,29 @@ async function validateCmSshSessionManager(spec) {
     'lastHealthAt',
     'lastHealthMessage',
     'lastError',
+    'diagnosticStage',
+    'diagnosticSeverity',
+    'diagnosticMessage',
+    'diagnosticHint',
   ]) {
     requireCondition(runtimeFields.has(field), `cmSshSessionManager.runtimeSafeProfileFields must include ${field}`);
   }
+  const diagnosticPolicy = manager.diagnosticPolicy || {};
+  const diagnosticStages = new Set(Array.isArray(diagnosticPolicy.stages) ? diagnosticPolicy.stages : []);
+  for (const stage of ['metadata', 'credential', 'reachability', 'ssh-auth', 'tunnel', 'health', 'runtime']) {
+    requireCondition(diagnosticStages.has(stage), `cmSshSessionManager.diagnosticPolicy.stages must include ${stage}`);
+  }
+  const diagnosticSeverities = new Set(Array.isArray(diagnosticPolicy.severities) ? diagnosticPolicy.severities : []);
+  for (const severity of ['info', 'warning', 'error']) {
+    requireCondition(diagnosticSeverities.has(severity), `cmSshSessionManager.diagnosticPolicy.severities must include ${severity}`);
+  }
+  requireCondition(diagnosticPolicy.safeOnly === true, 'cmSshSessionManager.diagnosticPolicy.safeOnly must be true');
+  requireCondition(diagnosticPolicy.noRawStderr === true, 'cmSshSessionManager.diagnosticPolicy.noRawStderr must be true');
+  requireCondition(diagnosticPolicy.noPrivateKeyBody === true, 'cmSshSessionManager.diagnosticPolicy.noPrivateKeyBody must be true');
+  requireCondition(diagnosticPolicy.noToken === true, 'cmSshSessionManager.diagnosticPolicy.noToken must be true');
+  requireCondition(diagnosticPolicy.noKubeconfig === true, 'cmSshSessionManager.diagnosticPolicy.noKubeconfig must be true');
+  requireCondition(diagnosticPolicy.noSecretValues === true, 'cmSshSessionManager.diagnosticPolicy.noSecretValues must be true');
+  requireCondition(diagnosticPolicy.noCloudCredentials === true, 'cmSshSessionManager.diagnosticPolicy.noCloudCredentials must be true');
   const hiddenPrototypeUi = new Set(Array.isArray(manager.hiddenPrototypeUi) ? manager.hiddenPrototypeUi : []);
   for (const marker of ['DesktopConnectionProfilePanel', 'DesktopKubernetesProfilePanel', 'desktop-use-sidecar-profile']) {
     requireCondition(hiddenPrototypeUi.has(marker), `cmSshSessionManager.hiddenPrototypeUi must include ${marker}`);
@@ -800,6 +830,9 @@ async function validateCmSshSessionManager(spec) {
     'check_cm_session_runtime_state',
     'ExitOnForwardFailure=yes',
     'remote_api_host',
+    'diagnostic_stage',
+    'cm_session_diagnostic_for_check',
+    'cm_runtime_diagnostic_for_health',
   ]) {
     requireCondition(mainRs.includes(marker), `desktop Tauri main must include ${marker}`);
   }
@@ -835,6 +868,10 @@ async function validateCmSshSessionManager(spec) {
     'desktop_import_cm_session_private_key',
     'desktop_delete_cm_session_credential',
     'desktop_check_cm_session',
+    'diagnosticStage',
+    'diagnosticSeverity',
+    'diagnosticMessage',
+    'diagnosticHint',
   ]) {
     requireCondition(profileModule.includes(marker), `desktop frontend profile module must include ${marker}`);
   }
@@ -858,6 +895,8 @@ async function validateCmSshSessionManager(spec) {
     'desktop-cm-session-search',
     'desktop-cm-session-search-count',
     'desktop-cm-session-delete-credential',
+    'Diagnostics',
+    'desktop-cm-session-summary-diagnostics',
   ]) {
     requireCondition(sessionPanel.includes(marker), `desktop CM session panel must include ${marker}`);
   }
@@ -910,6 +949,8 @@ async function validateCmSshSessionManager(spec) {
     'desktop CM smoke must not expose private key bodies',
     'desktop CM session search must match session name metadata',
     'desktop CM session summary must show active runtime status',
+    'desktop CM diagnostics must show runtime-lost message',
+    'desktop CM session search must match diagnostic message',
   ]) {
     requireCondition(smokeScript.includes(marker), `desktop CM session smoke script must include ${marker}`);
   }
@@ -939,6 +980,7 @@ async function validateCmSshSessionManager(spec) {
     requireCondition(text.includes('connection check') || text.includes('연결 확인'), `${label} must document CM/SSH connection checks`);
     requireCondition(text.includes('CM tunnel/runtime') || text.includes('desktop-cm-ssh-runtime'), `${label} must document CM tunnel/runtime`);
     requireCondition(text.includes('runtime health') || text.includes('health/details'), `${label} must document CM runtime health/details`);
+    requireCondition(text.includes('safe diagnostic') || text.includes('advanced diagnostics'), `${label} must document safe desktop CM diagnostics`);
     requireCondition(text.includes('web app must not expose SSH'), `${label} must document that the web app must not expose SSH`);
   }
 }

@@ -64,6 +64,10 @@ async function smokeDesktopRuntime(browser, url) {
                 updatedAt: now,
                 selected: false,
                 lastCheckStatus: 'not-checked',
+                diagnosticStage: 'metadata',
+                diagnosticSeverity: 'info',
+                diagnosticMessage: 'not-checked',
+                diagnosticHint: 'Run connection check to verify SSH reachability.',
               };
               window.__kuviewerCmSessions = [session, ...window.__kuviewerCmSessions.filter((item) => item.id !== session.id)];
               return session;
@@ -109,6 +113,10 @@ async function smokeDesktopRuntime(browser, url) {
                   lastCheckStatus: 'credential-ready',
                   lastCheckAt: Date.now(),
                   lastCheckMessage: 'private-key-imported',
+                  diagnosticStage: 'credential',
+                  diagnosticSeverity: 'info',
+                  diagnosticMessage: 'private-key-imported',
+                  diagnosticHint: 'Run connection check to verify SSH auth and reachability.',
                 };
                 return imported;
               });
@@ -131,6 +139,12 @@ async function smokeDesktopRuntime(browser, url) {
                   lastCheckStatus: 'reachable',
                   lastCheckAt: Date.now(),
                   lastCheckMessage: session.credentialAvailable ? 'ssh-check-succeeded' : 'tcp-reachable',
+                  diagnosticStage: session.credentialAvailable ? 'ssh-auth' : 'reachability',
+                  diagnosticSeverity: 'info',
+                  diagnosticMessage: session.credentialAvailable ? 'ssh-check-succeeded' : 'tcp-reachable',
+                  diagnosticHint: session.credentialAvailable
+                    ? 'SSH auth check completed. Runtime can be started.'
+                    : 'TCP/SSH banner responded. Import a private key to verify SSH auth.',
                 };
                 return checked;
               });
@@ -157,6 +171,10 @@ async function smokeDesktopRuntime(browser, url) {
                   lastCheckStatus: 'credential-deleted',
                   lastCheckAt: Date.now(),
                   lastCheckMessage: 'credential-deleted',
+                  diagnosticStage: 'credential',
+                  diagnosticSeverity: 'warning',
+                  diagnosticMessage: 'credential-deleted',
+                  diagnosticHint: 'Import a private key credential before starting runtime.',
                 };
                 return updated;
               });
@@ -186,12 +204,20 @@ async function smokeDesktopRuntime(browser, url) {
                 healthStatus: 'healthy',
                 lastHealthAt: now,
                 lastHealthMessage: 'healthz-ok',
+                diagnosticStage: 'health',
+                diagnosticSeverity: 'info',
+                diagnosticMessage: 'healthz-ok',
+                diagnosticHint: 'Localhost tunnel and remote Kuviewer API health are healthy.',
               };
               window.__kuviewerCmSessions = window.__kuviewerCmSessions.map((item) => ({
                 ...item,
                 selected: item.id === session.id,
                 status: item.id === session.id ? 'runtime-active' : item.status,
                 runtimeStatus: item.id === session.id ? 'runtime-active' : 'stopped',
+                diagnosticStage: item.id === session.id ? 'health' : item.diagnosticStage,
+                diagnosticSeverity: item.id === session.id ? 'info' : item.diagnosticSeverity,
+                diagnosticMessage: item.id === session.id ? 'healthz-ok' : item.diagnosticMessage,
+                diagnosticHint: item.id === session.id ? 'Localhost tunnel and remote Kuviewer API health are healthy.' : item.diagnosticHint,
               }));
               return window.__kuviewerCmRuntimeProfile;
             }
@@ -206,6 +232,10 @@ async function smokeDesktopRuntime(browser, url) {
                   ...session,
                   status: session.id === lostSessionId ? 'runtime-lost' : session.status,
                   runtimeStatus: session.id === lostSessionId ? 'runtime-lost' : session.runtimeStatus,
+                  diagnosticStage: session.id === lostSessionId ? 'runtime' : session.diagnosticStage,
+                  diagnosticSeverity: session.id === lostSessionId ? 'error' : session.diagnosticSeverity,
+                  diagnosticMessage: session.id === lostSessionId ? 'runtime-lost' : session.diagnosticMessage,
+                  diagnosticHint: session.id === lostSessionId ? 'SSH tunnel process exited. Start the runtime again.' : session.diagnosticHint,
                 }));
                 return null;
               }
@@ -214,7 +244,18 @@ async function smokeDesktopRuntime(browser, url) {
                 healthStatus: 'healthy',
                 lastHealthAt: Date.now(),
                 lastHealthMessage: 'healthz-ok',
+                diagnosticStage: 'health',
+                diagnosticSeverity: 'info',
+                diagnosticMessage: 'healthz-ok',
+                diagnosticHint: 'Localhost tunnel and remote Kuviewer API health are healthy.',
               };
+              window.__kuviewerCmSessions = window.__kuviewerCmSessions.map((session) => ({
+                ...session,
+                diagnosticStage: session.id === window.__kuviewerCmRuntimeProfile.sessionId ? 'health' : session.diagnosticStage,
+                diagnosticSeverity: session.id === window.__kuviewerCmRuntimeProfile.sessionId ? 'info' : session.diagnosticSeverity,
+                diagnosticMessage: session.id === window.__kuviewerCmRuntimeProfile.sessionId ? 'healthz-ok' : session.diagnosticMessage,
+                diagnosticHint: session.id === window.__kuviewerCmRuntimeProfile.sessionId ? 'Localhost tunnel and remote Kuviewer API health are healthy.' : session.diagnosticHint,
+              }));
               return window.__kuviewerCmRuntimeProfile;
             }
             if (command === 'desktop_stop_cm_session_runtime') {
@@ -224,6 +265,10 @@ async function smokeDesktopRuntime(browser, url) {
                 ...session,
                 status: session.id === stoppedSessionId && session.credentialAvailable ? 'credential-ready' : session.status,
                 runtimeStatus: session.id === stoppedSessionId ? 'stopped' : session.runtimeStatus,
+                diagnosticStage: session.id === stoppedSessionId ? 'runtime' : session.diagnosticStage,
+                diagnosticSeverity: session.id === stoppedSessionId ? 'info' : session.diagnosticSeverity,
+                diagnosticMessage: session.id === stoppedSessionId ? 'runtime-stopped' : session.diagnosticMessage,
+                diagnosticHint: session.id === stoppedSessionId ? 'Start runtime again when needed.' : session.diagnosticHint,
               }));
               return null;
             }
@@ -264,6 +309,11 @@ async function smokeDesktopRuntime(browser, url) {
     requireCondition(summaryText?.includes('Prod CM'), 'desktop CM session summary must show the selected session name');
     requireCondition(summaryText?.includes('credential 필요'), 'desktop CM session summary must show credential availability');
     requireCondition(summaryText?.includes('runtime stopped'), 'desktop CM session summary must show stopped runtime status');
+    await page.getByTestId('desktop-cm-session-summary-diagnostics').waitFor({ state: 'visible', timeout: 10_000 });
+    let diagnosticMessage = await page.getByTestId('desktop-cm-session-summary-diagnostics-message').textContent();
+    let diagnosticStage = await page.getByTestId('desktop-cm-session-summary-diagnostics-stage').textContent();
+    requireCondition(diagnosticStage?.includes('metadata'), 'desktop CM diagnostics must start at metadata stage');
+    requireCondition(diagnosticMessage?.includes('not-checked'), 'desktop CM diagnostics must show not-checked message');
 
     const sessionId = await page.evaluate(() => window.__kuviewerCmSessions[0]?.id);
     requireCondition(typeof sessionId === 'string' && sessionId.startsWith('prod-cm-'), 'saved CM session id must be generated');
@@ -272,8 +322,20 @@ async function smokeDesktopRuntime(browser, url) {
     await page.getByText('Prod CM credential 저장됨').waitFor({ state: 'visible', timeout: 10_000 });
     summaryText = await page.getByTestId('desktop-cm-session-summary').textContent();
     requireCondition(summaryText?.includes('credential ready'), 'desktop CM session summary must update credential availability');
+    diagnosticMessage = await page.getByTestId('desktop-cm-session-summary-diagnostics-message').textContent();
+    diagnosticStage = await page.getByTestId('desktop-cm-session-summary-diagnostics-stage').textContent();
+    requireCondition(diagnosticStage?.includes('credential'), 'desktop CM diagnostics must show credential stage after private key import');
+    requireCondition(diagnosticMessage?.includes('private-key-imported'), 'desktop CM diagnostics must show safe credential import message');
     await page.getByTestId(`desktop-cm-session-check-${sessionId}`).click();
     await page.getByText('Prod CM 확인 · 연결 가능').waitFor({ state: 'visible', timeout: 10_000 });
+    diagnosticMessage = await page.getByTestId('desktop-cm-session-summary-diagnostics-message').textContent();
+    diagnosticStage = await page.getByTestId('desktop-cm-session-summary-diagnostics-stage').textContent();
+    requireCondition(diagnosticStage?.includes('ssh auth'), 'desktop CM diagnostics must show ssh-auth stage after credential check');
+    requireCondition(diagnosticMessage?.includes('ssh-check-succeeded'), 'desktop CM diagnostics must show safe SSH check result');
+    await page.getByTestId('desktop-cm-session-search').fill('ssh-check-succeeded');
+    sessionSearchCount = await page.getByTestId('desktop-cm-session-search-count').textContent();
+    requireCondition(sessionSearchCount?.includes('1 / 전체 1'), 'desktop CM session search must match diagnostic message');
+    await page.getByTestId('desktop-cm-session-search-clear').click();
     await page.getByTestId(`desktop-cm-session-start-runtime-${sessionId}`).click();
     await page.getByText('Prod CM runtime 시작됨').waitFor({ state: 'visible', timeout: 10_000 });
     await page.getByText(/runtime active · Prod CM/).waitFor({ state: 'visible', timeout: 10_000 });
@@ -282,6 +344,10 @@ async function smokeDesktopRuntime(browser, url) {
     summaryText = await page.getByTestId('desktop-cm-session-summary').textContent();
     requireCondition(summaryText?.includes('runtime active'), 'desktop CM session summary must show active runtime status');
     requireCondition(summaryText?.includes('health 정상'), 'desktop CM session summary must show runtime health');
+    diagnosticMessage = await page.getByTestId('desktop-cm-session-summary-diagnostics-message').textContent();
+    diagnosticStage = await page.getByTestId('desktop-cm-session-summary-diagnostics-stage').textContent();
+    requireCondition(diagnosticStage?.includes('health'), 'desktop CM diagnostics must show health stage after runtime start');
+    requireCondition(diagnosticMessage?.includes('healthz-ok'), 'desktop CM diagnostics must show safe health message');
     const runtimeState = await page.evaluate(() => ({
       profile: JSON.parse(window.sessionStorage.getItem('kuviewer_desktop_cm_runtime_profile') || 'null'),
       sourceMode: window.sessionStorage.getItem('kuviewer_source_mode'),
@@ -293,8 +359,14 @@ async function smokeDesktopRuntime(browser, url) {
     await page.getByTestId(`desktop-cm-session-runtime-detail-${sessionId}`).waitFor({ state: 'visible', timeout: 10_000 });
     await page.getByTestId(`desktop-cm-session-check-runtime-${sessionId}`).click();
     await page.getByText('Prod CM health · 정상').waitFor({ state: 'visible', timeout: 10_000 });
+    diagnosticMessage = await page.getByTestId('desktop-cm-session-summary-diagnostics-message').textContent();
+    requireCondition(diagnosticMessage?.includes('healthz-ok'), 'desktop CM diagnostics must stay fresh after runtime health recheck');
     await page.getByTestId(`desktop-cm-session-stop-runtime-${sessionId}`).click();
     await page.getByText('CM/SSH runtime 중지됨').waitFor({ state: 'visible', timeout: 10_000 });
+    diagnosticMessage = await page.getByTestId('desktop-cm-session-summary-diagnostics-message').textContent();
+    diagnosticStage = await page.getByTestId('desktop-cm-session-summary-diagnostics-stage').textContent();
+    requireCondition(diagnosticStage?.includes('runtime'), 'desktop CM diagnostics must show runtime stage after stop');
+    requireCondition(diagnosticMessage?.includes('runtime-stopped'), 'desktop CM diagnostics must show runtime-stopped message');
     const stoppedRuntimeProfile = await page.evaluate(() => window.sessionStorage.getItem('kuviewer_desktop_cm_runtime_profile'));
     requireCondition(stoppedRuntimeProfile === null, 'desktop CM runtime stop must clear the session runtime profile');
     await page.getByTestId(`desktop-cm-session-start-runtime-${sessionId}`).click();
@@ -306,6 +378,14 @@ async function smokeDesktopRuntime(browser, url) {
     await page.getByText('CM/SSH runtime 끊김').waitFor({ state: 'visible', timeout: 10_000 });
     summaryText = await page.getByTestId('desktop-cm-session-summary').textContent();
     requireCondition(summaryText?.includes('runtime 끊김'), 'desktop CM session summary must show lost runtime status');
+    diagnosticMessage = await page.getByTestId('desktop-cm-session-summary-diagnostics-message').textContent();
+    diagnosticStage = await page.getByTestId('desktop-cm-session-summary-diagnostics-stage').textContent();
+    requireCondition(diagnosticStage?.includes('runtime'), 'desktop CM diagnostics must show runtime stage after lost runtime');
+    requireCondition(diagnosticMessage?.includes('runtime-lost'), 'desktop CM diagnostics must show runtime-lost message');
+    await page.getByTestId('desktop-cm-session-search').fill('runtime-lost');
+    sessionSearchCount = await page.getByTestId('desktop-cm-session-search-count').textContent();
+    requireCondition(sessionSearchCount?.includes('1 / 전체 1'), 'desktop CM session search must match runtime diagnostic message');
+    await page.getByTestId('desktop-cm-session-search-clear').click();
     const lostRuntimeProfile = await page.evaluate(() => window.sessionStorage.getItem('kuviewer_desktop_cm_runtime_profile'));
     requireCondition(lostRuntimeProfile === null, 'desktop CM runtime lost must clear the session runtime profile');
     await page.getByTestId(`desktop-cm-session-delete-credential-${sessionId}`).click();

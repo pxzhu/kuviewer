@@ -66,6 +66,10 @@ struct DesktopCmSessionMetadata {
     last_check_status: String,
     last_check_at: Option<u64>,
     last_check_message: Option<String>,
+    diagnostic_stage: Option<String>,
+    diagnostic_severity: Option<String>,
+    diagnostic_message: Option<String>,
+    diagnostic_hint: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -96,6 +100,10 @@ struct DesktopCmSessionRuntimeProfile {
     last_health_at: Option<u64>,
     last_health_message: Option<String>,
     last_error: Option<String>,
+    diagnostic_stage: Option<String>,
+    diagnostic_severity: Option<String>,
+    diagnostic_message: Option<String>,
+    diagnostic_hint: Option<String>,
 }
 
 #[derive(Default)]
@@ -265,7 +273,13 @@ fn desktop_start_cm_session_runtime(
         .ok_or_else(|| "desktop_cm_runtime_credential_missing".to_string())?;
 
     stop_cm_session_runtime_state(&state);
-    start_cm_session_ssh_tunnel(&state, session_snapshot, &private_key)
+    match start_cm_session_ssh_tunnel(&state, session_snapshot, &private_key) {
+        Ok(profile) => Ok(profile),
+        Err(error) => {
+            mark_cm_session_runtime_start_failed(&state, &session_id, &error);
+            Err(error)
+        }
+    }
 }
 
 #[tauri::command]
@@ -401,6 +415,7 @@ fn desktop_import_cm_session_private_key(
     session.last_check_status = "credential-ready".to_string();
     session.last_check_at = Some(session.updated_at);
     session.last_check_message = Some("private-key-imported".to_string());
+    apply_cm_session_diagnostic(session, cm_session_diagnostic("credential", "info", "private-key-imported", "Run connection check to verify SSH auth and reachability."));
     Ok(session.clone())
 }
 
@@ -428,6 +443,7 @@ fn desktop_delete_cm_session_credential(
     session.last_check_status = "credential-deleted".to_string();
     session.last_check_at = Some(session.updated_at);
     session.last_check_message = Some("credential-deleted".to_string());
+    apply_cm_session_diagnostic(session, cm_session_diagnostic("credential", "warning", "credential-deleted", "Import a private key credential before starting runtime."));
     Ok(session.clone())
 }
 
@@ -472,9 +488,11 @@ fn desktop_check_cm_session(
     session.credential_available = credential_available;
     session.status = outcome.status.clone();
     session.updated_at = current_unix_millis();
+    let diagnostic = cm_session_diagnostic_for_check(&outcome.status, &outcome.message, credential_available);
     session.last_check_status = outcome.status;
     session.last_check_at = Some(session.updated_at);
     session.last_check_message = Some(outcome.message);
+    apply_cm_session_diagnostic(session, diagnostic);
     Ok(session.clone())
 }
 
@@ -742,6 +760,7 @@ fn mark_cm_session_runtime_stopped(state: &DesktopSidecarState, session_id: &str
                 "metadata-only".to_string()
             };
             session.updated_at = current_unix_millis();
+            apply_cm_session_diagnostic(session, cm_session_diagnostic("runtime", "info", "runtime-stopped", "필요하면 runtime을 다시 시작하세요."));
         }
     }
 }
@@ -752,6 +771,18 @@ fn mark_cm_session_runtime_lost(state: &DesktopSidecarState, session_id: &str) {
             session.runtime_status = "runtime-lost".to_string();
             session.status = "runtime-lost".to_string();
             session.updated_at = current_unix_millis();
+            apply_cm_session_diagnostic(session, cm_session_diagnostic("runtime", "error", "runtime-lost", "SSH 터널 프로세스가 종료됐습니다. runtime을 다시 시작하세요."));
+        }
+    }
+}
+
+fn mark_cm_session_runtime_start_failed(state: &DesktopSidecarState, session_id: &str, error: &str) {
+    if let Ok(mut sessions) = state.cm_sessions.lock() {
+        if let Some(session) = sessions.iter_mut().find(|session| session.id == session_id) {
+            session.runtime_status = "runtime-unhealthy".to_string();
+            session.status = "runtime-unhealthy".to_string();
+            session.updated_at = current_unix_millis();
+            apply_cm_session_diagnostic(session, cm_runtime_diagnostic_for_start_error(error));
         }
     }
 }
@@ -818,6 +849,10 @@ fn check_cm_session_runtime_state(
     } else {
         Some("desktop_cm_runtime_health_unavailable".to_string())
     };
+    apply_cm_runtime_diagnostic(
+        &mut updated_profile,
+        cm_runtime_diagnostic_for_health(health_ok, updated_profile.last_health_message.as_deref().unwrap_or("healthz-unavailable")),
+    );
 
     {
         let mut profile_slot = state
@@ -835,6 +870,10 @@ fn check_cm_session_runtime_state(
             };
             session.status = session.runtime_status.clone();
             session.updated_at = now;
+            apply_cm_session_diagnostic(
+                session,
+                cm_runtime_diagnostic_for_health(health_ok, updated_profile.last_health_message.as_deref().unwrap_or("healthz-unavailable")),
+            );
         }
     }
 
@@ -897,7 +936,7 @@ fn start_cm_session_ssh_tunnel(
     }
 
     let started_at = current_unix_millis();
-    let profile = DesktopCmSessionRuntimeProfile {
+    let mut profile = DesktopCmSessionRuntimeProfile {
         session_id: session.id.clone(),
         session_name: session.name.clone(),
         server_url: format!("http://127.0.0.1:{local_port}"),
@@ -910,7 +949,12 @@ fn start_cm_session_ssh_tunnel(
         last_health_at: Some(started_at),
         last_health_message: Some("healthz-ok".to_string()),
         last_error: None,
+        diagnostic_stage: None,
+        diagnostic_severity: None,
+        diagnostic_message: None,
+        diagnostic_hint: None,
     };
+    apply_cm_runtime_diagnostic(&mut profile, cm_runtime_diagnostic_for_health(true, "healthz-ok"));
 
     if let Ok(mut runtime_files) = state.cm_runtime_temp_files.lock() {
         runtime_files.push(key_file);
@@ -948,6 +992,7 @@ fn start_cm_session_ssh_tunnel(
                 stored_session.status = "runtime-active".to_string();
                 stored_session.credential_available = true;
                 stored_session.updated_at = profile.started_at;
+                apply_cm_session_diagnostic(stored_session, cm_runtime_diagnostic_for_health(true, "healthz-ok"));
             } else if stored_session.runtime_status == "runtime-active" {
                 stored_session.runtime_status = "stopped".to_string();
             }
@@ -1101,6 +1146,10 @@ fn normalize_cm_session_input(input: DesktopCmSessionInput) -> Result<DesktopCmS
         last_check_status: "not-checked".to_string(),
         last_check_at: None,
         last_check_message: None,
+        diagnostic_stage: Some("metadata".to_string()),
+        diagnostic_severity: Some("info".to_string()),
+        diagnostic_message: Some("not-checked".to_string()),
+        diagnostic_hint: Some("Run connection check to verify SSH reachability.".to_string()),
     };
     refresh_cm_session_credential_state(&mut session);
     Ok(session)
@@ -1237,6 +1286,70 @@ fn refresh_cm_session_credential_state(session: &mut DesktopCmSessionMetadata) {
                 session.status = "credential-store-unavailable".to_string();
             }
         }
+    }
+}
+
+#[derive(Clone)]
+struct DesktopCmDiagnostic {
+    stage: &'static str,
+    severity: &'static str,
+    message: String,
+    hint: &'static str,
+}
+
+fn cm_session_diagnostic(stage: &'static str, severity: &'static str, message: &str, hint: &'static str) -> DesktopCmDiagnostic {
+    DesktopCmDiagnostic {
+        stage,
+        severity,
+        message: message.to_string(),
+        hint,
+    }
+}
+
+fn apply_cm_session_diagnostic(session: &mut DesktopCmSessionMetadata, diagnostic: DesktopCmDiagnostic) {
+    session.diagnostic_stage = Some(diagnostic.stage.to_string());
+    session.diagnostic_severity = Some(diagnostic.severity.to_string());
+    session.diagnostic_message = Some(diagnostic.message);
+    session.diagnostic_hint = Some(diagnostic.hint.to_string());
+}
+
+fn apply_cm_runtime_diagnostic(profile: &mut DesktopCmSessionRuntimeProfile, diagnostic: DesktopCmDiagnostic) {
+    profile.diagnostic_stage = Some(diagnostic.stage.to_string());
+    profile.diagnostic_severity = Some(diagnostic.severity.to_string());
+    profile.diagnostic_message = Some(diagnostic.message);
+    profile.diagnostic_hint = Some(diagnostic.hint.to_string());
+}
+
+fn cm_session_diagnostic_for_check(status: &str, message: &str, credential_available: bool) -> DesktopCmDiagnostic {
+    match status {
+        "reachable" if credential_available => cm_session_diagnostic("ssh-auth", "info", message, "SSH auth check completed. Runtime can be started."),
+        "reachable" => cm_session_diagnostic("reachability", "info", message, "TCP/SSH banner responded. Import a private key to verify SSH auth."),
+        "auth-failed" => cm_session_diagnostic("ssh-auth", "error", message, "Check private key, user, and authorized_keys on the CM server."),
+        "timeout" => cm_session_diagnostic("reachability", "error", message, "Check firewall, security group, port, and bastion route."),
+        "not-ssh" => cm_session_diagnostic("reachability", "error", message, "Check that the host and port point to an SSH endpoint."),
+        "ssh-binary-missing" => cm_session_diagnostic("reachability", "error", message, "Make the local ssh executable available to the desktop runtime."),
+        "credential-missing" => cm_session_diagnostic("credential", "warning", message, "Import the private key credential again."),
+        _ => cm_session_diagnostic("reachability", "error", message, "Check host, port, DNS, and network route before retrying."),
+    }
+}
+
+fn cm_runtime_diagnostic_for_health(healthy: bool, message: &str) -> DesktopCmDiagnostic {
+    if healthy {
+        cm_session_diagnostic("health", "info", message, "Localhost tunnel and remote Kuviewer API health are healthy.")
+    } else {
+        cm_session_diagnostic("health", "error", message, "Check remote Kuviewer API /healthz, SSH tunnel, and CM network.")
+    }
+}
+
+fn cm_runtime_diagnostic_for_start_error(error: &str) -> DesktopCmDiagnostic {
+    if error.contains("ssh_binary") {
+        cm_session_diagnostic("tunnel", "error", "ssh-binary-missing", "Make the local ssh executable available to the desktop runtime.")
+    } else if error.contains("credential") {
+        cm_session_diagnostic("credential", "warning", error, "Import a private key credential before starting runtime.")
+    } else if error.contains("health") {
+        cm_session_diagnostic("health", "error", error, "SSH tunnel started, but remote Kuviewer API /healthz did not respond.")
+    } else {
+        cm_session_diagnostic("tunnel", "error", error, "Check SSH tunnel options, CM server reachability, and remote API host/port.")
     }
 }
 

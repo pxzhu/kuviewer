@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "name": "Kuviewer Desktop CM Session Explorer",
   "goal": "desktop-cm-session-prototype",
-  "status": "desktop-download-descope",
+  "status": "desktop-cm-advanced-diagnostics",
   "recommendedPackager": "tauri",
   "fallbackPackager": "electron",
   "tauri": {
@@ -52,7 +52,7 @@
     "noOperationalActions": true
   },
   "cmSshSessionManager": {
-    "status": "runtime-health-details",
+    "status": "advanced-diagnostics",
     "desktopOnly": true,
     "webExposed": false,
     "storage": "tauri-state-safe-metadata-with-os-credential-store-and-session-runtime",
@@ -77,7 +77,11 @@
       "description",
       "lastCheckStatus",
       "lastCheckAt",
-      "lastCheckMessage"
+      "lastCheckMessage",
+      "diagnosticStage",
+      "diagnosticSeverity",
+      "diagnosticMessage",
+      "diagnosticHint"
     ],
     "commands": [
       "desktop_cm_sessions",
@@ -104,15 +108,31 @@
       "healthStatus",
       "lastHealthAt",
       "lastHealthMessage",
-      "lastError"
+      "lastError",
+      "diagnosticStage",
+      "diagnosticSeverity",
+      "diagnosticMessage",
+      "diagnosticHint"
     ],
+    "diagnosticPolicy": {
+      "stages": ["metadata", "credential", "reachability", "ssh-auth", "tunnel", "health", "runtime"],
+      "severities": ["info", "warning", "error"],
+      "safeOnly": true,
+      "noRawStderr": true,
+      "noPrivateKeyBody": true,
+      "noToken": true,
+      "noKubeconfig": true,
+      "noSecretValues": true,
+      "noCloudCredentials": true
+    },
     "hiddenPrototypeUi": [
       "DesktopConnectionProfilePanel",
       "DesktopKubernetesProfilePanel",
       "desktop-use-sidecar-profile"
     ],
     "next": [
-      "desktop CM advanced diagnostics can revisit richer connection troubleshooting after the metadata-only UX polish"
+      "desktop CM session export/import",
+      "desktop CM diagnostics filtering"
     ]
   },
   "remoteConnectionProfile": {
@@ -362,6 +382,7 @@
     "desktop-cm-ssh-credential-check",
     "desktop-cm-ssh-runtime",
     "desktop-cm-runtime-health-details",
-    "desktop-download-descope"
+    "desktop-download-descope",
+    "desktop-cm-advanced-diagnostics"
   ]
 }
