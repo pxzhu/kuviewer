@@ -17,6 +17,9 @@ requireIncludes(deployWorkflow, 'SERVER_PORT must be numeric', 'deploy workflow 
 requireIncludes(deployWorkflow, 'SERVER_PORT must be between 1 and 65535', 'deploy workflow must validate SERVER_PORT range');
 requireIncludes(deployWorkflow, 'Prepare SSH key', 'deploy workflow must prepare SSH key before preflight');
 requireIncludes(deployWorkflow, 'secrets.SERVER_SSH_KNOWN_HOSTS', 'deploy workflow must support optional pinned known_hosts secret');
+requireIncludes(deployWorkflow, 'ssh-tcp-reachable', 'deploy workflow must report safe SSH TCP reachability');
+requireIncludes(deployWorkflow, 'ssh-tcp-unreachable; verify SERVER_FHOST/SERVER_PORT firewall and SSH service', 'deploy workflow must fail fast on SSH TCP reachability errors');
+requireIncludes(deployWorkflow, ':</dev/tcp/"$0"/"$1"', 'deploy workflow must use a TCP socket probe before keyscan');
 requireIncludes(deployWorkflow, 'Using pinned SSH known_hosts secret', 'deploy workflow must report pinned known_hosts use without printing values');
 requireIncludes(deployWorkflow, 'ssh-keyscan -T 10 -t "${key_type}"', 'deploy workflow must scan host keys by key type');
 requireIncludes(deployWorkflow, 'SSH host key scan attempt ${attempt}/6', 'deploy workflow must retry host key scans six times');
@@ -72,6 +75,9 @@ requireIncludes(deployPreflightWorkflow, 'deploy-preflight-only', 'deploy prefli
 requireIncludes(deployPreflightWorkflow, 'no image build, upload, compose rollout, or rollback will run', 'deploy preflight workflow must document no deploy side effects');
 requireIncludes(deployPreflightWorkflow, 'SERVER_SSH_KNOWN_HOSTS present', 'deploy preflight workflow must report known_hosts secret presence safely');
 requireIncludes(deployPreflightWorkflow, 'SERVER_SSH_KNOWN_HOSTS missing; keyscan fallback will be used', 'deploy preflight workflow must report known_hosts fallback safely');
+requireIncludes(deployPreflightWorkflow, 'ssh-tcp-reachable', 'deploy preflight workflow must report safe SSH TCP reachability');
+requireIncludes(deployPreflightWorkflow, 'ssh-tcp-unreachable; verify SERVER_FHOST/SERVER_PORT firewall and SSH service', 'deploy preflight workflow must fail fast on SSH TCP reachability errors');
+requireIncludes(deployPreflightWorkflow, ':</dev/tcp/"$0"/"$1"', 'deploy preflight workflow must use a TCP socket probe before keyscan');
 requireIncludes(deployPreflightWorkflow, 'Using pinned SSH known_hosts secret', 'deploy preflight workflow must use pinned known_hosts when present');
 requireIncludes(deployPreflightWorkflow, 'SSH host key scan failed; set SERVER_SSH_KNOWN_HOSTS or verify SERVER_FHOST/SERVER_PORT reachability', 'deploy preflight workflow must explain keyscan failures safely');
 requireIncludes(deployPreflightWorkflow, 'Remote SSH preflight', 'deploy preflight workflow must verify remote SSH prerequisites');
@@ -102,6 +108,7 @@ requireCondition(deployWorkflowPolicy.preflightBeforeBuild === true, 'deployWork
 requireCondition(deployWorkflowPolicy.strictHostKeyChecking === true, 'deployWorkflowPolicy.strictHostKeyChecking must be true');
 requireCondition(deployWorkflowPolicy.optionalPinnedKnownHostsSecret === 'SERVER_SSH_KNOWN_HOSTS', 'deployWorkflowPolicy.optionalPinnedKnownHostsSecret must document SERVER_SSH_KNOWN_HOSTS');
 requireCondition(deployWorkflowPolicy.knownHostsHelper === 'scripts/prepare-deploy-known-hosts.mjs', 'deployWorkflowPolicy.knownHostsHelper must document helper script');
+requireCondition(deployWorkflowPolicy.sshTcpReachabilityProbe === true, 'deployWorkflowPolicy.sshTcpReachabilityProbe must be true');
 requireCondition(deployWorkflowPolicy.hostKeyScanAttempts === 6, 'deployWorkflowPolicy.hostKeyScanAttempts must be 6');
 requireCondition(deployWorkflowPolicy.keyscanTimeoutSeconds === 10, 'deployWorkflowPolicy.keyscanTimeoutSeconds must be 10');
 requireCondition(deployWorkflowPolicy.acceptNonEmptyKeyscanOutput === true, 'deployWorkflowPolicy.acceptNonEmptyKeyscanOutput must be true');
