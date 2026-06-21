@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "name": "Kuviewer Desktop CM Session Explorer",
   "goal": "desktop-cm-session-prototype",
-  "status": "desktop-cm-session-layout-conflict-accessibility",
+  "status": "desktop-cm-session-layout-preset-search",
   "recommendedPackager": "tauri",
   "fallbackPackager": "electron",
   "tauri": {
@@ -100,7 +100,7 @@
     "noOperationalActions": true
   },
   "cmSshSessionManager": {
-    "status": "session-layout-conflict-accessibility",
+    "status": "session-layout-preset-search",
     "desktopOnly": true,
     "webExposed": false,
     "storage": "tauri-state-safe-metadata-with-os-credential-store-and-session-runtime",
@@ -302,6 +302,34 @@
       "noSecretValues": true,
       "noEventsOrLogs": true
     },
+    "sessionLayoutPresetSearch": {
+      "desktopOnly": true,
+      "uiOnly": true,
+      "stateStorage": "memory-only",
+      "persisted": false,
+      "exported": false,
+      "searchTargets": ["name", "summary", "groups", "collapsedGroups", "favoriteCount", "sessionCount"],
+      "showsResultCount": true,
+      "showsEmptyState": true,
+      "hasClearAction": true,
+      "filtersVisiblePresetListOnly": true,
+      "doesNotChangeSavedLayoutOrder": true,
+      "doesNotChangeLayoutExport": true,
+      "doesNotChangeLayoutImport": true,
+      "noSessionExportImportSchemaChange": true,
+      "noLayoutExportImportSchemaChange": true,
+      "noTauriSchemaChange": true,
+      "noSessionSearch": true,
+      "noDiagnosticFilters": true,
+      "noEndpointMetadata": true,
+      "noCredentialPayload": true,
+      "noRuntimeProfile": true,
+      "noDiagnosticHistory": true,
+      "noToken": true,
+      "noKubeconfig": true,
+      "noSecretValues": true,
+      "noEventsOrLogs": true
+    },
     "sessionLayoutImportExport": {
       "desktopOnly": true,
       "uiOnly": true,
@@ -471,7 +499,7 @@
       "desktop-use-sidecar-profile"
     ],
     "next": [
-      "Desktop CM session layout preset search/filter"
+      "Desktop CM session layout preset rename polish"
     ]
   },
   "remoteConnectionProfile": {
@@ -736,6 +764,7 @@
     "desktop-cm-session-layout-row-conflicts",
     "desktop-cm-session-layout-conflict-summary",
     "desktop-cm-session-layout-conflict-keyboard",
-    "desktop-cm-session-layout-conflict-accessibility"
+    "desktop-cm-session-layout-conflict-accessibility",
+    "desktop-cm-session-layout-preset-search"
   ]
 }

@@ -379,6 +379,21 @@ async function smokeDesktopRuntime(browser, url) {
     for (const forbiddenField of ['host', 'remoteApiHost', 'credentialAvailable', 'runtimeStatus', 'diagnosticMessage', 'serverUrl', 'adminToken', 'BEGIN OPENSSH PRIVATE KEY']) {
       requireCondition(!sessionLayoutStorage.includes(forbiddenField), `desktop CM session layout preset must not include ${forbiddenField}`);
     }
+    let sessionLayoutSearchCount = await page.getByTestId('desktop-cm-session-layout-search-count').textContent();
+    requireCondition(sessionLayoutSearchCount?.includes('1 / 전체 1'), 'desktop CM session layout search count must show all saved layouts by default');
+    await page.getByTestId('desktop-cm-session-layout-search').fill('production');
+    sessionLayoutSearchCount = await page.getByTestId('desktop-cm-session-layout-search-count').textContent();
+    requireCondition(sessionLayoutSearchCount?.includes('1 / 전체 1'), 'desktop CM session layout search must match saved layout group metadata');
+    await page.getByTestId('desktop-cm-session-layout-search').fill('no-layout-match');
+    await page.getByTestId('desktop-cm-session-layout-search-empty').waitFor({ state: 'visible', timeout: 10_000 });
+    sessionLayoutSearchCount = await page.getByTestId('desktop-cm-session-layout-search-count').textContent();
+    requireCondition(sessionLayoutSearchCount?.includes('0 / 전체 1'), 'desktop CM session layout search must show empty state for no matches');
+    sessionLayoutStorage = await page.evaluate(() => window.localStorage.getItem('kuviewer_desktop_cm_session_layout_presets') || '');
+    requireCondition(!sessionLayoutStorage.includes('no-layout-match') && !sessionLayoutStorage.includes('sessionLayoutSearch'), 'desktop CM session layout search query must stay memory-only');
+    await page.getByTestId('desktop-cm-session-layout-search-clear').click();
+    await page.getByTestId('desktop-cm-session-layout-ops-view').waitFor({ state: 'visible', timeout: 10_000 });
+    sessionLayoutSearchCount = await page.getByTestId('desktop-cm-session-layout-search-count').textContent();
+    requireCondition(sessionLayoutSearchCount?.includes('1 / 전체 1'), 'desktop CM session layout search clear must restore saved layouts');
     const layoutDownloadPromise = page.waitForEvent('download');
     await page.getByTestId('desktop-cm-session-layout-export').click();
     const layoutDownload = await layoutDownloadPromise;
