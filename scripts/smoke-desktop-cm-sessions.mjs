@@ -502,10 +502,25 @@ async function smokeDesktopRuntime(browser, url) {
     );
     await requireTestIdTextIncludes(page, 'desktop-cm-session-layout-reorder-focus-status', 'layout drag handle');
     let layoutReorderFocusStatus = await page.getByTestId('desktop-cm-session-layout-reorder-focus-status').textContent();
+    await page.getByTestId('desktop-cm-session-layout-reorder-history').waitFor({ state: 'visible', timeout: 10_000 });
+    let layoutReorderHistoryText = await page.getByTestId('desktop-cm-session-layout-reorder-history').textContent();
+    let layoutReorderHistoryLatest = await page.getByTestId('desktop-cm-session-layout-reorder-history-latest').textContent();
+    requireCondition(
+      layoutReorderHistoryText?.includes('Preset') &&
+        layoutReorderHistoryText.includes('Reorder complete') &&
+        layoutReorderHistoryText.includes('position 2 of 2') &&
+        layoutReorderHistoryLatest?.includes('Focus restored'),
+      'desktop CM session layout reorder history must include preset status and newest summary'
+    );
     requireCondition(
       layoutReorderFocusStatus?.includes('layout drag handle') &&
         !layoutReorderFocusStatus.includes(`desktop-cm-session-layout-drag-handle-${firstPrimaryPresetSlug}`),
       'desktop CM session layout reorder focus status must announce human-readable preset handle restoration'
+    );
+    requireCondition(
+      layoutReorderHistoryText?.includes('Focus restored') &&
+        !layoutReorderHistoryText.includes(`desktop-cm-session-layout-drag-handle-${firstPrimaryPresetSlug}`),
+      'desktop CM session layout reorder history must include focus restoration'
     );
     const layoutReorderFocusRole = await page.getByTestId('desktop-cm-session-layout-reorder-focus-status').getAttribute('role');
     const layoutReorderFocusAtomic = await page.getByTestId('desktop-cm-session-layout-reorder-focus-status').getAttribute('aria-atomic');
@@ -529,8 +544,16 @@ async function smokeDesktopRuntime(browser, url) {
     requireCondition(
       !sessionLayoutStorage.includes('sessionLayoutReorderKeyboardMessage') &&
         !sessionLayoutStorage.includes('sessionLayoutReorderFocusTargetTestId') &&
-        !sessionLayoutStorage.includes('sessionLayoutReorderFocusTargetLabel'),
+        !sessionLayoutStorage.includes('sessionLayoutReorderFocusTargetLabel') &&
+        !sessionLayoutStorage.includes('sessionLayoutReorderHistory'),
       'desktop CM session layout reorder keyboard and focus status must stay memory-only'
+    );
+    await page.getByTestId('desktop-cm-session-layout-reorder-history-clear').click();
+    await page.getByTestId('desktop-cm-session-layout-reorder-history').waitFor({ state: 'hidden', timeout: 10_000 });
+    sessionLayoutStorage = await page.evaluate(() => window.localStorage.getItem('kuviewer_desktop_cm_session_layout_presets') || '');
+    requireCondition(
+      !sessionLayoutStorage.includes('sessionLayoutReorderHistory'),
+      'desktop CM session layout reorder history clear must remove memory-only history'
     );
     await page.getByTestId('desktop-cm-session-layout-bulk-select-input-ops-view-copy').check();
     await page.getByTestId('desktop-cm-session-layout-bulk-toolbar').waitFor({ state: 'visible', timeout: 10_000 });
@@ -694,6 +717,13 @@ async function smokeDesktopRuntime(browser, url) {
         layoutReorderKeyboardStatus.includes('position 2 of 2'),
       'desktop CM session layout reorder keyboard live status must announce folder move with position'
     );
+    layoutReorderHistoryText = await page.getByTestId('desktop-cm-session-layout-reorder-history').textContent();
+    requireCondition(
+      layoutReorderHistoryText?.includes('Folder') &&
+        layoutReorderHistoryText.includes('Reorder complete') &&
+        layoutReorderHistoryText.includes('position 2 of 2'),
+      'desktop CM session layout reorder history must include folder status'
+    );
     await requireTestIdTextIncludes(page, 'desktop-cm-session-layout-reorder-focus-status', 'saved layout folder list');
     layoutReorderFocusStatus = await page.getByTestId('desktop-cm-session-layout-reorder-focus-status').textContent();
     requireCondition(
@@ -714,7 +744,8 @@ async function smokeDesktopRuntime(browser, url) {
         !sessionLayoutStorage.includes('draggingSessionLayoutPresetName') &&
         !sessionLayoutStorage.includes('sessionLayoutReorderKeyboardMessage') &&
         !sessionLayoutStorage.includes('sessionLayoutReorderFocusTargetTestId') &&
-        !sessionLayoutStorage.includes('sessionLayoutReorderFocusTargetLabel'),
+        !sessionLayoutStorage.includes('sessionLayoutReorderFocusTargetLabel') &&
+        !sessionLayoutStorage.includes('sessionLayoutReorderHistory'),
       'desktop CM session layout drag, reorder keyboard, and focus state must stay memory-only'
     );
     await page.getByTestId('desktop-cm-session-layout-bulk-clear-toolbar').click();

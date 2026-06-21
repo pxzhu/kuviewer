@@ -73,6 +73,8 @@ Desktop CM saved layout folder reorder disabled-state polish is desktop-only der
 
 Desktop CM saved layout folder reorder status wording polish is desktop-only UI text. Reorder live status now uses consistent `Reorder ready`, `Reorder unavailable`, `Reorder unchanged`, `Reorder complete`, and `Focus restored` prefixes, includes safe folder/preset scope and position counts for successful keyboard moves, and gives drag/drop moves a clear completion message. These status messages are memory-only and do not change saved layout data, export/import JSON, Tauri payloads, credentials, runtime profiles, diagnostics, Events, or logs.
 
+Desktop CM saved layout folder reorder status history polish is desktop-only UI state. The saved layout panel now keeps the latest five reorder/focus status messages in browser memory, shows the newest summary, and lets the user clear that history. It adds no storage key, export/import field, Tauri payload, credentials, runtime profile, diagnostic history, Events, or logs.
+
 Existing remote API profile, local sidecar, and direct Kubernetes/keychain paths remain prototype-only scaffolds. The local sidecar no longer starts by default in the desktop product path; it requires `KUVIEWER_DESKTOP_ENABLE_PROTOTYPE_SIDECAR=1` for explicit prototype work. The web app must not expose SSH.
 
 The Flow view is intended to feel closer to real request movement than a generic resource graph. It derives paths such as:

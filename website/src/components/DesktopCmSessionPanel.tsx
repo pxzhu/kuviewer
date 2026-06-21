@@ -84,6 +84,13 @@ interface DesktopCmDiagnosticFilterPreset {
   updatedAt: number;
 }
 
+interface DesktopCmSessionLayoutReorderHistoryEntry {
+  id: string;
+  scope: 'folder' | 'preset' | 'focus' | 'system';
+  message: string;
+  createdAt: number;
+}
+
 interface DesktopCmSessionViewPreference {
   sessionId: string;
   group: string;
@@ -138,6 +145,7 @@ const maxDesktopCmDiagnosticFilterPresetNameLength = 40;
 const maxDesktopCmSessionLayoutPresets = 8;
 const maxDesktopCmSessionLayoutPresetNameLength = 40;
 const maxDesktopCmSessionLayoutFolderNameLength = 40;
+const maxDesktopCmSessionLayoutReorderHistoryEntries = 5;
 const maxDesktopCmSessionCloneNameLength = 60;
 const maxDesktopCmSessionGroupNameLength = 40;
 const defaultDesktopCmSessionGroup = 'General';
@@ -190,6 +198,7 @@ export function DesktopCmSessionPanel({
   const [sessionLayoutReorderFocusTargetTestId, setSessionLayoutReorderFocusTargetTestId] = useState('');
   const [sessionLayoutReorderFocusTargetLabel, setSessionLayoutReorderFocusTargetLabel] = useState('');
   const [sessionLayoutReorderFocusMessage, setSessionLayoutReorderFocusMessage] = useState('');
+  const [sessionLayoutReorderHistory, setSessionLayoutReorderHistory] = useState<DesktopCmSessionLayoutReorderHistoryEntry[]>(() => []);
   const [sessionLayoutPresets, setSessionLayoutPresets] = useState<DesktopCmSessionLayoutPreset[]>(() => readDesktopCmSessionLayoutPresets());
   const [collapsedSessionLayoutFolders, setCollapsedSessionLayoutFolders] = useState<Set<string>>(() => readDesktopCmSessionLayoutCollapsedFolders());
   const [selectedSessionLayoutPresetNames, setSelectedSessionLayoutPresetNames] = useState<Set<string>>(() => new Set());
@@ -207,6 +216,7 @@ export function DesktopCmSessionPanel({
   const sessionLayoutImportInputRef = useRef<HTMLInputElement | null>(null);
   const sessionLayoutConflictPreviewRef = useRef<HTMLDivElement | null>(null);
   const sessionLayoutFolderListRef = useRef<HTMLDivElement | null>(null);
+  const sessionLayoutReorderHistorySequenceRef = useRef(0);
   const normalizedSessionSearchQuery = normalizeSearchValue(sessionSearchQuery);
   const normalizedSessionLayoutSearchQuery = normalizeSearchValue(sessionLayoutSearchQuery);
   const sessionPreferenceMap = useMemo(() => new Map(sessionViewPreferences.sessions.map((preference) => [preference.sessionId, preference])), [sessionViewPreferences.sessions]);
@@ -339,6 +349,7 @@ export function DesktopCmSessionPanel({
       ? sessionLayoutReorderUnavailableReason
       : 'Reorder ready: keyboard shortcuts can move folders and presets.');
   const sessionLayoutReorderFocusLiveText = sessionLayoutReorderFocusMessage || 'Focus restoration ready: focus returns to the moved control after reorder.';
+  const sessionLayoutReorderHistoryLatestMessage = sessionLayoutReorderHistory[0]?.message || 'No reorder status history yet.';
   const activeSessionLayoutFolder = groupedSessionLayoutPresets.find((folder) => folder.folder === activeSessionLayoutFolderName);
   const activeSessionLayoutFolderIndex = sessionLayoutFolderNames.findIndex((folderName) => folderName === activeSessionLayoutFolderName);
   const sessionLayoutFolderKeyboardLiveText = activeSessionLayoutFolder
@@ -347,6 +358,26 @@ export function DesktopCmSessionPanel({
   const connectionPreview = `${form.user || 'user'}@${form.host || 'host'}:${form.port || 22} -> ${form.remoteApiHost || desktopCmDefaultRemoteApiHost}:${form.remoteApiPort || desktopCmDefaultRemoteApiPort}`;
   const selectedRuntimeActive = Boolean(selectedSession && runtimeProfile?.sessionId === selectedSession.id);
   const selectedRuntimeStatus = selectedRuntimeActive ? runtimeProfile?.status || selectedSession?.runtimeStatus || 'runtime-active' : selectedSession?.runtimeStatus || 'stopped';
+
+  const appendSessionLayoutReorderHistory = (messageText: string, scope: DesktopCmSessionLayoutReorderHistoryEntry['scope']) => {
+    const messageValue = messageText.trim();
+    if (!messageValue) {
+      return;
+    }
+    sessionLayoutReorderHistorySequenceRef.current += 1;
+    const entry: DesktopCmSessionLayoutReorderHistoryEntry = {
+      id: `${Date.now()}-${sessionLayoutReorderHistorySequenceRef.current}`,
+      scope,
+      message: messageValue,
+      createdAt: Date.now(),
+    };
+    setSessionLayoutReorderHistory((current) => [entry, ...current].slice(0, maxDesktopCmSessionLayoutReorderHistoryEntries));
+  };
+
+  const announceSessionLayoutReorderStatus = (messageText: string, scope: DesktopCmSessionLayoutReorderHistoryEntry['scope']) => {
+    setSessionLayoutReorderKeyboardMessage(messageText);
+    appendSessionLayoutReorderHistory(messageText, scope);
+  };
 
   useEffect(() => {
     if (form.id && !sessions.some((session) => session.id === form.id)) {
@@ -390,12 +421,14 @@ export function DesktopCmSessionPanel({
           : [...document.querySelectorAll<HTMLElement>('[data-testid]')].find(
               (element) => element.dataset.testid === sessionLayoutReorderFocusTargetTestId,
             ) || null;
+      const focusStatusMessage = target
+        ? `Focus restored: ${sessionLayoutReorderFocusTargetLabel || 'moved layout reorder control'}.`
+        : `Focus target unavailable after reorder: ${sessionLayoutReorderFocusTargetLabel || 'moved layout reorder control'}.`;
       if (target) {
         target.focus({ preventScroll: true });
-        setSessionLayoutReorderFocusMessage(`Focus restored: ${sessionLayoutReorderFocusTargetLabel || 'moved layout reorder control'}.`);
-      } else {
-        setSessionLayoutReorderFocusMessage(`Focus target unavailable after reorder: ${sessionLayoutReorderFocusTargetLabel || 'moved layout reorder control'}.`);
       }
+      setSessionLayoutReorderFocusMessage(focusStatusMessage);
+      appendSessionLayoutReorderHistory(focusStatusMessage, 'focus');
       setSessionLayoutReorderFocusTargetTestId('');
       setSessionLayoutReorderFocusTargetLabel('');
     });
@@ -1038,6 +1071,10 @@ export function DesktopCmSessionPanel({
   const sessionLayoutReorderMovementLabel = (direction: -1 | 1 | 'first' | 'last') =>
     direction === 'first' ? 'moved to first' : direction === 'last' ? 'moved to last' : direction < 0 ? 'moved up' : 'moved down';
   const sessionLayoutReorderPositionLabel = (index: number, total: number) => `position ${index + 1} of ${total}`;
+  const sessionLayoutReorderHistoryScopeLabel = (scope: DesktopCmSessionLayoutReorderHistoryEntry['scope']) =>
+    scope === 'folder' ? 'Folder' : scope === 'preset' ? 'Preset' : scope === 'focus' ? 'Focus' : 'System';
+  const sessionLayoutReorderHistoryTimeLabel = (createdAt: number) =>
+    new Date(createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
   const sessionLayoutFolderReorderSuccessMessage = (folderName: string, direction: -1 | 1 | 'first' | 'last', targetIndex: number, total: number) =>
     `Reorder complete: ${folderName} folder ${sessionLayoutReorderMovementLabel(direction)}, ${sessionLayoutReorderPositionLabel(targetIndex, total)}.`;
   const sessionLayoutPresetReorderSuccessMessage = (presetName: string, folderName: string, direction: -1 | 1 | 'first' | 'last', targetIndex: number, total: number) =>
@@ -1086,7 +1123,7 @@ export function DesktopCmSessionPanel({
   ) => {
     const folder = normalizeDesktopCmSessionLayoutFolderName(folderName);
     if (!canReorderSessionLayoutFolders) {
-      setSessionLayoutReorderKeyboardMessage(sessionLayoutReorderUnavailableReason || 'Reorder unavailable: layout folder order cannot change now.');
+      announceSessionLayoutReorderStatus(sessionLayoutReorderUnavailableReason || 'Reorder unavailable: layout folder order cannot change now.', 'folder');
       return;
     }
     const folderOrder = desktopCmSessionLayoutFolderOrder(sessionLayoutPresets);
@@ -1094,11 +1131,17 @@ export function DesktopCmSessionPanel({
     const targetIndex =
       direction === 'first' ? 0 : direction === 'last' ? folderOrder.length - 1 : currentIndex + direction;
     if (currentIndex < 0 || targetIndex < 0 || targetIndex >= folderOrder.length) {
-      setSessionLayoutReorderKeyboardMessage(sessionLayoutReorderUnchangedMessage(folder || 'layout folder', `cannot move ${direction === -1 || direction === 'first' ? 'up' : 'down'}`));
+      announceSessionLayoutReorderStatus(
+        sessionLayoutReorderUnchangedMessage(folder || 'layout folder', `cannot move ${direction === -1 || direction === 'first' ? 'up' : 'down'}`),
+        'folder',
+      );
       return;
     }
     if (currentIndex === targetIndex) {
-      setSessionLayoutReorderKeyboardMessage(sessionLayoutReorderUnchangedMessage(`${folder} folder`, `is already ${direction === 'first' || direction === -1 ? 'first' : 'last'}`));
+      announceSessionLayoutReorderStatus(
+        sessionLayoutReorderUnchangedMessage(`${folder} folder`, `is already ${direction === 'first' || direction === -1 ? 'first' : 'last'}`),
+        'folder',
+      );
       return;
     }
     setSessionLayoutImportConflicts(null);
@@ -1109,7 +1152,7 @@ export function DesktopCmSessionPanel({
       writeDesktopCmSessionLayoutPresets(nextPresets);
       return nextPresets;
     });
-    setSessionLayoutReorderKeyboardMessage(sessionLayoutFolderReorderSuccessMessage(folder, direction, targetIndex, folderOrder.length));
+    announceSessionLayoutReorderStatus(sessionLayoutFolderReorderSuccessMessage(folder, direction, targetIndex, folderOrder.length), 'folder');
     requestSessionLayoutReorderFocus(
       focusTarget === 'folder-list' ? 'desktop-cm-session-layout-list' : sessionLayoutFolderDragHandleTestId(folder),
       focusTarget === 'folder-list' ? 'saved layout folder list' : `${folder} layout folder drag handle`,
@@ -1136,14 +1179,14 @@ export function DesktopCmSessionPanel({
       writeDesktopCmSessionLayoutPresets(nextPresets);
       return nextPresets;
     });
-    setSessionLayoutReorderKeyboardMessage(`Reorder complete: ${sourceFolder} folder moved before ${targetFolder}.`);
+    announceSessionLayoutReorderStatus(`Reorder complete: ${sourceFolder} folder moved before ${targetFolder}.`, 'folder');
     requestSessionLayoutReorderFocus(sessionLayoutFolderDragHandleTestId(sourceFolder), `${sourceFolder} layout folder drag handle`);
     setDraggingSessionLayoutFolderName('');
   };
 
   const handleMoveSessionLayoutPresetOrder = (presetName: string, direction: -1 | 1 | 'first' | 'last') => {
     if (!canReorderSessionLayoutPresets) {
-      setSessionLayoutReorderKeyboardMessage(sessionLayoutReorderUnavailableReason || 'Reorder unavailable: layout preset order cannot change now.');
+      announceSessionLayoutReorderStatus(sessionLayoutReorderUnavailableReason || 'Reorder unavailable: layout preset order cannot change now.', 'preset');
       return;
     }
     const sourcePreset = sessionLayoutPresets.find((preset) => preset.name === presetName);
@@ -1156,11 +1199,17 @@ export function DesktopCmSessionPanel({
     const targetIndex =
       direction === 'first' ? 0 : direction === 'last' ? folderPresets.length - 1 : currentIndex + direction;
     if (currentIndex < 0 || targetIndex < 0 || targetIndex >= folderPresets.length) {
-      setSessionLayoutReorderKeyboardMessage(sessionLayoutReorderUnchangedMessage(`${presetName} layout`, `cannot move ${direction === -1 || direction === 'first' ? 'up' : 'down'} in ${folder}`));
+      announceSessionLayoutReorderStatus(
+        sessionLayoutReorderUnchangedMessage(`${presetName} layout`, `cannot move ${direction === -1 || direction === 'first' ? 'up' : 'down'} in ${folder}`),
+        'preset',
+      );
       return;
     }
     if (currentIndex === targetIndex) {
-      setSessionLayoutReorderKeyboardMessage(sessionLayoutReorderUnchangedMessage(`${presetName} layout`, `is already ${direction === 'first' || direction === -1 ? 'first' : 'last'} in ${folder}`));
+      announceSessionLayoutReorderStatus(
+        sessionLayoutReorderUnchangedMessage(`${presetName} layout`, `is already ${direction === 'first' || direction === -1 ? 'first' : 'last'} in ${folder}`),
+        'preset',
+      );
       return;
     }
     setSessionLayoutImportConflicts(null);
@@ -1170,7 +1219,7 @@ export function DesktopCmSessionPanel({
       writeDesktopCmSessionLayoutPresets(nextPresets);
       return nextPresets;
     });
-    setSessionLayoutReorderKeyboardMessage(sessionLayoutPresetReorderSuccessMessage(presetName, folder, direction, targetIndex, folderPresets.length));
+    announceSessionLayoutReorderStatus(sessionLayoutPresetReorderSuccessMessage(presetName, folder, direction, targetIndex, folderPresets.length), 'preset');
     requestSessionLayoutReorderFocus(sessionLayoutPresetDragHandleTestId(presetName), `${presetName} layout drag handle in ${folder}`);
   };
 
@@ -1192,7 +1241,7 @@ export function DesktopCmSessionPanel({
       writeDesktopCmSessionLayoutPresets(nextPresets);
       return nextPresets;
     });
-    setSessionLayoutReorderKeyboardMessage(`Reorder complete: ${sourcePresetName} layout moved before ${targetPresetName}.`);
+    announceSessionLayoutReorderStatus(`Reorder complete: ${sourcePresetName} layout moved before ${targetPresetName}.`, 'preset');
     requestSessionLayoutReorderFocus(sessionLayoutPresetDragHandleTestId(sourcePresetName), `${sourcePresetName} layout drag handle`);
     setDraggingSessionLayoutPresetName('');
   };
@@ -2428,6 +2477,48 @@ export function DesktopCmSessionPanel({
                 <button className="ku-control h-8 text-xs" data-testid="desktop-cm-session-layout-bulk-clear-toolbar" type="button" onClick={handleClearSessionLayoutPresetSelection}>
                   선택 해제
                 </button>
+              </div>
+            ) : null}
+            {sessionLayoutReorderHistory.length > 0 ? (
+              <div
+                aria-label="Saved layout reorder status history"
+                className="grid gap-2 rounded-[10px] border border-[rgba(60,60,67,0.1)] bg-white/58 px-3 py-2"
+                data-testid="desktop-cm-session-layout-reorder-history"
+              >
+                <div className="flex min-w-0 flex-wrap items-center gap-2">
+                  <span className="ku-chip" data-testid="desktop-cm-session-layout-reorder-history-count">
+                    최근 reorder status {sessionLayoutReorderHistory.length} / {maxDesktopCmSessionLayoutReorderHistoryEntries}
+                  </span>
+                  <span className="min-w-0 flex-1 truncate text-xs font-semibold text-[rgba(60,60,67,0.62)]" data-testid="desktop-cm-session-layout-reorder-history-latest">
+                    {sessionLayoutReorderHistoryLatestMessage}
+                  </span>
+                  <button
+                    className="ku-control h-8 text-xs"
+                    data-testid="desktop-cm-session-layout-reorder-history-clear"
+                    type="button"
+                    onClick={() => setSessionLayoutReorderHistory([])}
+                  >
+                    <XCircle size={13} aria-hidden="true" />
+                    history clear
+                  </button>
+                </div>
+                <ol className="grid gap-1" data-testid="desktop-cm-session-layout-reorder-history-list">
+                  {sessionLayoutReorderHistory.map((entry) => (
+                    <li
+                      key={entry.id}
+                      className="grid gap-1 rounded-[8px] border border-[rgba(60,60,67,0.08)] bg-white/70 px-2 py-1 text-xs font-semibold text-[rgba(60,60,67,0.68)] sm:grid-cols-[auto_1fr_auto] sm:items-center"
+                      data-testid={`desktop-cm-session-layout-reorder-history-item-${entry.scope}`}
+                    >
+                      <span className="ku-chip h-6 justify-center text-[11px]">{sessionLayoutReorderHistoryScopeLabel(entry.scope)}</span>
+                      <span className="min-w-0 truncate" data-testid="desktop-cm-session-layout-reorder-history-message">
+                        {entry.message}
+                      </span>
+                      <time className="font-mono text-[11px] text-[rgba(60,60,67,0.48)]" dateTime={new Date(entry.createdAt).toISOString()}>
+                        {sessionLayoutReorderHistoryTimeLabel(entry.createdAt)}
+                      </time>
+                    </li>
+                  ))}
+                </ol>
               </div>
             ) : null}
             {sessionLayoutImportConflicts ? (
