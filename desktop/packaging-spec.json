@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "name": "Kuviewer Desktop CM Session Explorer",
   "goal": "desktop-cm-session-prototype",
-  "status": "desktop-cm-session-layout-preset-folder-filter-polish",
+  "status": "desktop-cm-session-layout-preset-folder-action-polish",
   "recommendedPackager": "tauri",
   "fallbackPackager": "electron",
   "tauri": {
@@ -100,7 +100,7 @@
     "noOperationalActions": true
   },
   "cmSshSessionManager": {
-    "status": "session-layout-preset-folder-filter-polish",
+    "status": "session-layout-preset-folder-action-polish",
     "desktopOnly": true,
     "webExposed": false,
     "storage": "tauri-state-safe-metadata-with-os-credential-store-and-session-runtime",
@@ -502,6 +502,37 @@
       "noSecretValues": true,
       "noEventsOrLogs": true
     },
+    "sessionLayoutPresetFolderActions": {
+      "desktopOnly": true,
+      "uiOnly": true,
+      "selectionStorage": "memory-only",
+      "draftStateStorage": "memory-only",
+      "usesExistingLayoutStorage": "kuviewer_desktop_cm_session_layout_presets",
+      "actions": ["select-visible-folder-presets", "rename-folder"],
+      "renameUpdatesFolderMetadataOnly": true,
+      "renameCanMergeExistingFolders": true,
+      "preservesPresetNames": true,
+      "preservesViewPreferences": true,
+      "preservesSearchQuery": true,
+      "preservesFolderFilter": true,
+      "folderCollapseExported": false,
+      "folderMetadataExported": true,
+      "folderMetadataImported": true,
+      "sameNameGlobalUnique": true,
+      "noSessionExportImportSchemaChange": true,
+      "noLayoutExportImportSchemaChange": true,
+      "noTauriSchemaChange": true,
+      "noSessionSearch": true,
+      "noDiagnosticFilters": true,
+      "noEndpointMetadata": true,
+      "noCredentialPayload": true,
+      "noRuntimeProfile": true,
+      "noDiagnosticHistory": true,
+      "noToken": true,
+      "noKubeconfig": true,
+      "noSecretValues": true,
+      "noEventsOrLogs": true
+    },
     "sessionLayoutImportExport": {
       "desktopOnly": true,
       "uiOnly": true,
@@ -671,7 +702,7 @@
       "desktop-use-sidecar-profile"
     ],
     "next": [
-      "Desktop CM session layout preset folder action polish"
+      "Desktop CM session layout preset folder keyboard polish"
     ]
   },
   "remoteConnectionProfile": {
@@ -943,6 +974,7 @@
     "desktop-cm-session-layout-preset-bulk-management",
     "desktop-cm-session-layout-preset-folder-polish",
     "desktop-cm-session-layout-preset-folder-bulk-move",
-    "desktop-cm-session-layout-preset-folder-filter-polish"
+    "desktop-cm-session-layout-preset-folder-filter-polish",
+    "desktop-cm-session-layout-preset-folder-action-polish"
   ]
 }

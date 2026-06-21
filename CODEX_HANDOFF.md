@@ -195,7 +195,8 @@ https://kuviewer.example.com/
    - Desktop CM session layout preset folder polish는 완료됐다. Saved layout preset은 safe `folder` metadata를 저장/검색/그룹 렌더링/import/export에 사용하며 missing folder는 `General`로 보정하고, folder collapse state는 별도 UI preference로만 저장해 layout/session export와 Tauri payload에는 포함하지 않는다.
    - Desktop CM session layout preset folder bulk move는 완료됐다. Bulk toolbar에서 선택한 saved layout preset을 target folder로 이동하며 selection/folder draft는 memory-only이고 safe `folder` metadata만 기존 layout preset storage에 반영한다.
    - Desktop CM session layout preset folder filter polish는 완료됐다. Saved layout preset 목록은 existing folder 필터와 layout search를 AND 조건으로 적용하며 active filter는 memory-only이고 export/import/localStorage/Tauri payload에는 포함하지 않는다.
-   - 다음 확장 후보는 Desktop CM session layout preset folder action polish다.
+   - Desktop CM session layout preset folder action polish는 완료됐다. Folder header에서 visible preset 선택과 folder rename을 제공하며 rename은 safe `folder` metadata만 업데이트하고 action draft/selection은 memory-only로 유지한다.
+   - 다음 확장 후보는 Desktop CM session layout preset folder keyboard polish다.
 
 4. 실제 Kubernetes 연결 설계
    - 브라우저에 kube credential을 직접 넣지 않는 방향 유지.
