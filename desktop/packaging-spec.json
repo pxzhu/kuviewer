@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "name": "Kuviewer Desktop CM Session Explorer",
   "goal": "desktop-cm-session-prototype",
-  "status": "desktop-cm-session-layout-preset-bulk-management",
+  "status": "desktop-cm-session-layout-preset-folder-polish",
   "recommendedPackager": "tauri",
   "fallbackPackager": "electron",
   "tauri": {
@@ -100,7 +100,7 @@
     "noOperationalActions": true
   },
   "cmSshSessionManager": {
-    "status": "session-layout-preset-bulk-management",
+    "status": "session-layout-preset-folder-polish",
     "desktopOnly": true,
     "webExposed": false,
     "storage": "tauri-state-safe-metadata-with-os-credential-store-and-session-runtime",
@@ -287,7 +287,7 @@
       "storageKey": "kuviewer_desktop_cm_session_layout_presets",
       "maxPresets": 8,
       "maxNameLength": 40,
-      "fields": ["name", "viewPreferences", "updatedAt"],
+      "fields": ["name", "folder", "viewPreferences", "updatedAt"],
       "viewPreferenceFields": ["sessionId", "group", "favorite", "updatedAt", "collapsedGroups"],
       "appliesOnlyExistingSessionIds": true,
       "noSessionSearch": true,
@@ -308,7 +308,7 @@
       "stateStorage": "memory-only",
       "persisted": false,
       "exported": false,
-      "searchTargets": ["name", "summary", "groups", "collapsedGroups", "favoriteCount", "sessionCount"],
+      "searchTargets": ["name", "summary", "folder", "groups", "collapsedGroups", "favoriteCount", "sessionCount"],
       "showsResultCount": true,
       "showsEmptyState": true,
       "hasClearAction": true,
@@ -408,6 +408,38 @@
       "noSecretValues": true,
       "noEventsOrLogs": true
     },
+    "sessionLayoutPresetFolders": {
+      "desktopOnly": true,
+      "uiOnly": true,
+      "usesExistingLayoutStorage": "kuviewer_desktop_cm_session_layout_presets",
+      "folderField": "folder",
+      "defaultFolder": "General",
+      "maxFolderNameLength": 40,
+      "folderMetadataExported": true,
+      "folderMetadataImported": true,
+      "folderCollapseStorage": "kuviewer_desktop_cm_session_layout_collapsed_folders",
+      "folderCollapsePersisted": true,
+      "folderCollapseExported": false,
+      "groupedRendering": true,
+      "saveFolderInput": true,
+      "rowFolderEdit": true,
+      "searchTargetsIncludeFolder": true,
+      "bulkSelectionPreserved": true,
+      "sameNameGlobalUnique": true,
+      "noSessionExportImportSchemaChange": true,
+      "noLayoutExportImportSchemaChange": false,
+      "noTauriSchemaChange": true,
+      "noSessionSearch": true,
+      "noDiagnosticFilters": true,
+      "noEndpointMetadata": true,
+      "noCredentialPayload": true,
+      "noRuntimeProfile": true,
+      "noDiagnosticHistory": true,
+      "noToken": true,
+      "noKubeconfig": true,
+      "noSecretValues": true,
+      "noEventsOrLogs": true
+    },
     "sessionLayoutImportExport": {
       "desktopOnly": true,
       "uiOnly": true,
@@ -416,7 +448,7 @@
       "kind": "kuviewer.desktop.cmSessionLayouts",
       "storageKey": "kuviewer_desktop_cm_session_layout_presets",
       "maxImportItems": 8,
-      "fields": ["name", "viewPreferences", "updatedAt"],
+      "fields": ["name", "folder", "viewPreferences", "updatedAt"],
       "viewPreferenceFields": ["sessionId", "group", "favorite", "updatedAt", "collapsedGroups"],
       "acceptsBundleItemsShape": true,
       "acceptsPlainArray": true,
@@ -577,7 +609,7 @@
       "desktop-use-sidecar-profile"
     ],
     "next": [
-      "Desktop CM session layout preset folder polish"
+      "Desktop CM session layout preset folder bulk move"
     ]
   },
   "remoteConnectionProfile": {
@@ -846,6 +878,7 @@
     "desktop-cm-session-layout-preset-search",
     "desktop-cm-session-layout-preset-rename",
     "desktop-cm-session-layout-preset-duplicate",
-    "desktop-cm-session-layout-preset-bulk-management"
+    "desktop-cm-session-layout-preset-bulk-management",
+    "desktop-cm-session-layout-preset-folder-polish"
   ]
 }

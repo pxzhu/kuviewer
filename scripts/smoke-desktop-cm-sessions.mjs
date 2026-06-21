@@ -368,11 +368,16 @@ async function smokeDesktopRuntime(browser, url) {
     await page.getByTestId('desktop-cm-session-group-items-production').waitFor({ state: 'hidden', timeout: 10_000 });
     sessionViewPreferenceStorage = await page.evaluate(() => window.localStorage.getItem('kuviewer_desktop_cm_session_view_preferences') || '');
     requireCondition(sessionViewPreferenceStorage.includes('collapsedGroups'), 'desktop CM session view preferences must persist collapsed group UI state');
+    await page.getByTestId('desktop-cm-session-layout-folder').fill('Runbooks');
     await page.getByTestId('desktop-cm-session-layout-name').fill('Ops View');
     await page.getByTestId('desktop-cm-session-layout-save').click();
+    await page.getByTestId('desktop-cm-session-layout-folder-runbooks').waitFor({ state: 'visible', timeout: 10_000 });
     await page.getByTestId('desktop-cm-session-layout-ops-view').waitFor({ state: 'visible', timeout: 10_000 });
+    const sessionLayoutFolderCount = await page.getByTestId('desktop-cm-session-layout-folder-count-runbooks').textContent();
+    requireCondition(sessionLayoutFolderCount?.includes('1 / 1'), 'desktop CM session layout folder count must show saved layout presets');
     let sessionLayoutStorage = await page.evaluate(() => window.localStorage.getItem('kuviewer_desktop_cm_session_layout_presets') || '');
     requireCondition(sessionLayoutStorage.includes('Ops View'), 'desktop CM session layout save must persist safe layout metadata');
+    requireCondition(sessionLayoutStorage.includes('"folder":"Runbooks"'), 'desktop CM session layout save must persist safe folder metadata');
     requireCondition(sessionLayoutStorage.includes('collapsedGroups'), 'desktop CM session layout save must persist collapsed group preferences');
     requireCondition(sessionLayoutStorage.includes('"favorite":true'), 'desktop CM session layout save must persist favorite preferences');
     requireCondition(!sessionLayoutStorage.includes('cm.example.internal'), 'desktop CM session layout preset must not include session endpoint metadata');
@@ -381,6 +386,23 @@ async function smokeDesktopRuntime(browser, url) {
     }
     let sessionLayoutSearchCount = await page.getByTestId('desktop-cm-session-layout-search-count').textContent();
     requireCondition(sessionLayoutSearchCount?.includes('1 / 전체 1'), 'desktop CM session layout search count must show all saved layouts by default');
+    await page.getByTestId('desktop-cm-session-layout-search').fill('runbooks');
+    sessionLayoutSearchCount = await page.getByTestId('desktop-cm-session-layout-search-count').textContent();
+    requireCondition(sessionLayoutSearchCount?.includes('1 / 전체 1'), 'desktop CM session layout search must match saved layout folder metadata');
+    await page.getByTestId('desktop-cm-session-layout-search-clear').click();
+    await page.getByTestId('desktop-cm-session-layout-folder-toggle-runbooks').click();
+    await page.getByTestId('desktop-cm-session-layout-folder-items-runbooks').waitFor({ state: 'hidden', timeout: 10_000 });
+    let sessionLayoutCollapsedFolderStorage = await page.evaluate(() => window.localStorage.getItem('kuviewer_desktop_cm_session_layout_collapsed_folders') || '');
+    requireCondition(sessionLayoutCollapsedFolderStorage.includes('Runbooks'), 'desktop CM session layout folder collapse preference must persist separately');
+    sessionLayoutStorage = await page.evaluate(() => window.localStorage.getItem('kuviewer_desktop_cm_session_layout_presets') || '');
+    requireCondition(!sessionLayoutStorage.includes('collapsed_folders'), 'desktop CM session layout folder collapse preference must stay out of layout presets');
+    await page.getByTestId('desktop-cm-session-layout-folder-toggle-runbooks').click();
+    await page.getByTestId('desktop-cm-session-layout-folder-items-runbooks').waitFor({ state: 'visible', timeout: 10_000 });
+    await page.getByTestId('desktop-cm-session-layout-folder-input-ops-view').fill('Primary');
+    await page.getByTestId('desktop-cm-session-layout-folder-input-ops-view').press('Enter');
+    await page.getByTestId('desktop-cm-session-layout-folder-primary').waitFor({ state: 'visible', timeout: 10_000 });
+    sessionLayoutStorage = await page.evaluate(() => window.localStorage.getItem('kuviewer_desktop_cm_session_layout_presets') || '');
+    requireCondition(sessionLayoutStorage.includes('"folder":"Primary"'), 'desktop CM session layout folder edit must update preset folder metadata');
     await page.getByTestId('desktop-cm-session-layout-search').fill('production');
     sessionLayoutSearchCount = await page.getByTestId('desktop-cm-session-layout-search-count').textContent();
     requireCondition(sessionLayoutSearchCount?.includes('1 / 전체 1'), 'desktop CM session layout search must match saved layout group metadata');
@@ -419,6 +441,7 @@ async function smokeDesktopRuntime(browser, url) {
     await page.getByTestId('desktop-cm-session-layout-ops-view-copy').waitFor({ state: 'visible', timeout: 10_000 });
     sessionLayoutStorage = await page.evaluate(() => window.localStorage.getItem('kuviewer_desktop_cm_session_layout_presets') || '');
     requireCondition(sessionLayoutStorage.includes('Ops View copy'), 'desktop CM session layout duplicate must create a copy with safe layout metadata');
+    requireCondition(sessionLayoutStorage.includes('"folder":"Primary"'), 'desktop CM session layout duplicate must preserve folder metadata');
     requireCondition(sessionLayoutStorage.includes('collapsedGroups') && sessionLayoutStorage.includes('"favorite":true'), 'desktop CM session layout duplicate must preserve saved layout preferences');
     requireCondition(!sessionLayoutStorage.includes('cm.example.internal'), 'desktop CM session layout duplicate must not include session endpoint metadata');
     for (const forbiddenField of ['host', 'remoteApiHost', 'credentialAvailable', 'runtimeStatus', 'diagnosticMessage', 'serverUrl', 'adminToken', 'BEGIN OPENSSH PRIVATE KEY']) {
@@ -438,7 +461,8 @@ async function smokeDesktopRuntime(browser, url) {
       selectedLayoutExportBundle.kind === 'kuviewer.desktop.cmSessionLayouts' &&
         Array.isArray(selectedLayoutExportBundle.items) &&
         selectedLayoutExportBundle.items.length === 1 &&
-        selectedLayoutExportBundle.items[0].name === 'Ops View copy',
+        selectedLayoutExportBundle.items[0].name === 'Ops View copy' &&
+        selectedLayoutExportBundle.items[0].folder === 'Primary',
       'desktop CM session layout selected export must include only selected layout presets'
     );
     const selectedLayoutExportJson = JSON.stringify(selectedLayoutExportBundle);
@@ -470,7 +494,9 @@ async function smokeDesktopRuntime(browser, url) {
     requireCondition(layoutExportBundle.schemaVersion === 1, 'desktop CM session layout export bundle must include schemaVersion 1');
     requireCondition(layoutExportBundle.kind === 'kuviewer.desktop.cmSessionLayouts', 'desktop CM session layout export bundle must include the layout kind');
     requireCondition(Array.isArray(layoutExportBundle.items) && layoutExportBundle.items.length === 1, 'desktop CM session layout export must include saved layout presets only');
+    requireCondition(layoutExportBundle.items[0].folder === 'Primary', 'desktop CM session layout export must preserve folder metadata');
     const layoutExportJson = JSON.stringify(layoutExportBundle);
+    requireCondition(!layoutExportJson.includes('kuviewer_desktop_cm_session_layout_collapsed_folders'), 'desktop CM session layout export must not include folder collapse preferences');
     requireCondition(!layoutExportJson.includes('cm.example.internal'), 'desktop CM session layout export must not include session endpoint metadata');
     for (const forbiddenField of ['host', 'remoteApiHost', 'credentialAvailable', 'runtimeStatus', 'diagnosticMessage', 'serverUrl', 'adminToken', 'BEGIN OPENSSH PRIVATE KEY']) {
       requireCondition(!layoutExportJson.includes(forbiddenField), `desktop CM session layout export must not include ${forbiddenField}`);
@@ -497,6 +523,7 @@ async function smokeDesktopRuntime(browser, url) {
       items: [
         {
           name: 'Ops View',
+          folder: 'Incoming',
           viewPreferences: {
             sessions: [{ sessionId, group: 'Imported', favorite: true, updatedAt: Date.now() }],
             collapsedGroups: [],
@@ -507,6 +534,7 @@ async function smokeDesktopRuntime(browser, url) {
         },
         {
           name: 'Review View',
+          folder: 'Reviews',
           viewPreferences: {
             sessions: [
               { sessionId, group: 'Review', favorite: false, updatedAt: Date.now() },
@@ -530,6 +558,7 @@ async function smokeDesktopRuntime(browser, url) {
     await page.getByTestId('desktop-cm-session-layout-import-summary').waitFor({ state: 'visible', timeout: 10_000 });
     let layoutImportSummary = await page.getByTestId('desktop-cm-session-layout-import-summary').textContent();
     requireCondition(layoutImportSummary?.includes('new 1') && layoutImportSummary.includes('updated 0') && layoutImportSummary.includes('invalid 1'), 'desktop CM session layout import must report layout updates');
+    await page.getByTestId('desktop-cm-session-layout-folder-reviews').waitFor({ state: 'visible', timeout: 10_000 });
     await page.getByTestId('desktop-cm-session-layout-review-view').waitFor({ state: 'visible', timeout: 10_000 });
     await page.getByTestId('desktop-cm-session-layout-conflict-preview').waitFor({ state: 'visible', timeout: 10_000 });
     await page.getByTestId('desktop-cm-session-layout-conflict-ops-view').waitFor({ state: 'visible', timeout: 10_000 });
@@ -569,6 +598,7 @@ async function smokeDesktopRuntime(browser, url) {
     );
     sessionLayoutStorage = await page.evaluate(() => window.localStorage.getItem('kuviewer_desktop_cm_session_layout_presets') || '');
     requireCondition(sessionLayoutStorage.includes('Review View'), 'desktop CM session layout import must persist new layout presets');
+    requireCondition(sessionLayoutStorage.includes('"folder":"Reviews"'), 'desktop CM session layout import must preserve folder metadata');
     requireCondition(!sessionLayoutStorage.includes('Imported'), 'desktop CM session layout conflict preview must not overwrite same-name layouts before resolution');
     requireCondition(!sessionLayoutStorage.includes('incomingResolved') && !sessionLayoutStorage.includes('currentResolved') && !sessionLayoutStorage.includes('renamedResolved'), 'desktop CM session layout conflict summary must not persist resolution counters');
     requireCondition(!sessionLayoutStorage.includes('conflict-preview'), 'desktop CM session layout conflict preview must not persist conflict state');
