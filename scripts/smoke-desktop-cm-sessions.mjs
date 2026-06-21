@@ -478,6 +478,22 @@ async function smokeDesktopRuntime(browser, url) {
       !sessionLayoutStorage.includes('selectedSessionLayoutPresetNames') && !sessionLayoutStorage.includes('sessionLayoutBulkDeleteConfirm'),
       'desktop CM session layout bulk selection must stay memory-only'
     );
+    await page.getByTestId('desktop-cm-session-layout-folder-filter').selectOption('Archive');
+    await page.getByTestId('desktop-cm-session-layout-folder-archive').waitFor({ state: 'visible', timeout: 10_000 });
+    await page.getByTestId('desktop-cm-session-layout-folder-primary').waitFor({ state: 'hidden', timeout: 10_000 });
+    sessionLayoutSearchCount = await page.getByTestId('desktop-cm-session-layout-search-count').textContent();
+    requireCondition(sessionLayoutSearchCount?.includes('1 / 전체 2'), 'desktop CM session layout folder filter must narrow visible layouts');
+    const sessionLayoutFolderFilterCount = await page.getByTestId('desktop-cm-session-layout-folder-filter-count').textContent();
+    requireCondition(sessionLayoutFolderFilterCount?.includes('Archive'), 'desktop CM session layout folder filter count must show active folder');
+    await page.getByTestId('desktop-cm-session-layout-search').fill('copy');
+    sessionLayoutSearchCount = await page.getByTestId('desktop-cm-session-layout-search-count').textContent();
+    requireCondition(sessionLayoutSearchCount?.includes('1 / 전체 2'), 'desktop CM session layout folder filter must combine with layout search');
+    sessionLayoutStorage = await page.evaluate(() => window.localStorage.getItem('kuviewer_desktop_cm_session_layout_presets') || '');
+    requireCondition(!sessionLayoutStorage.includes('sessionLayoutFolderFilter') && !sessionLayoutStorage.includes('Archive folder filter'), 'desktop CM session layout folder filter must stay memory-only');
+    await page.getByTestId('desktop-cm-session-layout-search-clear').click();
+    await page.getByTestId('desktop-cm-session-layout-folder-filter-clear').click();
+    sessionLayoutSearchCount = await page.getByTestId('desktop-cm-session-layout-search-count').textContent();
+    requireCondition(sessionLayoutSearchCount?.includes('2 / 전체 2'), 'desktop CM session layout folder filter clear must restore saved layouts');
     await page.getByTestId('desktop-cm-session-layout-bulk-clear-toolbar').click();
     await page.getByTestId('desktop-cm-session-layout-search').fill('copy');
     sessionLayoutSearchCount = await page.getByTestId('desktop-cm-session-layout-search-count').textContent();

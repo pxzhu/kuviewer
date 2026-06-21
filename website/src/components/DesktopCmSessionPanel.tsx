@@ -111,6 +111,12 @@ interface DesktopCmSessionLayoutFolder {
   collapsed: boolean;
 }
 
+interface DesktopCmSessionLayoutFolderFilterOption {
+  folder: string;
+  slug: string;
+  count: number;
+}
+
 interface DesktopCmSessionGroup {
   group: string;
   slug: string;
@@ -171,6 +177,7 @@ export function DesktopCmSessionPanel({
   const [sessionLayoutPresetName, setSessionLayoutPresetName] = useState('');
   const [sessionLayoutPresetFolder, setSessionLayoutPresetFolder] = useState(defaultDesktopCmSessionLayoutFolder);
   const [sessionLayoutSearchQuery, setSessionLayoutSearchQuery] = useState('');
+  const [sessionLayoutFolderFilter, setSessionLayoutFolderFilter] = useState('all');
   const [sessionLayoutRenameTargetName, setSessionLayoutRenameTargetName] = useState('');
   const [sessionLayoutRenameDraftName, setSessionLayoutRenameDraftName] = useState('');
   const [sessionLayoutRenameError, setSessionLayoutRenameError] = useState('');
@@ -221,9 +228,15 @@ export function DesktopCmSessionPanel({
     const currentLayout = pruneDesktopCmSessionViewPreferences(sessionViewPreferences, sessions);
     return sessionLayoutPresets.find((preset) => desktopCmSessionLayoutEqual(currentLayout, pruneDesktopCmSessionViewPreferences(preset.viewPreferences, sessions)))?.name || '';
   }, [sessionLayoutPresets, sessionViewPreferences, sessions]);
+  const sessionLayoutFolderFilterOptions = useMemo(() => buildDesktopCmSessionLayoutFolderFilterOptions(sessionLayoutPresets), [sessionLayoutPresets]);
   const visibleSessionLayoutPresets = useMemo(
-    () => sessionLayoutPresets.filter((preset) => matchesDesktopCmSessionLayoutSearch(preset, normalizedSessionLayoutSearchQuery)),
-    [normalizedSessionLayoutSearchQuery, sessionLayoutPresets],
+    () =>
+      sessionLayoutPresets.filter(
+        (preset) =>
+          matchesDesktopCmSessionLayoutSearch(preset, normalizedSessionLayoutSearchQuery) &&
+          matchesDesktopCmSessionLayoutFolderFilter(preset, sessionLayoutFolderFilter),
+      ),
+    [normalizedSessionLayoutSearchQuery, sessionLayoutFolderFilter, sessionLayoutPresets],
   );
   const groupedSessionLayoutPresets = useMemo(
     () => buildDesktopCmSessionLayoutFolders(sessionLayoutPresets, visibleSessionLayoutPresets, collapsedSessionLayoutFolders),
@@ -238,6 +251,7 @@ export function DesktopCmSessionPanel({
     [selectedSessionLayoutPresetNames, visibleSessionLayoutPresets],
   );
   const sessionLayoutSearchActive = normalizedSessionLayoutSearchQuery.length > 0;
+  const sessionLayoutFolderFilterActive = sessionLayoutFolderFilter !== 'all';
   const sessionLayoutConflictSummary = useMemo(() => {
     if (!sessionLayoutImportConflicts) {
       return null;
@@ -359,6 +373,15 @@ export function DesktopCmSessionPanel({
       return setsEqual(current, nextCollapsedFolders) ? current : nextCollapsedFolders;
     });
   }, [sessionLayoutPresets]);
+
+  useEffect(() => {
+    if (sessionLayoutFolderFilter === 'all') {
+      return;
+    }
+    if (!sessionLayoutFolderFilterOptions.some((option) => option.folder === sessionLayoutFolderFilter)) {
+      setSessionLayoutFolderFilter('all');
+    }
+  }, [sessionLayoutFolderFilter, sessionLayoutFolderFilterOptions]);
 
   useEffect(() => {
     if (selectedSessionLayoutPresetNames.size === 0 && sessionLayoutBulkDeleteConfirm) {
@@ -1714,6 +1737,24 @@ export function DesktopCmSessionPanel({
                   onChange={(event) => setSessionLayoutSearchQuery(event.target.value)}
                 />
               </label>
+              <label className="min-w-[160px] flex-1">
+                <select
+                  className="ku-field h-9 w-full"
+                  data-testid="desktop-cm-session-layout-folder-filter"
+                  value={sessionLayoutFolderFilter}
+                  onChange={(event) => {
+                    setSessionLayoutBulkDeleteConfirm(false);
+                    setSessionLayoutFolderFilter(event.target.value);
+                  }}
+                >
+                  <option value="all">전체 folder</option>
+                  {sessionLayoutFolderFilterOptions.map((option) => (
+                    <option key={option.folder} value={option.folder}>
+                      {option.folder} ({option.count})
+                    </option>
+                  ))}
+                </select>
+              </label>
               <button className="ku-control h-9" data-testid="desktop-cm-session-layout-save" type="button" onClick={handleSaveSessionLayoutPreset}>
                 <Bookmark size={14} aria-hidden="true" />
                 현재 layout 저장
@@ -1724,6 +1765,9 @@ export function DesktopCmSessionPanel({
               <span className="ku-chip" data-testid="desktop-cm-session-layout-search-count">
                 결과 {visibleSessionLayoutPresets.length} / 전체 {sessionLayoutPresets.length}
               </span>
+              <span className="ku-chip" data-testid="desktop-cm-session-layout-folder-filter-count">
+                Folder {sessionLayoutFolderFilterActive ? sessionLayoutFolderFilter : '전체'}
+              </span>
               <button
                 className="ku-control h-9"
                 data-testid="desktop-cm-session-layout-search-clear"
@@ -1733,6 +1777,16 @@ export function DesktopCmSessionPanel({
               >
                 <XCircle size={14} aria-hidden="true" />
                 검색 초기화
+              </button>
+              <button
+                className="ku-control h-9"
+                data-testid="desktop-cm-session-layout-folder-filter-clear"
+                type="button"
+                disabled={!sessionLayoutFolderFilterActive}
+                onClick={() => setSessionLayoutFolderFilter('all')}
+              >
+                <XCircle size={14} aria-hidden="true" />
+                Folder 필터 초기화
               </button>
               <button
                 className="ku-control h-9"
@@ -2994,6 +3048,29 @@ function normalizeDesktopCmSessionLayoutFolderName(value: string) {
   return normalized || defaultDesktopCmSessionLayoutFolder;
 }
 
+function buildDesktopCmSessionLayoutFolderFilterOptions(presets: DesktopCmSessionLayoutPreset[]): DesktopCmSessionLayoutFolderFilterOption[] {
+  const counts = new Map<string, number>();
+  for (const preset of presets) {
+    const folder = normalizeDesktopCmSessionLayoutFolderName(preset.folder);
+    counts.set(folder, (counts.get(folder) || 0) + 1);
+  }
+  return [...counts.entries()]
+    .sort(([left], [right]) => {
+      if (left === defaultDesktopCmSessionLayoutFolder) {
+        return -1;
+      }
+      if (right === defaultDesktopCmSessionLayoutFolder) {
+        return 1;
+      }
+      return left.localeCompare(right);
+    })
+    .map(([folder, count]) => ({
+      folder,
+      slug: slugifyTestId(folder),
+      count,
+    }));
+}
+
 function buildDesktopCmSessionLayoutFolders(allPresets: DesktopCmSessionLayoutPreset[], visiblePresets: DesktopCmSessionLayoutPreset[], collapsedFolders: Set<string>): DesktopCmSessionLayoutFolder[] {
   const totalByFolder = new Map<string, number>();
   for (const preset of allPresets) {
@@ -3091,6 +3168,13 @@ function matchesDesktopCmSessionLayoutSearch(preset: DesktopCmSessionLayoutPrese
     .join(' ')
     .toLowerCase();
   return searchText.includes(normalizedQuery);
+}
+
+function matchesDesktopCmSessionLayoutFolderFilter(preset: DesktopCmSessionLayoutPreset, folderFilter: string) {
+  if (folderFilter === 'all') {
+    return true;
+  }
+  return normalizeDesktopCmSessionLayoutFolderName(preset.folder) === normalizeDesktopCmSessionLayoutFolderName(folderFilter);
 }
 
 function getDesktopCmSessionPreference(sessionId: string, preferences: Map<string, DesktopCmSessionViewPreference>) {

@@ -55,6 +55,7 @@ requireCondition(
     'desktop-cm-session-layout-preset-bulk-management',
     'desktop-cm-session-layout-preset-folder-polish',
     'desktop-cm-session-layout-preset-folder-bulk-move',
+    'desktop-cm-session-layout-preset-folder-filter-polish',
   ].includes(spec.status),
   'status must be a known desktop packaging milestone'
 );
@@ -114,6 +115,7 @@ requireCondition(phases.includes('desktop-cm-session-layout-preset-duplicate'), 
 requireCondition(phases.includes('desktop-cm-session-layout-preset-bulk-management'), 'phaseOrder must include desktop-cm-session-layout-preset-bulk-management');
 requireCondition(phases.includes('desktop-cm-session-layout-preset-folder-polish'), 'phaseOrder must include desktop-cm-session-layout-preset-folder-polish');
 requireCondition(phases.includes('desktop-cm-session-layout-preset-folder-bulk-move'), 'phaseOrder must include desktop-cm-session-layout-preset-folder-bulk-move');
+requireCondition(phases.includes('desktop-cm-session-layout-preset-folder-filter-polish'), 'phaseOrder must include desktop-cm-session-layout-preset-folder-filter-polish');
 
 await validateBuildPrerequisites(spec);
 await validateDesktopDistributionPolicy(spec);
@@ -159,6 +161,7 @@ if (
     'desktop-cm-session-layout-preset-bulk-management',
     'desktop-cm-session-layout-preset-folder-polish',
     'desktop-cm-session-layout-preset-folder-bulk-move',
+    'desktop-cm-session-layout-preset-folder-filter-polish',
   ].includes(spec.status)
 ) {
   await validateTauriScaffold(spec.tauri || {});
@@ -783,6 +786,7 @@ async function validateCmSshSessionManager(spec) {
       'session-layout-preset-bulk-management',
       'session-layout-preset-folder-polish',
       'session-layout-preset-folder-bulk-move',
+      'session-layout-preset-folder-filter-polish',
     ].includes(manager.status),
     'cmSshSessionManager.status must be a known CM/SSH session manager milestone'
   );
@@ -1189,6 +1193,41 @@ async function validateCmSshSessionManager(spec) {
     requireCondition(sessionLayoutPresetFolderBulkMove[flag] === true, `cmSshSessionManager.sessionLayoutPresetFolderBulkMove.${flag} must be true`);
   }
   requireCondition(sessionLayoutPresetFolderBulkMove.folderCollapseExported === false, 'cmSshSessionManager.sessionLayoutPresetFolderBulkMove.folderCollapseExported must be false');
+  const sessionLayoutPresetFolderFilter = manager.sessionLayoutPresetFolderFilter || {};
+  requireCondition(sessionLayoutPresetFolderFilter.desktopOnly === true, 'cmSshSessionManager.sessionLayoutPresetFolderFilter.desktopOnly must be true');
+  requireCondition(sessionLayoutPresetFolderFilter.uiOnly === true, 'cmSshSessionManager.sessionLayoutPresetFolderFilter.uiOnly must be true');
+  requireCondition(sessionLayoutPresetFolderFilter.stateStorage === 'memory-only', 'cmSshSessionManager.sessionLayoutPresetFolderFilter.stateStorage must be memory-only');
+  requireCondition(sessionLayoutPresetFolderFilter.persisted === false, 'cmSshSessionManager.sessionLayoutPresetFolderFilter.persisted must be false');
+  requireCondition(sessionLayoutPresetFolderFilter.exported === false, 'cmSshSessionManager.sessionLayoutPresetFolderFilter.exported must be false');
+  requireCondition(sessionLayoutPresetFolderFilter.usesExistingLayoutStorage === 'kuviewer_desktop_cm_session_layout_presets', 'cmSshSessionManager.sessionLayoutPresetFolderFilter.usesExistingLayoutStorage must be kuviewer_desktop_cm_session_layout_presets');
+  requireCondition(sessionLayoutPresetFolderFilter.filterValues === 'existing-folders-plus-all', 'cmSshSessionManager.sessionLayoutPresetFolderFilter.filterValues must be existing-folders-plus-all');
+  requireCondition(sessionLayoutPresetFolderFilter.defaultFilter === 'all', 'cmSshSessionManager.sessionLayoutPresetFolderFilter.defaultFilter must be all');
+  for (const flag of [
+    'combinesWithSearch',
+    'updatesVisibleResultCount',
+    'hasClearAction',
+    'doesNotChangeSavedLayoutOrder',
+    'bulkSelectionUsesFilteredResults',
+    'folderMetadataExported',
+    'folderMetadataImported',
+    'sameNameGlobalUnique',
+    'noSessionExportImportSchemaChange',
+    'noLayoutExportImportSchemaChange',
+    'noTauriSchemaChange',
+    'noSessionSearch',
+    'noDiagnosticFilters',
+    'noEndpointMetadata',
+    'noCredentialPayload',
+    'noRuntimeProfile',
+    'noDiagnosticHistory',
+    'noToken',
+    'noKubeconfig',
+    'noSecretValues',
+    'noEventsOrLogs',
+  ]) {
+    requireCondition(sessionLayoutPresetFolderFilter[flag] === true, `cmSshSessionManager.sessionLayoutPresetFolderFilter.${flag} must be true`);
+  }
+  requireCondition(sessionLayoutPresetFolderFilter.folderCollapseExported === false, 'cmSshSessionManager.sessionLayoutPresetFolderFilter.folderCollapseExported must be false');
   const sessionLayoutImportExport = manager.sessionLayoutImportExport || {};
   requireCondition(sessionLayoutImportExport.desktopOnly === true, 'cmSshSessionManager.sessionLayoutImportExport.desktopOnly must be true');
   requireCondition(sessionLayoutImportExport.uiOnly === true, 'cmSshSessionManager.sessionLayoutImportExport.uiOnly must be true');
@@ -1427,6 +1466,9 @@ async function validateCmSshSessionManager(spec) {
     'desktop-cm-session-layout-folder-count-',
     'desktop-cm-session-layout-folder-items-',
     'desktop-cm-session-layout-folder-input-',
+    'desktop-cm-session-layout-folder-filter',
+    'desktop-cm-session-layout-folder-filter-clear',
+    'desktop-cm-session-layout-folder-filter-count',
     'desktop-cm-session-layout-export',
     'desktop-cm-session-layout-import',
     'desktop-cm-session-layout-conflict-preview',
@@ -1463,10 +1505,15 @@ async function validateCmSshSessionManager(spec) {
     'handleDeleteSelectedSessionLayouts',
     'handleMoveSelectedSessionLayoutsToFolder',
     'sessionLayoutPresetFolder',
+    'sessionLayoutFolderFilter',
+    'sessionLayoutFolderFilterOptions',
+    'sessionLayoutFolderFilterActive',
     'collapsedSessionLayoutFolders',
     'groupedSessionLayoutPresets',
     'handleToggleSessionLayoutFolder',
     'handleUpdateSessionLayoutPresetFolder',
+    'matchesDesktopCmSessionLayoutFolderFilter',
+    'buildDesktopCmSessionLayoutFolderFilterOptions',
     'desktopCmSessionLayoutFolderCollapseStorageKey',
     'handleSessionLayoutConflictKeyDown',
     'handleMoveActiveSessionLayoutConflict',
@@ -1798,6 +1845,11 @@ async function validateCmSshSessionManager(spec) {
     'desktop CM session layout selected export must include only selected layout presets',
     'desktop CM session layout selected export must not include session endpoint metadata',
     'desktop CM session layout bulk selection must stay memory-only',
+    'desktop CM session layout folder filter must narrow visible layouts',
+    'desktop CM session layout folder filter count must show active folder',
+    'desktop CM session layout folder filter must combine with layout search',
+    'desktop CM session layout folder filter must stay memory-only',
+    'desktop CM session layout folder filter clear must restore saved layouts',
     'desktop CM session layout bulk select visible must select matching layout results',
     'desktop CM session layout bulk delete must require inline confirmation',
     'desktop CM session layout folder count must show saved layout presets',
@@ -1864,6 +1916,7 @@ async function validateCmSshSessionManager(spec) {
     requireCondition(text.includes('layout bulk management') || text.includes('layout preset bulk management'), `${label} must document desktop CM session layout bulk management`);
     requireCondition(text.includes('layout folder') || text.includes('preset folder'), `${label} must document desktop CM session layout folders`);
     requireCondition(text.includes('folder bulk move'), `${label} must document desktop CM session layout folder bulk move`);
+    requireCondition(text.includes('folder filter'), `${label} must document desktop CM session layout folder filter`);
     requireCondition(text.includes('export/import') || text.includes('session export'), `${label} must document desktop CM session export/import`);
     requireCondition(text.includes('web app must not expose SSH'), `${label} must document that the web app must not expose SSH`);
   }
