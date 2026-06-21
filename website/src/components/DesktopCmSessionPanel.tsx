@@ -183,6 +183,7 @@ export function DesktopCmSessionPanel({
   const [sessionLayoutRenameError, setSessionLayoutRenameError] = useState('');
   const [sessionLayoutFolderRenameTarget, setSessionLayoutFolderRenameTarget] = useState('');
   const [sessionLayoutFolderRenameDraft, setSessionLayoutFolderRenameDraft] = useState('');
+  const [activeSessionLayoutFolderName, setActiveSessionLayoutFolderName] = useState('');
   const [sessionLayoutPresets, setSessionLayoutPresets] = useState<DesktopCmSessionLayoutPreset[]>(() => readDesktopCmSessionLayoutPresets());
   const [collapsedSessionLayoutFolders, setCollapsedSessionLayoutFolders] = useState<Set<string>>(() => readDesktopCmSessionLayoutCollapsedFolders());
   const [selectedSessionLayoutPresetNames, setSelectedSessionLayoutPresetNames] = useState<Set<string>>(() => new Set());
@@ -199,6 +200,7 @@ export function DesktopCmSessionPanel({
   const importInputRef = useRef<HTMLInputElement | null>(null);
   const sessionLayoutImportInputRef = useRef<HTMLInputElement | null>(null);
   const sessionLayoutConflictPreviewRef = useRef<HTMLDivElement | null>(null);
+  const sessionLayoutFolderListRef = useRef<HTMLDivElement | null>(null);
   const normalizedSessionSearchQuery = normalizeSearchValue(sessionSearchQuery);
   const normalizedSessionLayoutSearchQuery = normalizeSearchValue(sessionLayoutSearchQuery);
   const sessionPreferenceMap = useMemo(() => new Map(sessionViewPreferences.sessions.map((preference) => [preference.sessionId, preference])), [sessionViewPreferences.sessions]);
@@ -244,6 +246,7 @@ export function DesktopCmSessionPanel({
     () => buildDesktopCmSessionLayoutFolders(sessionLayoutPresets, visibleSessionLayoutPresets, collapsedSessionLayoutFolders),
     [collapsedSessionLayoutFolders, sessionLayoutPresets, visibleSessionLayoutPresets],
   );
+  const sessionLayoutFolderNames = useMemo(() => groupedSessionLayoutPresets.map((folder) => folder.folder), [groupedSessionLayoutPresets]);
   const selectedSessionLayoutPresets = useMemo(
     () => sessionLayoutPresets.filter((preset) => selectedSessionLayoutPresetNames.has(preset.name)),
     [selectedSessionLayoutPresetNames, sessionLayoutPresets],
@@ -283,6 +286,13 @@ export function DesktopCmSessionPanel({
   const sessionLayoutConflictLiveText = sessionLayoutConflictSummary
     ? `Layout conflicts: ${sessionLayoutConflictSummary.resolved} of ${sessionLayoutConflictSummary.total} resolved, ${sessionLayoutConflictSummary.remaining} remaining. Incoming ${sessionLayoutConflictSummary.incomingResolved}, keep current ${sessionLayoutConflictSummary.currentResolved}, rename ${sessionLayoutConflictSummary.renamedResolved}.`
     : '';
+  const sessionLayoutFolderKeyboardDescriptionId = 'desktop-cm-session-layout-folder-keyboard-description';
+  const sessionLayoutFolderKeyboardLiveStatusId = 'desktop-cm-session-layout-folder-keyboard-live-status';
+  const activeSessionLayoutFolder = groupedSessionLayoutPresets.find((folder) => folder.folder === activeSessionLayoutFolderName);
+  const activeSessionLayoutFolderIndex = sessionLayoutFolderNames.findIndex((folderName) => folderName === activeSessionLayoutFolderName);
+  const sessionLayoutFolderKeyboardLiveText = activeSessionLayoutFolder
+    ? `Layout folder ${activeSessionLayoutFolder.folder} active, ${activeSessionLayoutFolder.presets.length} visible presets, ${activeSessionLayoutFolderIndex + 1} of ${sessionLayoutFolderNames.length}.`
+    : `${sessionLayoutFolderNames.length} layout folders available.`;
   const connectionPreview = `${form.user || 'user'}@${form.host || 'host'}:${form.port || 22} -> ${form.remoteApiHost || desktopCmDefaultRemoteApiHost}:${form.remoteApiPort || desktopCmDefaultRemoteApiPort}`;
   const selectedRuntimeActive = Boolean(selectedSession && runtimeProfile?.sessionId === selectedSession.id);
   const selectedRuntimeStatus = selectedRuntimeActive ? runtimeProfile?.status || selectedSession?.runtimeStatus || 'runtime-active' : selectedSession?.runtimeStatus || 'stopped';
@@ -394,6 +404,15 @@ export function DesktopCmSessionPanel({
       setSessionLayoutFolderRenameDraft('');
     }
   }, [sessionLayoutFolderFilterOptions, sessionLayoutFolderRenameTarget]);
+
+  useEffect(() => {
+    if (!activeSessionLayoutFolderName) {
+      return;
+    }
+    if (!sessionLayoutFolderNames.includes(activeSessionLayoutFolderName)) {
+      setActiveSessionLayoutFolderName('');
+    }
+  }, [activeSessionLayoutFolderName, sessionLayoutFolderNames]);
 
   useEffect(() => {
     if (selectedSessionLayoutPresetNames.size === 0 && sessionLayoutBulkDeleteConfirm) {
@@ -879,8 +898,12 @@ export function DesktopCmSessionPanel({
   const handleStartRenameSessionLayoutFolder = (folderName: string) => {
     const folder = normalizeDesktopCmSessionLayoutFolderName(folderName);
     setSessionLayoutBulkDeleteConfirm(false);
+    setActiveSessionLayoutFolderName(folder);
     setSessionLayoutFolderRenameTarget(folder);
     setSessionLayoutFolderRenameDraft(folder);
+    window.requestAnimationFrame(() => {
+      document.querySelector<HTMLInputElement>(`[data-testid="desktop-cm-session-layout-folder-rename-input-${slugifyTestId(folder)}"]`)?.focus();
+    });
   };
 
   const handleCancelRenameSessionLayoutFolder = () => {
@@ -912,6 +935,7 @@ export function DesktopCmSessionPanel({
       return nextCollapsedFolders;
     });
     setSessionLayoutFolderFilter((current) => (normalizeDesktopCmSessionLayoutFolderName(current) === sourceFolder ? targetFolder : current));
+    setActiveSessionLayoutFolderName(targetFolder);
     setSessionLayoutPresets((current) => {
       const nextPresets = normalizeDesktopCmSessionLayoutPresets(
         current.map((preset) =>
@@ -928,6 +952,112 @@ export function DesktopCmSessionPanel({
       return nextPresets;
     });
     handleCancelRenameSessionLayoutFolder();
+  };
+
+  const handleMoveActiveSessionLayoutFolder = (direction: 'previous' | 'next' | 'first' | 'last') => {
+    if (sessionLayoutFolderNames.length === 0) {
+      return;
+    }
+    const activeIndex = sessionLayoutFolderNames.findIndex((folderName) => folderName === activeSessionLayoutFolderName);
+    if (direction === 'first') {
+      setActiveSessionLayoutFolderName(sessionLayoutFolderNames[0]);
+      return;
+    }
+    if (direction === 'last') {
+      setActiveSessionLayoutFolderName(sessionLayoutFolderNames[sessionLayoutFolderNames.length - 1]);
+      return;
+    }
+    if (activeIndex < 0) {
+      setActiveSessionLayoutFolderName(direction === 'previous' ? sessionLayoutFolderNames[sessionLayoutFolderNames.length - 1] : sessionLayoutFolderNames[0]);
+      return;
+    }
+    const nextIndex =
+      direction === 'previous'
+        ? Math.max(0, activeIndex - 1)
+        : Math.min(sessionLayoutFolderNames.length - 1, activeIndex + 1);
+    setActiveSessionLayoutFolderName(sessionLayoutFolderNames[nextIndex]);
+  };
+
+  const handleToggleActiveSessionLayoutFolder = () => {
+    if (activeSessionLayoutFolderName) {
+      handleToggleSessionLayoutFolder(activeSessionLayoutFolderName);
+      return;
+    }
+    if (sessionLayoutFolderNames.length > 0) {
+      setActiveSessionLayoutFolderName(sessionLayoutFolderNames[0]);
+    }
+  };
+
+  const handleSelectActiveSessionLayoutFolder = () => {
+    if (activeSessionLayoutFolderName) {
+      handleSelectSessionLayoutFolderPresets(activeSessionLayoutFolderName);
+      return;
+    }
+    if (sessionLayoutFolderNames.length > 0) {
+      const firstFolder = sessionLayoutFolderNames[0];
+      setActiveSessionLayoutFolderName(firstFolder);
+      handleSelectSessionLayoutFolderPresets(firstFolder);
+    }
+  };
+
+  const handleRenameActiveSessionLayoutFolder = () => {
+    if (activeSessionLayoutFolderName) {
+      handleStartRenameSessionLayoutFolder(activeSessionLayoutFolderName);
+      return;
+    }
+    if (sessionLayoutFolderNames.length > 0) {
+      handleStartRenameSessionLayoutFolder(sessionLayoutFolderNames[0]);
+    }
+  };
+
+  const handleSessionLayoutFolderKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (sessionLayoutFolderNames.length === 0 || isDesktopCmKeyboardIgnoredTarget(event.target)) {
+      return;
+    }
+    if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      handleMoveActiveSessionLayoutFolder('previous');
+      return;
+    }
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      handleMoveActiveSessionLayoutFolder('next');
+      return;
+    }
+    if (event.key === 'Home') {
+      event.preventDefault();
+      handleMoveActiveSessionLayoutFolder('first');
+      return;
+    }
+    if (event.key === 'End') {
+      event.preventDefault();
+      handleMoveActiveSessionLayoutFolder('last');
+      return;
+    }
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      handleToggleActiveSessionLayoutFolder();
+      return;
+    }
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      if (sessionLayoutFolderRenameTarget) {
+        handleCancelRenameSessionLayoutFolder();
+      } else if (activeSessionLayoutFolderName) {
+        setActiveSessionLayoutFolderName('');
+      } else {
+        sessionLayoutFolderListRef.current?.blur();
+      }
+      return;
+    }
+    const key = event.key.toLowerCase();
+    if (key === 's') {
+      event.preventDefault();
+      handleSelectActiveSessionLayoutFolder();
+    } else if (key === 'r') {
+      event.preventDefault();
+      handleRenameActiveSessionLayoutFolder();
+    }
   };
 
   const handleMoveSelectedSessionLayoutsToFolder = () => {
@@ -2118,12 +2248,37 @@ export function DesktopCmSessionPanel({
               </div>
             ) : null}
             {sessionLayoutPresets.length > 0 ? (
-              <div className="grid min-w-0 gap-2" data-testid="desktop-cm-session-layout-list">
-                {groupedSessionLayoutPresets.map((folder) => (
+              <div
+                ref={sessionLayoutFolderListRef}
+                aria-describedby={`${sessionLayoutFolderKeyboardDescriptionId} ${sessionLayoutFolderKeyboardLiveStatusId}`}
+                aria-label="Saved session layout folders"
+                className="grid min-w-0 gap-2 outline-none focus-visible:ring-2 focus-visible:ring-[rgba(0,122,255,0.22)]"
+                data-testid="desktop-cm-session-layout-list"
+                onKeyDown={handleSessionLayoutFolderKeyDown}
+                role="group"
+                tabIndex={0}
+              >
+                <p className="sr-only" data-testid="desktop-cm-session-layout-folder-keyboard-description" id={sessionLayoutFolderKeyboardDescriptionId}>
+                  Saved layout folder keyboard state is browser memory only. Use arrow keys, Home, End, Enter, S, R, and Escape when this folder list has focus.
+                </p>
+                <p aria-live="polite" className="sr-only" data-testid="desktop-cm-session-layout-folder-keyboard-live-status" id={sessionLayoutFolderKeyboardLiveStatusId}>
+                  {sessionLayoutFolderKeyboardLiveText}
+                </p>
+                {groupedSessionLayoutPresets.map((folder) => {
+                  const folderActive = activeSessionLayoutFolderName === folder.folder;
+                  return (
                   <div
                     key={folder.folder}
-                    className="grid gap-2 rounded-[8px] border border-[rgba(60,60,67,0.08)] bg-white/56 px-2 py-2"
+                    aria-current={folderActive ? 'true' : undefined}
+                    aria-label={`${folder.folder} layout folder. ${folder.presets.length} visible presets, ${folder.totalCount} total presets.${folderActive ? ' Active folder.' : ''}`}
+                    className={`grid gap-2 rounded-[8px] border px-2 py-2 transition ${
+                      folderActive
+                        ? 'border-[rgba(0,122,255,0.34)] bg-white/82 shadow-[0_0_0_2px_rgba(0,122,255,0.1)]'
+                        : 'border-[rgba(60,60,67,0.08)] bg-white/56'
+                    }`}
                     data-testid={`desktop-cm-session-layout-folder-${folder.slug}`}
+                    onClick={() => setActiveSessionLayoutFolderName(folder.folder)}
+                    role="listitem"
                   >
                     <div className="flex min-w-0 flex-wrap items-center gap-2">
                       <button
@@ -2319,7 +2474,8 @@ export function DesktopCmSessionPanel({
                       </div>
                     ) : null}
                   </div>
-                ))}
+                  );
+                })}
                 {visibleSessionLayoutPresets.length === 0 ? (
                   <p className="text-xs font-semibold text-[rgba(60,60,67,0.58)]" data-testid="desktop-cm-session-layout-search-empty">
                     일치하는 saved layout 없음
