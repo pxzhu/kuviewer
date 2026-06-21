@@ -310,8 +310,29 @@ export function DesktopCmSessionPanel({
   const sessionLayoutFolderKeyboardLiveStatusId = 'desktop-cm-session-layout-folder-keyboard-live-status';
   const sessionLayoutReorderKeyboardDescriptionId = 'desktop-cm-session-layout-reorder-keyboard-description';
   const sessionLayoutReorderKeyboardStatusId = 'desktop-cm-session-layout-reorder-keyboard-status';
+  const sessionLayoutReorderDisabledDescriptionId = 'desktop-cm-session-layout-reorder-disabled-description';
+  const sessionLayoutReorderDisabledReasonId = 'desktop-cm-session-layout-reorder-disabled-reason';
   const sessionLayoutReorderFocusDescriptionId = 'desktop-cm-session-layout-reorder-focus-description';
   const sessionLayoutReorderFocusStatusId = 'desktop-cm-session-layout-reorder-focus-status';
+  const sessionLayoutReorderFilterDisabledReason =
+    sessionLayoutSearchActive && sessionLayoutFolderFilterActive
+      ? 'Layout reorder is disabled while layout search and folder filter are active. Clear both filters to reorder.'
+      : sessionLayoutSearchActive
+        ? 'Layout reorder is disabled while layout search is active. Clear layout search to reorder.'
+        : sessionLayoutFolderFilterActive
+          ? 'Layout reorder is disabled while folder filter is active. Clear folder filter to reorder.'
+          : '';
+  const sessionLayoutReorderUnavailableReason =
+    sessionLayoutReorderFilterDisabledReason ||
+    (sessionLayoutFolderNames.length <= 1 && visibleSessionLayoutPresets.length <= 1
+      ? 'Layout reorder needs at least two layout folders or two presets in the same folder.'
+      : sessionLayoutFolderNames.length <= 1
+        ? 'Layout folder reorder needs at least two layout folders.'
+        : visibleSessionLayoutPresets.length <= 1
+          ? 'Layout preset reorder needs at least two visible presets.'
+          : '');
+  const sessionLayoutReorderStateLabel =
+    sessionLayoutReorderUnavailableReason || 'Layout folder and preset reorder controls are available.';
   const sessionLayoutReorderKeyboardLiveText =
     sessionLayoutReorderKeyboardMessage ||
     (sessionLayoutReorderBlocked
@@ -1014,6 +1035,41 @@ export function DesktopCmSessionPanel({
 
   const sessionLayoutFolderDragHandleTestId = (folderName: string) => `desktop-cm-session-layout-folder-drag-handle-${slugifyTestId(folderName)}`;
   const sessionLayoutPresetDragHandleTestId = (presetName: string) => `desktop-cm-session-layout-drag-handle-${slugifyTestId(presetName)}`;
+  const sessionLayoutFolderReorderDisabledReason = (folderName: string, direction?: 'up' | 'down') => {
+    const folder = normalizeDesktopCmSessionLayoutFolderName(folderName);
+    if (sessionLayoutReorderFilterDisabledReason) {
+      return sessionLayoutReorderFilterDisabledReason;
+    }
+    if (sessionLayoutFolderNames.length <= 1) {
+      return 'Layout folder reorder needs at least two layout folders.';
+    }
+    const folderIndex = sessionLayoutFolderNames.indexOf(folder);
+    if (direction === 'up' && folderIndex === 0) {
+      return `${folder} layout folder is already first.`;
+    }
+    if (direction === 'down' && folderIndex === sessionLayoutFolderNames.length - 1) {
+      return `${folder} layout folder is already last.`;
+    }
+    return '';
+  };
+  const sessionLayoutPresetReorderDisabledReason = (presetName: string, folderName: string, direction?: 'up' | 'down') => {
+    const folder = normalizeDesktopCmSessionLayoutFolderName(folderName);
+    const folderPresets = sessionLayoutPresets.filter((preset) => normalizeDesktopCmSessionLayoutFolderName(preset.folder) === folder);
+    if (sessionLayoutReorderFilterDisabledReason) {
+      return sessionLayoutReorderFilterDisabledReason;
+    }
+    if (folderPresets.length <= 1) {
+      return `${folder} folder needs at least two layout presets to reorder presets.`;
+    }
+    const presetIndex = folderPresets.findIndex((preset) => preset.name === presetName);
+    if (direction === 'up' && presetIndex === 0) {
+      return `${presetName} layout is already first in ${folder}.`;
+    }
+    if (direction === 'down' && presetIndex === folderPresets.length - 1) {
+      return `${presetName} layout is already last in ${folder}.`;
+    }
+    return '';
+  };
 
   const handleMoveSessionLayoutFolderOrder = (
     folderName: string,
@@ -2242,10 +2298,14 @@ export function DesktopCmSessionPanel({
                 Folder {sessionLayoutFolderFilterActive ? sessionLayoutFolderFilter : '전체'}
               </span>
               <span
-                className={`ku-chip ${sessionLayoutReorderBlocked ? 'border-[rgba(255,149,0,0.24)] bg-[rgba(255,149,0,0.1)] text-[#8a4d00]' : ''}`}
+                aria-live="polite"
+                className={`ku-chip ${sessionLayoutReorderUnavailableReason ? 'border-[rgba(255,149,0,0.24)] bg-[rgba(255,149,0,0.1)] text-[#8a4d00]' : ''}`}
                 data-testid="desktop-cm-session-layout-reorder-state"
+                id={sessionLayoutReorderDisabledReasonId}
+                role="status"
+                title={sessionLayoutReorderStateLabel}
               >
-                {sessionLayoutReorderBlocked ? '검색/folder 필터 해제 후 순서 변경' : 'folder/preset 순서 변경 가능'}
+                {sessionLayoutReorderUnavailableReason ? '순서 변경 비활성' : 'folder/preset 순서 변경 가능'}
               </span>
               <button
                 className="ku-control h-9"
@@ -2529,6 +2589,9 @@ export function DesktopCmSessionPanel({
                 <p className="sr-only" data-testid="desktop-cm-session-layout-reorder-keyboard-description" id={sessionLayoutReorderKeyboardDescriptionId}>
                   Reorder keyboard state is browser memory only. Focus a folder or layout drag handle and use ArrowUp, ArrowDown, Home, or End to reorder without adding saved fields.
                 </p>
+                <p className="sr-only" data-testid="desktop-cm-session-layout-reorder-disabled-description" id={sessionLayoutReorderDisabledDescriptionId}>
+                  Disabled reorder controls explain whether search, folder filter, item edge position, or not enough folders and presets prevents reordering.
+                </p>
                 <p className="sr-only" data-testid="desktop-cm-session-layout-reorder-focus-description" id={sessionLayoutReorderFocusDescriptionId}>
                   After a layout folder or preset reorder, focus returns to the moved drag handle or the saved layout folder list without scrolling the panel.
                 </p>
@@ -2546,7 +2609,7 @@ export function DesktopCmSessionPanel({
                   aria-activedescendant={
                     activeSessionLayoutFolder ? `desktop-cm-session-layout-folder-row-${slugifyTestId(activeSessionLayoutFolder.folder)}` : undefined
                   }
-                  aria-describedby={`${sessionLayoutFolderKeyboardDescriptionId} ${sessionLayoutReorderKeyboardDescriptionId} ${sessionLayoutReorderFocusDescriptionId} ${sessionLayoutFolderKeyboardLiveStatusId} ${sessionLayoutReorderKeyboardStatusId} ${sessionLayoutReorderFocusStatusId}`}
+                  aria-describedby={`${sessionLayoutFolderKeyboardDescriptionId} ${sessionLayoutReorderKeyboardDescriptionId} ${sessionLayoutReorderDisabledDescriptionId} ${sessionLayoutReorderDisabledReasonId} ${sessionLayoutReorderFocusDescriptionId} ${sessionLayoutFolderKeyboardLiveStatusId} ${sessionLayoutReorderKeyboardStatusId} ${sessionLayoutReorderFocusStatusId}`}
                   aria-keyshortcuts="ArrowUp ArrowDown Home End Enter S R Escape Shift+ArrowUp Shift+ArrowDown Shift+Home Shift+End"
                   aria-labelledby={sessionLayoutFolderListTitleId}
                   className="grid min-w-0 gap-2 outline-none focus-visible:ring-2 focus-visible:ring-[rgba(0,122,255,0.22)]"
@@ -2564,6 +2627,9 @@ export function DesktopCmSessionPanel({
                   const folderItemsId = `desktop-cm-session-layout-folder-items-${folder.slug}`;
                   const canMoveFolderUp = canReorderSessionLayoutFolders && folderIndex > 0;
                   const canMoveFolderDown = canReorderSessionLayoutFolders && folderIndex < groupedSessionLayoutPresets.length - 1;
+                  const folderDragDisabledReason = sessionLayoutFolderReorderDisabledReason(folder.folder);
+                  const folderMoveUpDisabledReason = sessionLayoutFolderReorderDisabledReason(folder.folder, 'up');
+                  const folderMoveDownDisabledReason = sessionLayoutFolderReorderDisabledReason(folder.folder, 'down');
                   return (
                   <div
                     key={folder.folder}
@@ -2589,13 +2655,13 @@ export function DesktopCmSessionPanel({
                     <div className="flex min-w-0 flex-wrap items-center gap-2">
                       <button
                         aria-label={`${folder.folder} layout folder 순서 드래그`}
-                        aria-describedby={`${sessionLayoutReorderKeyboardDescriptionId} ${sessionLayoutReorderFocusDescriptionId} ${sessionLayoutReorderFocusStatusId} ${folderActionsId}`}
+                        aria-describedby={`${sessionLayoutReorderKeyboardDescriptionId} ${sessionLayoutReorderDisabledDescriptionId} ${sessionLayoutReorderDisabledReasonId} ${sessionLayoutReorderFocusDescriptionId} ${sessionLayoutReorderFocusStatusId} ${folderActionsId}`}
                         aria-keyshortcuts="ArrowUp ArrowDown Home End"
                         className="ku-control h-8 text-xs"
                         data-testid={`desktop-cm-session-layout-folder-drag-handle-${folder.slug}`}
                         disabled={!canReorderSessionLayoutFolders}
                         draggable={canReorderSessionLayoutFolders}
-                        title={canReorderSessionLayoutFolders ? 'Drag to reorder layout folder' : '검색/folder 필터 해제 후 순서 변경'}
+                        title={canReorderSessionLayoutFolders ? 'Drag to reorder layout folder' : folderDragDisabledReason}
                         type="button"
                         onDragStart={(event) => {
                           if (!canReorderSessionLayoutFolders) {
@@ -2614,9 +2680,11 @@ export function DesktopCmSessionPanel({
                       </button>
                       <button
                         aria-label={`${folder.folder} layout folder 위로 이동`}
+                        aria-describedby={`${sessionLayoutReorderDisabledDescriptionId} ${sessionLayoutReorderDisabledReasonId}`}
                         className="ku-control h-8 text-xs"
                         data-testid={`desktop-cm-session-layout-folder-reorder-up-${folder.slug}`}
                         disabled={!canMoveFolderUp}
+                        title={canMoveFolderUp ? `${folder.folder} layout folder move up` : folderMoveUpDisabledReason}
                         type="button"
                         onClick={() => handleMoveSessionLayoutFolderOrder(folder.folder, -1)}
                       >
@@ -2624,9 +2692,11 @@ export function DesktopCmSessionPanel({
                       </button>
                       <button
                         aria-label={`${folder.folder} layout folder 아래로 이동`}
+                        aria-describedby={`${sessionLayoutReorderDisabledDescriptionId} ${sessionLayoutReorderDisabledReasonId}`}
                         className="ku-control h-8 text-xs"
                         data-testid={`desktop-cm-session-layout-folder-reorder-down-${folder.slug}`}
                         disabled={!canMoveFolderDown}
+                        title={canMoveFolderDown ? `${folder.folder} layout folder move down` : folderMoveDownDisabledReason}
                         type="button"
                         onClick={() => handleMoveSessionLayoutFolderOrder(folder.folder, 1)}
                       >
@@ -2746,6 +2816,9 @@ export function DesktopCmSessionPanel({
                           const canReorderPresetInFolder = canReorderSessionLayoutPresets && folder.presets.length > 1;
                           const canMovePresetUp = canReorderPresetInFolder && presetIndex > 0;
                           const canMovePresetDown = canReorderPresetInFolder && presetIndex < folder.presets.length - 1;
+                          const presetDragDisabledReason = sessionLayoutPresetReorderDisabledReason(preset.name, folder.folder);
+                          const presetMoveUpDisabledReason = sessionLayoutPresetReorderDisabledReason(preset.name, folder.folder, 'up');
+                          const presetMoveDownDisabledReason = sessionLayoutPresetReorderDisabledReason(preset.name, folder.folder, 'down');
                           return (
                             <span
                               key={preset.name}
@@ -2799,13 +2872,13 @@ export function DesktopCmSessionPanel({
                                 <>
                                   <button
                                     aria-label={`${preset.name} layout 순서 드래그`}
-                                    aria-describedby={`${sessionLayoutReorderKeyboardDescriptionId} ${sessionLayoutReorderFocusDescriptionId} ${sessionLayoutReorderFocusStatusId}`}
+                                    aria-describedby={`${sessionLayoutReorderKeyboardDescriptionId} ${sessionLayoutReorderDisabledDescriptionId} ${sessionLayoutReorderDisabledReasonId} ${sessionLayoutReorderFocusDescriptionId} ${sessionLayoutReorderFocusStatusId}`}
                                     aria-keyshortcuts="ArrowUp ArrowDown Home End"
                                     className="rounded-full p-0.5 hover:bg-[rgba(60,60,67,0.08)] disabled:cursor-not-allowed disabled:opacity-45"
                                     data-testid={`desktop-cm-session-layout-drag-handle-${presetSlug}`}
                                     disabled={!canReorderPresetInFolder}
                                     draggable={canReorderPresetInFolder}
-                                    title={canReorderPresetInFolder ? 'Drag to reorder layout preset' : '검색/folder 필터 해제 후 순서 변경'}
+                                    title={canReorderPresetInFolder ? 'Drag to reorder layout preset' : presetDragDisabledReason}
                                     type="button"
                                     onDragStart={(event) => {
                                       if (!canReorderPresetInFolder) {
@@ -2824,9 +2897,11 @@ export function DesktopCmSessionPanel({
                                   </button>
                                   <button
                                     aria-label={`${preset.name} layout 위로 이동`}
+                                    aria-describedby={`${sessionLayoutReorderDisabledDescriptionId} ${sessionLayoutReorderDisabledReasonId}`}
                                     className="rounded-full p-0.5 hover:bg-[rgba(60,60,67,0.08)] disabled:cursor-not-allowed disabled:opacity-45"
                                     data-testid={`desktop-cm-session-layout-reorder-up-${presetSlug}`}
                                     disabled={!canMovePresetUp}
+                                    title={canMovePresetUp ? `${preset.name} layout move up` : presetMoveUpDisabledReason}
                                     type="button"
                                     onClick={() => handleMoveSessionLayoutPresetOrder(preset.name, -1)}
                                   >
@@ -2834,9 +2909,11 @@ export function DesktopCmSessionPanel({
                                   </button>
                                   <button
                                     aria-label={`${preset.name} layout 아래로 이동`}
+                                    aria-describedby={`${sessionLayoutReorderDisabledDescriptionId} ${sessionLayoutReorderDisabledReasonId}`}
                                     className="rounded-full p-0.5 hover:bg-[rgba(60,60,67,0.08)] disabled:cursor-not-allowed disabled:opacity-45"
                                     data-testid={`desktop-cm-session-layout-reorder-down-${presetSlug}`}
                                     disabled={!canMovePresetDown}
+                                    title={canMovePresetDown ? `${preset.name} layout move down` : presetMoveDownDisabledReason}
                                     type="button"
                                     onClick={() => handleMoveSessionLayoutPresetOrder(preset.name, 1)}
                                   >
