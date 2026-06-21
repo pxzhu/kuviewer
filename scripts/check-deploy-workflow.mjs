@@ -10,6 +10,7 @@ const deployWorkflow = await readTextFile('.github/workflows/deploy.yml');
 const deployPreflightWorkflow = await readTextFile('.github/workflows/deploy-preflight.yml');
 const deployKnownHostsBootstrapWorkflow = await readTextFile('.github/workflows/deploy-known-hosts-bootstrap.yml');
 const deploySshEndpointDiagnosticsWorkflow = await readTextFile('.github/workflows/deploy-ssh-endpoint-diagnostics.yml');
+const deploySelfHostedWorkflow = await readTextFile('.github/workflows/deploy-self-hosted.yml');
 const ciWorkflow = await readTextFile('.github/workflows/ci.yml');
 const knownHostsHelper = await readTextFile('scripts/prepare-deploy-known-hosts.mjs');
 const sshBannerHelper = await readTextFile('scripts/check-ssh-banner.mjs');
@@ -155,6 +156,39 @@ requireNotIncludes(deploySshEndpointDiagnosticsWorkflow, 'docker build', 'SSH en
 requireNotIncludes(deploySshEndpointDiagnosticsWorkflow, 'scp ', 'SSH endpoint diagnostics workflow must not upload files');
 requireNotIncludes(deploySshEndpointDiagnosticsWorkflow, 'compose --env-file', 'SSH endpoint diagnostics workflow must not run compose');
 
+requireIncludes(deploySelfHostedWorkflow, 'name: deploy-self-hosted', 'self-hosted deploy workflow must be named deploy-self-hosted');
+requireIncludes(deploySelfHostedWorkflow, 'workflow_dispatch:', 'self-hosted deploy workflow must be manual-only');
+requireIncludes(deploySelfHostedWorkflow, 'runs-on: [self-hosted, kuviewer-deploy]', 'self-hosted deploy workflow must require the kuviewer-deploy self-hosted runner label');
+requireIncludes(deploySelfHostedWorkflow, 'deploy-self-hosted-only', 'self-hosted deploy workflow must report self-hosted-only scope');
+requireIncludes(deploySelfHostedWorkflow, 'no SSH, SCP, host key, or external network deploy path will run', 'self-hosted deploy workflow must document SSH-free deploy scope');
+requireIncludes(deploySelfHostedWorkflow, 'standalone .env must already exist under DEPLOY_PATH and is never printed', 'self-hosted deploy workflow must require an existing standalone env without printing it');
+requireIncludes(deploySelfHostedWorkflow, 'DEPLOY_PATH must be absolute', 'self-hosted deploy workflow must validate DEPLOY_PATH');
+requireIncludes(deploySelfHostedWorkflow, 'compose version >/dev/null', 'self-hosted deploy workflow must verify docker compose availability');
+requireIncludes(deploySelfHostedWorkflow, 'deploy/standalone/.env must remain untracked', 'self-hosted deploy workflow must reject tracked standalone env files');
+requireIncludes(deploySelfHostedWorkflow, 'test -f "$DEPLOY_PATH/deploy/standalone/.env"', 'self-hosted deploy workflow must verify existing standalone .env');
+requireIncludes(deploySelfHostedWorkflow, 'self-hosted-preflight-ok', 'self-hosted deploy workflow must report safe preflight success');
+requireIncludes(deploySelfHostedWorkflow, 'build --build-arg VITE_BASE_PATH=/ -t "$CANDIDATE_IMAGE" .', 'self-hosted deploy workflow must build a candidate image with root static assets');
+requireIncludes(deploySelfHostedWorkflow, 'git archive --format=tar HEAD | tar -x -C "$DEPLOY_PATH"', 'self-hosted deploy workflow must update DEPLOY_PATH from the checked-out ref without requiring SSH');
+requireIncludes(deploySelfHostedWorkflow, 'ROLLBACK_IMAGE="kuviewer:rollback-${GITHUB_RUN_ID}"', 'self-hosted deploy workflow must define a per-run rollback image tag');
+requireIncludes(deploySelfHostedWorkflow, 'deploy-rollback-image-ready', 'self-hosted deploy workflow must preserve the previous image for rollback');
+requireIncludes(deploySelfHostedWorkflow, 'deploy-rollback-start', 'self-hosted deploy workflow must attempt rollback after failed health checks');
+requireIncludes(deploySelfHostedWorkflow, 'deploy-rollback-ok', 'self-hosted deploy workflow must report safe rollback success');
+requireIncludes(deploySelfHostedWorkflow, 'check_health()', 'self-hosted deploy workflow must use a bounded health retry function');
+requireIncludes(deploySelfHostedWorkflow, 'deploy-health-wait', 'self-hosted deploy workflow must report safe health retry markers');
+requireIncludes(deploySelfHostedWorkflow, 'deploy-health-failed', 'self-hosted deploy workflow must report safe health failure markers');
+requireIncludes(deploySelfHostedWorkflow, '$DEPLOY_PATH/.kuviewer/deploy-state.json', 'self-hosted deploy workflow must write safe deploy-state metadata');
+requireIncludes(deploySelfHostedWorkflow, 'deploy-state-written', 'self-hosted deploy workflow must report safe deploy-state writes');
+requireNotIncludes(deploySelfHostedWorkflow, 'SERVER_SSH_KEY', 'self-hosted deploy workflow must not use deploy SSH keys');
+requireNotIncludes(deploySelfHostedWorkflow, 'SERVER_SSH_KNOWN_HOSTS', 'self-hosted deploy workflow must not use SSH host key pins');
+requireNotIncludes(deploySelfHostedWorkflow, 'ssh-keyscan', 'self-hosted deploy workflow must not scan SSH host keys');
+requireNotIncludes(deploySelfHostedWorkflow, 'StrictHostKeyChecking', 'self-hosted deploy workflow must not perform SSH connections');
+requireNotIncludes(deploySelfHostedWorkflow, 'scp ', 'self-hosted deploy workflow must not upload files through SCP');
+requireNotIncludes(deploySelfHostedWorkflow, 'docker save', 'self-hosted deploy workflow must not create remote-upload image archives');
+requireNotIncludes(deploySelfHostedWorkflow, 'docker compose logs', 'self-hosted deploy workflow must not dump raw compose logs');
+requireNotIncludes(deploySelfHostedWorkflow, 'cat deploy/standalone/.env', 'self-hosted deploy workflow must not print standalone env files');
+requireNotIncludes(deploySelfHostedWorkflow, 'cat .env', 'self-hosted deploy workflow must not print env files');
+requireOrder(deploySelfHostedWorkflow, ['Validate local deployment prerequisites', 'Build deployment image', 'Deploy on self-hosted runner']);
+
 requireIncludes(knownHostsHelper, 'SERVER_SSH_KNOWN_HOSTS', 'known_hosts helper must target SERVER_SSH_KNOWN_HOSTS');
 requireIncludes(knownHostsHelper, 'ssh-keyscan', 'known_hosts helper must generate host keys with ssh-keyscan');
 requireIncludes(knownHostsHelper, '--from-file', 'known_hosts helper must support validating an existing file');
@@ -184,11 +218,12 @@ requireIncludes(sshEndpointDiagnosticsHelper, '--host <host>', 'SSH endpoint dia
 requireNotIncludes(sshEndpointDiagnosticsHelper, 'SERVER_SSH_KEY', 'SSH endpoint diagnostics helper must not use deploy private keys');
 
 const deployWorkflowPolicy = packagingSpec.deployWorkflowPolicy || {};
-requireCondition(deployWorkflowPolicy.status === 'rollback-observability-hardened', 'deployWorkflowPolicy.status must be rollback-observability-hardened');
+requireCondition(deployWorkflowPolicy.status === 'self-hosted-runner-deploy-fallback', 'deployWorkflowPolicy.status must be self-hosted-runner-deploy-fallback');
 requireCondition(deployWorkflowPolicy.workflowPath === '.github/workflows/deploy.yml', 'deployWorkflowPolicy.workflowPath must point to deploy workflow');
 requireCondition(deployWorkflowPolicy.preflightWorkflowPath === '.github/workflows/deploy-preflight.yml', 'deployWorkflowPolicy.preflightWorkflowPath must point to preflight workflow');
 requireCondition(deployWorkflowPolicy.knownHostsBootstrapWorkflowPath === '.github/workflows/deploy-known-hosts-bootstrap.yml', 'deployWorkflowPolicy.knownHostsBootstrapWorkflowPath must point to known_hosts bootstrap workflow');
 requireCondition(deployWorkflowPolicy.sshEndpointDiagnosticsWorkflowPath === '.github/workflows/deploy-ssh-endpoint-diagnostics.yml', 'deployWorkflowPolicy.sshEndpointDiagnosticsWorkflowPath must point to endpoint diagnostics workflow');
+requireCondition(deployWorkflowPolicy.selfHostedWorkflowPath === '.github/workflows/deploy-self-hosted.yml', 'deployWorkflowPolicy.selfHostedWorkflowPath must point to self-hosted deploy workflow');
 requireCondition(deployWorkflowPolicy.staticCheck === 'scripts/check-deploy-workflow.mjs', 'deployWorkflowPolicy.staticCheck must point to this script');
 requireCondition(deployWorkflowPolicy.preflightBeforeBuild === true, 'deployWorkflowPolicy.preflightBeforeBuild must be true');
 requireCondition(deployWorkflowPolicy.strictHostKeyChecking === true, 'deployWorkflowPolicy.strictHostKeyChecking must be true');
@@ -202,6 +237,15 @@ requireCondition(deployWorkflowPolicy.sshBannerDiagnosticHelper === 'scripts/che
 requireCondition(deployWorkflowPolicy.sshEndpointDiagnosticsHelper === 'scripts/diagnose-ssh-endpoint.mjs', 'deployWorkflowPolicy.sshEndpointDiagnosticsHelper must document the endpoint diagnostics helper script');
 requireCondition(deployWorkflowPolicy.sshBannerTimeoutGuidance === true, 'deployWorkflowPolicy.sshBannerTimeoutGuidance must be true');
 requireCondition(deployWorkflowPolicy.sshEndpointDiagnosticsManualOnly === true, 'deployWorkflowPolicy.sshEndpointDiagnosticsManualOnly must be true');
+requireCondition(deployWorkflowPolicy.selfHostedDeployManualOnly === true, 'deployWorkflowPolicy.selfHostedDeployManualOnly must be true');
+requireCondition(deployWorkflowPolicy.selfHostedDeployNoSsh === true, 'deployWorkflowPolicy.selfHostedDeployNoSsh must be true');
+requireCondition(deployWorkflowPolicy.selfHostedDeployPreservesStandaloneEnv === true, 'deployWorkflowPolicy.selfHostedDeployPreservesStandaloneEnv must be true');
+requireCondition(deployWorkflowPolicy.selfHostedDeployUsesWorkspaceArchive === true, 'deployWorkflowPolicy.selfHostedDeployUsesWorkspaceArchive must be true');
+requireCondition(deployWorkflowPolicy.selfHostedCandidateImageTag === 'kuviewer:candidate-${GITHUB_RUN_ID}', 'deployWorkflowPolicy.selfHostedCandidateImageTag must document the candidate image tag');
+const selfHostedRunnerLabels = new Set(Array.isArray(deployWorkflowPolicy.selfHostedRunnerLabels) ? deployWorkflowPolicy.selfHostedRunnerLabels : []);
+for (const label of ['self-hosted', 'kuviewer-deploy']) {
+  requireCondition(selfHostedRunnerLabels.has(label), `deployWorkflowPolicy.selfHostedRunnerLabels must include ${label}`);
+}
 requireCondition(deployWorkflowPolicy.hostKeyScanAttempts === 6, 'deployWorkflowPolicy.hostKeyScanAttempts must be 6');
 requireCondition(deployWorkflowPolicy.keyscanTimeoutSeconds === 10, 'deployWorkflowPolicy.keyscanTimeoutSeconds must be 10');
 requireCondition(deployWorkflowPolicy.acceptNonEmptyKeyscanOutput === true, 'deployWorkflowPolicy.acceptNonEmptyKeyscanOutput must be true');

@@ -436,6 +436,8 @@ KUVIEWER_VISUAL_URL=http://127.0.0.1:18085/ npm run test:visual
 
 Kuviewer can deploy without a container registry. The workflow in `.github/workflows/deploy.yml` first validates SSH access and remote runtime prerequisites, then builds `kuviewer:local` on the GitHub runner, saves it as a compressed image archive, uploads that archive to the server over SSH/SCP, updates the Git checkout, loads the image with Docker, and runs the standalone compose file.
 
+If GitHub-hosted runners cannot receive an SSH banner from the server network path, `.github/workflows/deploy-self-hosted.yml` provides an SSH-free manual fallback. It requires a GitHub Actions self-hosted runner on the target server or an internal network that can run Docker locally, with runner labels `self-hosted` and `kuviewer-deploy`. This workflow does not use `SERVER_SSH_KEY`, `SERVER_SSH_KNOWN_HOSTS`, `ssh-keyscan`, SSH, or SCP. It checks out the selected ref on the self-hosted runner, builds a candidate `kuviewer` image locally, copies tracked files into `DEPLOY_PATH` with `git archive`, preserves the untracked `deploy/standalone/.env`, runs the standalone compose file, performs the same bounded `/healthz` check, and writes the same safe `$DEPLOY_PATH/.kuviewer/deploy-state.json` metadata. It is `workflow_dispatch` only so it does not race the tag-based SSH deploy path.
+
 Required repository secrets:
 
 ```text
@@ -504,6 +506,16 @@ If both the workflow keyscan fallback and the helper cannot collect host keys, S
 
 Before creating a new release tag, the manual `deploy-preflight` workflow can validate only the deploy connection path. It checks required secrets, SSH TCP reachability, the optional pinned host key, strict SSH connection setup, remote `git`/`curl`/`gzip`/Docker/Compose availability, `DEPLOY_PATH`, existing `deploy/standalone/.env`, and temporary write access. It does not build an image, upload files, run compose, roll back, or change the server deployment.
 
+For the self-hosted fallback, install/configure the runner outside this repository and assign the `kuviewer-deploy` label. The runner user needs access to Docker/Compose, `git`, `curl`, and `tar`. Prepare `DEPLOY_PATH` once with an untracked env file before running the workflow:
+
+```bash
+mkdir -p /opt/kuviewer/deploy/standalone
+cp deploy/standalone/.env.example /opt/kuviewer/deploy/standalone/.env
+# edit KUVIEWER_ADMIN_TOKEN before the first deploy
+```
+
+The self-hosted workflow preserves that env file and never prints it. It stores no SSH credential, kubeconfig, cloud credential, private key, admin token, raw logs, or Secret value.
+
 Deploy rollback is local to the server. Before loading the new `kuviewer:local` image, the workflow preserves the existing image as `kuviewer:rollback-${GITHUB_RUN_ID}` when one exists. If the new compose rollout does not pass the bounded `/healthz` retry loop, the workflow retags that preserved image back to `kuviewer:local`, recreates compose, checks health again, and still fails the GitHub Actions run so the failed release is visible. The server writes safe deploy metadata to `$DEPLOY_PATH/.kuviewer/deploy-state.json`, including run id, ref, sha, timestamps, image ids, result, and rollback result. It does not print raw container logs, `.env` content, tokens, kubeconfigs, private keys, cloud credentials, or Secret values.
 
 Optional repository variables, shown with example values:
@@ -525,6 +537,7 @@ Deployment triggers:
 
 - Push a release tag matching `v*.*.*`: deploys that tag after confirming the tagged commit is contained in `origin/main`.
 - Manual `workflow_dispatch`: deploys the selected branch, tag, or SHA for controlled operations.
+- Manual `deploy-self-hosted` `workflow_dispatch`: deploys the selected branch, tag, or SHA from a labeled self-hosted runner without SSH/SCP.
 
 ## Native Kubernetes install draft
 
