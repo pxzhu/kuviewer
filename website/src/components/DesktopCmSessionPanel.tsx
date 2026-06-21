@@ -347,6 +347,9 @@ export function DesktopCmSessionPanel({
   const sessionLayoutReorderDisabledReasonId = 'desktop-cm-session-layout-reorder-disabled-reason';
   const sessionLayoutReorderFocusDescriptionId = 'desktop-cm-session-layout-reorder-focus-description';
   const sessionLayoutReorderFocusStatusId = 'desktop-cm-session-layout-reorder-focus-status';
+  const sessionLayoutReorderHistoryTitleId = 'desktop-cm-session-layout-reorder-history-title';
+  const sessionLayoutReorderHistoryDescriptionId = 'desktop-cm-session-layout-reorder-history-description';
+  const sessionLayoutReorderHistorySummaryId = 'desktop-cm-session-layout-reorder-history-accessibility-summary';
   const sessionLayoutReorderFilterDisabledReason =
     sessionLayoutSearchActive && sessionLayoutFolderFilterActive
       ? 'Reorder unavailable: layout search and folder filter are active. Clear both filters to reorder.'
@@ -388,6 +391,11 @@ export function DesktopCmSessionPanel({
   const sessionLayoutReorderHistoryLatestAge = visibleSessionLayoutReorderHistory[0]
     ? formatDesktopCmSessionLayoutReorderHistoryAge(visibleSessionLayoutReorderHistory[0].createdAt, sessionLayoutReorderHistoryNow)
     : '';
+  const sessionLayoutReorderHistoryAccessibilitySummary = visibleSessionLayoutReorderHistory[0]
+    ? `Showing ${visibleSessionLayoutReorderHistory.length} of ${sessionLayoutReorderHistory.length} saved layout reorder status history entries, newest first. Latest ${formatDesktopCmSessionLayoutReorderHistoryScopeLabel(visibleSessionLayoutReorderHistory[0].scope)} entry recorded ${sessionLayoutReorderHistoryLatestAge}.`
+    : sessionLayoutReorderHistoryFiltersActive
+      ? `No saved layout reorder status history entries match the current filters. ${sessionLayoutReorderHistory.length} total entries remain in memory.`
+      : 'No saved layout reorder status history entries are currently available.';
   const activeSessionLayoutFolder = groupedSessionLayoutPresets.find((folder) => folder.folder === activeSessionLayoutFolderName);
   const activeSessionLayoutFolderIndex = sessionLayoutFolderNames.findIndex((folderName) => folderName === activeSessionLayoutFolderName);
   const sessionLayoutFolderKeyboardLiveText = activeSessionLayoutFolder
@@ -1120,7 +1128,7 @@ export function DesktopCmSessionPanel({
     direction === 'first' ? 'moved to first' : direction === 'last' ? 'moved to last' : direction < 0 ? 'moved up' : 'moved down';
   const sessionLayoutReorderPositionLabel = (index: number, total: number) => `position ${index + 1} of ${total}`;
   const sessionLayoutReorderHistoryScopeLabel = (scope: DesktopCmSessionLayoutReorderHistoryEntry['scope']) =>
-    scope === 'folder' ? 'Folder' : scope === 'preset' ? 'Preset' : scope === 'focus' ? 'Focus' : 'System';
+    formatDesktopCmSessionLayoutReorderHistoryScopeLabel(scope);
   const sessionLayoutReorderHistoryScopeFilterLabel = (scope: DesktopCmSessionLayoutReorderHistoryScopeFilter) =>
     scope === 'all' ? 'All scopes' : sessionLayoutReorderHistoryScopeLabel(scope);
   const sessionLayoutReorderHistoryStatusFilterLabel = (status: DesktopCmSessionLayoutReorderHistoryStatusFilter) =>
@@ -2547,12 +2555,27 @@ export function DesktopCmSessionPanel({
             ) : null}
             {sessionLayoutReorderHistory.length > 0 ? (
               <div
-                aria-label="Saved layout reorder status history"
+                aria-describedby={`${sessionLayoutReorderHistoryDescriptionId} ${sessionLayoutReorderHistorySummaryId}`}
+                aria-labelledby={sessionLayoutReorderHistoryTitleId}
                 className="grid gap-2 rounded-[10px] border border-[rgba(60,60,67,0.1)] bg-white/58 px-3 py-2"
                 data-testid="desktop-cm-session-layout-reorder-history"
+                role="region"
               >
+                <p className="sr-only" data-testid="desktop-cm-session-layout-reorder-history-description" id={sessionLayoutReorderHistoryDescriptionId}>
+                  Saved layout reorder status history is newest first and uses safe UI status metadata only. Each entry includes scope, message, relative age, and exact local timestamp.
+                </p>
+                <p
+                  aria-atomic="true"
+                  aria-live="polite"
+                  className="sr-only"
+                  data-testid="desktop-cm-session-layout-reorder-history-accessibility-summary"
+                  id={sessionLayoutReorderHistorySummaryId}
+                  role="status"
+                >
+                  {sessionLayoutReorderHistoryAccessibilitySummary}
+                </p>
                 <div className="flex min-w-0 flex-wrap items-center gap-2">
-                  <span className="ku-chip" data-testid="desktop-cm-session-layout-reorder-history-count">
+                  <span className="ku-chip" data-testid="desktop-cm-session-layout-reorder-history-count" id={sessionLayoutReorderHistoryTitleId}>
                     최근 reorder status {visibleSessionLayoutReorderHistory.length} / 전체 {sessionLayoutReorderHistory.length}
                   </span>
                   <span className="min-w-0 flex-1 truncate text-xs font-semibold text-[rgba(60,60,67,0.62)]" data-testid="desktop-cm-session-layout-reorder-history-latest">
@@ -2625,10 +2648,16 @@ export function DesktopCmSessionPanel({
                   </button>
                 </div>
                 {visibleSessionLayoutReorderHistory.length > 0 ? (
-                  <ol className="grid gap-1" data-testid="desktop-cm-session-layout-reorder-history-list">
+                  <ol
+                    aria-describedby={sessionLayoutReorderHistorySummaryId}
+                    aria-label="Saved layout reorder status history entries, newest first"
+                    className="grid gap-1"
+                    data-testid="desktop-cm-session-layout-reorder-history-list"
+                  >
                     {visibleSessionLayoutReorderHistory.map((entry) => (
                     <li
                       key={entry.id}
+                      aria-label={`${sessionLayoutReorderHistoryScopeLabel(entry.scope)} reorder status: ${entry.message} Recorded ${sessionLayoutReorderHistoryExactTimeLabel(entry.createdAt)} (${sessionLayoutReorderHistoryAgeLabel(entry.createdAt)}).`}
                       className="grid gap-1 rounded-[8px] border border-[rgba(60,60,67,0.08)] bg-white/70 px-2 py-1 text-xs font-semibold text-[rgba(60,60,67,0.68)] sm:grid-cols-[auto_1fr_auto] sm:items-center"
                       data-testid={`desktop-cm-session-layout-reorder-history-item-${entry.scope}`}
                     >
@@ -4623,6 +4652,10 @@ function matchesDesktopCmSessionLayoutReorderHistoryStatus(
     return message.startsWith('focus restored:');
   }
   return message.startsWith('focus target unavailable');
+}
+
+function formatDesktopCmSessionLayoutReorderHistoryScopeLabel(scope: DesktopCmSessionLayoutReorderHistoryEntry['scope']) {
+  return scope === 'folder' ? 'Folder' : scope === 'preset' ? 'Preset' : scope === 'focus' ? 'Focus' : 'System';
 }
 
 function formatDesktopCmSessionLayoutReorderHistoryAge(createdAt: number, now: number) {
