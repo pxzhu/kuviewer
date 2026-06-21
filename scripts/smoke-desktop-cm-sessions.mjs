@@ -612,6 +612,43 @@ async function smokeDesktopRuntime(browser, url) {
       'desktop CM session layout reorder history timestamp responsive layout must avoid mobile horizontal overflow'
     );
     await page.setViewportSize({ width: 1280, height: 720 });
+    const layoutReorderHistoryComfortableDensity = await page.getByTestId('desktop-cm-session-layout-reorder-history').getAttribute('data-density');
+    const layoutReorderHistoryComfortablePressed = await page.getByTestId('desktop-cm-session-layout-reorder-history-density-comfortable').getAttribute('aria-pressed');
+    const layoutReorderHistoryCompactPressedBefore = await page.getByTestId('desktop-cm-session-layout-reorder-history-density-compact').getAttribute('aria-pressed');
+    const layoutReorderHistoryComfortableMetrics = await page.getByTestId('desktop-cm-session-layout-reorder-history-item-focus').first().evaluate((element) => {
+      const time = element.querySelector('[data-testid="desktop-cm-session-layout-reorder-history-time"]');
+      return {
+        height: element.getBoundingClientRect().height,
+        timeFontSize: time ? Number.parseFloat(window.getComputedStyle(time).fontSize) : 0,
+      };
+    });
+    await page.getByTestId('desktop-cm-session-layout-reorder-history-density-compact').click();
+    const layoutReorderHistoryCompactDensity = await page.getByTestId('desktop-cm-session-layout-reorder-history').getAttribute('data-density');
+    const layoutReorderHistoryCompactPressed = await page.getByTestId('desktop-cm-session-layout-reorder-history-density-compact').getAttribute('aria-pressed');
+    const layoutReorderHistoryComfortablePressedAfterCompact = await page.getByTestId('desktop-cm-session-layout-reorder-history-density-comfortable').getAttribute('aria-pressed');
+    const layoutReorderHistoryCompactMetrics = await page.getByTestId('desktop-cm-session-layout-reorder-history-item-focus').first().evaluate((element) => {
+      const time = element.querySelector('[data-testid="desktop-cm-session-layout-reorder-history-time"]');
+      return {
+        height: element.getBoundingClientRect().height,
+        timeFontSize: time ? Number.parseFloat(window.getComputedStyle(time).fontSize) : 0,
+      };
+    });
+    await page.getByTestId('desktop-cm-session-layout-reorder-history-density-comfortable').click();
+    const layoutReorderHistoryRestoredDensity = await page.getByTestId('desktop-cm-session-layout-reorder-history').getAttribute('data-density');
+    const layoutReorderHistoryRestoredPressed = await page.getByTestId('desktop-cm-session-layout-reorder-history-density-comfortable').getAttribute('aria-pressed');
+    requireCondition(
+      layoutReorderHistoryComfortableDensity === 'comfortable' &&
+        layoutReorderHistoryComfortablePressed === 'true' &&
+        layoutReorderHistoryCompactPressedBefore === 'false' &&
+        layoutReorderHistoryCompactDensity === 'compact' &&
+        layoutReorderHistoryCompactPressed === 'true' &&
+        layoutReorderHistoryComfortablePressedAfterCompact === 'false' &&
+        layoutReorderHistoryCompactMetrics.height < layoutReorderHistoryComfortableMetrics.height &&
+        layoutReorderHistoryCompactMetrics.timeFontSize < layoutReorderHistoryComfortableMetrics.timeFontSize &&
+        layoutReorderHistoryRestoredDensity === 'comfortable' &&
+        layoutReorderHistoryRestoredPressed === 'true',
+      'desktop CM session layout reorder history timestamp density must toggle compact rows without persistence'
+    );
     await page.getByTestId('desktop-cm-session-layout-reorder-history-status-filter').selectOption('reorder-complete');
     layoutReorderHistoryText = await page.getByTestId('desktop-cm-session-layout-reorder-history').textContent();
     layoutReorderHistoryLatest = await page.getByTestId('desktop-cm-session-layout-reorder-history-latest').textContent();
@@ -663,7 +700,8 @@ async function smokeDesktopRuntime(browser, url) {
         !sessionLayoutStorage.includes('sessionLayoutReorderHistory') &&
         !sessionLayoutStorage.includes('sessionLayoutReorderHistoryScopeFilter') &&
         !sessionLayoutStorage.includes('sessionLayoutReorderHistoryStatusFilter') &&
-        !sessionLayoutStorage.includes('sessionLayoutReorderHistoryNow'),
+        !sessionLayoutStorage.includes('sessionLayoutReorderHistoryNow') &&
+        !sessionLayoutStorage.includes('sessionLayoutReorderHistoryDensity'),
       'desktop CM session layout reorder keyboard and focus status must stay memory-only'
     );
     await page.getByTestId('desktop-cm-session-layout-reorder-history-clear').click();

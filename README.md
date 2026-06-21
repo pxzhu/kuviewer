@@ -83,6 +83,8 @@ Desktop CM saved layout folder reorder status history timestamp accessibility po
 
 Desktop CM saved layout folder reorder status history timestamp responsive polish is desktop-only UI layout state. On narrow widths, the timestamp history toolbar wraps filters and actions to full-width controls, status messages wrap instead of truncating, and timestamp metadata wraps without horizontal overflow; desktop widths keep the dense row layout. Responsive display state stays in browser memory only and is not stored, exported, sent through Tauri, or mixed with credentials, runtime profiles, diagnostics, Events, or logs.
 
+Desktop CM saved layout folder reorder status history timestamp density polish is desktop-only UI state. The timestamp history panel now offers comfortable and compact display density for recent reorder rows; compact density reduces row padding, timestamp chip height, and timestamp font size while preserving exact timestamps, `dateTime`, and accessibility labels. Density state stays in browser memory only and is not stored, exported, sent through Tauri, or mixed with credentials, runtime profiles, diagnostics, Events, or logs.
+
 Existing remote API profile, local sidecar, and direct Kubernetes/keychain paths remain prototype-only scaffolds. The local sidecar no longer starts by default in the desktop product path; it requires `KUVIEWER_DESKTOP_ENABLE_PROTOTYPE_SIDECAR=1` for explicit prototype work. The web app must not expose SSH.
 
 The Flow view is intended to feel closer to real request movement than a generic resource graph. It derives paths such as:
