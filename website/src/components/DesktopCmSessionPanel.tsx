@@ -316,29 +316,29 @@ export function DesktopCmSessionPanel({
   const sessionLayoutReorderFocusStatusId = 'desktop-cm-session-layout-reorder-focus-status';
   const sessionLayoutReorderFilterDisabledReason =
     sessionLayoutSearchActive && sessionLayoutFolderFilterActive
-      ? 'Layout reorder is disabled while layout search and folder filter are active. Clear both filters to reorder.'
+      ? 'Reorder unavailable: layout search and folder filter are active. Clear both filters to reorder.'
       : sessionLayoutSearchActive
-        ? 'Layout reorder is disabled while layout search is active. Clear layout search to reorder.'
+        ? 'Reorder unavailable: layout search is active. Clear layout search to reorder.'
         : sessionLayoutFolderFilterActive
-          ? 'Layout reorder is disabled while folder filter is active. Clear folder filter to reorder.'
+          ? 'Reorder unavailable: folder filter is active. Clear folder filter to reorder.'
           : '';
   const sessionLayoutReorderUnavailableReason =
     sessionLayoutReorderFilterDisabledReason ||
     (sessionLayoutFolderNames.length <= 1 && visibleSessionLayoutPresets.length <= 1
-      ? 'Layout reorder needs at least two layout folders or two presets in the same folder.'
+      ? 'Reorder unavailable: at least two layout folders or two presets in the same folder are required.'
       : sessionLayoutFolderNames.length <= 1
-        ? 'Layout folder reorder needs at least two layout folders.'
+        ? 'Reorder unavailable: at least two layout folders are required.'
         : visibleSessionLayoutPresets.length <= 1
-          ? 'Layout preset reorder needs at least two visible presets.'
+          ? 'Reorder unavailable: at least two visible layout presets are required.'
           : '');
   const sessionLayoutReorderStateLabel =
-    sessionLayoutReorderUnavailableReason || 'Layout folder and preset reorder controls are available.';
+    sessionLayoutReorderUnavailableReason || 'Reorder ready: folder and preset controls are available.';
   const sessionLayoutReorderKeyboardLiveText =
     sessionLayoutReorderKeyboardMessage ||
     (sessionLayoutReorderBlocked
-      ? 'Layout reorder keyboard shortcuts are disabled while layout search or folder filter is active.'
-      : 'Layout reorder keyboard shortcuts are available.');
-  const sessionLayoutReorderFocusLiveText = sessionLayoutReorderFocusMessage || 'Layout reorder focus stays on the initiating control.';
+      ? sessionLayoutReorderUnavailableReason
+      : 'Reorder ready: keyboard shortcuts can move folders and presets.');
+  const sessionLayoutReorderFocusLiveText = sessionLayoutReorderFocusMessage || 'Focus restoration ready: focus returns to the moved control after reorder.';
   const activeSessionLayoutFolder = groupedSessionLayoutPresets.find((folder) => folder.folder === activeSessionLayoutFolderName);
   const activeSessionLayoutFolderIndex = sessionLayoutFolderNames.findIndex((folderName) => folderName === activeSessionLayoutFolderName);
   const sessionLayoutFolderKeyboardLiveText = activeSessionLayoutFolder
@@ -392,9 +392,9 @@ export function DesktopCmSessionPanel({
             ) || null;
       if (target) {
         target.focus({ preventScroll: true });
-        setSessionLayoutReorderFocusMessage(`Focus restored to ${sessionLayoutReorderFocusTargetLabel || 'the moved layout reorder control'}.`);
+        setSessionLayoutReorderFocusMessage(`Focus restored: ${sessionLayoutReorderFocusTargetLabel || 'moved layout reorder control'}.`);
       } else {
-        setSessionLayoutReorderFocusMessage(`${sessionLayoutReorderFocusTargetLabel || 'The moved layout reorder control'} is no longer visible after reorder.`);
+        setSessionLayoutReorderFocusMessage(`Focus target unavailable after reorder: ${sessionLayoutReorderFocusTargetLabel || 'moved layout reorder control'}.`);
       }
       setSessionLayoutReorderFocusTargetTestId('');
       setSessionLayoutReorderFocusTargetLabel('');
@@ -1035,20 +1035,28 @@ export function DesktopCmSessionPanel({
 
   const sessionLayoutFolderDragHandleTestId = (folderName: string) => `desktop-cm-session-layout-folder-drag-handle-${slugifyTestId(folderName)}`;
   const sessionLayoutPresetDragHandleTestId = (presetName: string) => `desktop-cm-session-layout-drag-handle-${slugifyTestId(presetName)}`;
+  const sessionLayoutReorderMovementLabel = (direction: -1 | 1 | 'first' | 'last') =>
+    direction === 'first' ? 'moved to first' : direction === 'last' ? 'moved to last' : direction < 0 ? 'moved up' : 'moved down';
+  const sessionLayoutReorderPositionLabel = (index: number, total: number) => `position ${index + 1} of ${total}`;
+  const sessionLayoutFolderReorderSuccessMessage = (folderName: string, direction: -1 | 1 | 'first' | 'last', targetIndex: number, total: number) =>
+    `Reorder complete: ${folderName} folder ${sessionLayoutReorderMovementLabel(direction)}, ${sessionLayoutReorderPositionLabel(targetIndex, total)}.`;
+  const sessionLayoutPresetReorderSuccessMessage = (presetName: string, folderName: string, direction: -1 | 1 | 'first' | 'last', targetIndex: number, total: number) =>
+    `Reorder complete: ${presetName} layout ${sessionLayoutReorderMovementLabel(direction)} within ${folderName}, ${sessionLayoutReorderPositionLabel(targetIndex, total)}.`;
+  const sessionLayoutReorderUnchangedMessage = (targetLabel: string, reason: string) => `Reorder unchanged: ${targetLabel} ${reason}.`;
   const sessionLayoutFolderReorderDisabledReason = (folderName: string, direction?: 'up' | 'down') => {
     const folder = normalizeDesktopCmSessionLayoutFolderName(folderName);
     if (sessionLayoutReorderFilterDisabledReason) {
       return sessionLayoutReorderFilterDisabledReason;
     }
     if (sessionLayoutFolderNames.length <= 1) {
-      return 'Layout folder reorder needs at least two layout folders.';
+      return 'Reorder unavailable: at least two layout folders are required.';
     }
     const folderIndex = sessionLayoutFolderNames.indexOf(folder);
     if (direction === 'up' && folderIndex === 0) {
-      return `${folder} layout folder is already first.`;
+      return `Reorder unchanged: ${folder} folder is already first.`;
     }
     if (direction === 'down' && folderIndex === sessionLayoutFolderNames.length - 1) {
-      return `${folder} layout folder is already last.`;
+      return `Reorder unchanged: ${folder} folder is already last.`;
     }
     return '';
   };
@@ -1059,14 +1067,14 @@ export function DesktopCmSessionPanel({
       return sessionLayoutReorderFilterDisabledReason;
     }
     if (folderPresets.length <= 1) {
-      return `${folder} folder needs at least two layout presets to reorder presets.`;
+      return `Reorder unavailable: ${folder} folder needs at least two layout presets.`;
     }
     const presetIndex = folderPresets.findIndex((preset) => preset.name === presetName);
     if (direction === 'up' && presetIndex === 0) {
-      return `${presetName} layout is already first in ${folder}.`;
+      return `Reorder unchanged: ${presetName} layout is already first in ${folder}.`;
     }
     if (direction === 'down' && presetIndex === folderPresets.length - 1) {
-      return `${presetName} layout is already last in ${folder}.`;
+      return `Reorder unchanged: ${presetName} layout is already last in ${folder}.`;
     }
     return '';
   };
@@ -1078,7 +1086,7 @@ export function DesktopCmSessionPanel({
   ) => {
     const folder = normalizeDesktopCmSessionLayoutFolderName(folderName);
     if (!canReorderSessionLayoutFolders) {
-      setSessionLayoutReorderKeyboardMessage('Layout folder reorder is unavailable while layout search or folder filter is active.');
+      setSessionLayoutReorderKeyboardMessage(sessionLayoutReorderUnavailableReason || 'Reorder unavailable: layout folder order cannot change now.');
       return;
     }
     const folderOrder = desktopCmSessionLayoutFolderOrder(sessionLayoutPresets);
@@ -1086,11 +1094,11 @@ export function DesktopCmSessionPanel({
     const targetIndex =
       direction === 'first' ? 0 : direction === 'last' ? folderOrder.length - 1 : currentIndex + direction;
     if (currentIndex < 0 || targetIndex < 0 || targetIndex >= folderOrder.length) {
-      setSessionLayoutReorderKeyboardMessage(`${folder || 'Layout folder'} cannot move ${direction === -1 || direction === 'first' ? 'up' : 'down'}.`);
+      setSessionLayoutReorderKeyboardMessage(sessionLayoutReorderUnchangedMessage(folder || 'layout folder', `cannot move ${direction === -1 || direction === 'first' ? 'up' : 'down'}`));
       return;
     }
     if (currentIndex === targetIndex) {
-      setSessionLayoutReorderKeyboardMessage(`${folder} layout folder is already ${direction === 'first' || direction === -1 ? 'first' : 'last'}.`);
+      setSessionLayoutReorderKeyboardMessage(sessionLayoutReorderUnchangedMessage(`${folder} folder`, `is already ${direction === 'first' || direction === -1 ? 'first' : 'last'}`));
       return;
     }
     setSessionLayoutImportConflicts(null);
@@ -1101,9 +1109,7 @@ export function DesktopCmSessionPanel({
       writeDesktopCmSessionLayoutPresets(nextPresets);
       return nextPresets;
     });
-    const movement =
-      direction === 'first' ? 'moved to first' : direction === 'last' ? 'moved to last' : direction < 0 ? 'moved up' : 'moved down';
-    setSessionLayoutReorderKeyboardMessage(`${folder} layout folder ${movement}.`);
+    setSessionLayoutReorderKeyboardMessage(sessionLayoutFolderReorderSuccessMessage(folder, direction, targetIndex, folderOrder.length));
     requestSessionLayoutReorderFocus(
       focusTarget === 'folder-list' ? 'desktop-cm-session-layout-list' : sessionLayoutFolderDragHandleTestId(folder),
       focusTarget === 'folder-list' ? 'saved layout folder list' : `${folder} layout folder drag handle`,
@@ -1130,13 +1136,14 @@ export function DesktopCmSessionPanel({
       writeDesktopCmSessionLayoutPresets(nextPresets);
       return nextPresets;
     });
+    setSessionLayoutReorderKeyboardMessage(`Reorder complete: ${sourceFolder} folder moved before ${targetFolder}.`);
     requestSessionLayoutReorderFocus(sessionLayoutFolderDragHandleTestId(sourceFolder), `${sourceFolder} layout folder drag handle`);
     setDraggingSessionLayoutFolderName('');
   };
 
   const handleMoveSessionLayoutPresetOrder = (presetName: string, direction: -1 | 1 | 'first' | 'last') => {
     if (!canReorderSessionLayoutPresets) {
-      setSessionLayoutReorderKeyboardMessage('Layout preset reorder is unavailable while layout search or folder filter is active.');
+      setSessionLayoutReorderKeyboardMessage(sessionLayoutReorderUnavailableReason || 'Reorder unavailable: layout preset order cannot change now.');
       return;
     }
     const sourcePreset = sessionLayoutPresets.find((preset) => preset.name === presetName);
@@ -1149,11 +1156,11 @@ export function DesktopCmSessionPanel({
     const targetIndex =
       direction === 'first' ? 0 : direction === 'last' ? folderPresets.length - 1 : currentIndex + direction;
     if (currentIndex < 0 || targetIndex < 0 || targetIndex >= folderPresets.length) {
-      setSessionLayoutReorderKeyboardMessage(`${presetName} layout cannot move ${direction === -1 || direction === 'first' ? 'up' : 'down'}.`);
+      setSessionLayoutReorderKeyboardMessage(sessionLayoutReorderUnchangedMessage(`${presetName} layout`, `cannot move ${direction === -1 || direction === 'first' ? 'up' : 'down'} in ${folder}`));
       return;
     }
     if (currentIndex === targetIndex) {
-      setSessionLayoutReorderKeyboardMessage(`${presetName} layout is already ${direction === 'first' || direction === -1 ? 'first' : 'last'} in ${folder}.`);
+      setSessionLayoutReorderKeyboardMessage(sessionLayoutReorderUnchangedMessage(`${presetName} layout`, `is already ${direction === 'first' || direction === -1 ? 'first' : 'last'} in ${folder}`));
       return;
     }
     setSessionLayoutImportConflicts(null);
@@ -1163,9 +1170,7 @@ export function DesktopCmSessionPanel({
       writeDesktopCmSessionLayoutPresets(nextPresets);
       return nextPresets;
     });
-    const movement =
-      direction === 'first' ? 'moved to first' : direction === 'last' ? 'moved to last' : direction < 0 ? 'moved up' : 'moved down';
-    setSessionLayoutReorderKeyboardMessage(`${presetName} layout ${movement} in ${folder}.`);
+    setSessionLayoutReorderKeyboardMessage(sessionLayoutPresetReorderSuccessMessage(presetName, folder, direction, targetIndex, folderPresets.length));
     requestSessionLayoutReorderFocus(sessionLayoutPresetDragHandleTestId(presetName), `${presetName} layout drag handle in ${folder}`);
   };
 
@@ -1187,6 +1192,7 @@ export function DesktopCmSessionPanel({
       writeDesktopCmSessionLayoutPresets(nextPresets);
       return nextPresets;
     });
+    setSessionLayoutReorderKeyboardMessage(`Reorder complete: ${sourcePresetName} layout moved before ${targetPresetName}.`);
     requestSessionLayoutReorderFocus(sessionLayoutPresetDragHandleTestId(sourcePresetName), `${sourcePresetName} layout drag handle`);
     setDraggingSessionLayoutPresetName('');
   };
