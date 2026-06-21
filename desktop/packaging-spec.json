@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "name": "Kuviewer Desktop CM Session Explorer",
   "goal": "desktop-cm-session-prototype",
-  "status": "desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-polish",
+  "status": "desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-accessibility-polish",
   "recommendedPackager": "tauri",
   "fallbackPackager": "electron",
   "tauri": {
@@ -1493,12 +1493,15 @@
       "helpButtonFocusVisibleHighContrast": true,
       "helpButtonFocusVisibleRing": true,
       "helpButtonFocusVisibleOffset": true,
+      "helpButtonFocusVisibleDescribedBy": true,
+      "helpButtonFocusVisibleDescriptionHidden": true,
       "smokeCoversHoverTooltip": true,
       "smokeCoversFocusTooltip": true,
       "smokeCoversNarrowViewportPlacement": true,
       "smokeCoversTooltipContrast": true,
       "smokeCoversTooltipContrastAccessibility": true,
       "smokeCoversFocusVisibleRing": true,
+      "smokeCoversFocusVisibleAccessibility": true,
       "smokeCoversNoPersistence": true,
       "noPresetPersistence": true,
       "hiddenShortcutHintPreserved": true,
@@ -1708,7 +1711,7 @@
       "desktop-use-sidecar-profile"
     ],
     "next": [
-      "Desktop CM session layout preset folder reorder status history timestamp filter preset help tooltip focus-visible accessibility polish"
+      "Desktop CM session layout preset folder reorder status history timestamp filter preset help tooltip focus-visible keyboard smoke polish"
     ]
   },
   "remoteConnectionProfile": {
@@ -2007,6 +2010,7 @@
     "desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-placement-polish",
     "desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-contrast-polish",
     "desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-contrast-accessibility-polish",
-    "desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-polish"
+    "desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-polish",
+    "desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-accessibility-polish"
   ]
 }
