@@ -184,6 +184,7 @@ const desktopCmSessionLayoutReorderHistoryFilterPresets: DesktopCmSessionLayoutR
   { id: 'focus-compact', label: 'Focus', scope: 'focus', status: 'focus-restored', density: 'compact' },
   { id: 'blocked-compact', label: 'Blocked', scope: 'all', status: 'reorder-unavailable', density: 'compact' },
 ];
+const desktopCmSessionLayoutReorderHistoryFilterPresetIds = desktopCmSessionLayoutReorderHistoryFilterPresets.map((preset) => preset.id);
 
 type CmDiagnosticStageFilter = (typeof cmDiagnosticStageFilterOptions)[number];
 type CmDiagnosticSeverityFilter = (typeof cmDiagnosticSeverityFilterOptions)[number];
@@ -240,6 +241,10 @@ export function DesktopCmSessionPanel({
   const [sessionLayoutReorderHistoryNow, setSessionLayoutReorderHistoryNow] = useState(() => Date.now());
   const [sessionLayoutReorderHistoryDensity, setSessionLayoutReorderHistoryDensity] =
     useState<DesktopCmSessionLayoutReorderHistoryDensity>('comfortable');
+  const [sessionLayoutReorderHistoryFilterPresetFocusId, setSessionLayoutReorderHistoryFilterPresetFocusId] = useState(
+    desktopCmSessionLayoutReorderHistoryFilterPresetIds[0] || '',
+  );
+  const [sessionLayoutReorderHistoryFilterPresetKeyboardMessage, setSessionLayoutReorderHistoryFilterPresetKeyboardMessage] = useState('');
   const [sessionLayoutPresets, setSessionLayoutPresets] = useState<DesktopCmSessionLayoutPreset[]>(() => readDesktopCmSessionLayoutPresets());
   const [collapsedSessionLayoutFolders, setCollapsedSessionLayoutFolders] = useState<Set<string>>(() => readDesktopCmSessionLayoutCollapsedFolders());
   const [selectedSessionLayoutPresetNames, setSelectedSessionLayoutPresetNames] = useState<Set<string>>(() => new Set());
@@ -258,6 +263,7 @@ export function DesktopCmSessionPanel({
   const sessionLayoutConflictPreviewRef = useRef<HTMLDivElement | null>(null);
   const sessionLayoutFolderListRef = useRef<HTMLDivElement | null>(null);
   const sessionLayoutReorderHistorySequenceRef = useRef(0);
+  const sessionLayoutReorderHistoryFilterPresetButtonRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   const normalizedSessionSearchQuery = normalizeSearchValue(sessionSearchQuery);
   const normalizedSessionLayoutSearchQuery = normalizeSearchValue(sessionLayoutSearchQuery);
   const sessionPreferenceMap = useMemo(() => new Map(sessionViewPreferences.sessions.map((preference) => [preference.sessionId, preference])), [sessionViewPreferences.sessions]);
@@ -370,6 +376,8 @@ export function DesktopCmSessionPanel({
   const sessionLayoutReorderHistorySummaryId = 'desktop-cm-session-layout-reorder-history-accessibility-summary';
   const sessionLayoutReorderHistoryFilterPresetDescriptionId = 'desktop-cm-session-layout-reorder-history-filter-preset-description';
   const sessionLayoutReorderHistoryFilterPresetSummaryId = 'desktop-cm-session-layout-reorder-history-filter-preset-summary';
+  const sessionLayoutReorderHistoryFilterPresetKeyboardDescriptionId = 'desktop-cm-session-layout-reorder-history-filter-preset-keyboard-description';
+  const sessionLayoutReorderHistoryFilterPresetKeyboardStatusId = 'desktop-cm-session-layout-reorder-history-filter-preset-keyboard-status';
   const sessionLayoutReorderFilterDisabledReason =
     sessionLayoutSearchActive && sessionLayoutFolderFilterActive
       ? 'Reorder unavailable: layout search and folder filter are active. Clear both filters to reorder.'
@@ -443,6 +451,8 @@ export function DesktopCmSessionPanel({
   };
 
   const applySessionLayoutReorderHistoryFilterPreset = (preset: DesktopCmSessionLayoutReorderHistoryFilterPreset) => {
+    setSessionLayoutReorderHistoryFilterPresetFocusId(preset.id);
+    setSessionLayoutReorderHistoryFilterPresetKeyboardMessage(`Applied ${preset.label} reorder history preset.`);
     setSessionLayoutReorderHistoryScopeFilter(preset.scope);
     setSessionLayoutReorderHistoryStatusFilter(preset.status);
     setSessionLayoutReorderHistoryDensity(preset.density);
@@ -1187,8 +1197,48 @@ export function DesktopCmSessionPanel({
   const sessionLayoutReorderHistoryFilterPresetSummary = activeSessionLayoutReorderHistoryFilterPreset
     ? `Active reorder history preset ${activeSessionLayoutReorderHistoryFilterPreset.label}: ${sessionLayoutReorderHistoryScopeFilterLabel(activeSessionLayoutReorderHistoryFilterPreset.scope)}, ${sessionLayoutReorderHistoryStatusFilterLabel(activeSessionLayoutReorderHistoryFilterPreset.status)}, ${sessionLayoutReorderHistoryDensityLabel(activeSessionLayoutReorderHistoryFilterPreset.density)} density.`
     : `No reorder history preset is active. Current filters are ${sessionLayoutReorderHistoryScopeFilterLabel(sessionLayoutReorderHistoryScopeFilter)}, ${sessionLayoutReorderHistoryStatusFilterLabel(sessionLayoutReorderHistoryStatusFilter)}, ${sessionLayoutReorderHistoryDensityLabel(sessionLayoutReorderHistoryDensity)} density.`;
-  const sessionLayoutReorderHistoryFilterPresetLabel = (preset: DesktopCmSessionLayoutReorderHistoryFilterPreset) =>
-    `Apply ${preset.label} reorder history preset: ${sessionLayoutReorderHistoryScopeFilterLabel(preset.scope)}, ${sessionLayoutReorderHistoryStatusFilterLabel(preset.status)}, ${sessionLayoutReorderHistoryDensityLabel(preset.density)} density.`;
+  const sessionLayoutReorderHistoryFilterPresetTabStopId = desktopCmSessionLayoutReorderHistoryFilterPresetIds.includes(
+    sessionLayoutReorderHistoryFilterPresetFocusId,
+  )
+    ? sessionLayoutReorderHistoryFilterPresetFocusId
+    : activeSessionLayoutReorderHistoryFilterPreset?.id || desktopCmSessionLayoutReorderHistoryFilterPresetIds[0] || '';
+  const sessionLayoutReorderHistoryFilterPresetKeyboardStatus =
+    sessionLayoutReorderHistoryFilterPresetKeyboardMessage || 'Reorder history filter preset keyboard focus is ready.';
+  const sessionLayoutReorderHistoryFilterPresetLabel = (preset: DesktopCmSessionLayoutReorderHistoryFilterPreset, index: number, total: number) =>
+    `Apply ${preset.label} reorder history preset, ${index + 1} of ${total}: ${sessionLayoutReorderHistoryScopeFilterLabel(preset.scope)}, ${sessionLayoutReorderHistoryStatusFilterLabel(preset.status)}, ${sessionLayoutReorderHistoryDensityLabel(preset.density)} density.`;
+  const focusSessionLayoutReorderHistoryFilterPreset = (preset: DesktopCmSessionLayoutReorderHistoryFilterPreset) => {
+    const presetIndex = desktopCmSessionLayoutReorderHistoryFilterPresets.findIndex((candidate) => candidate.id === preset.id);
+    setSessionLayoutReorderHistoryFilterPresetFocusId(preset.id);
+    setSessionLayoutReorderHistoryFilterPresetKeyboardMessage(
+      `Focus ${preset.label} reorder history preset, ${presetIndex + 1} of ${desktopCmSessionLayoutReorderHistoryFilterPresets.length}. Press Enter or Space to apply.`,
+    );
+    window.requestAnimationFrame(() => sessionLayoutReorderHistoryFilterPresetButtonRefs.current[preset.id]?.focus({ preventScroll: true }));
+  };
+  const handleSessionLayoutReorderHistoryFilterPresetKeyDown = (
+    event: KeyboardEvent<HTMLButtonElement>,
+    preset: DesktopCmSessionLayoutReorderHistoryFilterPreset,
+  ) => {
+    const currentIndex = desktopCmSessionLayoutReorderHistoryFilterPresets.findIndex((candidate) => candidate.id === preset.id);
+    if (currentIndex < 0) {
+      return;
+    }
+    const presetCount = desktopCmSessionLayoutReorderHistoryFilterPresets.length;
+    const targetIndex =
+      event.key === 'ArrowRight' || event.key === 'ArrowDown'
+        ? (currentIndex + 1) % presetCount
+        : event.key === 'ArrowLeft' || event.key === 'ArrowUp'
+          ? (currentIndex - 1 + presetCount) % presetCount
+          : event.key === 'Home'
+            ? 0
+            : event.key === 'End'
+              ? presetCount - 1
+              : -1;
+    if (targetIndex < 0) {
+      return;
+    }
+    event.preventDefault();
+    focusSessionLayoutReorderHistoryFilterPreset(desktopCmSessionLayoutReorderHistoryFilterPresets[targetIndex]);
+  };
   const sessionLayoutFolderReorderSuccessMessage = (folderName: string, direction: -1 | 1 | 'first' | 'last', targetIndex: number, total: number) =>
     `Reorder complete: ${folderName} folder ${sessionLayoutReorderMovementLabel(direction)}, ${sessionLayoutReorderPositionLabel(targetIndex, total)}.`;
   const sessionLayoutPresetReorderSuccessMessage = (presetName: string, folderName: string, direction: -1 | 1 | 'first' | 'last', targetIndex: number, total: number) =>
@@ -2692,7 +2742,7 @@ export function DesktopCmSessionPanel({
                     ))}
                   </div>
                   <div
-                    aria-describedby={`${sessionLayoutReorderHistoryFilterPresetDescriptionId} ${sessionLayoutReorderHistoryFilterPresetSummaryId}`}
+                    aria-describedby={`${sessionLayoutReorderHistoryFilterPresetDescriptionId} ${sessionLayoutReorderHistoryFilterPresetKeyboardDescriptionId} ${sessionLayoutReorderHistoryFilterPresetSummaryId} ${sessionLayoutReorderHistoryFilterPresetKeyboardStatusId}`}
                     aria-label="Reorder history filter presets"
                     className="flex min-w-0 flex-1 basis-full flex-wrap gap-1 rounded-[8px] border border-[rgba(60,60,67,0.12)] bg-white/55 p-1 sm:flex-none sm:basis-auto"
                     data-testid="desktop-cm-session-layout-reorder-history-filter-presets"
@@ -2706,6 +2756,13 @@ export function DesktopCmSessionPanel({
                       Reorder history filter presets apply safe scope, status, and density settings together. Preset state stays in browser memory only and is not stored or exported.
                     </p>
                     <p
+                      className="sr-only"
+                      data-testid="desktop-cm-session-layout-reorder-history-filter-preset-keyboard-description"
+                      id={sessionLayoutReorderHistoryFilterPresetKeyboardDescriptionId}
+                    >
+                      Use arrow keys, Home, and End to move across reorder history filter presets. Press Enter or Space to apply the focused preset.
+                    </p>
+                    <p
                       aria-atomic="true"
                       aria-live="polite"
                       className="sr-only"
@@ -2715,18 +2772,34 @@ export function DesktopCmSessionPanel({
                     >
                       {sessionLayoutReorderHistoryFilterPresetSummary}
                     </p>
-                    {desktopCmSessionLayoutReorderHistoryFilterPresets.map((preset) => {
+                    <p
+                      aria-atomic="true"
+                      aria-live="polite"
+                      className="sr-only"
+                      data-testid="desktop-cm-session-layout-reorder-history-filter-preset-keyboard-status"
+                      id={sessionLayoutReorderHistoryFilterPresetKeyboardStatusId}
+                      role="status"
+                    >
+                      {sessionLayoutReorderHistoryFilterPresetKeyboardStatus}
+                    </p>
+                    {desktopCmSessionLayoutReorderHistoryFilterPresets.map((preset, index) => {
                       const active = activeSessionLayoutReorderHistoryFilterPreset?.id === preset.id;
                       return (
                         <button
                           key={preset.id}
-                          aria-label={sessionLayoutReorderHistoryFilterPresetLabel(preset)}
+                          ref={(element) => {
+                            sessionLayoutReorderHistoryFilterPresetButtonRefs.current[preset.id] = element;
+                          }}
+                          aria-label={sessionLayoutReorderHistoryFilterPresetLabel(preset, index, desktopCmSessionLayoutReorderHistoryFilterPresets.length)}
                           aria-pressed={active}
                           className={`h-7 flex-1 rounded-[6px] px-2 text-xs font-semibold transition sm:flex-none ${
                             active ? 'bg-[rgba(42,111,151,0.14)] text-[rgba(23,68,93,0.92)]' : 'text-[rgba(60,60,67,0.58)] hover:bg-white/70'
                           }`}
                           data-testid={`desktop-cm-session-layout-reorder-history-filter-preset-${preset.id}`}
+                          tabIndex={sessionLayoutReorderHistoryFilterPresetTabStopId === preset.id ? 0 : -1}
                           type="button"
+                          onFocus={() => setSessionLayoutReorderHistoryFilterPresetFocusId(preset.id)}
+                          onKeyDown={(event) => handleSessionLayoutReorderHistoryFilterPresetKeyDown(event, preset)}
                           onClick={() => applySessionLayoutReorderHistoryFilterPreset(preset)}
                         >
                           {preset.label}

@@ -672,6 +672,10 @@ async function smokeDesktopRuntime(browser, url) {
     const layoutReorderHistoryPresetSummaryRole = await page.getByTestId('desktop-cm-session-layout-reorder-history-filter-preset-summary').getAttribute('role');
     const layoutReorderHistoryPresetSummaryLive = await page.getByTestId('desktop-cm-session-layout-reorder-history-filter-preset-summary').getAttribute('aria-live');
     const layoutReorderHistoryPresetSummaryAtomic = await page.getByTestId('desktop-cm-session-layout-reorder-history-filter-preset-summary').getAttribute('aria-atomic');
+    const layoutReorderHistoryPresetKeyboardDescription = await page.getByTestId('desktop-cm-session-layout-reorder-history-filter-preset-keyboard-description').textContent();
+    const layoutReorderHistoryPresetKeyboardStatusRole = await page.getByTestId('desktop-cm-session-layout-reorder-history-filter-preset-keyboard-status').getAttribute('role');
+    const layoutReorderHistoryPresetKeyboardStatusLive = await page.getByTestId('desktop-cm-session-layout-reorder-history-filter-preset-keyboard-status').getAttribute('aria-live');
+    const layoutReorderHistoryPresetKeyboardStatusAtomic = await page.getByTestId('desktop-cm-session-layout-reorder-history-filter-preset-keyboard-status').getAttribute('aria-atomic');
     const layoutReorderHistoryCompletePresetLabel = await page.getByTestId('desktop-cm-session-layout-reorder-history-filter-preset-complete-compact').getAttribute('aria-label');
     const layoutReorderHistoryFocusPresetLabel = await page.getByTestId('desktop-cm-session-layout-reorder-history-filter-preset-focus-compact').getAttribute('aria-label');
     requireCondition(
@@ -702,13 +706,76 @@ async function smokeDesktopRuntime(browser, url) {
         layoutReorderHistoryPresetSummaryRole === 'status' &&
         layoutReorderHistoryPresetSummaryLive === 'polite' &&
         layoutReorderHistoryPresetSummaryAtomic === 'true' &&
+        layoutReorderHistoryPresetKeyboardDescription?.includes('arrow keys') &&
+        layoutReorderHistoryPresetKeyboardDescription.includes('Home') &&
+        layoutReorderHistoryPresetKeyboardDescription.includes('End') &&
+        layoutReorderHistoryPresetKeyboardDescription.includes('Enter or Space') &&
+        layoutReorderHistoryPresetKeyboardStatusRole === 'status' &&
+        layoutReorderHistoryPresetKeyboardStatusLive === 'polite' &&
+        layoutReorderHistoryPresetKeyboardStatusAtomic === 'true' &&
         layoutReorderHistoryCompletePresetLabel?.includes('Apply Complete reorder history preset') &&
+        layoutReorderHistoryCompletePresetLabel.includes('2 of 4') &&
         layoutReorderHistoryCompletePresetLabel.includes('Reorder complete') &&
         layoutReorderHistoryCompletePresetLabel.includes('Compact density') &&
         layoutReorderHistoryFocusPresetLabel?.includes('Apply Focus reorder history preset') &&
+        layoutReorderHistoryFocusPresetLabel.includes('3 of 4') &&
         layoutReorderHistoryFocusPresetLabel.includes('Focus restored') &&
         layoutReorderHistoryFocusPresetLabel.includes('Compact density'),
       'desktop CM session layout reorder history timestamp filter preset accessibility must expose help summary and button labels'
+    );
+    await page.getByTestId('desktop-cm-session-layout-reorder-history-filter-preset-all-comfortable').focus();
+    await page.keyboard.press('ArrowRight');
+    await requireTestIdFocused(
+      page,
+      'desktop-cm-session-layout-reorder-history-filter-preset-complete-compact',
+      'desktop CM session layout reorder history filter preset ArrowRight must move focus to next preset'
+    );
+    let layoutReorderHistoryAllPresetTabIndex = await page.getByTestId('desktop-cm-session-layout-reorder-history-filter-preset-all-comfortable').getAttribute('tabindex');
+    let layoutReorderHistoryCompletePresetTabIndex = await page.getByTestId('desktop-cm-session-layout-reorder-history-filter-preset-complete-compact').getAttribute('tabindex');
+    let layoutReorderHistoryPresetKeyboardStatus = await page.getByTestId('desktop-cm-session-layout-reorder-history-filter-preset-keyboard-status').textContent();
+    await page.keyboard.press('Space');
+    layoutReorderHistoryScopeValue = await page.getByTestId('desktop-cm-session-layout-reorder-history-scope-filter').inputValue();
+    layoutReorderHistoryStatusValue = await page.getByTestId('desktop-cm-session-layout-reorder-history-status-filter').inputValue();
+    layoutReorderHistoryPresetDensity = await page.getByTestId('desktop-cm-session-layout-reorder-history').getAttribute('data-density');
+    layoutReorderHistoryPresetActive = await page.getByTestId('desktop-cm-session-layout-reorder-history-filter-preset-complete-compact').getAttribute('aria-pressed');
+    await page.keyboard.press('End');
+    await requireTestIdFocused(
+      page,
+      'desktop-cm-session-layout-reorder-history-filter-preset-blocked-compact',
+      'desktop CM session layout reorder history filter preset End must move focus to last preset'
+    );
+    await page.keyboard.press('Home');
+    await requireTestIdFocused(
+      page,
+      'desktop-cm-session-layout-reorder-history-filter-preset-all-comfortable',
+      'desktop CM session layout reorder history filter preset Home must move focus to first preset'
+    );
+    await page.keyboard.press('ArrowLeft');
+    await requireTestIdFocused(
+      page,
+      'desktop-cm-session-layout-reorder-history-filter-preset-blocked-compact',
+      'desktop CM session layout reorder history filter preset ArrowLeft must wrap focus to last preset'
+    );
+    await page.keyboard.press('Enter');
+    const layoutReorderHistoryBlockedScopeValue = await page.getByTestId('desktop-cm-session-layout-reorder-history-scope-filter').inputValue();
+    const layoutReorderHistoryBlockedStatusValue = await page.getByTestId('desktop-cm-session-layout-reorder-history-status-filter').inputValue();
+    const layoutReorderHistoryBlockedDensity = await page.getByTestId('desktop-cm-session-layout-reorder-history').getAttribute('data-density');
+    const layoutReorderHistoryBlockedPresetActive = await page.getByTestId('desktop-cm-session-layout-reorder-history-filter-preset-blocked-compact').getAttribute('aria-pressed');
+    const layoutReorderHistoryBlockedPresetTabIndex = await page.getByTestId('desktop-cm-session-layout-reorder-history-filter-preset-blocked-compact').getAttribute('tabindex');
+    requireCondition(
+      layoutReorderHistoryAllPresetTabIndex === '-1' &&
+        layoutReorderHistoryCompletePresetTabIndex === '0' &&
+        layoutReorderHistoryPresetKeyboardStatus?.includes('Focus Complete reorder history preset, 2 of 4') &&
+        layoutReorderHistoryScopeValue === 'all' &&
+        layoutReorderHistoryStatusValue === 'reorder-complete' &&
+        layoutReorderHistoryPresetDensity === 'compact' &&
+        layoutReorderHistoryPresetActive === 'true' &&
+        layoutReorderHistoryBlockedScopeValue === 'all' &&
+        layoutReorderHistoryBlockedStatusValue === 'reorder-unavailable' &&
+        layoutReorderHistoryBlockedDensity === 'compact' &&
+        layoutReorderHistoryBlockedPresetActive === 'true' &&
+        layoutReorderHistoryBlockedPresetTabIndex === '0',
+      'desktop CM session layout reorder history timestamp filter preset keyboard shortcuts must move focus and apply presets without persistence'
     );
     await page.getByTestId('desktop-cm-session-layout-reorder-history-status-filter').selectOption('reorder-complete');
     layoutReorderHistoryText = await page.getByTestId('desktop-cm-session-layout-reorder-history').textContent();
@@ -766,7 +833,9 @@ async function smokeDesktopRuntime(browser, url) {
         !sessionLayoutStorage.includes('activeSessionLayoutReorderHistoryFilterPreset') &&
         !sessionLayoutStorage.includes('sessionLayoutReorderHistoryFilterPreset') &&
         !sessionLayoutStorage.includes('sessionLayoutReorderHistoryFilterPresetSummary') &&
-        !sessionLayoutStorage.includes('sessionLayoutReorderHistoryFilterPresetDescription'),
+        !sessionLayoutStorage.includes('sessionLayoutReorderHistoryFilterPresetDescription') &&
+        !sessionLayoutStorage.includes('sessionLayoutReorderHistoryFilterPresetFocusId') &&
+        !sessionLayoutStorage.includes('sessionLayoutReorderHistoryFilterPresetKeyboardMessage'),
       'desktop CM session layout reorder keyboard and focus status must stay memory-only'
     );
     await page.getByTestId('desktop-cm-session-layout-reorder-history-clear').click();
