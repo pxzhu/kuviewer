@@ -80,6 +80,7 @@ requireCondition(
     'desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-focus-polish',
     'desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-polish',
     'desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-placement-polish',
+    'desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-contrast-polish',
   ].includes(spec.status),
   'status must be a known desktop packaging milestone'
 );
@@ -221,6 +222,10 @@ requireCondition(
   phases.includes('desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-placement-polish'),
   'phaseOrder must include desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-placement-polish'
 );
+requireCondition(
+  phases.includes('desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-contrast-polish'),
+  'phaseOrder must include desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-contrast-polish'
+);
 
 await validateBuildPrerequisites(spec);
 await validateDesktopDistributionPolicy(spec);
@@ -291,6 +296,7 @@ if (
     'desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-focus-polish',
     'desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-polish',
     'desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-placement-polish',
+    'desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-contrast-polish',
   ].includes(spec.status)
 ) {
   await validateTauriScaffold(spec.tauri || {});
@@ -2980,9 +2986,12 @@ async function validateCmSshSessionManager(spec) {
     'tooltipPlacementSafe',
     'tooltipViewportClamped',
     'tooltipArrowAnchored',
+    'tooltipHighContrast',
+    'tooltipContrastTokenized',
     'smokeCoversHoverTooltip',
     'smokeCoversFocusTooltip',
     'smokeCoversNarrowViewportPlacement',
+    'smokeCoversTooltipContrast',
     'smokeCoversNoPersistence',
     'noPresetPersistence',
     'hiddenShortcutHintPreserved',
@@ -3027,6 +3036,10 @@ async function validateCmSshSessionManager(spec) {
       `cmSshSessionManager.sessionLayoutPresetFolderReorderStatusHistoryTimestampFilterPresetHelpTooltip.${flag} must be true`
     );
   }
+  requireCondition(
+    sessionLayoutPresetFolderReorderStatusHistoryTimestampFilterPresetHelpTooltip.tooltipContrastMinimumRatio >= 7,
+    'cmSshSessionManager.sessionLayoutPresetFolderReorderStatusHistoryTimestampFilterPresetHelpTooltip.tooltipContrastMinimumRatio must be at least 7'
+  );
   requireCondition(
     sessionLayoutPresetFolderReorderStatusHistoryTimestampFilterPresetHelpTooltip.folderCollapseExported === false,
     'cmSshSessionManager.sessionLayoutPresetFolderReorderStatusHistoryTimestampFilterPresetHelpTooltip.folderCollapseExported must be false'
@@ -3681,9 +3694,13 @@ async function validateCmSshSessionManager(spec) {
     'aria-describedby={sessionLayoutReorderHistoryFilterPresetHelpTooltipId}',
     'data-testid="desktop-cm-session-layout-reorder-history-filter-preset-help-tooltip"',
     'data-placement="bottom-inline-safe"',
+    'data-contrast="high-safe"',
     'role="tooltip"',
     'group-focus-within:block group-hover:block',
     'max-w-[calc(100vw-2rem)]',
+    'bg-[#f8fcff]',
+    'text-[#102a3a]',
+    'border-[#2a6f97]',
     'before:absolute before:-top-[5px]',
     'Hover or focus this help button',
     'UI-only and not stored',
@@ -3931,7 +3948,7 @@ async function validateCmSshSessionManager(spec) {
     'desktop CM session layout reorder history timestamp filter preset keyboard shortcuts must move focus and apply presets without persistence',
     'desktop CM session layout reorder history timestamp filter preset shortcut hints must expose hidden hint title and aria-keyshortcuts without persistence',
     'desktop CM session layout reorder history timestamp filter preset discoverability smoke must expose UI-only visible help without persistence',
-    'desktop CM session layout reorder history timestamp filter preset help tooltip must expose hover tooltip with viewport-safe placement without persistence',
+    'desktop CM session layout reorder history timestamp filter preset help tooltip must expose high-contrast viewport-safe hover tooltip without persistence',
     'desktop CM session layout reorder history timestamp filter preset help tooltip must remain visible on focus',
     'desktop CM session layout reorder history timestamp filter preset help focus must announce focus action',
     'desktop CM session layout reorder history timestamp filter preset help focus must move focus to active preset',
@@ -4033,6 +4050,7 @@ async function validateCmSshSessionManager(spec) {
     requireCondition(text.includes('reorder status history timestamp filter preset help focus'), `${label} must document desktop CM session layout folder reorder status history timestamp filter preset help focus polish`);
     requireCondition(text.includes('reorder status history timestamp filter preset help tooltip'), `${label} must document desktop CM session layout folder reorder status history timestamp filter preset help tooltip polish`);
     requireCondition(text.includes('reorder status history timestamp filter preset help tooltip placement'), `${label} must document desktop CM session layout folder reorder status history timestamp filter preset help tooltip placement polish`);
+    requireCondition(text.includes('reorder status history timestamp filter preset help tooltip contrast'), `${label} must document desktop CM session layout folder reorder status history timestamp filter preset help tooltip contrast polish`);
     requireCondition(text.includes('export/import') || text.includes('session export'), `${label} must document desktop CM session export/import`);
     requireCondition(text.includes('web app must not expose SSH'), `${label} must document that the web app must not expose SSH`);
   }

@@ -24,6 +24,31 @@ try {
   await browser.close();
 }
 
+function parseRgbColor(value) {
+  const match = /rgba?\((\d+),\s*(\d+),\s*(\d+)/.exec(value || '');
+  if (!match) {
+    return null;
+  }
+  return match.slice(1, 4).map((part) => Number(part) / 255);
+}
+
+function relativeLuminance(rgb) {
+  return rgb
+    .map((channel) => (channel <= 0.03928 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4))
+    .reduce((sum, channel, index) => sum + channel * [0.2126, 0.7152, 0.0722][index], 0);
+}
+
+function contrastRatio(foreground, background) {
+  const fg = parseRgbColor(foreground);
+  const bg = parseRgbColor(background);
+  if (!fg || !bg) {
+    return 0;
+  }
+  const light = Math.max(relativeLuminance(fg), relativeLuminance(bg));
+  const dark = Math.min(relativeLuminance(fg), relativeLuminance(bg));
+  return (light + 0.05) / (dark + 0.05);
+}
+
 async function smokeDesktopRuntime(browser, url) {
   const page = await browser.newPage();
   try {
@@ -683,7 +708,22 @@ async function smokeDesktopRuntime(browser, url) {
     const layoutReorderHistoryPresetHelpTooltipRole = await page.getByTestId('desktop-cm-session-layout-reorder-history-filter-preset-help-tooltip').getAttribute('role');
     const layoutReorderHistoryPresetHelpTooltipText = await page.getByTestId('desktop-cm-session-layout-reorder-history-filter-preset-help-tooltip').textContent();
     const layoutReorderHistoryPresetHelpTooltipPlacement = await page.getByTestId('desktop-cm-session-layout-reorder-history-filter-preset-help-tooltip').getAttribute('data-placement');
+    const layoutReorderHistoryPresetHelpTooltipContrast = await page.getByTestId('desktop-cm-session-layout-reorder-history-filter-preset-help-tooltip').getAttribute('data-contrast');
     const layoutReorderHistoryPresetHelpTooltipClass = await page.getByTestId('desktop-cm-session-layout-reorder-history-filter-preset-help-tooltip').getAttribute('class');
+    const layoutReorderHistoryPresetHelpTooltipStyles = await page
+      .getByTestId('desktop-cm-session-layout-reorder-history-filter-preset-help-tooltip')
+      .evaluate((element) => {
+        const style = window.getComputedStyle(element);
+        return {
+          backgroundColor: style.backgroundColor,
+          borderColor: style.borderTopColor,
+          color: style.color,
+        };
+      });
+    const layoutReorderHistoryPresetHelpTooltipContrastRatio = contrastRatio(
+      layoutReorderHistoryPresetHelpTooltipStyles.color,
+      layoutReorderHistoryPresetHelpTooltipStyles.backgroundColor,
+    );
     await page.getByTestId('desktop-cm-session-layout-reorder-history-filter-preset-discoverability-hint').hover();
     const layoutReorderHistoryPresetHelpTooltipVisibleOnHover = await page.getByTestId('desktop-cm-session-layout-reorder-history-filter-preset-help-tooltip').isVisible();
     const originalViewportSize = page.viewportSize() || { width: 1280, height: 720 };
@@ -792,15 +832,22 @@ async function smokeDesktopRuntime(browser, url) {
         layoutReorderHistoryPresetDiscoverabilityHintDescribedBy === 'desktop-cm-session-layout-reorder-history-filter-preset-help-tooltip' &&
         layoutReorderHistoryPresetHelpTooltipVisibleOnHover &&
         layoutReorderHistoryPresetHelpTooltipPlacement === 'bottom-inline-safe' &&
+        layoutReorderHistoryPresetHelpTooltipContrast === 'high-safe' &&
         layoutReorderHistoryPresetHelpTooltipClass?.includes('max-w-[calc(100vw-2rem)]') &&
+        layoutReorderHistoryPresetHelpTooltipClass.includes('bg-[#f8fcff]') &&
+        layoutReorderHistoryPresetHelpTooltipClass.includes('text-[#102a3a]') &&
+        layoutReorderHistoryPresetHelpTooltipClass.includes('border-[#2a6f97]') &&
         layoutReorderHistoryPresetHelpTooltipClass.includes('before:') &&
         layoutReorderHistoryPresetHelpTooltipFitsNarrowViewport &&
+        layoutReorderHistoryPresetHelpTooltipStyles.backgroundColor === 'rgb(248, 252, 255)' &&
+        layoutReorderHistoryPresetHelpTooltipStyles.borderColor === 'rgb(42, 111, 151)' &&
+        layoutReorderHistoryPresetHelpTooltipContrastRatio >= 7 &&
         layoutReorderHistoryPresetHelpTooltipText?.includes('Tooltip: All is active') &&
         layoutReorderHistoryPresetHelpTooltipText.includes('Hover or focus this help button') &&
         layoutReorderHistoryPresetHelpTooltipText.includes('UI-only and not stored') &&
         !sessionLayoutStorageAfterPresetHints.includes('Tooltip:') &&
         !sessionLayoutStorageAfterPresetHints.includes('Hover or focus this help button'),
-      'desktop CM session layout reorder history timestamp filter preset help tooltip must expose hover tooltip with viewport-safe placement without persistence'
+      'desktop CM session layout reorder history timestamp filter preset help tooltip must expose high-contrast viewport-safe hover tooltip without persistence'
     );
     await page.getByTestId('desktop-cm-session-layout-reorder-history-filter-preset-discoverability-hint').focus();
     const layoutReorderHistoryPresetHelpTooltipVisibleOnFocus = await page.getByTestId('desktop-cm-session-layout-reorder-history-filter-preset-help-tooltip').isVisible();
