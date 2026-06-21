@@ -536,6 +536,33 @@ async function smokeDesktopRuntime(browser, url) {
         Boolean(layoutReorderHistoryAria?.includes('Recorded')),
       'desktop CM session layout reorder history timestamp must expose relative age and exact time'
     );
+    const layoutReorderHistoryRegion = page.getByTestId('desktop-cm-session-layout-reorder-history');
+    const layoutReorderHistoryRole = await layoutReorderHistoryRegion.getAttribute('role');
+    const layoutReorderHistoryLabelledBy = await layoutReorderHistoryRegion.getAttribute('aria-labelledby');
+    const layoutReorderHistoryDescribedBy = await layoutReorderHistoryRegion.getAttribute('aria-describedby');
+    const layoutReorderHistoryDescription = await page.getByTestId('desktop-cm-session-layout-reorder-history-description').textContent();
+    const layoutReorderHistoryA11ySummary = page.getByTestId('desktop-cm-session-layout-reorder-history-accessibility-summary');
+    const layoutReorderHistoryA11ySummaryText = await layoutReorderHistoryA11ySummary.textContent();
+    const layoutReorderHistoryA11ySummaryRole = await layoutReorderHistoryA11ySummary.getAttribute('role');
+    const layoutReorderHistoryA11ySummaryLive = await layoutReorderHistoryA11ySummary.getAttribute('aria-live');
+    const layoutReorderHistoryA11ySummaryAtomic = await layoutReorderHistoryA11ySummary.getAttribute('aria-atomic');
+    const layoutReorderHistoryListLabel = await page.getByTestId('desktop-cm-session-layout-reorder-history-list').getAttribute('aria-label');
+    const layoutReorderHistoryRowAria = await page.getByTestId('desktop-cm-session-layout-reorder-history-item-focus').first().getAttribute('aria-label');
+    requireCondition(
+      layoutReorderHistoryRole === 'region' &&
+        layoutReorderHistoryLabelledBy === 'desktop-cm-session-layout-reorder-history-title' &&
+        Boolean(layoutReorderHistoryDescribedBy?.includes('desktop-cm-session-layout-reorder-history-description')) &&
+        Boolean(layoutReorderHistoryDescribedBy?.includes('desktop-cm-session-layout-reorder-history-accessibility-summary')) &&
+        Boolean(layoutReorderHistoryDescription?.includes('newest first')) &&
+        layoutReorderHistoryA11ySummaryRole === 'status' &&
+        layoutReorderHistoryA11ySummaryLive === 'polite' &&
+        layoutReorderHistoryA11ySummaryAtomic === 'true' &&
+        Boolean(layoutReorderHistoryA11ySummaryText?.includes('Showing')) &&
+        layoutReorderHistoryListLabel === 'Saved layout reorder status history entries, newest first' &&
+        Boolean(layoutReorderHistoryRowAria?.includes('Focus reorder status:')) &&
+        Boolean(layoutReorderHistoryRowAria?.includes('Recorded')),
+      'desktop CM session layout reorder history timestamp accessibility must expose region description and row timestamp label'
+    );
     await page.getByTestId('desktop-cm-session-layout-reorder-history-status-filter').selectOption('reorder-complete');
     layoutReorderHistoryText = await page.getByTestId('desktop-cm-session-layout-reorder-history').textContent();
     layoutReorderHistoryLatest = await page.getByTestId('desktop-cm-session-layout-reorder-history-latest').textContent();
