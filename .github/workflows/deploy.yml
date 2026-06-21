@@ -16,7 +16,8 @@ env:
   HEALTH_URL: ${{ vars.HEALTH_URL || 'http://127.0.0.1:18085/healthz' }}
   IMAGE_TAR: kuviewer-image-${{ github.run_id }}.tar.gz
   REMOTE_IMAGE_TAR: /tmp/kuviewer-image-${{ github.run_id }}.tar.gz
-  UPLOAD_ATTEMPT_TIMEOUT_SECONDS: 300
+  UPLOAD_ATTEMPT_TIMEOUT_SECONDS: 90
+  UPLOAD_RETRY_ATTEMPTS: 2
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 permissions:
@@ -217,7 +218,7 @@ jobs:
           ls -lh "${IMAGE_TAR}"
 
       - name: Upload image to server
-        timeout-minutes: 18
+        timeout-minutes: 8
         shell: bash
         run: |
           set -euo pipefail
@@ -245,11 +246,11 @@ jobs:
               "test -s \"${REMOTE_IMAGE_TAR}\" && gzip -t \"${REMOTE_IMAGE_TAR}\"" >/dev/null
           }
           upload_ok=false
-          for attempt in 1 2 3; do
+          for attempt in 1 2; do
             cleanup_remote_image
             set +e
             if [ "$attempt" -eq 1 ]; then
-              echo "SCP upload attempt ${attempt}/3 timeout=${UPLOAD_ATTEMPT_TIMEOUT_SECONDS}s"
+              echo "SCP upload attempt ${attempt}/${UPLOAD_RETRY_ATTEMPTS} timeout=${UPLOAD_ATTEMPT_TIMEOUT_SECONDS}s"
               timeout "${UPLOAD_ATTEMPT_TIMEOUT_SECONDS}" scp "${SSH_COMMON_OPTS[@]}" \
                 -P "${{ secrets.SERVER_PORT }}" \
                 "${IMAGE_TAR}" \
@@ -257,7 +258,7 @@ jobs:
               upload_status=$?
               upload_method="scp"
             else
-              echo "SSH stream upload fallback attempt ${attempt}/3 timeout=${UPLOAD_ATTEMPT_TIMEOUT_SECONDS}s"
+              echo "SSH stream upload fallback attempt ${attempt}/${UPLOAD_RETRY_ATTEMPTS} timeout=${UPLOAD_ATTEMPT_TIMEOUT_SECONDS}s"
               timeout "${UPLOAD_ATTEMPT_TIMEOUT_SECONDS}" ssh "${SSH_COMMON_OPTS[@]}" \
                 -p "${{ secrets.SERVER_PORT }}" \
                 "${{ secrets.SERVER_FUSER }}@${{ secrets.SERVER_FHOST }}" \
@@ -267,27 +268,32 @@ jobs:
             fi
             set -e
             if [ "$upload_status" -eq 0 ] && verify_remote_image; then
-              echo "upload-remote-image-verified method=${upload_method} attempt=${attempt}/3"
+              echo "upload-remote-image-verified method=${upload_method} attempt=${attempt}/${UPLOAD_RETRY_ATTEMPTS}"
               upload_ok=true
               break
             fi
             if [ "$upload_method" = "scp" ]; then
               if [ "$upload_status" -eq 124 ]; then
-                echo "scp-upload-timeout attempt=${attempt}/3 seconds=${UPLOAD_ATTEMPT_TIMEOUT_SECONDS}"
+                echo "scp-upload-timeout attempt=${attempt}/${UPLOAD_RETRY_ATTEMPTS} seconds=${UPLOAD_ATTEMPT_TIMEOUT_SECONDS}"
               else
-                echo "scp-upload-failed attempt=${attempt}/3 status=${upload_status}"
+                echo "scp-upload-failed attempt=${attempt}/${UPLOAD_RETRY_ATTEMPTS} status=${upload_status}"
               fi
             elif [ "$upload_status" -eq 124 ]; then
-              echo "ssh-stream-upload-timeout attempt=${attempt}/3 seconds=${UPLOAD_ATTEMPT_TIMEOUT_SECONDS}"
+              echo "ssh-stream-upload-timeout attempt=${attempt}/${UPLOAD_RETRY_ATTEMPTS} seconds=${UPLOAD_ATTEMPT_TIMEOUT_SECONDS}"
             else
-              echo "ssh-stream-upload-failed attempt=${attempt}/3 status=${upload_status}"
+              echo "ssh-stream-upload-failed attempt=${attempt}/${UPLOAD_RETRY_ATTEMPTS} status=${upload_status}"
             fi
             cleanup_remote_image
-            if [ "$attempt" -lt 3 ]; then
+            if [ "$attempt" -lt "$UPLOAD_RETRY_ATTEMPTS" ]; then
               sleep 10
             fi
           done
-          test "$upload_ok" = true
+          if [ "$upload_ok" = true ]; then
+            echo "KUVIEWER_IMAGE_UPLOAD_OK=true" >> "$GITHUB_ENV"
+          else
+            echo "upload-remote-image-unavailable; remote docker build fallback will run"
+            echo "KUVIEWER_IMAGE_UPLOAD_OK=false" >> "$GITHUB_ENV"
+          fi
 
       - name: Deploy on server
         shell: bash
@@ -307,7 +313,7 @@ jobs:
           ssh "${SSH_COMMON_OPTS[@]}" \
             -p "${{ secrets.SERVER_PORT }}" \
             "${{ secrets.SERVER_FUSER }}@${{ secrets.SERVER_FHOST }}" \
-            "bash -se" <<'REMOTE_DEPLOY'
+            "KUVIEWER_IMAGE_UPLOAD_OK=${KUVIEWER_IMAGE_UPLOAD_OK:-false} bash -se" <<'REMOTE_DEPLOY'
           set -euo pipefail
           DEPLOY_PATH='${{ env.DEPLOY_PATH }}'
           REPO_URL='https://github.com/${{ github.repository }}.git'
@@ -316,6 +322,7 @@ jobs:
           GITHUB_RUN_ID='${{ github.run_id }}'
           HEALTH_URL='${{ env.HEALTH_URL }}'
           IMAGE_TAR='${{ env.REMOTE_IMAGE_TAR }}'
+          IMAGE_UPLOAD_OK="${KUVIEWER_IMAGE_UPLOAD_OK:-false}"
           ROLLBACK_IMAGE="kuviewer:rollback-${GITHUB_RUN_ID}"
           STARTED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           DEPLOY_RESULT="failed"
@@ -394,7 +401,6 @@ jobs:
           git reset --hard "origin/$DEPLOY_REF" 2>/dev/null || git reset --hard "$DEPLOY_REF"
 
           test -f deploy/standalone/.env
-          test -f "$IMAGE_TAR"
 
           if PREVIOUS_IMAGE_ID="$("${DOCKER[@]}" image inspect kuviewer:local --format '{{.Id}}' 2>/dev/null)"; then
             "${DOCKER[@]}" image tag kuviewer:local "$ROLLBACK_IMAGE"
@@ -406,7 +412,23 @@ jobs:
             echo "deploy-rollback-image-unavailable"
           fi
 
-          gzip -dc "$IMAGE_TAR" | "${DOCKER[@]}" load
+          if [ "$IMAGE_UPLOAD_OK" = "true" ]; then
+            test -f "$IMAGE_TAR"
+            gzip -dc "$IMAGE_TAR" | "${DOCKER[@]}" load
+          else
+            echo "remote-build-fallback-start"
+            build_ok=false
+            for attempt in 1 2 3; do
+              echo "Remote Docker build attempt ${attempt}/3"
+              if "${DOCKER[@]}" build --build-arg VITE_BASE_PATH=/ -t kuviewer:local .; then
+                build_ok=true
+                break
+              fi
+              sleep 20
+            done
+            test "$build_ok" = true
+            echo "remote-build-fallback-ok"
+          fi
           NEW_IMAGE_ID="$("${DOCKER[@]}" image inspect kuviewer:local --format '{{.Id}}' 2>/dev/null || true)"
           "${DOCKER[@]}" compose --env-file deploy/standalone/.env -f deploy/standalone/docker-compose.yml up -d --force-recreate --remove-orphans
 
