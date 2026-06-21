@@ -522,6 +522,20 @@ async function smokeDesktopRuntime(browser, url) {
         !layoutReorderHistoryText.includes(`desktop-cm-session-layout-drag-handle-${firstPrimaryPresetSlug}`),
       'desktop CM session layout reorder history must include focus restoration'
     );
+    const layoutReorderHistoryLatestAge = await page.getByTestId('desktop-cm-session-layout-reorder-history-latest-age').textContent();
+    const layoutReorderHistoryAge = await page.getByTestId('desktop-cm-session-layout-reorder-history-age').first().textContent();
+    const layoutReorderHistoryTime = page.getByTestId('desktop-cm-session-layout-reorder-history-time').first();
+    const layoutReorderHistoryDateTime = await layoutReorderHistoryTime.getAttribute('dateTime');
+    const layoutReorderHistoryTitle = await layoutReorderHistoryTime.getAttribute('title');
+    const layoutReorderHistoryAria = await layoutReorderHistoryTime.getAttribute('aria-label');
+    requireCondition(
+      (layoutReorderHistoryLatestAge?.includes('just now') || /\d+s ago/.test(layoutReorderHistoryLatestAge || '')) &&
+        (layoutReorderHistoryAge?.includes('just now') || /\d+s ago/.test(layoutReorderHistoryAge || '')) &&
+        Boolean(layoutReorderHistoryDateTime && /^\d{4}-\d{2}-\d{2}T/.test(layoutReorderHistoryDateTime)) &&
+        Boolean(layoutReorderHistoryTitle && layoutReorderHistoryTitle !== 'timestamp unknown') &&
+        Boolean(layoutReorderHistoryAria?.includes('Recorded')),
+      'desktop CM session layout reorder history timestamp must expose relative age and exact time'
+    );
     await page.getByTestId('desktop-cm-session-layout-reorder-history-status-filter').selectOption('reorder-complete');
     layoutReorderHistoryText = await page.getByTestId('desktop-cm-session-layout-reorder-history').textContent();
     layoutReorderHistoryLatest = await page.getByTestId('desktop-cm-session-layout-reorder-history-latest').textContent();
@@ -572,7 +586,8 @@ async function smokeDesktopRuntime(browser, url) {
         !sessionLayoutStorage.includes('sessionLayoutReorderFocusTargetLabel') &&
         !sessionLayoutStorage.includes('sessionLayoutReorderHistory') &&
         !sessionLayoutStorage.includes('sessionLayoutReorderHistoryScopeFilter') &&
-        !sessionLayoutStorage.includes('sessionLayoutReorderHistoryStatusFilter'),
+        !sessionLayoutStorage.includes('sessionLayoutReorderHistoryStatusFilter') &&
+        !sessionLayoutStorage.includes('sessionLayoutReorderHistoryNow'),
       'desktop CM session layout reorder keyboard and focus status must stay memory-only'
     );
     await page.getByTestId('desktop-cm-session-layout-reorder-history-clear').click();
@@ -774,7 +789,8 @@ async function smokeDesktopRuntime(browser, url) {
         !sessionLayoutStorage.includes('sessionLayoutReorderFocusTargetLabel') &&
         !sessionLayoutStorage.includes('sessionLayoutReorderHistory') &&
         !sessionLayoutStorage.includes('sessionLayoutReorderHistoryScopeFilter') &&
-        !sessionLayoutStorage.includes('sessionLayoutReorderHistoryStatusFilter'),
+        !sessionLayoutStorage.includes('sessionLayoutReorderHistoryStatusFilter') &&
+        !sessionLayoutStorage.includes('sessionLayoutReorderHistoryNow'),
       'desktop CM session layout drag, reorder keyboard, and focus state must stay memory-only'
     );
     await page.getByTestId('desktop-cm-session-layout-bulk-clear-toolbar').click();

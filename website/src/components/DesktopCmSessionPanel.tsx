@@ -221,6 +221,7 @@ export function DesktopCmSessionPanel({
     useState<DesktopCmSessionLayoutReorderHistoryScopeFilter>('all');
   const [sessionLayoutReorderHistoryStatusFilter, setSessionLayoutReorderHistoryStatusFilter] =
     useState<DesktopCmSessionLayoutReorderHistoryStatusFilter>('all');
+  const [sessionLayoutReorderHistoryNow, setSessionLayoutReorderHistoryNow] = useState(() => Date.now());
   const [sessionLayoutPresets, setSessionLayoutPresets] = useState<DesktopCmSessionLayoutPreset[]>(() => readDesktopCmSessionLayoutPresets());
   const [collapsedSessionLayoutFolders, setCollapsedSessionLayoutFolders] = useState<Set<string>>(() => readDesktopCmSessionLayoutCollapsedFolders());
   const [selectedSessionLayoutPresetNames, setSelectedSessionLayoutPresetNames] = useState<Set<string>>(() => new Set());
@@ -384,6 +385,9 @@ export function DesktopCmSessionPanel({
   const sessionLayoutReorderHistoryLatestMessage =
     visibleSessionLayoutReorderHistory[0]?.message ||
     (sessionLayoutReorderHistoryFiltersActive ? 'No matching reorder status history.' : 'No reorder status history yet.');
+  const sessionLayoutReorderHistoryLatestAge = visibleSessionLayoutReorderHistory[0]
+    ? formatDesktopCmSessionLayoutReorderHistoryAge(visibleSessionLayoutReorderHistory[0].createdAt, sessionLayoutReorderHistoryNow)
+    : '';
   const activeSessionLayoutFolder = groupedSessionLayoutPresets.find((folder) => folder.folder === activeSessionLayoutFolderName);
   const activeSessionLayoutFolderIndex = sessionLayoutFolderNames.findIndex((folderName) => folderName === activeSessionLayoutFolderName);
   const sessionLayoutFolderKeyboardLiveText = activeSessionLayoutFolder
@@ -398,13 +402,15 @@ export function DesktopCmSessionPanel({
     if (!messageValue) {
       return;
     }
+    const now = Date.now();
     sessionLayoutReorderHistorySequenceRef.current += 1;
     const entry: DesktopCmSessionLayoutReorderHistoryEntry = {
-      id: `${Date.now()}-${sessionLayoutReorderHistorySequenceRef.current}`,
+      id: `${now}-${sessionLayoutReorderHistorySequenceRef.current}`,
       scope,
       message: messageValue,
-      createdAt: Date.now(),
+      createdAt: now,
     };
+    setSessionLayoutReorderHistoryNow(now);
     setSessionLayoutReorderHistory((current) => [entry, ...current].slice(0, maxDesktopCmSessionLayoutReorderHistoryEntries));
   };
 
@@ -419,6 +425,14 @@ export function DesktopCmSessionPanel({
       setCloneDraftSourceName('');
     }
   }, [form.id, sessions]);
+
+  useEffect(() => {
+    if (sessionLayoutReorderHistory.length === 0) {
+      return undefined;
+    }
+    const timer = window.setInterval(() => setSessionLayoutReorderHistoryNow(Date.now()), 30_000);
+    return () => window.clearInterval(timer);
+  }, [sessionLayoutReorderHistory.length]);
 
   useEffect(() => {
     if (!sessionLayoutImportConflicts) {
@@ -1121,6 +1135,10 @@ export function DesktopCmSessionPanel({
             : status === 'focus-restored'
               ? 'Focus restored'
               : 'Focus unavailable';
+  const sessionLayoutReorderHistoryExactTimeLabel = (createdAt: number) => formatDesktopCmSessionLayoutReorderHistoryExactTime(createdAt);
+  const sessionLayoutReorderHistoryIsoTimeLabel = (createdAt: number) => formatDesktopCmSessionLayoutReorderHistoryIsoTime(createdAt);
+  const sessionLayoutReorderHistoryAgeLabel = (createdAt: number) =>
+    formatDesktopCmSessionLayoutReorderHistoryAge(createdAt, sessionLayoutReorderHistoryNow);
   const sessionLayoutReorderHistoryTimeLabel = (createdAt: number) =>
     new Date(createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
   const sessionLayoutFolderReorderSuccessMessage = (folderName: string, direction: -1 | 1 | 'first' | 'last', targetIndex: number, total: number) =>
@@ -2540,6 +2558,15 @@ export function DesktopCmSessionPanel({
                   <span className="min-w-0 flex-1 truncate text-xs font-semibold text-[rgba(60,60,67,0.62)]" data-testid="desktop-cm-session-layout-reorder-history-latest">
                     {sessionLayoutReorderHistoryLatestMessage}
                   </span>
+                  {visibleSessionLayoutReorderHistory[0] ? (
+                    <span
+                      className="ku-chip h-7 text-[11px]"
+                      data-testid="desktop-cm-session-layout-reorder-history-latest-age"
+                      title={sessionLayoutReorderHistoryExactTimeLabel(visibleSessionLayoutReorderHistory[0].createdAt)}
+                    >
+                      {sessionLayoutReorderHistoryLatestAge}
+                    </span>
+                  ) : null}
                   <label className="min-w-[138px]">
                     <span className="ku-meta">Scope</span>
                     <select
@@ -2609,9 +2636,20 @@ export function DesktopCmSessionPanel({
                       <span className="min-w-0 truncate" data-testid="desktop-cm-session-layout-reorder-history-message">
                         {entry.message}
                       </span>
-                      <time className="font-mono text-[11px] text-[rgba(60,60,67,0.48)]" dateTime={new Date(entry.createdAt).toISOString()}>
-                        {sessionLayoutReorderHistoryTimeLabel(entry.createdAt)}
-                      </time>
+                      <span className="flex min-w-0 items-center gap-1">
+                        <span className="ku-chip h-6 text-[11px]" data-testid="desktop-cm-session-layout-reorder-history-age">
+                          {sessionLayoutReorderHistoryAgeLabel(entry.createdAt)}
+                        </span>
+                        <time
+                          aria-label={`Recorded ${sessionLayoutReorderHistoryExactTimeLabel(entry.createdAt)} (${sessionLayoutReorderHistoryAgeLabel(entry.createdAt)})`}
+                          className="font-mono text-[11px] text-[rgba(60,60,67,0.48)]"
+                          data-testid="desktop-cm-session-layout-reorder-history-time"
+                          dateTime={sessionLayoutReorderHistoryIsoTimeLabel(entry.createdAt)}
+                          title={sessionLayoutReorderHistoryExactTimeLabel(entry.createdAt)}
+                        >
+                          {sessionLayoutReorderHistoryTimeLabel(entry.createdAt)}
+                        </time>
+                      </span>
                     </li>
                     ))}
                   </ol>
@@ -4585,6 +4623,54 @@ function matchesDesktopCmSessionLayoutReorderHistoryStatus(
     return message.startsWith('focus restored:');
   }
   return message.startsWith('focus target unavailable');
+}
+
+function formatDesktopCmSessionLayoutReorderHistoryAge(createdAt: number, now: number) {
+  if (!Number.isFinite(createdAt) || !Number.isFinite(now)) {
+    return 'timestamp unknown';
+  }
+  const seconds = Math.max(0, Math.floor((now - createdAt) / 1000));
+  if (seconds < 10) {
+    return 'just now';
+  }
+  if (seconds < 60) {
+    return `${seconds}s ago`;
+  }
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) {
+    return `${minutes}m ago`;
+  }
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) {
+    return `${hours}h ago`;
+  }
+  return `${Math.floor(hours / 24)}d ago`;
+}
+
+function formatDesktopCmSessionLayoutReorderHistoryExactTime(createdAt: number) {
+  if (!Number.isFinite(createdAt)) {
+    return 'timestamp unknown';
+  }
+  const date = new Date(createdAt);
+  if (Number.isNaN(date.getTime())) {
+    return 'timestamp unknown';
+  }
+  return date.toLocaleString([], {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  });
+}
+
+function formatDesktopCmSessionLayoutReorderHistoryIsoTime(createdAt: number) {
+  if (!Number.isFinite(createdAt)) {
+    return '';
+  }
+  const date = new Date(createdAt);
+  return Number.isNaN(date.getTime()) ? '' : date.toISOString();
 }
 
 function isDesktopCmKeyboardIgnoredTarget(target: EventTarget | null) {
