@@ -288,7 +288,7 @@ fi
 echo "smoke test passed"
 if [[ -n "$STATIC_DIR" ]]; then
   echo "web UI: http://${BIND_ADDR}:${PORT}"
-  echo "admin token: ${ADMIN_TOKEN}"
+  echo "admin token: <redacted; set ADMIN_TOKEN before running if browser login is needed>"
 fi
 echo "server log: ${LOG_FILE}"
 
