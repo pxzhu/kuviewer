@@ -494,7 +494,12 @@ async function smokeDesktopRuntime(browser, url) {
     );
     requireCondition(primaryPresetOrderAfter[1] === firstPrimaryPresetSlug, 'desktop CM session layout preset keyboard ArrowDown must move first preset down');
     let layoutReorderKeyboardStatus = await page.getByTestId('desktop-cm-session-layout-reorder-keyboard-status').textContent();
-    requireCondition(layoutReorderKeyboardStatus?.includes('moved down'), 'desktop CM session layout reorder keyboard live status must announce preset move');
+    requireCondition(
+      layoutReorderKeyboardStatus?.includes('Reorder complete') &&
+        layoutReorderKeyboardStatus.includes('moved down') &&
+        layoutReorderKeyboardStatus.includes('position 2 of 2'),
+      'desktop CM session layout reorder keyboard live status must announce preset move with position'
+    );
     await requireTestIdTextIncludes(page, 'desktop-cm-session-layout-reorder-focus-status', 'layout drag handle');
     let layoutReorderFocusStatus = await page.getByTestId('desktop-cm-session-layout-reorder-focus-status').textContent();
     requireCondition(
@@ -683,7 +688,12 @@ async function smokeDesktopRuntime(browser, url) {
     );
     requireCondition(layoutFolderOrderAfter[1] === firstLayoutFolderSlug, 'desktop CM session layout folder keyboard Shift ArrowDown must move active folder down');
     layoutReorderKeyboardStatus = await page.getByTestId('desktop-cm-session-layout-reorder-keyboard-status').textContent();
-    requireCondition(layoutReorderKeyboardStatus?.includes('moved down'), 'desktop CM session layout reorder keyboard live status must announce folder move');
+    requireCondition(
+      layoutReorderKeyboardStatus?.includes('Reorder complete') &&
+        layoutReorderKeyboardStatus.includes('moved down') &&
+        layoutReorderKeyboardStatus.includes('position 2 of 2'),
+      'desktop CM session layout reorder keyboard live status must announce folder move with position'
+    );
     await requireTestIdTextIncludes(page, 'desktop-cm-session-layout-reorder-focus-status', 'saved layout folder list');
     layoutReorderFocusStatus = await page.getByTestId('desktop-cm-session-layout-reorder-focus-status').textContent();
     requireCondition(
