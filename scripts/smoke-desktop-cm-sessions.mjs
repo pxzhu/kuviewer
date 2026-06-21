@@ -649,6 +649,40 @@ async function smokeDesktopRuntime(browser, url) {
         layoutReorderHistoryRestoredPressed === 'true',
       'desktop CM session layout reorder history timestamp density must toggle compact rows without persistence'
     );
+    await page.getByTestId('desktop-cm-session-layout-reorder-history-filter-preset-complete-compact').click();
+    let layoutReorderHistoryScopeValue = await page.getByTestId('desktop-cm-session-layout-reorder-history-scope-filter').inputValue();
+    let layoutReorderHistoryStatusValue = await page.getByTestId('desktop-cm-session-layout-reorder-history-status-filter').inputValue();
+    let layoutReorderHistoryPresetDensity = await page.getByTestId('desktop-cm-session-layout-reorder-history').getAttribute('data-density');
+    let layoutReorderHistoryPresetActive = await page.getByTestId('desktop-cm-session-layout-reorder-history-filter-preset-complete-compact').getAttribute('aria-pressed');
+    let layoutReorderHistoryPresetCount = await page.getByTestId('desktop-cm-session-layout-reorder-history-count').textContent();
+    await page.getByTestId('desktop-cm-session-layout-reorder-history-filter-preset-focus-compact').click();
+    const layoutReorderHistoryFocusScopeValue = await page.getByTestId('desktop-cm-session-layout-reorder-history-scope-filter').inputValue();
+    const layoutReorderHistoryFocusStatusValue = await page.getByTestId('desktop-cm-session-layout-reorder-history-status-filter').inputValue();
+    const layoutReorderHistoryFocusDensity = await page.getByTestId('desktop-cm-session-layout-reorder-history').getAttribute('data-density');
+    const layoutReorderHistoryFocusPresetActive = await page.getByTestId('desktop-cm-session-layout-reorder-history-filter-preset-focus-compact').getAttribute('aria-pressed');
+    const layoutReorderHistoryFocusPresetCount = await page.getByTestId('desktop-cm-session-layout-reorder-history-count').textContent();
+    await page.getByTestId('desktop-cm-session-layout-reorder-history-filter-preset-all-comfortable').click();
+    const layoutReorderHistoryAllScopeValue = await page.getByTestId('desktop-cm-session-layout-reorder-history-scope-filter').inputValue();
+    const layoutReorderHistoryAllStatusValue = await page.getByTestId('desktop-cm-session-layout-reorder-history-status-filter').inputValue();
+    const layoutReorderHistoryAllDensity = await page.getByTestId('desktop-cm-session-layout-reorder-history').getAttribute('data-density');
+    const layoutReorderHistoryAllPresetActive = await page.getByTestId('desktop-cm-session-layout-reorder-history-filter-preset-all-comfortable').getAttribute('aria-pressed');
+    requireCondition(
+      layoutReorderHistoryScopeValue === 'all' &&
+        layoutReorderHistoryStatusValue === 'reorder-complete' &&
+        layoutReorderHistoryPresetDensity === 'compact' &&
+        layoutReorderHistoryPresetActive === 'true' &&
+        layoutReorderHistoryPresetCount?.includes('1 / 전체 2') &&
+        layoutReorderHistoryFocusScopeValue === 'focus' &&
+        layoutReorderHistoryFocusStatusValue === 'focus-restored' &&
+        layoutReorderHistoryFocusDensity === 'compact' &&
+        layoutReorderHistoryFocusPresetActive === 'true' &&
+        layoutReorderHistoryFocusPresetCount?.includes('1 / 전체 2') &&
+        layoutReorderHistoryAllScopeValue === 'all' &&
+        layoutReorderHistoryAllStatusValue === 'all' &&
+        layoutReorderHistoryAllDensity === 'comfortable' &&
+        layoutReorderHistoryAllPresetActive === 'true',
+      'desktop CM session layout reorder history timestamp filter presets must apply scope status and density without persistence'
+    );
     await page.getByTestId('desktop-cm-session-layout-reorder-history-status-filter').selectOption('reorder-complete');
     layoutReorderHistoryText = await page.getByTestId('desktop-cm-session-layout-reorder-history').textContent();
     layoutReorderHistoryLatest = await page.getByTestId('desktop-cm-session-layout-reorder-history-latest').textContent();
@@ -701,7 +735,9 @@ async function smokeDesktopRuntime(browser, url) {
         !sessionLayoutStorage.includes('sessionLayoutReorderHistoryScopeFilter') &&
         !sessionLayoutStorage.includes('sessionLayoutReorderHistoryStatusFilter') &&
         !sessionLayoutStorage.includes('sessionLayoutReorderHistoryNow') &&
-        !sessionLayoutStorage.includes('sessionLayoutReorderHistoryDensity'),
+        !sessionLayoutStorage.includes('sessionLayoutReorderHistoryDensity') &&
+        !sessionLayoutStorage.includes('activeSessionLayoutReorderHistoryFilterPreset') &&
+        !sessionLayoutStorage.includes('sessionLayoutReorderHistoryFilterPreset'),
       'desktop CM session layout reorder keyboard and focus status must stay memory-only'
     );
     await page.getByTestId('desktop-cm-session-layout-reorder-history-clear').click();

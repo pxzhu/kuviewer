@@ -101,6 +101,14 @@ type DesktopCmSessionLayoutReorderHistoryStatusFilter =
   | 'focus-unavailable';
 type DesktopCmSessionLayoutReorderHistoryDensity = 'comfortable' | 'compact';
 
+interface DesktopCmSessionLayoutReorderHistoryFilterPreset {
+  id: string;
+  label: string;
+  scope: DesktopCmSessionLayoutReorderHistoryScopeFilter;
+  status: DesktopCmSessionLayoutReorderHistoryStatusFilter;
+  density: DesktopCmSessionLayoutReorderHistoryDensity;
+}
+
 interface DesktopCmSessionViewPreference {
   sessionId: string;
   group: string;
@@ -170,6 +178,12 @@ const desktopCmSessionLayoutReorderHistoryStatusFilterOptions: DesktopCmSessionL
   'focus-unavailable',
 ];
 const desktopCmSessionLayoutReorderHistoryDensityOptions: DesktopCmSessionLayoutReorderHistoryDensity[] = ['comfortable', 'compact'];
+const desktopCmSessionLayoutReorderHistoryFilterPresets: DesktopCmSessionLayoutReorderHistoryFilterPreset[] = [
+  { id: 'all-comfortable', label: 'All', scope: 'all', status: 'all', density: 'comfortable' },
+  { id: 'complete-compact', label: 'Complete', scope: 'all', status: 'reorder-complete', density: 'compact' },
+  { id: 'focus-compact', label: 'Focus', scope: 'focus', status: 'focus-restored', density: 'compact' },
+  { id: 'blocked-compact', label: 'Blocked', scope: 'all', status: 'reorder-unavailable', density: 'compact' },
+];
 
 type CmDiagnosticStageFilter = (typeof cmDiagnosticStageFilterOptions)[number];
 type CmDiagnosticSeverityFilter = (typeof cmDiagnosticSeverityFilterOptions)[number];
@@ -424,6 +438,12 @@ export function DesktopCmSessionPanel({
     };
     setSessionLayoutReorderHistoryNow(now);
     setSessionLayoutReorderHistory((current) => [entry, ...current].slice(0, maxDesktopCmSessionLayoutReorderHistoryEntries));
+  };
+
+  const applySessionLayoutReorderHistoryFilterPreset = (preset: DesktopCmSessionLayoutReorderHistoryFilterPreset) => {
+    setSessionLayoutReorderHistoryScopeFilter(preset.scope);
+    setSessionLayoutReorderHistoryStatusFilter(preset.status);
+    setSessionLayoutReorderHistoryDensity(preset.density);
   };
 
   const announceSessionLayoutReorderStatus = (messageText: string, scope: DesktopCmSessionLayoutReorderHistoryEntry['scope']) => {
@@ -1156,6 +1176,12 @@ export function DesktopCmSessionPanel({
   const sessionLayoutReorderHistoryTimeLabel = (createdAt: number) =>
     new Date(createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
   const sessionLayoutReorderHistoryCompact = sessionLayoutReorderHistoryDensity === 'compact';
+  const activeSessionLayoutReorderHistoryFilterPreset = desktopCmSessionLayoutReorderHistoryFilterPresets.find(
+    (preset) =>
+      preset.scope === sessionLayoutReorderHistoryScopeFilter &&
+      preset.status === sessionLayoutReorderHistoryStatusFilter &&
+      preset.density === sessionLayoutReorderHistoryDensity,
+  );
   const sessionLayoutFolderReorderSuccessMessage = (folderName: string, direction: -1 | 1 | 'first' | 'last', targetIndex: number, total: number) =>
     `Reorder complete: ${folderName} folder ${sessionLayoutReorderMovementLabel(direction)}, ${sessionLayoutReorderPositionLabel(targetIndex, total)}.`;
   const sessionLayoutPresetReorderSuccessMessage = (presetName: string, folderName: string, direction: -1 | 1 | 'first' | 'last', targetIndex: number, total: number) =>
@@ -2657,6 +2683,30 @@ export function DesktopCmSessionPanel({
                         {sessionLayoutReorderHistoryDensityLabel(density)}
                       </button>
                     ))}
+                  </div>
+                  <div
+                    aria-label="Reorder history filter presets"
+                    className="flex min-w-0 flex-1 basis-full flex-wrap gap-1 rounded-[8px] border border-[rgba(60,60,67,0.12)] bg-white/55 p-1 sm:flex-none sm:basis-auto"
+                    data-testid="desktop-cm-session-layout-reorder-history-filter-presets"
+                    role="group"
+                  >
+                    {desktopCmSessionLayoutReorderHistoryFilterPresets.map((preset) => {
+                      const active = activeSessionLayoutReorderHistoryFilterPreset?.id === preset.id;
+                      return (
+                        <button
+                          key={preset.id}
+                          aria-pressed={active}
+                          className={`h-7 flex-1 rounded-[6px] px-2 text-xs font-semibold transition sm:flex-none ${
+                            active ? 'bg-[rgba(42,111,151,0.14)] text-[rgba(23,68,93,0.92)]' : 'text-[rgba(60,60,67,0.58)] hover:bg-white/70'
+                          }`}
+                          data-testid={`desktop-cm-session-layout-reorder-history-filter-preset-${preset.id}`}
+                          type="button"
+                          onClick={() => applySessionLayoutReorderHistoryFilterPreset(preset)}
+                        >
+                          {preset.label}
+                        </button>
+                      );
+                    })}
                   </div>
                   <button
                     className="ku-control h-8 flex-1 basis-[calc(50%-0.25rem)] justify-center text-xs sm:flex-none sm:basis-auto"

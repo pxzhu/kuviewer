@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "name": "Kuviewer Desktop CM Session Explorer",
   "goal": "desktop-cm-session-prototype",
-  "status": "desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-density-polish",
+  "status": "desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-polish",
   "recommendedPackager": "tauri",
   "fallbackPackager": "electron",
   "tauri": {
@@ -1151,6 +1151,55 @@
       "noSecretValues": true,
       "noEventsOrLogs": true
     },
+    "sessionLayoutPresetFolderReorderStatusHistoryTimestampFilterPreset": {
+      "desktopOnly": true,
+      "uiOnly": true,
+      "stateStorage": "memory-only",
+      "usesExistingLayoutStorage": "kuviewer_desktop_cm_session_layout_presets",
+      "orderStorage": "existing-preset-array-order",
+      "addsOrderField": false,
+      "addsStorageKey": false,
+      "presetScope": "scope-status-density",
+      "presetCount": 4,
+      "presetIds": ["all-comfortable", "complete-compact", "focus-compact", "blocked-compact"],
+      "appliesScopeFilter": true,
+      "appliesStatusFilter": true,
+      "appliesDensity": true,
+      "segmentedControl": true,
+      "ariaPressed": true,
+      "allPresetRestoresComfortable": true,
+      "noPresetPersistence": true,
+      "timestampDateTimePreserved": true,
+      "accessibilityLabelsPreserved": true,
+      "responsiveBehaviorPreserved": true,
+      "densityBehaviorPreserved": true,
+      "noVisibleInstructionText": true,
+      "doesNotMutateHistory": true,
+      "humanReadableOnly": true,
+      "noInternalTestIdInStatus": true,
+      "preservesPresetNames": true,
+      "preservesFolders": true,
+      "preservesViewPreferences": true,
+      "preservesSelection": true,
+      "preservesCollapseState": true,
+      "folderCollapseExported": false,
+      "folderMetadataExported": true,
+      "folderMetadataImported": true,
+      "sameNameGlobalUnique": true,
+      "noSessionExportImportSchemaChange": true,
+      "noLayoutExportImportSchemaChange": true,
+      "noTauriSchemaChange": true,
+      "noSessionSearch": true,
+      "noDiagnosticFilters": true,
+      "noEndpointMetadata": true,
+      "noCredentialPayload": true,
+      "noRuntimeProfile": true,
+      "noDiagnosticHistory": true,
+      "noToken": true,
+      "noKubeconfig": true,
+      "noSecretValues": true,
+      "noEventsOrLogs": true
+    },
     "sessionLayoutImportExport": {
       "desktopOnly": true,
       "uiOnly": true,
@@ -1320,7 +1369,7 @@
       "desktop-use-sidecar-profile"
     ],
     "next": [
-      "Desktop CM session layout preset folder reorder status history timestamp filter preset polish"
+      "Desktop CM session layout preset folder reorder status history timestamp filter preset accessibility polish"
     ]
   },
   "remoteConnectionProfile": {
@@ -1608,6 +1657,7 @@
     "desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-polish",
     "desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-accessibility-polish",
     "desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-responsive-polish",
-    "desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-density-polish"
+    "desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-density-polish",
+    "desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-polish"
   ]
 }
