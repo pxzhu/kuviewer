@@ -16,6 +16,7 @@ env:
   HEALTH_URL: ${{ vars.HEALTH_URL || 'http://127.0.0.1:18085/healthz' }}
   IMAGE_TAR: kuviewer-image-${{ github.run_id }}.tar.gz
   REMOTE_IMAGE_TAR: /tmp/kuviewer-image-${{ github.run_id }}.tar.gz
+  UPLOAD_ATTEMPT_TIMEOUT_SECONDS: 300
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 permissions:
@@ -230,16 +231,33 @@ jobs:
             -o ServerAliveCountMax=20
             -o TCPKeepAlive=yes
           )
+          cleanup_remote_image() {
+            timeout 30 ssh "${SSH_COMMON_OPTS[@]}" \
+              -p "${{ secrets.SERVER_PORT }}" \
+              "${{ secrets.SERVER_FUSER }}@${{ secrets.SERVER_FHOST }}" \
+              "rm -f \"${REMOTE_IMAGE_TAR}\"" >/dev/null 2>&1 || true
+          }
           upload_ok=false
           for attempt in 1 2 3; do
-            echo "SCP upload attempt ${attempt}/3"
-            if scp "${SSH_COMMON_OPTS[@]}" \
+            echo "SCP upload attempt ${attempt}/3 timeout=${UPLOAD_ATTEMPT_TIMEOUT_SECONDS}s"
+            cleanup_remote_image
+            set +e
+            timeout "${UPLOAD_ATTEMPT_TIMEOUT_SECONDS}" scp "${SSH_COMMON_OPTS[@]}" \
               -P "${{ secrets.SERVER_PORT }}" \
               "${IMAGE_TAR}" \
-              "${{ secrets.SERVER_FUSER }}@${{ secrets.SERVER_FHOST }}:${REMOTE_IMAGE_TAR}"; then
+              "${{ secrets.SERVER_FUSER }}@${{ secrets.SERVER_FHOST }}:${REMOTE_IMAGE_TAR}"
+            scp_status=$?
+            set -e
+            if [ "$scp_status" -eq 0 ]; then
               upload_ok=true
               break
             fi
+            if [ "$scp_status" -eq 124 ]; then
+              echo "scp-upload-timeout attempt=${attempt}/3 seconds=${UPLOAD_ATTEMPT_TIMEOUT_SECONDS}"
+            else
+              echo "scp-upload-failed attempt=${attempt}/3 status=${scp_status}"
+            fi
+            cleanup_remote_image
             sleep 10
           done
           test "$upload_ok" = true
