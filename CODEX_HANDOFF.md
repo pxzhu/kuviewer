@@ -217,7 +217,8 @@ https://kuviewer.example.com/
    - Desktop CM session layout preset folder reorder status history timestamp filter preset keyboard polish는 완료됐다. Reorder history filter preset group은 roving tabindex, Arrow/Home/End focus movement, Enter/Space activation, hidden keyboard help, live focus status를 제공하며 keyboard preset state는 memory-only이고 저장/내보내기/Tauri payload에는 포함하지 않는다.
    - Desktop CM session layout preset folder reorder status history timestamp filter preset shortcut hint polish는 완료됐다. Reorder history filter preset group은 hidden shortcut hint, `aria-keyshortcuts`, safe button title을 제공하며 shortcut hint metadata는 memory/rendered DOM-only이고 저장/내보내기/Tauri payload에는 포함하지 않는다.
    - Desktop CM session layout preset folder reorder status history timestamp filter preset discoverability smoke polish는 완료됐다. Reorder history filter preset group은 visible help icon과 safe title/aria hint를 제공하고 smoke가 visibility, group description linkage, saved layout storage 미포함을 검증하며 discoverability hint metadata는 memory/rendered DOM-only이고 저장/내보내기/Tauri payload에는 포함하지 않는다.
-   - 다음 확장 후보는 Desktop CM session layout preset folder reorder status history timestamp filter preset help focus polish다.
+   - Desktop CM session layout preset folder reorder status history timestamp filter preset help focus polish는 완료됐다. Visible help icon은 focusable button이며 focus 시 safe live status를 내고 Enter/Space 활성화 시 active preset 또는 first preset fallback으로 focus를 이동하며 help focus state는 memory/rendered DOM-only이고 저장/내보내기/Tauri payload에는 포함하지 않는다.
+   - 다음 확장 후보는 Desktop CM session layout preset folder reorder status history timestamp filter preset help tooltip polish다.
 
 4. 실제 Kubernetes 연결 설계
    - 브라우저에 kube credential을 직접 넣지 않는 방향 유지.

@@ -77,6 +77,7 @@ requireCondition(
     'desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-keyboard-polish',
     'desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-shortcut-hint-polish',
     'desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-discoverability-smoke-polish',
+    'desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-focus-polish',
   ].includes(spec.status),
   'status must be a known desktop packaging milestone'
 );
@@ -206,6 +207,10 @@ requireCondition(
   phases.includes('desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-discoverability-smoke-polish'),
   'phaseOrder must include desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-discoverability-smoke-polish'
 );
+requireCondition(
+  phases.includes('desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-focus-polish'),
+  'phaseOrder must include desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-focus-polish'
+);
 
 await validateBuildPrerequisites(spec);
 await validateDesktopDistributionPolicy(spec);
@@ -273,6 +278,7 @@ if (
     'desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-keyboard-polish',
     'desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-shortcut-hint-polish',
     'desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-discoverability-smoke-polish',
+    'desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-focus-polish',
   ].includes(spec.status)
 ) {
   await validateTauriScaffold(spec.tauri || {});
@@ -2796,7 +2802,7 @@ async function validateCmSshSessionManager(spec) {
   for (const flag of [
     'visibleHelpIcon',
     'usesCircleHelpIcon',
-    'roleNote',
+    'helpButton',
     'groupDescribedByDiscoverabilityHint',
     'titleContainsShortcuts',
     'ariaLabelMirrorsTitle',
@@ -2846,6 +2852,89 @@ async function validateCmSshSessionManager(spec) {
   requireCondition(
     sessionLayoutPresetFolderReorderStatusHistoryTimestampFilterPresetDiscoverabilitySmoke.folderCollapseExported === false,
     'cmSshSessionManager.sessionLayoutPresetFolderReorderStatusHistoryTimestampFilterPresetDiscoverabilitySmoke.folderCollapseExported must be false'
+  );
+  const sessionLayoutPresetFolderReorderStatusHistoryTimestampFilterPresetHelpFocus =
+    manager.sessionLayoutPresetFolderReorderStatusHistoryTimestampFilterPresetHelpFocus || {};
+  requireCondition(
+    sessionLayoutPresetFolderReorderStatusHistoryTimestampFilterPresetHelpFocus.desktopOnly === true,
+    'cmSshSessionManager.sessionLayoutPresetFolderReorderStatusHistoryTimestampFilterPresetHelpFocus.desktopOnly must be true'
+  );
+  requireCondition(
+    sessionLayoutPresetFolderReorderStatusHistoryTimestampFilterPresetHelpFocus.uiOnly === true,
+    'cmSshSessionManager.sessionLayoutPresetFolderReorderStatusHistoryTimestampFilterPresetHelpFocus.uiOnly must be true'
+  );
+  requireCondition(
+    sessionLayoutPresetFolderReorderStatusHistoryTimestampFilterPresetHelpFocus.stateStorage === 'memory-only',
+    'cmSshSessionManager.sessionLayoutPresetFolderReorderStatusHistoryTimestampFilterPresetHelpFocus.stateStorage must be memory-only'
+  );
+  requireCondition(
+    sessionLayoutPresetFolderReorderStatusHistoryTimestampFilterPresetHelpFocus.addsStorageKey === false,
+    'cmSshSessionManager.sessionLayoutPresetFolderReorderStatusHistoryTimestampFilterPresetHelpFocus.addsStorageKey must be false'
+  );
+  requireCondition(
+    sessionLayoutPresetFolderReorderStatusHistoryTimestampFilterPresetHelpFocus.ariaKeyshortcuts === 'Enter Space',
+    'cmSshSessionManager.sessionLayoutPresetFolderReorderStatusHistoryTimestampFilterPresetHelpFocus.ariaKeyshortcuts must be Enter Space'
+  );
+  requireCondition(
+    sessionLayoutPresetFolderReorderStatusHistoryTimestampFilterPresetHelpFocus.activePresetFallback === 'first-preset',
+    'cmSshSessionManager.sessionLayoutPresetFolderReorderStatusHistoryTimestampFilterPresetHelpFocus.activePresetFallback must be first-preset'
+  );
+  for (const flag of [
+    'visibleHelpIcon',
+    'usesCircleHelpIcon',
+    'helpButton',
+    'buttonTypeButton',
+    'onFocusLiveStatus',
+    'enterSpaceFocusesActivePreset',
+    'preventScrollFocus',
+    'smokeCoversFocusAnnouncement',
+    'smokeCoversFocusTarget',
+    'smokeCoversNoPersistence',
+    'noPresetPersistence',
+    'hiddenShortcutHintPreserved',
+    'groupDescribedByDiscoverabilityHint',
+    'rovingTabIndexPreserved',
+    'keyboardNavigationPreserved',
+    'enterSpaceActivationPreserved',
+    'keyboardLiveStatusPreserved',
+    'ariaPressedPreserved',
+    'timestampDateTimePreserved',
+    'accessibilityLabelsPreserved',
+    'responsiveBehaviorPreserved',
+    'densityBehaviorPreserved',
+    'doesNotMutateHistory',
+    'humanReadableOnly',
+    'noInternalTestIdInStatus',
+    'preservesPresetNames',
+    'preservesFolders',
+    'preservesViewPreferences',
+    'preservesSelection',
+    'preservesCollapseState',
+    'folderMetadataExported',
+    'folderMetadataImported',
+    'sameNameGlobalUnique',
+    'noSessionExportImportSchemaChange',
+    'noLayoutExportImportSchemaChange',
+    'noTauriSchemaChange',
+    'noSessionSearch',
+    'noDiagnosticFilters',
+    'noEndpointMetadata',
+    'noCredentialPayload',
+    'noRuntimeProfile',
+    'noDiagnosticHistory',
+    'noToken',
+    'noKubeconfig',
+    'noSecretValues',
+    'noEventsOrLogs',
+  ]) {
+    requireCondition(
+      sessionLayoutPresetFolderReorderStatusHistoryTimestampFilterPresetHelpFocus[flag] === true,
+      `cmSshSessionManager.sessionLayoutPresetFolderReorderStatusHistoryTimestampFilterPresetHelpFocus.${flag} must be true`
+    );
+  }
+  requireCondition(
+    sessionLayoutPresetFolderReorderStatusHistoryTimestampFilterPresetHelpFocus.folderCollapseExported === false,
+    'cmSshSessionManager.sessionLayoutPresetFolderReorderStatusHistoryTimestampFilterPresetHelpFocus.folderCollapseExported must be false'
   );
   const sessionLayoutImportExport = manager.sessionLayoutImportExport || {};
   requireCondition(sessionLayoutImportExport.desktopOnly === true, 'cmSshSessionManager.sessionLayoutImportExport.desktopOnly must be true');
@@ -3473,6 +3562,7 @@ async function validateCmSshSessionManager(spec) {
     'sessionLayoutReorderHistoryFilterPresetTitle',
     'sessionLayoutReorderHistoryFilterPresetShortcutHint',
     'sessionLayoutReorderHistoryFilterPresetDiscoverabilityHint',
+    'focusSessionLayoutReorderHistoryFilterPresetHelpTarget',
     'sessionLayoutReorderHistoryFilterPresetFocusId',
     'sessionLayoutReorderHistoryFilterPresetKeyboardMessage',
     'sessionLayoutReorderHistoryFilterPresetTabStopId',
@@ -3486,8 +3576,11 @@ async function validateCmSshSessionManager(spec) {
     'aria-keyshortcuts={desktopCmSessionLayoutReorderHistoryFilterPresetShortcuts}',
     'title={sessionLayoutReorderHistoryFilterPresetTitle',
     'CircleHelp',
-    'role="note"',
+    'type="button"',
+    'aria-keyshortcuts="Enter Space"',
+    'Preset help focused. Press Enter or Space to focus the active reorder history preset.',
     'title={sessionLayoutReorderHistoryFilterPresetDiscoverabilityHint}',
+    'onClick={focusSessionLayoutReorderHistoryFilterPresetHelpTarget}',
     'Saved layout reorder status history entries, newest first',
     'formatDesktopCmSessionLayoutReorderHistoryScopeLabel',
     'basis-full sm:min-w-[138px]',
@@ -3732,6 +3825,8 @@ async function validateCmSshSessionManager(spec) {
     'desktop CM session layout reorder history timestamp filter preset keyboard shortcuts must move focus and apply presets without persistence',
     'desktop CM session layout reorder history timestamp filter preset shortcut hints must expose hidden hint title and aria-keyshortcuts without persistence',
     'desktop CM session layout reorder history timestamp filter preset discoverability smoke must expose UI-only visible help without persistence',
+    'desktop CM session layout reorder history timestamp filter preset help focus must announce focus action',
+    'desktop CM session layout reorder history timestamp filter preset help focus must move focus to active preset',
     'desktop CM session layout reorder history status filter must show matching complete status only',
     'desktop CM session layout reorder history filter empty state must keep total count',
     'desktop CM session layout reorder history scope filter must show focus status only',
@@ -3827,6 +3922,7 @@ async function validateCmSshSessionManager(spec) {
     requireCondition(text.includes('reorder status history timestamp filter preset keyboard'), `${label} must document desktop CM session layout folder reorder status history timestamp filter preset keyboard polish`);
     requireCondition(text.includes('reorder status history timestamp filter preset shortcut hint'), `${label} must document desktop CM session layout folder reorder status history timestamp filter preset shortcut hint polish`);
     requireCondition(text.includes('reorder status history timestamp filter preset discoverability'), `${label} must document desktop CM session layout folder reorder status history timestamp filter preset discoverability polish`);
+    requireCondition(text.includes('reorder status history timestamp filter preset help focus'), `${label} must document desktop CM session layout folder reorder status history timestamp filter preset help focus polish`);
     requireCondition(text.includes('export/import') || text.includes('session export'), `${label} must document desktop CM session export/import`);
     requireCondition(text.includes('web app must not expose SSH'), `${label} must document that the web app must not expose SSH`);
   }
