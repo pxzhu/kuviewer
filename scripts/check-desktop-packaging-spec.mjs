@@ -73,6 +73,7 @@ requireCondition(
     'desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-responsive-polish',
     'desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-density-polish',
     'desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-polish',
+    'desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-accessibility-polish',
   ].includes(spec.status),
   'status must be a known desktop packaging milestone'
 );
@@ -186,6 +187,10 @@ requireCondition(
   phases.includes('desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-polish'),
   'phaseOrder must include desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-polish'
 );
+requireCondition(
+  phases.includes('desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-accessibility-polish'),
+  'phaseOrder must include desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-accessibility-polish'
+);
 
 await validateBuildPrerequisites(spec);
 await validateDesktopDistributionPolicy(spec);
@@ -249,6 +254,7 @@ if (
     'desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-responsive-polish',
     'desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-density-polish',
     'desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-polish',
+    'desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-accessibility-polish',
   ].includes(spec.status)
 ) {
   await validateTauriScaffold(spec.tauri || {});
@@ -2499,6 +2505,89 @@ async function validateCmSshSessionManager(spec) {
     sessionLayoutPresetFolderReorderStatusHistoryTimestampFilterPreset.folderCollapseExported === false,
     'cmSshSessionManager.sessionLayoutPresetFolderReorderStatusHistoryTimestampFilterPreset.folderCollapseExported must be false'
   );
+  const sessionLayoutPresetFolderReorderStatusHistoryTimestampFilterPresetAccessibility =
+    manager.sessionLayoutPresetFolderReorderStatusHistoryTimestampFilterPresetAccessibility || {};
+  requireCondition(
+    sessionLayoutPresetFolderReorderStatusHistoryTimestampFilterPresetAccessibility.desktopOnly === true,
+    'cmSshSessionManager.sessionLayoutPresetFolderReorderStatusHistoryTimestampFilterPresetAccessibility.desktopOnly must be true'
+  );
+  requireCondition(
+    sessionLayoutPresetFolderReorderStatusHistoryTimestampFilterPresetAccessibility.uiOnly === true,
+    'cmSshSessionManager.sessionLayoutPresetFolderReorderStatusHistoryTimestampFilterPresetAccessibility.uiOnly must be true'
+  );
+  requireCondition(
+    sessionLayoutPresetFolderReorderStatusHistoryTimestampFilterPresetAccessibility.stateStorage === 'memory-only',
+    'cmSshSessionManager.sessionLayoutPresetFolderReorderStatusHistoryTimestampFilterPresetAccessibility.stateStorage must be memory-only'
+  );
+  requireCondition(
+    sessionLayoutPresetFolderReorderStatusHistoryTimestampFilterPresetAccessibility.usesExistingLayoutStorage === 'kuviewer_desktop_cm_session_layout_presets',
+    'cmSshSessionManager.sessionLayoutPresetFolderReorderStatusHistoryTimestampFilterPresetAccessibility.usesExistingLayoutStorage must be kuviewer_desktop_cm_session_layout_presets'
+  );
+  requireCondition(
+    sessionLayoutPresetFolderReorderStatusHistoryTimestampFilterPresetAccessibility.orderStorage === 'existing-preset-array-order',
+    'cmSshSessionManager.sessionLayoutPresetFolderReorderStatusHistoryTimestampFilterPresetAccessibility.orderStorage must be existing-preset-array-order'
+  );
+  requireCondition(
+    sessionLayoutPresetFolderReorderStatusHistoryTimestampFilterPresetAccessibility.addsOrderField === false,
+    'cmSshSessionManager.sessionLayoutPresetFolderReorderStatusHistoryTimestampFilterPresetAccessibility.addsOrderField must be false'
+  );
+  requireCondition(
+    sessionLayoutPresetFolderReorderStatusHistoryTimestampFilterPresetAccessibility.addsStorageKey === false,
+    'cmSshSessionManager.sessionLayoutPresetFolderReorderStatusHistoryTimestampFilterPresetAccessibility.addsStorageKey must be false'
+  );
+  requireCondition(
+    sessionLayoutPresetFolderReorderStatusHistoryTimestampFilterPresetAccessibility.liveSummaryRole === 'status',
+    'cmSshSessionManager.sessionLayoutPresetFolderReorderStatusHistoryTimestampFilterPresetAccessibility.liveSummaryRole must be status'
+  );
+  for (const flag of [
+    'hiddenHelpText',
+    'groupDescribedByHelpAndSummary',
+    'liveSummary',
+    'liveSummaryPolite',
+    'liveSummaryAtomic',
+    'buttonAriaLabels',
+    'ariaPressedPreserved',
+    'activePresetSummary',
+    'noVisibleInstructionText',
+    'noPresetPersistence',
+    'timestampDateTimePreserved',
+    'accessibilityLabelsPreserved',
+    'responsiveBehaviorPreserved',
+    'densityBehaviorPreserved',
+    'doesNotMutateHistory',
+    'humanReadableOnly',
+    'noInternalTestIdInStatus',
+    'preservesPresetNames',
+    'preservesFolders',
+    'preservesViewPreferences',
+    'preservesSelection',
+    'preservesCollapseState',
+    'folderMetadataExported',
+    'folderMetadataImported',
+    'sameNameGlobalUnique',
+    'noSessionExportImportSchemaChange',
+    'noLayoutExportImportSchemaChange',
+    'noTauriSchemaChange',
+    'noSessionSearch',
+    'noDiagnosticFilters',
+    'noEndpointMetadata',
+    'noCredentialPayload',
+    'noRuntimeProfile',
+    'noDiagnosticHistory',
+    'noToken',
+    'noKubeconfig',
+    'noSecretValues',
+    'noEventsOrLogs',
+  ]) {
+    requireCondition(
+      sessionLayoutPresetFolderReorderStatusHistoryTimestampFilterPresetAccessibility[flag] === true,
+      `cmSshSessionManager.sessionLayoutPresetFolderReorderStatusHistoryTimestampFilterPresetAccessibility.${flag} must be true`
+    );
+  }
+  requireCondition(
+    sessionLayoutPresetFolderReorderStatusHistoryTimestampFilterPresetAccessibility.folderCollapseExported === false,
+    'cmSshSessionManager.sessionLayoutPresetFolderReorderStatusHistoryTimestampFilterPresetAccessibility.folderCollapseExported must be false'
+  );
   const sessionLayoutImportExport = manager.sessionLayoutImportExport || {};
   requireCondition(sessionLayoutImportExport.desktopOnly === true, 'cmSshSessionManager.sessionLayoutImportExport.desktopOnly must be true');
   requireCondition(sessionLayoutImportExport.uiOnly === true, 'cmSshSessionManager.sessionLayoutImportExport.uiOnly must be true');
@@ -2742,6 +2831,9 @@ async function validateCmSshSessionManager(spec) {
     'desktop-cm-session-layout-reorder-history-status-filter',
     'desktop-cm-session-layout-reorder-history-filter-clear',
     'desktop-cm-session-layout-reorder-history-empty',
+    'desktop-cm-session-layout-reorder-history-filter-presets',
+    'desktop-cm-session-layout-reorder-history-filter-preset-description',
+    'desktop-cm-session-layout-reorder-history-filter-preset-summary',
     'desktop-cm-session-layout-reorder-history-latest-age',
     'desktop-cm-session-layout-reorder-history-age',
     'desktop-cm-session-layout-reorder-history-time',
@@ -3096,10 +3188,16 @@ async function validateCmSshSessionManager(spec) {
     'desktop-cm-session-layout-reorder-history-density',
     'desktop-cm-session-layout-reorder-history-density-${density}',
     'desktop-cm-session-layout-reorder-history-filter-presets',
+    'desktop-cm-session-layout-reorder-history-filter-preset-description',
+    'desktop-cm-session-layout-reorder-history-filter-preset-summary',
     'desktop-cm-session-layout-reorder-history-filter-preset-${preset.id}',
     'desktopCmSessionLayoutReorderHistoryFilterPresets',
     'activeSessionLayoutReorderHistoryFilterPreset',
     'applySessionLayoutReorderHistoryFilterPreset',
+    'sessionLayoutReorderHistoryFilterPresetDescriptionId',
+    'sessionLayoutReorderHistoryFilterPresetSummaryId',
+    'sessionLayoutReorderHistoryFilterPresetSummary',
+    'sessionLayoutReorderHistoryFilterPresetLabel',
     'sessionLayoutReorderHistoryDensity',
     'data-density={sessionLayoutReorderHistoryDensity}',
     'aria-pressed={sessionLayoutReorderHistoryDensity === density}',
@@ -3343,6 +3441,7 @@ async function validateCmSshSessionManager(spec) {
     'desktop CM session layout reorder history timestamp responsive layout must avoid mobile horizontal overflow',
     'desktop CM session layout reorder history timestamp density must toggle compact rows without persistence',
     'desktop CM session layout reorder history timestamp filter presets must apply scope status and density without persistence',
+    'desktop CM session layout reorder history timestamp filter preset accessibility must expose help summary and button labels',
     'desktop CM session layout reorder history status filter must show matching complete status only',
     'desktop CM session layout reorder history filter empty state must keep total count',
     'desktop CM session layout reorder history scope filter must show focus status only',
@@ -3434,6 +3533,7 @@ async function validateCmSshSessionManager(spec) {
     requireCondition(text.includes('reorder status history timestamp responsive'), `${label} must document desktop CM session layout folder reorder status history timestamp responsive polish`);
     requireCondition(text.includes('reorder status history timestamp density'), `${label} must document desktop CM session layout folder reorder status history timestamp density polish`);
     requireCondition(text.includes('reorder status history timestamp filter preset'), `${label} must document desktop CM session layout folder reorder status history timestamp filter preset polish`);
+    requireCondition(text.includes('reorder status history timestamp filter preset accessibility'), `${label} must document desktop CM session layout folder reorder status history timestamp filter preset accessibility polish`);
     requireCondition(text.includes('export/import') || text.includes('session export'), `${label} must document desktop CM session export/import`);
     requireCondition(text.includes('web app must not expose SSH'), `${label} must document that the web app must not expose SSH`);
   }
