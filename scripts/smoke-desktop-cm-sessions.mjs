@@ -563,6 +563,55 @@ async function smokeDesktopRuntime(browser, url) {
         Boolean(layoutReorderHistoryRowAria?.includes('Recorded')),
       'desktop CM session layout reorder history timestamp accessibility must expose region description and row timestamp label'
     );
+    await page.setViewportSize({ width: 360, height: 740 });
+    await layoutReorderHistoryRegion.scrollIntoViewIfNeeded();
+    const layoutReorderHistoryResponsiveMetrics = await page.evaluate(() => {
+      const getByTestId = (testId) => document.querySelector(`[data-testid="${testId}"]`);
+      const region = getByTestId('desktop-cm-session-layout-reorder-history');
+      const toolbar = getByTestId('desktop-cm-session-layout-reorder-history-toolbar');
+      const latest = getByTestId('desktop-cm-session-layout-reorder-history-latest');
+      const message = getByTestId('desktop-cm-session-layout-reorder-history-message');
+      const meta = getByTestId('desktop-cm-session-layout-reorder-history-meta');
+      const time = getByTestId('desktop-cm-session-layout-reorder-history-time');
+      const scopeFilter = getByTestId('desktop-cm-session-layout-reorder-history-scope-filter');
+      const statusFilter = getByTestId('desktop-cm-session-layout-reorder-history-status-filter');
+      if (!region || !toolbar || !latest || !message || !meta || !time || !scopeFilter || !statusFilter) {
+        return { ok: false };
+      }
+      const regionRect = region.getBoundingClientRect();
+      const toolbarRect = toolbar.getBoundingClientRect();
+      const messageStyle = window.getComputedStyle(message);
+      const latestStyle = window.getComputedStyle(latest);
+      const metaStyle = window.getComputedStyle(meta);
+      const scopeRect = scopeFilter.getBoundingClientRect();
+      const statusRect = statusFilter.getBoundingClientRect();
+      return {
+        ok: true,
+        regionNoOverflow: region.scrollWidth <= Math.ceil(region.clientWidth) + 1,
+        toolbarNoOverflow: toolbar.scrollWidth <= Math.ceil(toolbar.clientWidth) + 1,
+        toolbarFitsRegion: toolbarRect.width <= regionRect.width + 1,
+        scopeFilterWide: scopeRect.width >= regionRect.width * 0.82,
+        statusFilterWide: statusRect.width >= regionRect.width * 0.82,
+        latestWraps: latestStyle.whiteSpace !== 'nowrap',
+        messageWraps: messageStyle.whiteSpace !== 'nowrap',
+        metaWraps: metaStyle.flexWrap === 'wrap',
+        timeFitsRegion: time.getBoundingClientRect().width <= regionRect.width,
+      };
+    });
+    requireCondition(
+      layoutReorderHistoryResponsiveMetrics.ok === true &&
+        layoutReorderHistoryResponsiveMetrics.regionNoOverflow === true &&
+        layoutReorderHistoryResponsiveMetrics.toolbarNoOverflow === true &&
+        layoutReorderHistoryResponsiveMetrics.toolbarFitsRegion === true &&
+        layoutReorderHistoryResponsiveMetrics.scopeFilterWide === true &&
+        layoutReorderHistoryResponsiveMetrics.statusFilterWide === true &&
+        layoutReorderHistoryResponsiveMetrics.latestWraps === true &&
+        layoutReorderHistoryResponsiveMetrics.messageWraps === true &&
+        layoutReorderHistoryResponsiveMetrics.metaWraps === true &&
+        layoutReorderHistoryResponsiveMetrics.timeFitsRegion === true,
+      'desktop CM session layout reorder history timestamp responsive layout must avoid mobile horizontal overflow'
+    );
+    await page.setViewportSize({ width: 1280, height: 720 });
     await page.getByTestId('desktop-cm-session-layout-reorder-history-status-filter').selectOption('reorder-complete');
     layoutReorderHistoryText = await page.getByTestId('desktop-cm-session-layout-reorder-history').textContent();
     layoutReorderHistoryLatest = await page.getByTestId('desktop-cm-session-layout-reorder-history-latest').textContent();

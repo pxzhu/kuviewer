@@ -2557,7 +2557,7 @@ export function DesktopCmSessionPanel({
               <div
                 aria-describedby={`${sessionLayoutReorderHistoryDescriptionId} ${sessionLayoutReorderHistorySummaryId}`}
                 aria-labelledby={sessionLayoutReorderHistoryTitleId}
-                className="grid gap-2 rounded-[10px] border border-[rgba(60,60,67,0.1)] bg-white/58 px-3 py-2"
+                className="grid min-w-0 gap-2 overflow-hidden rounded-[10px] border border-[rgba(60,60,67,0.1)] bg-white/58 px-2 py-2 sm:px-3"
                 data-testid="desktop-cm-session-layout-reorder-history"
                 role="region"
               >
@@ -2574,23 +2574,30 @@ export function DesktopCmSessionPanel({
                 >
                   {sessionLayoutReorderHistoryAccessibilitySummary}
                 </p>
-                <div className="flex min-w-0 flex-wrap items-center gap-2">
-                  <span className="ku-chip" data-testid="desktop-cm-session-layout-reorder-history-count" id={sessionLayoutReorderHistoryTitleId}>
+                <div className="flex min-w-0 flex-wrap items-stretch gap-2 sm:items-center" data-testid="desktop-cm-session-layout-reorder-history-toolbar">
+                  <span
+                    className="ku-chip max-w-full justify-center text-center"
+                    data-testid="desktop-cm-session-layout-reorder-history-count"
+                    id={sessionLayoutReorderHistoryTitleId}
+                  >
                     최근 reorder status {visibleSessionLayoutReorderHistory.length} / 전체 {sessionLayoutReorderHistory.length}
                   </span>
-                  <span className="min-w-0 flex-1 truncate text-xs font-semibold text-[rgba(60,60,67,0.62)]" data-testid="desktop-cm-session-layout-reorder-history-latest">
+                  <span
+                    className="order-last min-w-0 flex-[1_1_100%] break-words text-xs font-semibold text-[rgba(60,60,67,0.62)] sm:order-none sm:flex-1 sm:truncate"
+                    data-testid="desktop-cm-session-layout-reorder-history-latest"
+                  >
                     {sessionLayoutReorderHistoryLatestMessage}
                   </span>
                   {visibleSessionLayoutReorderHistory[0] ? (
                     <span
-                      className="ku-chip h-7 text-[11px]"
+                      className="ku-chip h-7 shrink-0 text-[11px]"
                       data-testid="desktop-cm-session-layout-reorder-history-latest-age"
                       title={sessionLayoutReorderHistoryExactTimeLabel(visibleSessionLayoutReorderHistory[0].createdAt)}
                     >
                       {sessionLayoutReorderHistoryLatestAge}
                     </span>
                   ) : null}
-                  <label className="min-w-[138px]">
+                  <label className="min-w-0 flex-1 basis-full sm:min-w-[138px] sm:basis-[138px]">
                     <span className="ku-meta">Scope</span>
                     <select
                       className="ku-field mt-1 h-8 w-full text-xs"
@@ -2605,7 +2612,7 @@ export function DesktopCmSessionPanel({
                       ))}
                     </select>
                   </label>
-                  <label className="min-w-[158px]">
+                  <label className="min-w-0 flex-1 basis-full sm:min-w-[158px] sm:basis-[158px]">
                     <span className="ku-meta">Status</span>
                     <select
                       className="ku-field mt-1 h-8 w-full text-xs"
@@ -2621,7 +2628,7 @@ export function DesktopCmSessionPanel({
                     </select>
                   </label>
                   <button
-                    className="ku-control h-8 text-xs"
+                    className="ku-control h-8 flex-1 basis-[calc(50%-0.25rem)] justify-center text-xs sm:flex-none sm:basis-auto"
                     data-testid="desktop-cm-session-layout-reorder-history-filter-clear"
                     type="button"
                     disabled={!sessionLayoutReorderHistoryFiltersActive}
@@ -2634,7 +2641,7 @@ export function DesktopCmSessionPanel({
                     filter clear
                   </button>
                   <button
-                    className="ku-control h-8 text-xs"
+                    className="ku-control h-8 flex-1 basis-[calc(50%-0.25rem)] justify-center text-xs sm:flex-none sm:basis-auto"
                     data-testid="desktop-cm-session-layout-reorder-history-clear"
                     type="button"
                     onClick={() => {
@@ -2658,20 +2665,20 @@ export function DesktopCmSessionPanel({
                     <li
                       key={entry.id}
                       aria-label={`${sessionLayoutReorderHistoryScopeLabel(entry.scope)} reorder status: ${entry.message} Recorded ${sessionLayoutReorderHistoryExactTimeLabel(entry.createdAt)} (${sessionLayoutReorderHistoryAgeLabel(entry.createdAt)}).`}
-                      className="grid gap-1 rounded-[8px] border border-[rgba(60,60,67,0.08)] bg-white/70 px-2 py-1 text-xs font-semibold text-[rgba(60,60,67,0.68)] sm:grid-cols-[auto_1fr_auto] sm:items-center"
+                      className="grid min-w-0 gap-1 rounded-[8px] border border-[rgba(60,60,67,0.08)] bg-white/70 px-2 py-1 text-xs font-semibold text-[rgba(60,60,67,0.68)] sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:items-center"
                       data-testid={`desktop-cm-session-layout-reorder-history-item-${entry.scope}`}
                     >
-                      <span className="ku-chip h-6 justify-center text-[11px]">{sessionLayoutReorderHistoryScopeLabel(entry.scope)}</span>
-                      <span className="min-w-0 truncate" data-testid="desktop-cm-session-layout-reorder-history-message">
+                      <span className="ku-chip h-6 max-w-full justify-center text-[11px] sm:w-auto">{sessionLayoutReorderHistoryScopeLabel(entry.scope)}</span>
+                      <span className="min-w-0 break-words sm:truncate" data-testid="desktop-cm-session-layout-reorder-history-message">
                         {entry.message}
                       </span>
-                      <span className="flex min-w-0 items-center gap-1">
-                        <span className="ku-chip h-6 text-[11px]" data-testid="desktop-cm-session-layout-reorder-history-age">
+                      <span className="flex min-w-0 flex-wrap items-center gap-1 sm:justify-end" data-testid="desktop-cm-session-layout-reorder-history-meta">
+                        <span className="ku-chip h-6 shrink-0 text-[11px]" data-testid="desktop-cm-session-layout-reorder-history-age">
                           {sessionLayoutReorderHistoryAgeLabel(entry.createdAt)}
                         </span>
                         <time
                           aria-label={`Recorded ${sessionLayoutReorderHistoryExactTimeLabel(entry.createdAt)} (${sessionLayoutReorderHistoryAgeLabel(entry.createdAt)})`}
-                          className="font-mono text-[11px] text-[rgba(60,60,67,0.48)]"
+                          className="min-w-0 break-all font-mono text-[11px] text-[rgba(60,60,67,0.48)]"
                           data-testid="desktop-cm-session-layout-reorder-history-time"
                           dateTime={sessionLayoutReorderHistoryIsoTimeLabel(entry.createdAt)}
                           title={sessionLayoutReorderHistoryExactTimeLabel(entry.createdAt)}
