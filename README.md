@@ -47,6 +47,8 @@ Desktop CM saved session layout per-row conflict actions are desktop-only UI con
 
 Desktop CM saved layout bulk management is desktop-only UI state. Selection and delete confirmation are memory-only, visible-result selection follows the current layout search filter, selected export uses the existing `kuviewer.desktop.cmSessionLayouts` bundle shape, and selected delete uses inline two-step confirmation without storing endpoint/session metadata, credentials, runtime profiles, diagnostic history, Events, or logs.
 
+Desktop CM saved layout folder polish stores only safe preset folder metadata in `kuviewer_desktop_cm_session_layout_presets`. Missing folders normalize to `General`; users can set a folder while saving a layout or edit a row folder inline, and the layout list renders by folder with separate collapse state under `kuviewer_desktop_cm_session_layout_collapsed_folders`. Folder metadata is preserved in layout import/export, but folder collapse state is UI-only and is not included in session export/import, layout export/import, Tauri payloads, credentials, runtime profiles, diagnostics, Events, or logs.
+
 Existing remote API profile, local sidecar, and direct Kubernetes/keychain paths remain prototype-only scaffolds. The local sidecar no longer starts by default in the desktop product path; it requires `KUVIEWER_DESKTOP_ENABLE_PROTOTYPE_SIDECAR=1` for explicit prototype work. The web app must not expose SSH.
 
 The Flow view is intended to feel closer to real request movement than a generic resource graph. It derives paths such as:

@@ -36,6 +36,8 @@ Desktop CM saved session layout per-row conflict actions resolve one conflict ro
 
 Desktop CM saved layout preset bulk management keeps selection and delete confirmation in browser memory only, supports visible-result selection, selected layout export, and inline two-step selected delete, and never changes CM session export/import, layout export/import, or Tauri schemas.
 
+Desktop CM saved layout preset folder polish stores only safe preset folder metadata with each saved layout, normalizes missing folders to `General`, preserves folder metadata in layout import/export, and keeps folder collapse state in a separate UI preference that is never exported/imported or sent through Tauri.
+
 The old remote server profile UX is prototype-only. It stores only the selected Kuviewer server URL in browser `localStorage`; admin tokens remain session-only, and profile changes clear the current token. The current CM/SSH session manager clears that legacy profile in desktop runtime and keeps it out of the product UI.
 
 ## Local Sidecar Runtime
