@@ -97,6 +97,8 @@ Desktop CM saved layout folder reorder status history timestamp filter preset di
 
 Desktop CM saved layout folder reorder status history timestamp filter preset help focus polish is desktop-only UI state. The visible help icon is now a focusable button: focusing it announces the available focus action, and Enter or Space moves focus to the active reorder history preset, falling back to the first preset when no preset matches. Help focus state stays in browser memory/rendered DOM only and is not stored, exported, sent through Tauri, or mixed with credentials, runtime profiles, diagnostics, Events, or logs.
 
+Desktop CM saved layout folder reorder status history timestamp filter preset help tooltip polish is desktop-only UI state. The visible help button now exposes a compact hover/focus tooltip linked with `aria-describedby`, summarizing shortcuts and the focus action without storing tooltip text. Help tooltip metadata stays in browser memory/rendered DOM only and is not stored, exported, sent through Tauri, or mixed with credentials, runtime profiles, diagnostics, Events, or logs.
+
 Existing remote API profile, local sidecar, and direct Kubernetes/keychain paths remain prototype-only scaffolds. The local sidecar no longer starts by default in the desktop product path; it requires `KUVIEWER_DESKTOP_ENABLE_PROTOTYPE_SIDECAR=1` for explicit prototype work. The web app must not expose SSH.
 
 The Flow view is intended to feel closer to real request movement than a generic resource graph. It derives paths such as:

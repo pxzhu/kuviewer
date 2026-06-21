@@ -381,6 +381,7 @@ export function DesktopCmSessionPanel({
   const sessionLayoutReorderHistoryFilterPresetKeyboardStatusId = 'desktop-cm-session-layout-reorder-history-filter-preset-keyboard-status';
   const sessionLayoutReorderHistoryFilterPresetShortcutHintId = 'desktop-cm-session-layout-reorder-history-filter-preset-shortcut-hint';
   const sessionLayoutReorderHistoryFilterPresetDiscoverabilityHintId = 'desktop-cm-session-layout-reorder-history-filter-preset-discoverability-hint';
+  const sessionLayoutReorderHistoryFilterPresetHelpTooltipId = 'desktop-cm-session-layout-reorder-history-filter-preset-help-tooltip';
   const sessionLayoutReorderFilterDisabledReason =
     sessionLayoutSearchActive && sessionLayoutFolderFilterActive
       ? 'Reorder unavailable: layout search and folder filter are active. Clear both filters to reorder.'
@@ -1213,6 +1214,10 @@ export function DesktopCmSessionPanel({
     activeSessionLayoutReorderHistoryFilterPreset
       ? `Preset help for ${activeSessionLayoutReorderHistoryFilterPreset.label}: arrow keys move between presets, Home and End jump, Enter or Space applies, and this help button focuses the active preset. This hint is UI-only.`
       : 'Preset help: arrow keys move between presets, Home and End jump, Enter or Space applies, and this help button focuses the first preset. This hint is UI-only.';
+  const sessionLayoutReorderHistoryFilterPresetHelpTooltip =
+    activeSessionLayoutReorderHistoryFilterPreset
+      ? `Tooltip: ${activeSessionLayoutReorderHistoryFilterPreset.label} is active. Hover or focus this help button to review shortcuts; Enter or Space moves focus to the active preset. UI-only and not stored.`
+      : 'Tooltip: no preset currently matches. Hover or focus this help button to review shortcuts; Enter or Space moves focus to the first preset. UI-only and not stored.';
   const sessionLayoutReorderHistoryFilterPresetLabel = (preset: DesktopCmSessionLayoutReorderHistoryFilterPreset, index: number, total: number) =>
     `Apply ${preset.label} reorder history preset, ${index + 1} of ${total}: ${sessionLayoutReorderHistoryScopeFilterLabel(preset.scope)}, ${sessionLayoutReorderHistoryStatusFilterLabel(preset.status)}, ${sessionLayoutReorderHistoryDensityLabel(preset.density)} density. Arrow keys move between presets, Home and End jump, Enter or Space applies.`;
   const sessionLayoutReorderHistoryFilterPresetTitle = (preset: DesktopCmSessionLayoutReorderHistoryFilterPreset, index: number, total: number) =>
@@ -2760,7 +2765,7 @@ export function DesktopCmSessionPanel({
                     ))}
                   </div>
                   <div
-                    aria-describedby={`${sessionLayoutReorderHistoryFilterPresetDescriptionId} ${sessionLayoutReorderHistoryFilterPresetKeyboardDescriptionId} ${sessionLayoutReorderHistoryFilterPresetShortcutHintId} ${sessionLayoutReorderHistoryFilterPresetDiscoverabilityHintId} ${sessionLayoutReorderHistoryFilterPresetSummaryId} ${sessionLayoutReorderHistoryFilterPresetKeyboardStatusId}`}
+                    aria-describedby={`${sessionLayoutReorderHistoryFilterPresetDescriptionId} ${sessionLayoutReorderHistoryFilterPresetKeyboardDescriptionId} ${sessionLayoutReorderHistoryFilterPresetShortcutHintId} ${sessionLayoutReorderHistoryFilterPresetDiscoverabilityHintId} ${sessionLayoutReorderHistoryFilterPresetHelpTooltipId} ${sessionLayoutReorderHistoryFilterPresetSummaryId} ${sessionLayoutReorderHistoryFilterPresetKeyboardStatusId}`}
                     aria-label="Reorder history filter presets"
                     className="flex min-w-0 flex-1 basis-full flex-wrap gap-1 rounded-[8px] border border-[rgba(60,60,67,0.12)] bg-white/55 p-1 sm:flex-none sm:basis-auto"
                     data-testid="desktop-cm-session-layout-reorder-history-filter-presets"
@@ -2787,24 +2792,35 @@ export function DesktopCmSessionPanel({
                     >
                       {sessionLayoutReorderHistoryFilterPresetShortcutHint}
                     </p>
-                    <button
-                      aria-label={sessionLayoutReorderHistoryFilterPresetDiscoverabilityHint}
-                      aria-keyshortcuts="Enter Space"
-                      className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-[6px] border border-[rgba(42,111,151,0.16)] bg-[rgba(255,255,255,0.76)] text-[rgba(42,111,151,0.82)] transition hover:bg-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[rgba(42,111,151,0.45)]"
-                      data-testid="desktop-cm-session-layout-reorder-history-filter-preset-discoverability-hint"
-                      id={sessionLayoutReorderHistoryFilterPresetDiscoverabilityHintId}
-                      title={sessionLayoutReorderHistoryFilterPresetDiscoverabilityHint}
-                      type="button"
-                      onFocus={() =>
-                        setSessionLayoutReorderHistoryFilterPresetKeyboardMessage(
-                          'Preset help focused. Press Enter or Space to focus the active reorder history preset.',
-                        )
-                      }
-                      onClick={focusSessionLayoutReorderHistoryFilterPresetHelpTarget}
-                    >
-                      <CircleHelp className="h-3.5 w-3.5" aria-hidden="true" />
-                      <span className="sr-only">{sessionLayoutReorderHistoryFilterPresetDiscoverabilityHint}</span>
-                    </button>
+                    <span className="group relative inline-flex shrink-0">
+                      <button
+                        aria-describedby={sessionLayoutReorderHistoryFilterPresetHelpTooltipId}
+                        aria-label={sessionLayoutReorderHistoryFilterPresetDiscoverabilityHint}
+                        aria-keyshortcuts="Enter Space"
+                        className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-[6px] border border-[rgba(42,111,151,0.16)] bg-[rgba(255,255,255,0.76)] text-[rgba(42,111,151,0.82)] transition hover:bg-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[rgba(42,111,151,0.45)]"
+                        data-testid="desktop-cm-session-layout-reorder-history-filter-preset-discoverability-hint"
+                        id={sessionLayoutReorderHistoryFilterPresetDiscoverabilityHintId}
+                        title={sessionLayoutReorderHistoryFilterPresetDiscoverabilityHint}
+                        type="button"
+                        onFocus={() =>
+                          setSessionLayoutReorderHistoryFilterPresetKeyboardMessage(
+                            'Preset help focused. Press Enter or Space to focus the active reorder history preset.',
+                          )
+                        }
+                        onClick={focusSessionLayoutReorderHistoryFilterPresetHelpTarget}
+                      >
+                        <CircleHelp className="h-3.5 w-3.5" aria-hidden="true" />
+                        <span className="sr-only">{sessionLayoutReorderHistoryFilterPresetDiscoverabilityHint}</span>
+                      </button>
+                      <span
+                        className="pointer-events-none absolute left-1/2 top-[calc(100%+0.35rem)] z-30 hidden w-64 -translate-x-1/2 rounded-[6px] border border-[rgba(42,111,151,0.18)] bg-white px-2.5 py-2 text-[0.68rem] leading-snug text-[rgba(29,63,84,0.86)] shadow-[0_10px_28px_rgba(26,65,88,0.16)] group-focus-within:block group-hover:block sm:left-auto sm:right-0 sm:translate-x-0"
+                        data-testid="desktop-cm-session-layout-reorder-history-filter-preset-help-tooltip"
+                        id={sessionLayoutReorderHistoryFilterPresetHelpTooltipId}
+                        role="tooltip"
+                      >
+                        {sessionLayoutReorderHistoryFilterPresetHelpTooltip}
+                      </span>
+                    </span>
                     <p
                       aria-atomic="true"
                       aria-live="polite"

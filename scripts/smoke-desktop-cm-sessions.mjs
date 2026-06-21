@@ -679,6 +679,11 @@ async function smokeDesktopRuntime(browser, url) {
     const layoutReorderHistoryPresetDiscoverabilityHintLabel = await page.getByTestId('desktop-cm-session-layout-reorder-history-filter-preset-discoverability-hint').getAttribute('aria-label');
     const layoutReorderHistoryPresetDiscoverabilityHintType = await page.getByTestId('desktop-cm-session-layout-reorder-history-filter-preset-discoverability-hint').getAttribute('type');
     const layoutReorderHistoryPresetDiscoverabilityHintShortcuts = await page.getByTestId('desktop-cm-session-layout-reorder-history-filter-preset-discoverability-hint').getAttribute('aria-keyshortcuts');
+    const layoutReorderHistoryPresetDiscoverabilityHintDescribedBy = await page.getByTestId('desktop-cm-session-layout-reorder-history-filter-preset-discoverability-hint').getAttribute('aria-describedby');
+    const layoutReorderHistoryPresetHelpTooltipRole = await page.getByTestId('desktop-cm-session-layout-reorder-history-filter-preset-help-tooltip').getAttribute('role');
+    const layoutReorderHistoryPresetHelpTooltipText = await page.getByTestId('desktop-cm-session-layout-reorder-history-filter-preset-help-tooltip').textContent();
+    await page.getByTestId('desktop-cm-session-layout-reorder-history-filter-preset-discoverability-hint').hover();
+    const layoutReorderHistoryPresetHelpTooltipVisibleOnHover = await page.getByTestId('desktop-cm-session-layout-reorder-history-filter-preset-help-tooltip').isVisible();
     const sessionLayoutStorageAfterPresetHints = await page.evaluate(() => localStorage.getItem('kuviewer_desktop_cm_session_layout_presets') || '');
     const layoutReorderHistoryPresetKeyboardStatusRole = await page.getByTestId('desktop-cm-session-layout-reorder-history-filter-preset-keyboard-status').getAttribute('role');
     const layoutReorderHistoryPresetKeyboardStatusLive = await page.getByTestId('desktop-cm-session-layout-reorder-history-filter-preset-keyboard-status').getAttribute('aria-live');
@@ -746,6 +751,7 @@ async function smokeDesktopRuntime(browser, url) {
     requireCondition(
       layoutReorderHistoryPresetGroupDescription?.includes('desktop-cm-session-layout-reorder-history-filter-preset-shortcut-hint') &&
         layoutReorderHistoryPresetGroupDescription.includes('desktop-cm-session-layout-reorder-history-filter-preset-discoverability-hint') &&
+        layoutReorderHistoryPresetGroupDescription.includes('desktop-cm-session-layout-reorder-history-filter-preset-help-tooltip') &&
         layoutReorderHistoryPresetShortcutHint?.includes('Shortcut hint') &&
         layoutReorderHistoryPresetShortcutHint.includes('Home and End') &&
         layoutReorderHistoryCompletePresetLabel?.includes('Arrow keys move') &&
@@ -766,8 +772,24 @@ async function smokeDesktopRuntime(browser, url) {
         !sessionLayoutStorageAfterPresetHints.includes('arrow keys move between presets'),
       'desktop CM session layout reorder history timestamp filter preset discoverability smoke must expose UI-only visible help without persistence'
     );
+    requireCondition(
+      layoutReorderHistoryPresetHelpTooltipRole === 'tooltip' &&
+        layoutReorderHistoryPresetDiscoverabilityHintDescribedBy === 'desktop-cm-session-layout-reorder-history-filter-preset-help-tooltip' &&
+        layoutReorderHistoryPresetHelpTooltipVisibleOnHover &&
+        layoutReorderHistoryPresetHelpTooltipText?.includes('Tooltip: All is active') &&
+        layoutReorderHistoryPresetHelpTooltipText.includes('Hover or focus this help button') &&
+        layoutReorderHistoryPresetHelpTooltipText.includes('UI-only and not stored') &&
+        !sessionLayoutStorageAfterPresetHints.includes('Tooltip:') &&
+        !sessionLayoutStorageAfterPresetHints.includes('Hover or focus this help button'),
+      'desktop CM session layout reorder history timestamp filter preset help tooltip must expose hover tooltip without persistence'
+    );
     await page.getByTestId('desktop-cm-session-layout-reorder-history-filter-preset-discoverability-hint').focus();
+    const layoutReorderHistoryPresetHelpTooltipVisibleOnFocus = await page.getByTestId('desktop-cm-session-layout-reorder-history-filter-preset-help-tooltip').isVisible();
     const layoutReorderHistoryPresetHelpFocusStatus = await page.getByTestId('desktop-cm-session-layout-reorder-history-filter-preset-keyboard-status').textContent();
+    requireCondition(
+      layoutReorderHistoryPresetHelpTooltipVisibleOnFocus,
+      'desktop CM session layout reorder history timestamp filter preset help tooltip must remain visible on focus'
+    );
     requireCondition(
       layoutReorderHistoryPresetHelpFocusStatus?.includes('Preset help focused') &&
         layoutReorderHistoryPresetHelpFocusStatus.includes('focus the active reorder history preset'),
