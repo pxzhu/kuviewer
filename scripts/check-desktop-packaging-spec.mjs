@@ -49,6 +49,7 @@ requireCondition(
     'desktop-cm-session-layout-conflict-summary',
     'desktop-cm-session-layout-conflict-keyboard',
     'desktop-cm-session-layout-conflict-accessibility',
+    'desktop-cm-session-layout-preset-search',
   ].includes(spec.status),
   'status must be a known desktop packaging milestone'
 );
@@ -102,6 +103,7 @@ requireCondition(phases.includes('desktop-cm-session-layout-row-conflicts'), 'ph
 requireCondition(phases.includes('desktop-cm-session-layout-conflict-summary'), 'phaseOrder must include desktop-cm-session-layout-conflict-summary');
 requireCondition(phases.includes('desktop-cm-session-layout-conflict-keyboard'), 'phaseOrder must include desktop-cm-session-layout-conflict-keyboard');
 requireCondition(phases.includes('desktop-cm-session-layout-conflict-accessibility'), 'phaseOrder must include desktop-cm-session-layout-conflict-accessibility');
+requireCondition(phases.includes('desktop-cm-session-layout-preset-search'), 'phaseOrder must include desktop-cm-session-layout-preset-search');
 
 await validateBuildPrerequisites(spec);
 await validateDesktopDistributionPolicy(spec);
@@ -141,6 +143,7 @@ if (
     'desktop-cm-session-layout-conflict-summary',
     'desktop-cm-session-layout-conflict-keyboard',
     'desktop-cm-session-layout-conflict-accessibility',
+    'desktop-cm-session-layout-preset-search',
   ].includes(spec.status)
 ) {
   await validateTauriScaffold(spec.tauri || {});
@@ -759,6 +762,7 @@ async function validateCmSshSessionManager(spec) {
       'session-layout-conflict-summary',
       'session-layout-conflict-keyboard',
       'session-layout-conflict-accessibility',
+      'session-layout-preset-search',
     ].includes(manager.status),
     'cmSshSessionManager.status must be a known CM/SSH session manager milestone'
   );
@@ -971,6 +975,40 @@ async function validateCmSshSessionManager(spec) {
   }
   for (const flag of ['noSessionSearch', 'noDiagnosticFilters', 'noTauriSchemaChange', 'noExportImportSchemaChange', 'noCredentialPayload', 'noRuntimeProfile', 'noDiagnosticHistory', 'noToken', 'noKubeconfig', 'noSecretValues', 'noEventsOrLogs']) {
     requireCondition(sessionSavedLayouts[flag] === true, `cmSshSessionManager.sessionSavedLayouts.${flag} must be true`);
+  }
+  const sessionLayoutPresetSearch = manager.sessionLayoutPresetSearch || {};
+  requireCondition(sessionLayoutPresetSearch.desktopOnly === true, 'cmSshSessionManager.sessionLayoutPresetSearch.desktopOnly must be true');
+  requireCondition(sessionLayoutPresetSearch.uiOnly === true, 'cmSshSessionManager.sessionLayoutPresetSearch.uiOnly must be true');
+  requireCondition(sessionLayoutPresetSearch.stateStorage === 'memory-only', 'cmSshSessionManager.sessionLayoutPresetSearch.stateStorage must be memory-only');
+  requireCondition(sessionLayoutPresetSearch.persisted === false, 'cmSshSessionManager.sessionLayoutPresetSearch.persisted must be false');
+  requireCondition(sessionLayoutPresetSearch.exported === false, 'cmSshSessionManager.sessionLayoutPresetSearch.exported must be false');
+  const layoutSearchTargets = new Set(Array.isArray(sessionLayoutPresetSearch.searchTargets) ? sessionLayoutPresetSearch.searchTargets : []);
+  for (const target of ['name', 'summary', 'groups', 'collapsedGroups', 'favoriteCount', 'sessionCount']) {
+    requireCondition(layoutSearchTargets.has(target), `cmSshSessionManager.sessionLayoutPresetSearch.searchTargets must include ${target}`);
+  }
+  for (const flag of [
+    'showsResultCount',
+    'showsEmptyState',
+    'hasClearAction',
+    'filtersVisiblePresetListOnly',
+    'doesNotChangeSavedLayoutOrder',
+    'doesNotChangeLayoutExport',
+    'doesNotChangeLayoutImport',
+    'noSessionExportImportSchemaChange',
+    'noLayoutExportImportSchemaChange',
+    'noTauriSchemaChange',
+    'noSessionSearch',
+    'noDiagnosticFilters',
+    'noEndpointMetadata',
+    'noCredentialPayload',
+    'noRuntimeProfile',
+    'noDiagnosticHistory',
+    'noToken',
+    'noKubeconfig',
+    'noSecretValues',
+    'noEventsOrLogs',
+  ]) {
+    requireCondition(sessionLayoutPresetSearch[flag] === true, `cmSshSessionManager.sessionLayoutPresetSearch.${flag} must be true`);
   }
   const sessionLayoutImportExport = manager.sessionLayoutImportExport || {};
   requireCondition(sessionLayoutImportExport.desktopOnly === true, 'cmSshSessionManager.sessionLayoutImportExport.desktopOnly must be true');
@@ -1364,6 +1402,10 @@ async function validateCmSshSessionManager(spec) {
     'kuviewer_desktop_cm_session_layout_presets',
     'desktop-cm-session-saved-layouts',
     'desktop-cm-session-layout-name',
+    'desktop-cm-session-layout-search',
+    'desktop-cm-session-layout-search-count',
+    'desktop-cm-session-layout-search-clear',
+    'desktop-cm-session-layout-search-empty',
     'desktop-cm-session-layout-save',
     'desktop-cm-session-layout-list',
     'desktop-cm-session-layout-delete-',
@@ -1405,6 +1447,9 @@ async function validateCmSshSessionManager(spec) {
     'End',
     'kuviewer.desktop.cmSessions',
     'kuviewer.desktop.cmSessionLayouts',
+    'sessionLayoutSearchQuery',
+    'visibleSessionLayoutPresets',
+    'matchesDesktopCmSessionLayoutSearch',
   ]) {
     requireCondition(sessionPanel.includes(marker), `desktop CM session panel must include ${marker}`);
   }

@@ -157,6 +157,7 @@ export function DesktopCmSessionPanel({
   const [diagnosticFilterPresets, setDiagnosticFilterPresets] = useState<DesktopCmDiagnosticFilterPreset[]>(() => readDesktopCmDiagnosticFilterPresets());
   const [sessionViewPreferences, setSessionViewPreferences] = useState<DesktopCmSessionViewPreferences>(() => readDesktopCmSessionViewPreferences());
   const [sessionLayoutPresetName, setSessionLayoutPresetName] = useState('');
+  const [sessionLayoutSearchQuery, setSessionLayoutSearchQuery] = useState('');
   const [sessionLayoutPresets, setSessionLayoutPresets] = useState<DesktopCmSessionLayoutPreset[]>(() => readDesktopCmSessionLayoutPresets());
   const [selectedBulkSessionIds, setSelectedBulkSessionIds] = useState<Set<string>>(() => new Set());
   const [bulkGroupName, setBulkGroupName] = useState(defaultDesktopCmSessionGroup);
@@ -170,6 +171,7 @@ export function DesktopCmSessionPanel({
   const sessionLayoutImportInputRef = useRef<HTMLInputElement | null>(null);
   const sessionLayoutConflictPreviewRef = useRef<HTMLDivElement | null>(null);
   const normalizedSessionSearchQuery = normalizeSearchValue(sessionSearchQuery);
+  const normalizedSessionLayoutSearchQuery = normalizeSearchValue(sessionLayoutSearchQuery);
   const sessionPreferenceMap = useMemo(() => new Map(sessionViewPreferences.sessions.map((preference) => [preference.sessionId, preference])), [sessionViewPreferences.sessions]);
   const visibleSessions = useMemo(
     () =>
@@ -199,6 +201,11 @@ export function DesktopCmSessionPanel({
     const currentLayout = pruneDesktopCmSessionViewPreferences(sessionViewPreferences, sessions);
     return sessionLayoutPresets.find((preset) => desktopCmSessionLayoutEqual(currentLayout, pruneDesktopCmSessionViewPreferences(preset.viewPreferences, sessions)))?.name || '';
   }, [sessionLayoutPresets, sessionViewPreferences, sessions]);
+  const visibleSessionLayoutPresets = useMemo(
+    () => sessionLayoutPresets.filter((preset) => matchesDesktopCmSessionLayoutSearch(preset, normalizedSessionLayoutSearchQuery)),
+    [normalizedSessionLayoutSearchQuery, sessionLayoutPresets],
+  );
+  const sessionLayoutSearchActive = normalizedSessionLayoutSearchQuery.length > 0;
   const sessionLayoutConflictSummary = useMemo(() => {
     if (!sessionLayoutImportConflicts) {
       return null;
@@ -1413,6 +1420,16 @@ export function DesktopCmSessionPanel({
                   onChange={(event) => setSessionLayoutPresetName(event.target.value)}
                 />
               </label>
+              <label className="relative min-w-[180px] flex-1">
+                <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[rgba(60,60,67,0.48)]" size={15} aria-hidden="true" />
+                <input
+                  className="ku-field h-9 w-full pl-9 pr-3"
+                  data-testid="desktop-cm-session-layout-search"
+                  placeholder="layout 검색"
+                  value={sessionLayoutSearchQuery}
+                  onChange={(event) => setSessionLayoutSearchQuery(event.target.value)}
+                />
+              </label>
               <button className="ku-control h-9" data-testid="desktop-cm-session-layout-save" type="button" onClick={handleSaveSessionLayoutPreset}>
                 <Bookmark size={14} aria-hidden="true" />
                 현재 layout 저장
@@ -1420,6 +1437,19 @@ export function DesktopCmSessionPanel({
               <span className="ku-chip" data-testid="desktop-cm-session-layout-count">
                 {sessionLayoutPresets.length} / {maxDesktopCmSessionLayoutPresets}
               </span>
+              <span className="ku-chip" data-testid="desktop-cm-session-layout-search-count">
+                결과 {visibleSessionLayoutPresets.length} / 전체 {sessionLayoutPresets.length}
+              </span>
+              <button
+                className="ku-control h-9"
+                data-testid="desktop-cm-session-layout-search-clear"
+                type="button"
+                disabled={!sessionLayoutSearchActive}
+                onClick={() => setSessionLayoutSearchQuery('')}
+              >
+                <XCircle size={14} aria-hidden="true" />
+                검색 초기화
+              </button>
               <button
                 className="ku-control h-9"
                 data-testid="desktop-cm-session-layout-export"
@@ -1600,7 +1630,7 @@ export function DesktopCmSessionPanel({
             ) : null}
             {sessionLayoutPresets.length > 0 ? (
               <div className="flex min-w-0 flex-wrap items-center gap-2" data-testid="desktop-cm-session-layout-list">
-                {sessionLayoutPresets.map((preset) => {
+                {visibleSessionLayoutPresets.map((preset) => {
                   const active = preset.name === activeSessionLayoutPresetName;
                   return (
                     <span
@@ -1625,6 +1655,11 @@ export function DesktopCmSessionPanel({
                     </span>
                   );
                 })}
+                {visibleSessionLayoutPresets.length === 0 ? (
+                  <p className="text-xs font-semibold text-[rgba(60,60,67,0.58)]" data-testid="desktop-cm-session-layout-search-empty">
+                    일치하는 saved layout 없음
+                  </p>
+                ) : null}
               </div>
             ) : (
               <p className="text-xs font-semibold text-[rgba(60,60,67,0.58)]" data-testid="desktop-cm-session-layout-empty">
@@ -2473,6 +2508,29 @@ function formatDesktopCmSessionLayoutSummary(preferences: DesktopCmSessionViewPr
   const favoriteCount = normalized.sessions.filter((preference) => preference.favorite).length;
   const groupCount = new Set(normalized.sessions.map((preference) => preference.group)).size || 1;
   return `${normalized.sessions.length} sessions · ${groupCount} groups · ${favoriteCount} favorites`;
+}
+
+function matchesDesktopCmSessionLayoutSearch(preset: DesktopCmSessionLayoutPreset, normalizedQuery: string) {
+  if (!normalizedQuery) {
+    return true;
+  }
+  const normalized = normalizeDesktopCmSessionViewPreferences(preset.viewPreferences);
+  const groups = [...new Set(normalized.sessions.map((preference) => preference.group))];
+  const favoriteCount = normalized.sessions.filter((preference) => preference.favorite).length;
+  const searchText = [
+    preset.name,
+    formatDesktopCmSessionLayoutSummary(normalized),
+    `${normalized.sessions.length} sessions`,
+    `${groups.length || 1} groups`,
+    `${favoriteCount} favorites`,
+    favoriteCount > 0 ? 'favorite favorites 즐겨찾기' : '',
+    normalized.collapsedGroups.length > 0 ? 'collapsed 접힘' : '',
+    ...groups,
+    ...normalized.collapsedGroups,
+  ]
+    .join(' ')
+    .toLowerCase();
+  return searchText.includes(normalizedQuery);
 }
 
 function getDesktopCmSessionPreference(sessionId: string, preferences: Map<string, DesktopCmSessionViewPreference>) {
