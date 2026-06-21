@@ -368,6 +368,8 @@ export function DesktopCmSessionPanel({
   const sessionLayoutReorderHistoryTitleId = 'desktop-cm-session-layout-reorder-history-title';
   const sessionLayoutReorderHistoryDescriptionId = 'desktop-cm-session-layout-reorder-history-description';
   const sessionLayoutReorderHistorySummaryId = 'desktop-cm-session-layout-reorder-history-accessibility-summary';
+  const sessionLayoutReorderHistoryFilterPresetDescriptionId = 'desktop-cm-session-layout-reorder-history-filter-preset-description';
+  const sessionLayoutReorderHistoryFilterPresetSummaryId = 'desktop-cm-session-layout-reorder-history-filter-preset-summary';
   const sessionLayoutReorderFilterDisabledReason =
     sessionLayoutSearchActive && sessionLayoutFolderFilterActive
       ? 'Reorder unavailable: layout search and folder filter are active. Clear both filters to reorder.'
@@ -1182,6 +1184,11 @@ export function DesktopCmSessionPanel({
       preset.status === sessionLayoutReorderHistoryStatusFilter &&
       preset.density === sessionLayoutReorderHistoryDensity,
   );
+  const sessionLayoutReorderHistoryFilterPresetSummary = activeSessionLayoutReorderHistoryFilterPreset
+    ? `Active reorder history preset ${activeSessionLayoutReorderHistoryFilterPreset.label}: ${sessionLayoutReorderHistoryScopeFilterLabel(activeSessionLayoutReorderHistoryFilterPreset.scope)}, ${sessionLayoutReorderHistoryStatusFilterLabel(activeSessionLayoutReorderHistoryFilterPreset.status)}, ${sessionLayoutReorderHistoryDensityLabel(activeSessionLayoutReorderHistoryFilterPreset.density)} density.`
+    : `No reorder history preset is active. Current filters are ${sessionLayoutReorderHistoryScopeFilterLabel(sessionLayoutReorderHistoryScopeFilter)}, ${sessionLayoutReorderHistoryStatusFilterLabel(sessionLayoutReorderHistoryStatusFilter)}, ${sessionLayoutReorderHistoryDensityLabel(sessionLayoutReorderHistoryDensity)} density.`;
+  const sessionLayoutReorderHistoryFilterPresetLabel = (preset: DesktopCmSessionLayoutReorderHistoryFilterPreset) =>
+    `Apply ${preset.label} reorder history preset: ${sessionLayoutReorderHistoryScopeFilterLabel(preset.scope)}, ${sessionLayoutReorderHistoryStatusFilterLabel(preset.status)}, ${sessionLayoutReorderHistoryDensityLabel(preset.density)} density.`;
   const sessionLayoutFolderReorderSuccessMessage = (folderName: string, direction: -1 | 1 | 'first' | 'last', targetIndex: number, total: number) =>
     `Reorder complete: ${folderName} folder ${sessionLayoutReorderMovementLabel(direction)}, ${sessionLayoutReorderPositionLabel(targetIndex, total)}.`;
   const sessionLayoutPresetReorderSuccessMessage = (presetName: string, folderName: string, direction: -1 | 1 | 'first' | 'last', targetIndex: number, total: number) =>
@@ -2685,16 +2692,35 @@ export function DesktopCmSessionPanel({
                     ))}
                   </div>
                   <div
+                    aria-describedby={`${sessionLayoutReorderHistoryFilterPresetDescriptionId} ${sessionLayoutReorderHistoryFilterPresetSummaryId}`}
                     aria-label="Reorder history filter presets"
                     className="flex min-w-0 flex-1 basis-full flex-wrap gap-1 rounded-[8px] border border-[rgba(60,60,67,0.12)] bg-white/55 p-1 sm:flex-none sm:basis-auto"
                     data-testid="desktop-cm-session-layout-reorder-history-filter-presets"
                     role="group"
                   >
+                    <p
+                      className="sr-only"
+                      data-testid="desktop-cm-session-layout-reorder-history-filter-preset-description"
+                      id={sessionLayoutReorderHistoryFilterPresetDescriptionId}
+                    >
+                      Reorder history filter presets apply safe scope, status, and density settings together. Preset state stays in browser memory only and is not stored or exported.
+                    </p>
+                    <p
+                      aria-atomic="true"
+                      aria-live="polite"
+                      className="sr-only"
+                      data-testid="desktop-cm-session-layout-reorder-history-filter-preset-summary"
+                      id={sessionLayoutReorderHistoryFilterPresetSummaryId}
+                      role="status"
+                    >
+                      {sessionLayoutReorderHistoryFilterPresetSummary}
+                    </p>
                     {desktopCmSessionLayoutReorderHistoryFilterPresets.map((preset) => {
                       const active = activeSessionLayoutReorderHistoryFilterPreset?.id === preset.id;
                       return (
                         <button
                           key={preset.id}
+                          aria-label={sessionLayoutReorderHistoryFilterPresetLabel(preset)}
                           aria-pressed={active}
                           className={`h-7 flex-1 rounded-[6px] px-2 text-xs font-semibold transition sm:flex-none ${
                             active ? 'bg-[rgba(42,111,151,0.14)] text-[rgba(23,68,93,0.92)]' : 'text-[rgba(60,60,67,0.58)] hover:bg-white/70'
