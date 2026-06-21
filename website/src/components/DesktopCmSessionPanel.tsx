@@ -2808,7 +2808,8 @@ export function DesktopCmSessionPanel({
                         aria-describedby={`${sessionLayoutReorderHistoryFilterPresetHelpTooltipId} ${sessionLayoutReorderHistoryFilterPresetHelpTooltipContrastDescriptionId}`}
                         aria-label={sessionLayoutReorderHistoryFilterPresetDiscoverabilityHint}
                         aria-keyshortcuts="Enter Space"
-                        className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-[6px] border border-[rgba(42,111,151,0.16)] bg-[rgba(255,255,255,0.76)] text-[rgba(42,111,151,0.82)] transition hover:bg-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[rgba(42,111,151,0.45)]"
+                        className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-[6px] border border-[rgba(42,111,151,0.16)] bg-[rgba(255,255,255,0.76)] text-[rgba(42,111,151,0.82)] transition hover:bg-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0f4f68] focus-visible:ring-2 focus-visible:ring-[#8bd3f7] focus-visible:ring-offset-2 focus-visible:ring-offset-[#f8fcff]"
+                        data-focus-visible="high-safe-ring"
                         data-testid="desktop-cm-session-layout-reorder-history-filter-preset-discoverability-hint"
                         id={sessionLayoutReorderHistoryFilterPresetDiscoverabilityHintId}
                         title={sessionLayoutReorderHistoryFilterPresetDiscoverabilityHint}
