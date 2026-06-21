@@ -48,6 +48,8 @@ Desktop CM saved layout preset folder keyboard polish is desktop-only UI state. 
 
 Desktop CM saved layout preset folder accessibility polish is desktop-only UI metadata. Folder rows expose labelled list/listitem semantics, active descendant, safe count/action descriptions, toggle controls, action labels, rename editor labels, and collapsed/expanded live status without adding visible keyboard instruction text or changing export/import/Tauri/session data.
 
+Desktop CM saved layout preset folder empty-state polish is desktop-only UI state. It distinguishes initial no-layout, search empty, folder-filter empty, and selected-folder zero-visible-preset states with safe search/folder context only. It does not persist empty-state state, change export/import/Tauri schemas, or mix with credentials, runtime profiles, diagnostic history, Events, or logs.
+
 The old remote server profile UX is prototype-only. It stores only the selected Kuviewer server URL in browser `localStorage`; admin tokens remain session-only, and profile changes clear the current token. The current CM/SSH session manager clears that legacy profile in desktop runtime and keeps it out of the product UI.
 
 ## Local Sidecar Runtime
@@ -91,7 +93,7 @@ The active automated desktop runtime smoke uses a stubbed Tauri bridge rather th
 node scripts/smoke-desktop-cm-sessions.mjs --url http://127.0.0.1:4174/kuviewer/
 ```
 
-The smoke verifies CM/SSH session save/select, safe metadata clone drafts, safe metadata export/import, desktop CM session bulk selection/actions, desktop CM session saved layouts, desktop CM session layout preset rename, desktop CM session layout preset duplicate, desktop CM session layout folder filter/actions, desktop CM session layout import/export, layout conflict preview actions, per-row conflict actions, private-key import command flow, connection check command flow, CM tunnel/runtime start/stop, runtime health recheck, runtime-lost cleanup, safe diagnostic UI/search, desktop CM diagnostic filtering, desktop CM diagnostic saved filters, sessionStorage-only runtime profile cleanup, credential deletion, and session deletion through a stubbed Tauri bridge. It confirms the web runtime does not expose SSH session UI, checks that no admin token or legacy API profile is stored, and verifies private key bodies are not captured by browser state.
+The smoke verifies CM/SSH session save/select, safe metadata clone drafts, safe metadata export/import, desktop CM session bulk selection/actions, desktop CM session saved layouts, desktop CM session layout preset rename, desktop CM session layout preset duplicate, desktop CM session layout folder filter/actions/empty state, desktop CM session layout import/export, layout conflict preview actions, per-row conflict actions, private-key import command flow, connection check command flow, CM tunnel/runtime start/stop, runtime health recheck, runtime-lost cleanup, safe diagnostic UI/search, desktop CM diagnostic filtering, desktop CM diagnostic saved filters, sessionStorage-only runtime profile cleanup, credential deletion, and session deletion through a stubbed Tauri bridge. It confirms the web runtime does not expose SSH session UI, checks that no admin token or legacy API profile is stored, and verifies private key bodies are not captured by browser state.
 
 The historical `scripts/smoke-desktop-keychain-runtime.mjs` helper remains available for prototype-only keychain runtime checks outside the current product UI.
 
