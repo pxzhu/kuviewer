@@ -651,6 +651,22 @@ export function DesktopCmSessionPanel({
     }
   };
 
+  const handleDuplicateSessionLayoutPreset = (preset: DesktopCmSessionLayoutPreset) => {
+    setSessionLayoutImportConflicts(null);
+    handleCancelRenameSessionLayoutPreset();
+    setSessionLayoutPresets((current) => {
+      const existingNames = new Set(current.map((item) => item.name.toLowerCase()));
+      const duplicatedPreset: DesktopCmSessionLayoutPreset = {
+        name: buildDesktopCmSessionLayoutDuplicateName(preset.name, existingNames),
+        viewPreferences: normalizeDesktopCmSessionViewPreferences(preset.viewPreferences),
+        updatedAt: Date.now(),
+      };
+      const nextPresets = normalizeDesktopCmSessionLayoutPresets([duplicatedPreset, ...current]).slice(0, maxDesktopCmSessionLayoutPresets);
+      writeDesktopCmSessionLayoutPresets(nextPresets);
+      return nextPresets;
+    });
+  };
+
   const handleApplySessionLayoutPreset = (preset: DesktopCmSessionLayoutPreset) => {
     setSessionLayoutImportConflicts(null);
     handleCancelRenameSessionLayoutPreset();
@@ -1775,6 +1791,15 @@ export function DesktopCmSessionPanel({
                           </button>
                           <button
                             className="rounded-full p-0.5 hover:bg-[rgba(60,60,67,0.08)]"
+                            data-testid={`desktop-cm-session-layout-duplicate-${presetSlug}`}
+                            type="button"
+                            title={`${preset.name} 복제`}
+                            onClick={() => handleDuplicateSessionLayoutPreset(preset)}
+                          >
+                            <Copy size={12} aria-hidden="true" />
+                          </button>
+                          <button
+                            className="rounded-full p-0.5 hover:bg-[rgba(60,60,67,0.08)]"
                             data-testid={`desktop-cm-session-layout-delete-${presetSlug}`}
                             type="button"
                             title={`${preset.name} 삭제`}
@@ -2615,6 +2640,19 @@ function buildDesktopCmSessionLayoutImportName(baseName: string, existingNames: 
     }
   }
   return normalizeDesktopCmSessionLayoutPresetName(`Imported layout ${Date.now()}`);
+}
+
+function buildDesktopCmSessionLayoutDuplicateName(baseName: string, existingNames: Set<string>) {
+  const normalizedBase = normalizeDesktopCmSessionLayoutPresetName(baseName);
+  for (let index = 1; index <= maxDesktopCmSessionLayoutPresets + 1; index += 1) {
+    const suffix = index === 1 ? ' copy' : ` copy ${index}`;
+    const candidateBase = normalizedBase.slice(0, Math.max(1, maxDesktopCmSessionLayoutPresetNameLength - suffix.length)).trim();
+    const candidateName = normalizeDesktopCmSessionLayoutPresetName(`${candidateBase}${suffix}`);
+    if (!existingNames.has(candidateName.toLowerCase())) {
+      return candidateName;
+    }
+  }
+  return normalizeDesktopCmSessionLayoutPresetName(`Layout copy ${Date.now().toString(36).slice(-6)}`);
 }
 
 function desktopCmSessionLayoutEqual(left: DesktopCmSessionViewPreferences, right: DesktopCmSessionViewPreferences) {

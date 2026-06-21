@@ -415,6 +415,21 @@ async function smokeDesktopRuntime(browser, url) {
     await page.getByTestId('desktop-cm-session-layout-rename-input-ops-primary').fill('Ops View');
     await page.getByTestId('desktop-cm-session-layout-rename-save-ops-primary').click();
     await page.getByTestId('desktop-cm-session-layout-ops-view').waitFor({ state: 'visible', timeout: 10_000 });
+    await page.getByTestId('desktop-cm-session-layout-duplicate-ops-view').click();
+    await page.getByTestId('desktop-cm-session-layout-ops-view-copy').waitFor({ state: 'visible', timeout: 10_000 });
+    sessionLayoutStorage = await page.evaluate(() => window.localStorage.getItem('kuviewer_desktop_cm_session_layout_presets') || '');
+    requireCondition(sessionLayoutStorage.includes('Ops View copy'), 'desktop CM session layout duplicate must create a copy with safe layout metadata');
+    requireCondition(sessionLayoutStorage.includes('collapsedGroups') && sessionLayoutStorage.includes('"favorite":true'), 'desktop CM session layout duplicate must preserve saved layout preferences');
+    requireCondition(!sessionLayoutStorage.includes('cm.example.internal'), 'desktop CM session layout duplicate must not include session endpoint metadata');
+    for (const forbiddenField of ['host', 'remoteApiHost', 'credentialAvailable', 'runtimeStatus', 'diagnosticMessage', 'serverUrl', 'adminToken', 'BEGIN OPENSSH PRIVATE KEY']) {
+      requireCondition(!sessionLayoutStorage.includes(forbiddenField), `desktop CM session layout duplicate must not include ${forbiddenField}`);
+    }
+    await page.getByTestId('desktop-cm-session-layout-search').fill('copy');
+    sessionLayoutSearchCount = await page.getByTestId('desktop-cm-session-layout-search-count').textContent();
+    requireCondition(sessionLayoutSearchCount?.includes('1 / 전체 2'), 'desktop CM session layout search must match duplicated layout metadata');
+    await page.getByTestId('desktop-cm-session-layout-search-clear').click();
+    await page.getByTestId('desktop-cm-session-layout-delete-ops-view-copy').click();
+    await page.getByTestId('desktop-cm-session-layout-ops-view-copy').waitFor({ state: 'hidden', timeout: 10_000 });
     const layoutDownloadPromise = page.waitForEvent('download');
     await page.getByTestId('desktop-cm-session-layout-export').click();
     const layoutDownload = await layoutDownloadPromise;

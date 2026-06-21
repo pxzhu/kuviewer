@@ -51,6 +51,7 @@ requireCondition(
     'desktop-cm-session-layout-conflict-accessibility',
     'desktop-cm-session-layout-preset-search',
     'desktop-cm-session-layout-preset-rename',
+    'desktop-cm-session-layout-preset-duplicate',
   ].includes(spec.status),
   'status must be a known desktop packaging milestone'
 );
@@ -106,6 +107,7 @@ requireCondition(phases.includes('desktop-cm-session-layout-conflict-keyboard'),
 requireCondition(phases.includes('desktop-cm-session-layout-conflict-accessibility'), 'phaseOrder must include desktop-cm-session-layout-conflict-accessibility');
 requireCondition(phases.includes('desktop-cm-session-layout-preset-search'), 'phaseOrder must include desktop-cm-session-layout-preset-search');
 requireCondition(phases.includes('desktop-cm-session-layout-preset-rename'), 'phaseOrder must include desktop-cm-session-layout-preset-rename');
+requireCondition(phases.includes('desktop-cm-session-layout-preset-duplicate'), 'phaseOrder must include desktop-cm-session-layout-preset-duplicate');
 
 await validateBuildPrerequisites(spec);
 await validateDesktopDistributionPolicy(spec);
@@ -147,6 +149,7 @@ if (
     'desktop-cm-session-layout-conflict-accessibility',
     'desktop-cm-session-layout-preset-search',
     'desktop-cm-session-layout-preset-rename',
+    'desktop-cm-session-layout-preset-duplicate',
   ].includes(spec.status)
 ) {
   await validateTauriScaffold(spec.tauri || {});
@@ -767,6 +770,7 @@ async function validateCmSshSessionManager(spec) {
       'session-layout-conflict-accessibility',
       'session-layout-preset-search',
       'session-layout-preset-rename',
+      'session-layout-preset-duplicate',
     ].includes(manager.status),
     'cmSshSessionManager.status must be a known CM/SSH session manager milestone'
   );
@@ -1044,6 +1048,34 @@ async function validateCmSshSessionManager(spec) {
   ]) {
     requireCondition(sessionLayoutPresetRename[flag] === true, `cmSshSessionManager.sessionLayoutPresetRename.${flag} must be true`);
   }
+  const sessionLayoutPresetDuplicate = manager.sessionLayoutPresetDuplicate || {};
+  requireCondition(sessionLayoutPresetDuplicate.desktopOnly === true, 'cmSshSessionManager.sessionLayoutPresetDuplicate.desktopOnly must be true');
+  requireCondition(sessionLayoutPresetDuplicate.uiOnly === true, 'cmSshSessionManager.sessionLayoutPresetDuplicate.uiOnly must be true');
+  requireCondition(sessionLayoutPresetDuplicate.usesExistingLayoutStorage === 'kuviewer_desktop_cm_session_layout_presets', 'cmSshSessionManager.sessionLayoutPresetDuplicate.usesExistingLayoutStorage must be kuviewer_desktop_cm_session_layout_presets');
+  requireCondition(sessionLayoutPresetDuplicate.nameConflictPolicy === 'append-copy-suffix', 'cmSshSessionManager.sessionLayoutPresetDuplicate.nameConflictPolicy must be append-copy-suffix');
+  requireCondition(sessionLayoutPresetDuplicate.maxNameLength === 40, 'cmSshSessionManager.sessionLayoutPresetDuplicate.maxNameLength must be 40');
+  requireCondition(sessionLayoutPresetDuplicate.maxPresets === 8, 'cmSshSessionManager.sessionLayoutPresetDuplicate.maxPresets must be 8');
+  for (const flag of [
+    'insertsCopyAtTop',
+    'preservesViewPreferences',
+    'preservesSearchQuery',
+    'normalizesOrder',
+    'noSessionExportImportSchemaChange',
+    'noLayoutExportImportSchemaChange',
+    'noTauriSchemaChange',
+    'noSessionSearch',
+    'noDiagnosticFilters',
+    'noEndpointMetadata',
+    'noCredentialPayload',
+    'noRuntimeProfile',
+    'noDiagnosticHistory',
+    'noToken',
+    'noKubeconfig',
+    'noSecretValues',
+    'noEventsOrLogs',
+  ]) {
+    requireCondition(sessionLayoutPresetDuplicate[flag] === true, `cmSshSessionManager.sessionLayoutPresetDuplicate.${flag} must be true`);
+  }
   const sessionLayoutImportExport = manager.sessionLayoutImportExport || {};
   requireCondition(sessionLayoutImportExport.desktopOnly === true, 'cmSshSessionManager.sessionLayoutImportExport.desktopOnly must be true');
   requireCondition(sessionLayoutImportExport.uiOnly === true, 'cmSshSessionManager.sessionLayoutImportExport.uiOnly must be true');
@@ -1267,6 +1299,7 @@ async function validateCmSshSessionManager(spec) {
     'desktop-cm-session-layout-rename-save-',
     'desktop-cm-session-layout-rename-cancel-',
     'desktop-cm-session-layout-rename-error',
+    'desktop-cm-session-layout-duplicate-',
     'desktop-cm-session-layout-export',
     'desktop-cm-session-layout-import',
     'desktop-cm-session-layout-conflict-preview',
@@ -1291,6 +1324,8 @@ async function validateCmSshSessionManager(spec) {
     'handleStartRenameSessionLayoutPreset',
     'handleSaveRenamedSessionLayoutPreset',
     'handleCancelRenameSessionLayoutPreset',
+    'handleDuplicateSessionLayoutPreset',
+    'buildDesktopCmSessionLayoutDuplicateName',
     'handleSessionLayoutConflictKeyDown',
     'handleMoveActiveSessionLayoutConflict',
     'handleResolveActiveSessionLayoutConflict',
@@ -1459,6 +1494,7 @@ async function validateCmSshSessionManager(spec) {
     'desktop-cm-session-layout-rename-save-',
     'desktop-cm-session-layout-rename-cancel-',
     'desktop-cm-session-layout-rename-error',
+    'desktop-cm-session-layout-duplicate-',
     'desktop-cm-session-layout-export',
     'desktop-cm-session-layout-import',
     'desktop-cm-session-layout-import-summary',
@@ -1484,6 +1520,8 @@ async function validateCmSshSessionManager(spec) {
     'handleStartRenameSessionLayoutPreset',
     'handleSaveRenamedSessionLayoutPreset',
     'handleCancelRenameSessionLayoutPreset',
+    'handleDuplicateSessionLayoutPreset',
+    'buildDesktopCmSessionLayoutDuplicateName',
     'handleSessionLayoutConflictKeyDown',
     'handleMoveActiveSessionLayoutConflict',
     'handleResolveActiveSessionLayoutConflict',
@@ -1585,6 +1623,8 @@ async function validateCmSshSessionManager(spec) {
     'desktop CM session layout save must persist safe layout metadata',
     'desktop CM session layout rename must update only preset name metadata',
     'desktop CM session layout rename draft must stay memory-only',
+    'desktop CM session layout duplicate must create a copy with safe layout metadata',
+    'desktop CM session layout duplicate must not include session endpoint metadata',
     'desktop CM session layout apply must restore group and favorite preferences',
     'desktop CM session layout delete must remove saved layout',
     'desktop CM session layout preset must not include session endpoint metadata',
