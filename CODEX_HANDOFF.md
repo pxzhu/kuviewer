@@ -199,7 +199,8 @@ https://kuviewer.example.com/
    - Desktop CM session layout preset folder action polish는 완료됐다. Folder header에서 visible preset 선택과 folder rename을 제공하며 rename은 safe `folder` metadata만 업데이트하고 action draft/selection은 memory-only로 유지한다.
    - Desktop CM session layout preset folder keyboard polish는 완료됐다. Saved layout folder list focus 상태에서 ArrowUp/ArrowDown, Home/End, Enter, S, R, Escape를 지원하며 active folder/shortcut/rename draft는 memory-only이고 explicit rename만 safe `folder` metadata를 업데이트한다.
    - Desktop CM session layout preset folder accessibility polish는 완료됐다. Saved layout folder list는 labelled list/listitem, active descendant, count/action descriptions, toggle controls, action labels, rename editor group labels, collapsed/expanded live status를 제공하며 접근성 metadata는 저장/내보내기/Tauri payload에 포함하지 않는다.
-   - 다음 확장 후보는 Desktop CM session layout preset folder empty-state polish다.
+   - Desktop CM session layout preset folder empty-state polish는 완료됐다. Saved layout panel은 초기 no-layout, search empty, folder-filter empty, selected-folder zero-visible-preset 상태를 구분해 보여주며 empty-state/context는 memory-only이고 layout/session export 및 Tauri payload에는 포함하지 않는다.
+   - 다음 확장 후보는 Desktop CM session layout preset folder drag/reorder polish다.
 
 4. 실제 Kubernetes 연결 설계
    - 브라우저에 kube credential을 직접 넣지 않는 방향 유지.

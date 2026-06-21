@@ -59,6 +59,7 @@ requireCondition(
     'desktop-cm-session-layout-preset-folder-action-polish',
     'desktop-cm-session-layout-preset-folder-keyboard-polish',
     'desktop-cm-session-layout-preset-folder-accessibility-polish',
+    'desktop-cm-session-layout-preset-folder-empty-state-polish',
   ].includes(spec.status),
   'status must be a known desktop packaging milestone'
 );
@@ -122,6 +123,7 @@ requireCondition(phases.includes('desktop-cm-session-layout-preset-folder-filter
 requireCondition(phases.includes('desktop-cm-session-layout-preset-folder-action-polish'), 'phaseOrder must include desktop-cm-session-layout-preset-folder-action-polish');
 requireCondition(phases.includes('desktop-cm-session-layout-preset-folder-keyboard-polish'), 'phaseOrder must include desktop-cm-session-layout-preset-folder-keyboard-polish');
 requireCondition(phases.includes('desktop-cm-session-layout-preset-folder-accessibility-polish'), 'phaseOrder must include desktop-cm-session-layout-preset-folder-accessibility-polish');
+requireCondition(phases.includes('desktop-cm-session-layout-preset-folder-empty-state-polish'), 'phaseOrder must include desktop-cm-session-layout-preset-folder-empty-state-polish');
 
 await validateBuildPrerequisites(spec);
 await validateDesktopDistributionPolicy(spec);
@@ -171,6 +173,7 @@ if (
     'desktop-cm-session-layout-preset-folder-action-polish',
     'desktop-cm-session-layout-preset-folder-keyboard-polish',
     'desktop-cm-session-layout-preset-folder-accessibility-polish',
+    'desktop-cm-session-layout-preset-folder-empty-state-polish',
   ].includes(spec.status)
 ) {
   await validateTauriScaffold(spec.tauri || {});
@@ -799,6 +802,7 @@ async function validateCmSshSessionManager(spec) {
       'session-layout-preset-folder-action-polish',
       'session-layout-preset-folder-keyboard-polish',
       'session-layout-preset-folder-accessibility-polish',
+      'session-layout-preset-folder-empty-state-polish',
     ].includes(manager.status),
     'cmSshSessionManager.status must be a known CM/SSH session manager milestone'
   );
@@ -1364,6 +1368,42 @@ async function validateCmSshSessionManager(spec) {
     requireCondition(sessionLayoutPresetFolderAccessibility[flag] === true, `cmSshSessionManager.sessionLayoutPresetFolderAccessibility.${flag} must be true`);
   }
   requireCondition(sessionLayoutPresetFolderAccessibility.folderCollapseExported === false, 'cmSshSessionManager.sessionLayoutPresetFolderAccessibility.folderCollapseExported must be false');
+  const sessionLayoutPresetFolderEmptyState = manager.sessionLayoutPresetFolderEmptyState || {};
+  requireCondition(sessionLayoutPresetFolderEmptyState.desktopOnly === true, 'cmSshSessionManager.sessionLayoutPresetFolderEmptyState.desktopOnly must be true');
+  requireCondition(sessionLayoutPresetFolderEmptyState.uiOnly === true, 'cmSshSessionManager.sessionLayoutPresetFolderEmptyState.uiOnly must be true');
+  requireCondition(sessionLayoutPresetFolderEmptyState.stateStorage === 'memory-only', 'cmSshSessionManager.sessionLayoutPresetFolderEmptyState.stateStorage must be memory-only');
+  requireCondition(sessionLayoutPresetFolderEmptyState.usesExistingLayoutStorage === 'kuviewer_desktop_cm_session_layout_presets', 'cmSshSessionManager.sessionLayoutPresetFolderEmptyState.usesExistingLayoutStorage must be kuviewer_desktop_cm_session_layout_presets');
+  for (const flag of [
+    'initialEmptyState',
+    'searchEmptyState',
+    'folderFilterEmptyState',
+    'folderRowEmptyState',
+    'safeContextSummary',
+    'preservesSelectedFolderRowWhenFilteredEmpty',
+    'preservesSearchQuery',
+    'preservesFolderFilter',
+    'preservesPresetNames',
+    'preservesViewPreferences',
+    'folderMetadataExported',
+    'folderMetadataImported',
+    'sameNameGlobalUnique',
+    'noSessionExportImportSchemaChange',
+    'noLayoutExportImportSchemaChange',
+    'noTauriSchemaChange',
+    'noSessionSearch',
+    'noDiagnosticFilters',
+    'noEndpointMetadata',
+    'noCredentialPayload',
+    'noRuntimeProfile',
+    'noDiagnosticHistory',
+    'noToken',
+    'noKubeconfig',
+    'noSecretValues',
+    'noEventsOrLogs',
+  ]) {
+    requireCondition(sessionLayoutPresetFolderEmptyState[flag] === true, `cmSshSessionManager.sessionLayoutPresetFolderEmptyState.${flag} must be true`);
+  }
+  requireCondition(sessionLayoutPresetFolderEmptyState.folderCollapseExported === false, 'cmSshSessionManager.sessionLayoutPresetFolderEmptyState.folderCollapseExported must be false');
   const sessionLayoutImportExport = manager.sessionLayoutImportExport || {};
   requireCondition(sessionLayoutImportExport.desktopOnly === true, 'cmSshSessionManager.sessionLayoutImportExport.desktopOnly must be true');
   requireCondition(sessionLayoutImportExport.uiOnly === true, 'cmSshSessionManager.sessionLayoutImportExport.uiOnly must be true');
@@ -1581,6 +1621,9 @@ async function validateCmSshSessionManager(spec) {
     'desktop-cm-session-saved-layouts',
     'desktop-cm-session-layout-save',
     'desktop-cm-session-layout-',
+    'desktop-cm-session-layout-empty',
+    'desktop-cm-session-layout-search-empty',
+    'desktop-cm-session-layout-filter-empty',
     'desktop-cm-session-layout-delete-',
     'desktop-cm-session-layout-rename-',
     'desktop-cm-session-layout-rename-input-',
@@ -1618,6 +1661,7 @@ async function validateCmSshSessionManager(spec) {
     'desktop-cm-session-layout-folder-title-',
     'desktop-cm-session-layout-folder-a11y-count-',
     'desktop-cm-session-layout-folder-actions-',
+    'desktop-cm-session-layout-folder-empty-',
     'desktop-cm-session-layout-export',
     'desktop-cm-session-layout-import',
     'desktop-cm-session-layout-conflict-preview',
@@ -2064,6 +2108,12 @@ async function validateCmSshSessionManager(spec) {
     'desktop CM session layout folder keyboard state and rename draft must stay memory-only',
     'desktop CM session layout bulk select visible must select matching layout results',
     'desktop CM session layout bulk delete must require inline confirmation',
+    'desktop CM session layout initial empty state must explain safe save action',
+    'desktop CM session layout search empty state must show safe search context',
+    'desktop CM session layout folder filter empty state must show safe filter/search context',
+    'desktop CM session layout folder row empty state must be visible when selected folder has zero matches',
+    'desktop CM session layout folder empty row must keep total count visible',
+    'desktop CM session layout folder empty state must stay memory-only',
     'desktop CM session layout folder count must show saved layout presets',
     'desktop CM session layout save must persist safe folder metadata',
     'desktop CM session layout search must match saved layout folder metadata',
@@ -2132,6 +2182,7 @@ async function validateCmSshSessionManager(spec) {
     requireCondition(text.includes('folder actions') || text.includes('folder action'), `${label} must document desktop CM session layout folder actions`);
     requireCondition(text.includes('folder keyboard'), `${label} must document desktop CM session layout folder keyboard polish`);
     requireCondition(text.includes('folder accessibility'), `${label} must document desktop CM session layout folder accessibility polish`);
+    requireCondition(text.includes('folder empty state') || text.includes('folder empty-state'), `${label} must document desktop CM session layout folder empty-state polish`);
     requireCondition(text.includes('export/import') || text.includes('session export'), `${label} must document desktop CM session export/import`);
     requireCondition(text.includes('web app must not expose SSH'), `${label} must document that the web app must not expose SSH`);
   }

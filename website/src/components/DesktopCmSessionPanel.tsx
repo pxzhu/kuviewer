@@ -233,6 +233,8 @@ export function DesktopCmSessionPanel({
     return sessionLayoutPresets.find((preset) => desktopCmSessionLayoutEqual(currentLayout, pruneDesktopCmSessionViewPreferences(preset.viewPreferences, sessions)))?.name || '';
   }, [sessionLayoutPresets, sessionViewPreferences, sessions]);
   const sessionLayoutFolderFilterOptions = useMemo(() => buildDesktopCmSessionLayoutFolderFilterOptions(sessionLayoutPresets), [sessionLayoutPresets]);
+  const sessionLayoutSearchActive = normalizedSessionLayoutSearchQuery.length > 0;
+  const sessionLayoutFolderFilterActive = sessionLayoutFolderFilter !== 'all';
   const visibleSessionLayoutPresets = useMemo(
     () =>
       sessionLayoutPresets.filter(
@@ -243,8 +245,11 @@ export function DesktopCmSessionPanel({
     [normalizedSessionLayoutSearchQuery, sessionLayoutFolderFilter, sessionLayoutPresets],
   );
   const groupedSessionLayoutPresets = useMemo(
-    () => buildDesktopCmSessionLayoutFolders(sessionLayoutPresets, visibleSessionLayoutPresets, collapsedSessionLayoutFolders),
-    [collapsedSessionLayoutFolders, sessionLayoutPresets, visibleSessionLayoutPresets],
+    () =>
+      buildDesktopCmSessionLayoutFolders(sessionLayoutPresets, visibleSessionLayoutPresets, collapsedSessionLayoutFolders, {
+        includeFolders: sessionLayoutFolderFilterActive ? [sessionLayoutFolderFilter] : [],
+      }),
+    [collapsedSessionLayoutFolders, sessionLayoutFolderFilter, sessionLayoutFolderFilterActive, sessionLayoutPresets, visibleSessionLayoutPresets],
   );
   const sessionLayoutFolderNames = useMemo(() => groupedSessionLayoutPresets.map((folder) => folder.folder), [groupedSessionLayoutPresets]);
   const selectedSessionLayoutPresets = useMemo(
@@ -255,8 +260,13 @@ export function DesktopCmSessionPanel({
     () => visibleSessionLayoutPresets.filter((preset) => selectedSessionLayoutPresetNames.has(preset.name)).length,
     [selectedSessionLayoutPresetNames, visibleSessionLayoutPresets],
   );
-  const sessionLayoutSearchActive = normalizedSessionLayoutSearchQuery.length > 0;
-  const sessionLayoutFolderFilterActive = sessionLayoutFolderFilter !== 'all';
+  const sessionLayoutFilteredEmpty = sessionLayoutPresets.length > 0 && visibleSessionLayoutPresets.length === 0;
+  const sessionLayoutFilteredEmptyLabel =
+    sessionLayoutSearchActive && sessionLayoutFolderFilterActive
+      ? `${sessionLayoutFolderFilter} folder에서 "${sessionLayoutSearchQuery.trim()}"와 일치하는 saved layout 없음`
+      : sessionLayoutFolderFilterActive
+        ? `${sessionLayoutFolderFilter} folder에 표시할 saved layout 없음`
+        : `"${sessionLayoutSearchQuery.trim()}"와 일치하는 saved layout 없음`;
   const sessionLayoutConflictSummary = useMemo(() => {
     if (!sessionLayoutImportConflicts) {
       return null;
@@ -2393,6 +2403,16 @@ export function DesktopCmSessionPanel({
                       data-testid={`desktop-cm-session-layout-folder-items-${folder.slug}`}
                       id={folderItemsId}
                     >
+                        {folder.presets.length === 0 ? (
+                          <span
+                            className="flex min-w-0 items-center gap-2 rounded-[8px] border border-dashed border-[rgba(60,60,67,0.14)] bg-white/52 px-3 py-2 text-xs font-semibold text-[rgba(60,60,67,0.58)]"
+                            data-testid={`desktop-cm-session-layout-folder-empty-${folder.slug}`}
+                            role="status"
+                          >
+                            <Search size={13} aria-hidden="true" />
+                            이 folder에 일치하는 saved layout 없음
+                          </span>
+                        ) : null}
                         {folder.presets.map((preset) => {
                           const active = preset.name === activeSessionLayoutPresetName;
                           const presetSlug = slugifyTestId(preset.name);
@@ -2509,17 +2529,31 @@ export function DesktopCmSessionPanel({
                   </div>
                   );
                 })}
-                {visibleSessionLayoutPresets.length === 0 ? (
-                  <p className="text-xs font-semibold text-[rgba(60,60,67,0.58)]" data-testid="desktop-cm-session-layout-search-empty">
-                    일치하는 saved layout 없음
-                  </p>
+                {sessionLayoutFilteredEmpty ? (
+                  <div
+                    className="flex min-w-0 flex-wrap items-center gap-2 rounded-[8px] border border-dashed border-[rgba(0,122,255,0.18)] bg-[rgba(0,122,255,0.05)] px-3 py-2 text-xs font-semibold text-[rgba(60,60,67,0.68)]"
+                    data-testid={sessionLayoutFolderFilterActive ? 'desktop-cm-session-layout-filter-empty' : 'desktop-cm-session-layout-search-empty'}
+                    role="status"
+                  >
+                    <Filter size={13} aria-hidden="true" />
+                    <span>{sessionLayoutFilteredEmptyLabel}</span>
+                    <span className="font-mono text-[11px]">
+                      search={sessionLayoutSearchActive ? sessionLayoutSearchQuery.trim() : 'all'} · folder={sessionLayoutFolderFilterActive ? sessionLayoutFolderFilter : 'all'}
+                    </span>
+                  </div>
                 ) : null}
                 </div>
               </>
             ) : (
-              <p className="text-xs font-semibold text-[rgba(60,60,67,0.58)]" data-testid="desktop-cm-session-layout-empty">
-                저장된 session layout 없음
-              </p>
+              <div
+                className="flex min-w-0 flex-wrap items-center gap-2 rounded-[8px] border border-dashed border-[rgba(60,60,67,0.14)] bg-white/52 px-3 py-2 text-xs font-semibold text-[rgba(60,60,67,0.62)]"
+                data-testid="desktop-cm-session-layout-empty"
+                role="status"
+              >
+                <Folder size={13} aria-hidden="true" />
+                <span>저장된 session layout 없음</span>
+                <span className="font-mono text-[11px]">현재 layout 저장 후 folder별로 표시됨</span>
+              </div>
             )}
             <p className="text-xs font-semibold text-[rgba(60,60,67,0.58)]">
               folder, session id, group, favorite, collapsed group만 저장 · search/diagnostic/runtime/credential/export session metadata 제외
@@ -3400,7 +3434,12 @@ function buildDesktopCmSessionLayoutFolderFilterOptions(presets: DesktopCmSessio
     }));
 }
 
-function buildDesktopCmSessionLayoutFolders(allPresets: DesktopCmSessionLayoutPreset[], visiblePresets: DesktopCmSessionLayoutPreset[], collapsedFolders: Set<string>): DesktopCmSessionLayoutFolder[] {
+function buildDesktopCmSessionLayoutFolders(
+  allPresets: DesktopCmSessionLayoutPreset[],
+  visiblePresets: DesktopCmSessionLayoutPreset[],
+  collapsedFolders: Set<string>,
+  options: { includeFolders?: string[] } = {},
+): DesktopCmSessionLayoutFolder[] {
   const totalByFolder = new Map<string, number>();
   for (const preset of allPresets) {
     const folder = normalizeDesktopCmSessionLayoutFolderName(preset.folder);
@@ -3408,6 +3447,19 @@ function buildDesktopCmSessionLayoutFolders(allPresets: DesktopCmSessionLayoutPr
   }
 
   const folders = new Map<string, DesktopCmSessionLayoutFolder>();
+  for (const includeFolder of options.includeFolders || []) {
+    const folder = normalizeDesktopCmSessionLayoutFolderName(includeFolder);
+    const totalCount = totalByFolder.get(folder) || 0;
+    if (totalCount > 0 && !folders.has(folder)) {
+      folders.set(folder, {
+        folder,
+        slug: slugifyTestId(folder),
+        presets: [],
+        totalCount,
+        collapsed: collapsedFolders.has(folder),
+      });
+    }
+  }
   for (const preset of visiblePresets) {
     const folder = normalizeDesktopCmSessionLayoutFolderName(preset.folder);
     if (!folders.has(folder)) {

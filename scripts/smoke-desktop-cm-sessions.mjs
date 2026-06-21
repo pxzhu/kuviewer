@@ -368,6 +368,9 @@ async function smokeDesktopRuntime(browser, url) {
     await page.getByTestId('desktop-cm-session-group-items-production').waitFor({ state: 'hidden', timeout: 10_000 });
     sessionViewPreferenceStorage = await page.evaluate(() => window.localStorage.getItem('kuviewer_desktop_cm_session_view_preferences') || '');
     requireCondition(sessionViewPreferenceStorage.includes('collapsedGroups'), 'desktop CM session view preferences must persist collapsed group UI state');
+    await page.getByTestId('desktop-cm-session-layout-empty').waitFor({ state: 'visible', timeout: 10_000 });
+    const initialLayoutEmptyText = await page.getByTestId('desktop-cm-session-layout-empty').textContent();
+    requireCondition(initialLayoutEmptyText?.includes('저장된 session layout 없음') && initialLayoutEmptyText.includes('현재 layout 저장'), 'desktop CM session layout initial empty state must explain safe save action');
     await page.getByTestId('desktop-cm-session-layout-folder').fill('Runbooks');
     await page.getByTestId('desktop-cm-session-layout-name').fill('Ops View');
     await page.getByTestId('desktop-cm-session-layout-save').click();
@@ -408,6 +411,8 @@ async function smokeDesktopRuntime(browser, url) {
     requireCondition(sessionLayoutSearchCount?.includes('1 / 전체 1'), 'desktop CM session layout search must match saved layout group metadata');
     await page.getByTestId('desktop-cm-session-layout-search').fill('no-layout-match');
     await page.getByTestId('desktop-cm-session-layout-search-empty').waitFor({ state: 'visible', timeout: 10_000 });
+    const searchEmptyText = await page.getByTestId('desktop-cm-session-layout-search-empty').textContent();
+    requireCondition(searchEmptyText?.includes('no-layout-match') && searchEmptyText.includes('folder=all'), 'desktop CM session layout search empty state must show safe search context');
     sessionLayoutSearchCount = await page.getByTestId('desktop-cm-session-layout-search-count').textContent();
     requireCondition(sessionLayoutSearchCount?.includes('0 / 전체 1'), 'desktop CM session layout search must show empty state for no matches');
     sessionLayoutStorage = await page.evaluate(() => window.localStorage.getItem('kuviewer_desktop_cm_session_layout_presets') || '');
@@ -485,6 +490,17 @@ async function smokeDesktopRuntime(browser, url) {
     requireCondition(sessionLayoutSearchCount?.includes('1 / 전체 2'), 'desktop CM session layout folder filter must narrow visible layouts');
     const sessionLayoutFolderFilterCount = await page.getByTestId('desktop-cm-session-layout-folder-filter-count').textContent();
     requireCondition(sessionLayoutFolderFilterCount?.includes('Archive'), 'desktop CM session layout folder filter count must show active folder');
+    await page.getByTestId('desktop-cm-session-layout-search').fill('no-archive-match');
+    await page.getByTestId('desktop-cm-session-layout-filter-empty').waitFor({ state: 'visible', timeout: 10_000 });
+    await page.getByTestId('desktop-cm-session-layout-folder-empty-archive').waitFor({ state: 'visible', timeout: 10_000 });
+    const archiveEmptyText = await page.getByTestId('desktop-cm-session-layout-filter-empty').textContent();
+    const archiveFolderEmptyText = await page.getByTestId('desktop-cm-session-layout-folder-empty-archive').textContent();
+    const archiveFolderEmptyCount = await page.getByTestId('desktop-cm-session-layout-folder-count-archive').textContent();
+    requireCondition(archiveEmptyText?.includes('Archive folder') && archiveEmptyText.includes('no-archive-match'), 'desktop CM session layout folder filter empty state must show safe filter/search context');
+    requireCondition(archiveFolderEmptyText?.includes('일치하는 saved layout 없음'), 'desktop CM session layout folder row empty state must be visible when selected folder has zero matches');
+    requireCondition(archiveFolderEmptyCount?.includes('0 / 1'), 'desktop CM session layout folder empty row must keep total count visible');
+    sessionLayoutStorage = await page.evaluate(() => window.localStorage.getItem('kuviewer_desktop_cm_session_layout_presets') || '');
+    requireCondition(!sessionLayoutStorage.includes('no-archive-match') && !sessionLayoutStorage.includes('folder-empty'), 'desktop CM session layout folder empty state must stay memory-only');
     await page.getByTestId('desktop-cm-session-layout-search').fill('copy');
     sessionLayoutSearchCount = await page.getByTestId('desktop-cm-session-layout-search-count').textContent();
     requireCondition(sessionLayoutSearchCount?.includes('1 / 전체 2'), 'desktop CM session layout folder filter must combine with layout search');
