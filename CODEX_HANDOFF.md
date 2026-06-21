@@ -208,7 +208,8 @@ https://kuviewer.example.com/
    - Desktop CM session layout preset folder reorder status wording polish는 완료됐다. Reorder live status는 `Reorder ready`, `Reorder unavailable`, `Reorder unchanged`, `Reorder complete`, `Focus restored` prefix를 사용하고 keyboard reorder 성공 시 safe folder/preset scope와 최종 position count를 포함하며 drag/drop reorder도 완료 메시지를 낸다. Status wording은 memory-only이고 저장/내보내기/Tauri payload에는 포함하지 않는다.
    - Desktop CM session layout preset folder reorder status history polish는 완료됐다. Saved layout panel은 최근 5개 reorder/focus status를 newest-first로 표시하고 최신 summary와 clear action을 제공하며 history는 memory-only이고 저장/내보내기/Tauri payload에는 포함하지 않는다.
    - Desktop CM session layout preset folder reorder status history filter polish는 완료됐다. Reorder history는 safe scope/status prefix 기준으로 필터링하고 matched/total count, empty state, filter clear를 제공하며 filter state는 memory-only이고 저장/내보내기/Tauri payload에는 포함하지 않는다.
-   - 다음 확장 후보는 Desktop CM session layout preset folder reorder status history timestamp polish다.
+   - Desktop CM session layout preset folder reorder status history timestamp polish는 완료됐다. Reorder history row는 relative age, exact local timestamp, ISO `dateTime`, title/aria timestamp를 표시하고 latest summary에도 age를 표시하며 timestamp display state는 memory-only이고 저장/내보내기/Tauri payload에는 포함하지 않는다.
+   - 다음 확장 후보는 Desktop CM session layout preset folder reorder status history timestamp accessibility polish다.
 
 4. 실제 Kubernetes 연결 설계
    - 브라우저에 kube credential을 직접 넣지 않는 방향 유지.

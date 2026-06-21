@@ -77,6 +77,8 @@ Desktop CM saved layout folder reorder status history polish is desktop-only UI 
 
 Desktop CM saved layout folder reorder status history filter polish is desktop-only UI state. Reorder history can be filtered by safe scope (`folder`, `preset`, `focus`, `system`) and status prefix, with matched/total counts, an empty state, and a filter clear action. Filter state stays in browser memory only and is not stored, exported, sent through Tauri, or mixed with credentials, runtime profiles, diagnostics, Events, or logs.
 
+Desktop CM saved layout folder reorder status history timestamp polish is desktop-only UI state. Each reorder history row now shows a relative age, exact local timestamp, ISO `dateTime`, and timestamp title/aria label, while the latest summary also shows age. Timestamp display state stays in browser memory only and is not stored, exported, sent through Tauri, or mixed with credentials, runtime profiles, diagnostics, Events, or logs.
+
 Existing remote API profile, local sidecar, and direct Kubernetes/keychain paths remain prototype-only scaffolds. The local sidecar no longer starts by default in the desktop product path; it requires `KUVIEWER_DESKTOP_ENABLE_PROTOTYPE_SIDECAR=1` for explicit prototype work. The web app must not expose SSH.
 
 The Flow view is intended to feel closer to real request movement than a generic resource graph. It derives paths such as:
