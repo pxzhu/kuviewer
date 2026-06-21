@@ -107,6 +107,8 @@ Desktop CM saved layout folder reorder status history timestamp filter preset he
 
 Desktop CM saved layout folder reorder status history timestamp filter preset help tooltip focus-visible accessibility polish is desktop-only UI metadata. The help button and preset group now reference a hidden focus-visible note that describes the high-contrast outline, ring, and offset policy for keyboard users without adding visible instruction text. Help tooltip focus-visible accessibility metadata stays in browser memory/rendered DOM only and is not stored, exported, sent through Tauri, or mixed with credentials, runtime profiles, diagnostics, Events, or logs.
 
+Desktop CM saved layout folder reorder status history timestamp filter preset help tooltip focus-visible keyboard smoke polish is desktop-only verification metadata. The desktop smoke now tabs from the density controls to the help button and verifies the `:focus-visible` outline, ring, tooltip visibility, and safe live status without adding visible instruction text. Help tooltip focus-visible keyboard smoke metadata stays in rendered DOM/test state only and is not stored, exported, sent through Tauri, or mixed with credentials, runtime profiles, diagnostics, Events, or logs.
+
 Existing remote API profile, local sidecar, and direct Kubernetes/keychain paths remain prototype-only scaffolds. The local sidecar no longer starts by default in the desktop product path; it requires `KUVIEWER_DESKTOP_ENABLE_PROTOTYPE_SIDECAR=1` for explicit prototype work. The web app must not expose SSH.
 
 The Flow view is intended to feel closer to real request movement than a generic resource graph. It derives paths such as:

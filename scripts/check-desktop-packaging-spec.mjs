@@ -84,6 +84,7 @@ requireCondition(
     'desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-contrast-accessibility-polish',
     'desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-polish',
     'desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-accessibility-polish',
+    'desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-keyboard-smoke-polish',
   ].includes(spec.status),
   'status must be a known desktop packaging milestone'
 );
@@ -241,6 +242,10 @@ requireCondition(
   phases.includes('desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-accessibility-polish'),
   'phaseOrder must include desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-accessibility-polish'
 );
+requireCondition(
+  phases.includes('desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-keyboard-smoke-polish'),
+  'phaseOrder must include desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-keyboard-smoke-polish'
+);
 
 await validateBuildPrerequisites(spec);
 await validateDesktopDistributionPolicy(spec);
@@ -315,6 +320,7 @@ if (
     'desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-contrast-accessibility-polish',
     'desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-polish',
     'desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-accessibility-polish',
+    'desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-keyboard-smoke-polish',
   ].includes(spec.status)
 ) {
   await validateTauriScaffold(spec.tauri || {});
@@ -3021,6 +3027,7 @@ async function validateCmSshSessionManager(spec) {
     'smokeCoversTooltipContrastAccessibility',
     'smokeCoversFocusVisibleRing',
     'smokeCoversFocusVisibleAccessibility',
+    'smokeCoversFocusVisibleKeyboard',
     'smokeCoversNoPersistence',
     'noPresetPersistence',
     'hiddenShortcutHintPreserved',
@@ -3855,6 +3862,7 @@ async function validateCmSshSessionManager(spec) {
     'desktop_import_cm_session_private_key',
     'desktop_delete_cm_session_credential',
     'desktop_check_cm_session',
+    "element.matches(':focus-visible')",
     'desktop-cm-session-panel',
     'web runtime must not expose desktop CM/SSH session UI',
     'desktop CM smoke must not store admin token',
@@ -3988,6 +3996,8 @@ async function validateCmSshSessionManager(spec) {
     'desktop CM session layout reorder history timestamp filter preset keyboard shortcuts must move focus and apply presets without persistence',
     'desktop CM session layout reorder history timestamp filter preset shortcut hints must expose hidden hint title and aria-keyshortcuts without persistence',
     'desktop CM session layout reorder history timestamp filter preset discoverability smoke must expose accessible UI-only visible help with high-contrast focus-visible ring without persistence',
+    'desktop CM session layout reorder history timestamp filter preset help focus-visible keyboard smoke must tab to help button',
+    'desktop CM session layout reorder history timestamp filter preset help focus-visible keyboard smoke must verify Tab focus ring and tooltip without persistence',
     'desktop CM session layout reorder history timestamp filter preset help tooltip must expose accessible high-contrast viewport-safe hover tooltip without persistence',
     'desktop CM session layout reorder history timestamp filter preset help tooltip must remain visible on focus',
     'desktop CM session layout reorder history timestamp filter preset help focus must announce focus action',
@@ -4094,6 +4104,7 @@ async function validateCmSshSessionManager(spec) {
     requireCondition(text.includes('reorder status history timestamp filter preset help tooltip contrast accessibility'), `${label} must document desktop CM session layout folder reorder status history timestamp filter preset help tooltip contrast accessibility polish`);
     requireCondition(text.includes('reorder status history timestamp filter preset help tooltip focus-visible'), `${label} must document desktop CM session layout folder reorder status history timestamp filter preset help tooltip focus-visible polish`);
     requireCondition(text.includes('reorder status history timestamp filter preset help tooltip focus-visible accessibility'), `${label} must document desktop CM session layout folder reorder status history timestamp filter preset help tooltip focus-visible accessibility polish`);
+    requireCondition(text.includes('reorder status history timestamp filter preset help tooltip focus-visible keyboard smoke'), `${label} must document desktop CM session layout folder reorder status history timestamp filter preset help tooltip focus-visible keyboard smoke polish`);
     requireCondition(text.includes('export/import') || text.includes('session export'), `${label} must document desktop CM session export/import`);
     requireCondition(text.includes('web app must not expose SSH'), `${label} must document that the web app must not expose SSH`);
   }
