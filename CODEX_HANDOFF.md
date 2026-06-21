@@ -226,7 +226,8 @@ https://kuviewer.example.com/
    - Desktop CM session layout preset folder reorder status history timestamp filter preset help tooltip focus-visible accessibility polish는 완료됐다. Help button과 preset group은 hidden focus-visible note를 `aria-describedby`로 참조하며 focus-visible accessibility metadata는 memory/rendered DOM-only이고 저장/내보내기/Tauri payload에는 포함하지 않는다.
    - Desktop CM session layout preset folder reorder status history timestamp filter preset help tooltip focus-visible keyboard smoke polish는 완료됐다. Desktop smoke는 density controls에서 Tab으로 help button에 진입해 `:focus-visible` outline/ring, tooltip visibility, safe live status를 검증하며 keyboard smoke metadata는 rendered DOM/test state-only이고 저장/내보내기/Tauri payload에는 포함하지 않는다.
    - Desktop CM session layout preset folder reorder status history timestamp filter preset help tooltip focus-visible visual polish는 완료됐다. Help button은 focus-visible visual token으로 background/border/icon color/shadow/scale을 바꿔 keyboard focus target을 hover/idle 상태와 구분하며 visual metadata는 rendered DOM/test state-only이고 저장/내보내기/Tauri payload에는 포함하지 않는다.
-   - 다음 확장 후보는 Desktop CM session layout preset folder reorder status history timestamp filter preset help tooltip focus-visible visual regression polish다.
+   - Desktop CM session layout preset folder reorder status history timestamp filter preset help tooltip focus-visible visual regression polish는 완료됐다. Help button은 stable visual-regression marker/state/token을 노출하고 Desktop smoke는 idle/hover/focus-visible rendered style과 storage leakage를 비교해 visual regression을 잡으며 metadata는 rendered DOM/test state-only이고 저장/내보내기/Tauri payload에는 포함하지 않는다.
+   - 다음 확장 후보는 Desktop CM session layout preset folder reorder status history timestamp filter preset help tooltip focus-visible visual regression screenshot polish다.
 
 4. 실제 Kubernetes 연결 설계
    - 브라우저에 kube credential을 직접 넣지 않는 방향 유지.

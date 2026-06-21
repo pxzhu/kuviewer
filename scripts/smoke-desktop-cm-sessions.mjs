@@ -709,7 +709,31 @@ async function smokeDesktopRuntime(browser, url) {
     const layoutReorderHistoryPresetDiscoverabilityHintFocusVisibleVisual = await page
       .getByTestId('desktop-cm-session-layout-reorder-history-filter-preset-discoverability-hint')
       .getAttribute('data-focus-visible-visual');
+    const layoutReorderHistoryPresetDiscoverabilityHintVisualRegression = await page
+      .getByTestId('desktop-cm-session-layout-reorder-history-filter-preset-discoverability-hint')
+      .getAttribute('data-visual-regression');
+    const layoutReorderHistoryPresetDiscoverabilityHintVisualRegressionToken = await page
+      .getByTestId('desktop-cm-session-layout-reorder-history-filter-preset-discoverability-hint')
+      .getAttribute('data-visual-regression-token');
+    const layoutReorderHistoryPresetDiscoverabilityHintVisualRegressionIdleState = await page
+      .getByTestId('desktop-cm-session-layout-reorder-history-filter-preset-discoverability-hint')
+      .getAttribute('data-visual-regression-state');
     const layoutReorderHistoryPresetDiscoverabilityHintClass = await page.getByTestId('desktop-cm-session-layout-reorder-history-filter-preset-discoverability-hint').getAttribute('class');
+    const layoutReorderHistoryPresetHelpIdleStyles = await page
+      .getByTestId('desktop-cm-session-layout-reorder-history-filter-preset-discoverability-hint')
+      .evaluate((element) => {
+        const style = window.getComputedStyle(element);
+        const box = element.getBoundingClientRect();
+        return {
+          backgroundColor: style.backgroundColor,
+          borderColor: style.borderTopColor,
+          boxShadow: style.boxShadow,
+          color: style.color,
+          height: Math.round(box.height),
+          transform: style.transform,
+          width: Math.round(box.width),
+        };
+      });
     const layoutReorderHistoryPresetHelpTooltipRole = await page.getByTestId('desktop-cm-session-layout-reorder-history-filter-preset-help-tooltip').getAttribute('role');
     const layoutReorderHistoryPresetHelpTooltipText = await page.getByTestId('desktop-cm-session-layout-reorder-history-filter-preset-help-tooltip').textContent();
     const layoutReorderHistoryPresetHelpTooltipPlacement = await page.getByTestId('desktop-cm-session-layout-reorder-history-filter-preset-help-tooltip').getAttribute('data-placement');
@@ -740,6 +764,21 @@ async function smokeDesktopRuntime(browser, url) {
     );
     await page.getByTestId('desktop-cm-session-layout-reorder-history-filter-preset-discoverability-hint').hover();
     const layoutReorderHistoryPresetHelpTooltipVisibleOnHover = await page.getByTestId('desktop-cm-session-layout-reorder-history-filter-preset-help-tooltip').isVisible();
+    const layoutReorderHistoryPresetDiscoverabilityHintVisualRegressionHoverState = await page
+      .getByTestId('desktop-cm-session-layout-reorder-history-filter-preset-discoverability-hint')
+      .getAttribute('data-visual-regression-state');
+    const layoutReorderHistoryPresetHelpHoverStyles = await page
+      .getByTestId('desktop-cm-session-layout-reorder-history-filter-preset-discoverability-hint')
+      .evaluate((element) => {
+        const style = window.getComputedStyle(element);
+        return {
+          backgroundColor: style.backgroundColor,
+          borderColor: style.borderTopColor,
+          boxShadow: style.boxShadow,
+          color: style.color,
+          transform: style.transform,
+        };
+      });
     const originalViewportSize = page.viewportSize() || { width: 1280, height: 720 };
     await page.setViewportSize({ width: 360, height: 740 });
     await page.getByTestId('desktop-cm-session-layout-reorder-history-filter-preset-discoverability-hint').scrollIntoViewIfNeeded();
@@ -781,19 +820,25 @@ async function smokeDesktopRuntime(browser, url) {
       .getByTestId('desktop-cm-session-layout-reorder-history-filter-preset-discoverability-hint')
       .evaluate((element) => {
         const style = window.getComputedStyle(element);
+        const box = element.getBoundingClientRect();
         return {
           backgroundColor: style.backgroundColor,
           borderColor: style.borderTopColor,
           boxShadow: style.boxShadow,
           color: style.color,
           focusVisible: element.matches(':focus-visible'),
+          height: Math.round(box.height),
           outlineColor: style.outlineColor,
           outlineStyle: style.outlineStyle,
           outlineWidth: style.outlineWidth,
           scale: style.scale,
           transform: style.transform,
+          width: Math.round(box.width),
         };
       });
+    const layoutReorderHistoryPresetDiscoverabilityHintVisualRegressionFocusState = await page
+      .getByTestId('desktop-cm-session-layout-reorder-history-filter-preset-discoverability-hint')
+      .getAttribute('data-visual-regression-state');
     const layoutReorderHistoryPresetHelpTooltipVisibleAfterKeyboardTab = await page
       .getByTestId('desktop-cm-session-layout-reorder-history-filter-preset-help-tooltip')
       .isVisible();
@@ -801,6 +846,10 @@ async function smokeDesktopRuntime(browser, url) {
       .getByTestId('desktop-cm-session-layout-reorder-history-filter-preset-keyboard-status')
       .textContent();
     const sessionLayoutStorageAfterPresetHints = await page.evaluate(() => localStorage.getItem('kuviewer_desktop_cm_session_layout_presets') || '');
+    const sessionLayoutStorageVisualRegressionLeakCount = await page.evaluate(() => {
+      const needle = /visual-regression|solid-highlight-v1|desktop-cm-session-layout-reorder-history-filter-preset-help-focus-visible/i;
+      return [...Object.entries(localStorage), ...Object.entries(sessionStorage)].filter(([key, value]) => needle.test(`${key} ${value}`)).length;
+    });
     const layoutReorderHistoryPresetKeyboardStatusRole = await page.getByTestId('desktop-cm-session-layout-reorder-history-filter-preset-keyboard-status').getAttribute('role');
     const layoutReorderHistoryPresetKeyboardStatusLive = await page.getByTestId('desktop-cm-session-layout-reorder-history-filter-preset-keyboard-status').getAttribute('aria-live');
     const layoutReorderHistoryPresetKeyboardStatusAtomic = await page.getByTestId('desktop-cm-session-layout-reorder-history-filter-preset-keyboard-status').getAttribute('aria-atomic');
@@ -889,6 +938,9 @@ async function smokeDesktopRuntime(browser, url) {
         layoutReorderHistoryPresetDiscoverabilityHintDescribedBy?.includes('desktop-cm-session-layout-reorder-history-filter-preset-help-tooltip-focus-visible-description') &&
         layoutReorderHistoryPresetDiscoverabilityHintFocusVisible === 'high-safe-ring' &&
         layoutReorderHistoryPresetDiscoverabilityHintFocusVisibleVisual === 'solid-highlight' &&
+        layoutReorderHistoryPresetDiscoverabilityHintVisualRegression === 'desktop-cm-session-layout-reorder-history-filter-preset-help-focus-visible' &&
+        layoutReorderHistoryPresetDiscoverabilityHintVisualRegressionToken === 'solid-highlight-v1' &&
+        layoutReorderHistoryPresetDiscoverabilityHintVisualRegressionIdleState === 'idle' &&
         layoutReorderHistoryPresetDiscoverabilityHintClass?.includes('ku-focus-visible-solid-highlight') &&
         layoutReorderHistoryPresetDiscoverabilityHintClass.includes('focus-visible:outline-[#0f4f68]') &&
         layoutReorderHistoryPresetDiscoverabilityHintClass.includes('focus-visible:ring-2') &&
@@ -913,12 +965,29 @@ async function smokeDesktopRuntime(browser, url) {
         layoutReorderHistoryPresetHelpKeyboardFocusStyles.boxShadow !== 'none' &&
         (layoutReorderHistoryPresetHelpKeyboardFocusStyles.transform !== 'none' ||
           !['', 'none', '1'].includes(layoutReorderHistoryPresetHelpKeyboardFocusStyles.scale)) &&
+        layoutReorderHistoryPresetDiscoverabilityHintVisualRegressionFocusState === 'focus-visible' &&
         layoutReorderHistoryPresetHelpTooltipVisibleAfterKeyboardTab &&
         layoutReorderHistoryPresetHelpKeyboardFocusStatus?.includes('Preset help focused') &&
         layoutReorderHistoryPresetHelpKeyboardFocusStatus.includes('focus the active reorder history preset') &&
         !sessionLayoutStorageAfterPresetHints.includes('focus-visible keyboard smoke') &&
         !sessionLayoutStorageAfterPresetHints.includes('solid-highlight'),
       'desktop CM session layout reorder history timestamp filter preset help focus-visible visual polish must verify Tab focus color scale and tooltip without persistence'
+    );
+    requireCondition(
+      layoutReorderHistoryPresetDiscoverabilityHintVisualRegressionHoverState === 'idle' &&
+        layoutReorderHistoryPresetHelpIdleStyles.width === 28 &&
+        layoutReorderHistoryPresetHelpIdleStyles.height === 28 &&
+        layoutReorderHistoryPresetHelpKeyboardFocusStyles.width >= layoutReorderHistoryPresetHelpIdleStyles.width &&
+        layoutReorderHistoryPresetHelpKeyboardFocusStyles.height >= layoutReorderHistoryPresetHelpIdleStyles.height &&
+        layoutReorderHistoryPresetHelpIdleStyles.backgroundColor !== layoutReorderHistoryPresetHelpKeyboardFocusStyles.backgroundColor &&
+        layoutReorderHistoryPresetHelpIdleStyles.borderColor !== layoutReorderHistoryPresetHelpKeyboardFocusStyles.borderColor &&
+        layoutReorderHistoryPresetHelpIdleStyles.color !== layoutReorderHistoryPresetHelpKeyboardFocusStyles.color &&
+        layoutReorderHistoryPresetHelpIdleStyles.boxShadow !== layoutReorderHistoryPresetHelpKeyboardFocusStyles.boxShadow &&
+        layoutReorderHistoryPresetHelpIdleStyles.transform !== layoutReorderHistoryPresetHelpKeyboardFocusStyles.transform &&
+        layoutReorderHistoryPresetHelpHoverStyles.transform !== layoutReorderHistoryPresetHelpKeyboardFocusStyles.transform &&
+        layoutReorderHistoryPresetHelpHoverStyles.boxShadow !== layoutReorderHistoryPresetHelpKeyboardFocusStyles.boxShadow &&
+        sessionLayoutStorageVisualRegressionLeakCount === 0,
+      'desktop CM session layout reorder history timestamp filter preset help focus-visible visual regression polish must compare idle hover focus states without storage'
     );
     requireCondition(
       layoutReorderHistoryPresetHelpTooltipRole === 'tooltip' &&

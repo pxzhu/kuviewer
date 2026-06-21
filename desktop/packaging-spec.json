@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "name": "Kuviewer Desktop CM Session Explorer",
   "goal": "desktop-cm-session-prototype",
-  "status": "desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-visual-polish",
+  "status": "desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-visual-regression-polish",
   "recommendedPackager": "tauri",
   "fallbackPackager": "electron",
   "tauri": {
@@ -1500,6 +1500,9 @@
       "helpButtonFocusVisibleBorder": true,
       "helpButtonFocusVisibleIconColor": true,
       "helpButtonFocusVisibleScale": true,
+      "helpButtonFocusVisibleVisualRegressionMarker": true,
+      "helpButtonFocusVisibleVisualRegressionState": true,
+      "helpButtonFocusVisibleVisualRegressionToken": true,
       "smokeCoversHoverTooltip": true,
       "smokeCoversFocusTooltip": true,
       "smokeCoversNarrowViewportPlacement": true,
@@ -1509,6 +1512,8 @@
       "smokeCoversFocusVisibleAccessibility": true,
       "smokeCoversFocusVisibleKeyboard": true,
       "smokeCoversFocusVisibleVisual": true,
+      "smokeCoversFocusVisibleVisualRegression": true,
+      "smokeComparesFocusVisibleIdleHoverFocus": true,
       "smokeCoversNoPersistence": true,
       "noPresetPersistence": true,
       "hiddenShortcutHintPreserved": true,
@@ -1718,7 +1723,7 @@
       "desktop-use-sidecar-profile"
     ],
     "next": [
-      "Desktop CM session layout preset folder reorder status history timestamp filter preset help tooltip focus-visible visual regression polish"
+      "Desktop CM session layout preset folder reorder status history timestamp filter preset help tooltip focus-visible visual regression screenshot polish"
     ]
   },
   "remoteConnectionProfile": {
@@ -2020,6 +2025,7 @@
     "desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-polish",
     "desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-accessibility-polish",
     "desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-keyboard-smoke-polish",
-    "desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-visual-polish"
+    "desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-visual-polish",
+    "desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-visual-regression-polish"
   ]
 }
