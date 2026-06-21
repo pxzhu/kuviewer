@@ -38,6 +38,8 @@ Desktop CM saved layout preset bulk management keeps selection and delete confir
 
 Desktop CM saved layout preset folder polish stores only safe preset folder metadata with each saved layout, normalizes missing folders to `General`, preserves folder metadata in layout import/export, and keeps folder collapse state in a separate UI preference that is never exported/imported or sent through Tauri.
 
+Desktop CM saved layout preset folder bulk move is desktop-only UI state. It moves selected saved layout presets to a target folder from the bulk toolbar, keeps the selection and folder draft in browser memory, and writes only safe preset folder metadata to `kuviewer_desktop_cm_session_layout_presets`. It does not change CM session export/import, layout import/export schema, Tauri commands, credentials, runtime profiles, diagnostic history, Events, or logs.
+
 The old remote server profile UX is prototype-only. It stores only the selected Kuviewer server URL in browser `localStorage`; admin tokens remain session-only, and profile changes clear the current token. The current CM/SSH session manager clears that legacy profile in desktop runtime and keeps it out of the product UI.
 
 ## Local Sidecar Runtime

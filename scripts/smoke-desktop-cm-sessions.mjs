@@ -451,6 +451,12 @@ async function smokeDesktopRuntime(browser, url) {
     await page.getByTestId('desktop-cm-session-layout-bulk-toolbar').waitFor({ state: 'visible', timeout: 10_000 });
     let layoutBulkCount = await page.getByTestId('desktop-cm-session-layout-bulk-count').textContent();
     requireCondition(layoutBulkCount?.includes('선택 1개'), 'desktop CM session layout bulk row select must select one saved layout');
+    await page.getByTestId('desktop-cm-session-layout-bulk-folder-input').fill('Archive');
+    await page.getByTestId('desktop-cm-session-layout-bulk-folder-apply').click();
+    await page.getByTestId('desktop-cm-session-layout-folder-archive').waitFor({ state: 'visible', timeout: 10_000 });
+    sessionLayoutStorage = await page.evaluate(() => window.localStorage.getItem('kuviewer_desktop_cm_session_layout_presets') || '');
+    requireCondition(sessionLayoutStorage.includes('"folder":"Archive"'), 'desktop CM session layout bulk folder move must update selected folders');
+    requireCondition(!sessionLayoutStorage.includes('sessionLayoutBulkFolderName'), 'desktop CM session layout bulk folder draft must stay memory-only');
     const selectedLayoutDownloadPromise = page.waitForEvent('download');
     await page.getByTestId('desktop-cm-session-layout-bulk-export').click();
     const selectedLayoutDownload = await selectedLayoutDownloadPromise;
@@ -462,7 +468,7 @@ async function smokeDesktopRuntime(browser, url) {
         Array.isArray(selectedLayoutExportBundle.items) &&
         selectedLayoutExportBundle.items.length === 1 &&
         selectedLayoutExportBundle.items[0].name === 'Ops View copy' &&
-        selectedLayoutExportBundle.items[0].folder === 'Primary',
+        selectedLayoutExportBundle.items[0].folder === 'Archive',
       'desktop CM session layout selected export must include only selected layout presets'
     );
     const selectedLayoutExportJson = JSON.stringify(selectedLayoutExportBundle);
