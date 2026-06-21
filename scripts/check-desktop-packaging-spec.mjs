@@ -60,6 +60,7 @@ requireCondition(
     'desktop-cm-session-layout-preset-folder-keyboard-polish',
     'desktop-cm-session-layout-preset-folder-accessibility-polish',
     'desktop-cm-session-layout-preset-folder-empty-state-polish',
+    'desktop-cm-session-layout-preset-folder-drag-reorder-polish',
   ].includes(spec.status),
   'status must be a known desktop packaging milestone'
 );
@@ -124,6 +125,7 @@ requireCondition(phases.includes('desktop-cm-session-layout-preset-folder-action
 requireCondition(phases.includes('desktop-cm-session-layout-preset-folder-keyboard-polish'), 'phaseOrder must include desktop-cm-session-layout-preset-folder-keyboard-polish');
 requireCondition(phases.includes('desktop-cm-session-layout-preset-folder-accessibility-polish'), 'phaseOrder must include desktop-cm-session-layout-preset-folder-accessibility-polish');
 requireCondition(phases.includes('desktop-cm-session-layout-preset-folder-empty-state-polish'), 'phaseOrder must include desktop-cm-session-layout-preset-folder-empty-state-polish');
+requireCondition(phases.includes('desktop-cm-session-layout-preset-folder-drag-reorder-polish'), 'phaseOrder must include desktop-cm-session-layout-preset-folder-drag-reorder-polish');
 
 await validateBuildPrerequisites(spec);
 await validateDesktopDistributionPolicy(spec);
@@ -174,6 +176,7 @@ if (
     'desktop-cm-session-layout-preset-folder-keyboard-polish',
     'desktop-cm-session-layout-preset-folder-accessibility-polish',
     'desktop-cm-session-layout-preset-folder-empty-state-polish',
+    'desktop-cm-session-layout-preset-folder-drag-reorder-polish',
   ].includes(spec.status)
 ) {
   await validateTauriScaffold(spec.tauri || {});
@@ -803,6 +806,7 @@ async function validateCmSshSessionManager(spec) {
       'session-layout-preset-folder-keyboard-polish',
       'session-layout-preset-folder-accessibility-polish',
       'session-layout-preset-folder-empty-state-polish',
+      'session-layout-preset-folder-drag-reorder-polish',
     ].includes(manager.status),
     'cmSshSessionManager.status must be a known CM/SSH session manager milestone'
   );
@@ -1404,6 +1408,46 @@ async function validateCmSshSessionManager(spec) {
     requireCondition(sessionLayoutPresetFolderEmptyState[flag] === true, `cmSshSessionManager.sessionLayoutPresetFolderEmptyState.${flag} must be true`);
   }
   requireCondition(sessionLayoutPresetFolderEmptyState.folderCollapseExported === false, 'cmSshSessionManager.sessionLayoutPresetFolderEmptyState.folderCollapseExported must be false');
+  const sessionLayoutPresetFolderDragReorder = manager.sessionLayoutPresetFolderDragReorder || {};
+  requireCondition(sessionLayoutPresetFolderDragReorder.desktopOnly === true, 'cmSshSessionManager.sessionLayoutPresetFolderDragReorder.desktopOnly must be true');
+  requireCondition(sessionLayoutPresetFolderDragReorder.uiOnly === true, 'cmSshSessionManager.sessionLayoutPresetFolderDragReorder.uiOnly must be true');
+  requireCondition(sessionLayoutPresetFolderDragReorder.stateStorage === 'memory-only', 'cmSshSessionManager.sessionLayoutPresetFolderDragReorder.stateStorage must be memory-only');
+  requireCondition(sessionLayoutPresetFolderDragReorder.usesExistingLayoutStorage === 'kuviewer_desktop_cm_session_layout_presets', 'cmSshSessionManager.sessionLayoutPresetFolderDragReorder.usesExistingLayoutStorage must be kuviewer_desktop_cm_session_layout_presets');
+  requireCondition(sessionLayoutPresetFolderDragReorder.orderStorage === 'existing-preset-array-order', 'cmSshSessionManager.sessionLayoutPresetFolderDragReorder.orderStorage must be existing-preset-array-order');
+  requireCondition(sessionLayoutPresetFolderDragReorder.addsOrderField === false, 'cmSshSessionManager.sessionLayoutPresetFolderDragReorder.addsOrderField must be false');
+  for (const flag of [
+    'folderDragHandles',
+    'folderUpDownButtons',
+    'presetDragHandles',
+    'presetUpDownButtons',
+    'sameFolderPresetReorderOnly',
+    'disabledDuringSearch',
+    'disabledDuringFolderFilter',
+    'preservesPresetNames',
+    'preservesFolders',
+    'preservesViewPreferences',
+    'preservesSelection',
+    'preservesCollapseState',
+    'folderMetadataExported',
+    'folderMetadataImported',
+    'sameNameGlobalUnique',
+    'noSessionExportImportSchemaChange',
+    'noLayoutExportImportSchemaChange',
+    'noTauriSchemaChange',
+    'noSessionSearch',
+    'noDiagnosticFilters',
+    'noEndpointMetadata',
+    'noCredentialPayload',
+    'noRuntimeProfile',
+    'noDiagnosticHistory',
+    'noToken',
+    'noKubeconfig',
+    'noSecretValues',
+    'noEventsOrLogs',
+  ]) {
+    requireCondition(sessionLayoutPresetFolderDragReorder[flag] === true, `cmSshSessionManager.sessionLayoutPresetFolderDragReorder.${flag} must be true`);
+  }
+  requireCondition(sessionLayoutPresetFolderDragReorder.folderCollapseExported === false, 'cmSshSessionManager.sessionLayoutPresetFolderDragReorder.folderCollapseExported must be false');
   const sessionLayoutImportExport = manager.sessionLayoutImportExport || {};
   requireCondition(sessionLayoutImportExport.desktopOnly === true, 'cmSshSessionManager.sessionLayoutImportExport.desktopOnly must be true');
   requireCondition(sessionLayoutImportExport.uiOnly === true, 'cmSshSessionManager.sessionLayoutImportExport.uiOnly must be true');
@@ -1639,6 +1683,10 @@ async function validateCmSshSessionManager(spec) {
     'desktop-cm-session-layout-bulk-delete',
     'desktop-cm-session-layout-bulk-folder-input',
     'desktop-cm-session-layout-bulk-folder-apply',
+    'desktop-cm-session-layout-reorder-state',
+    'desktop-cm-session-layout-drag-handle-',
+    'desktop-cm-session-layout-reorder-up-',
+    'desktop-cm-session-layout-reorder-down-',
     'desktop-cm-session-layout-folder',
     'desktop-cm-session-layout-folder-',
     'desktop-cm-session-layout-folder-toggle-',
@@ -1662,6 +1710,9 @@ async function validateCmSshSessionManager(spec) {
     'desktop-cm-session-layout-folder-a11y-count-',
     'desktop-cm-session-layout-folder-actions-',
     'desktop-cm-session-layout-folder-empty-',
+    'desktop-cm-session-layout-folder-drag-handle-',
+    'desktop-cm-session-layout-folder-reorder-up-',
+    'desktop-cm-session-layout-folder-reorder-down-',
     'desktop-cm-session-layout-export',
     'desktop-cm-session-layout-import',
     'desktop-cm-session-layout-conflict-preview',
@@ -2114,6 +2165,12 @@ async function validateCmSshSessionManager(spec) {
     'desktop CM session layout folder row empty state must be visible when selected folder has zero matches',
     'desktop CM session layout folder empty row must keep total count visible',
     'desktop CM session layout folder empty state must stay memory-only',
+    'desktop CM session layout folder reorder controls must enable when search and folder filter are clear',
+    'desktop CM session layout folder reorder smoke must start with two folders',
+    'desktop CM session layout folder drag handle must be enabled when filters are clear',
+    'desktop CM session layout folder reorder down must move the first folder after the next folder',
+    'desktop CM session layout folder reorder up must restore the folder order',
+    'desktop CM session layout drag state must stay memory-only',
     'desktop CM session layout folder count must show saved layout presets',
     'desktop CM session layout save must persist safe folder metadata',
     'desktop CM session layout search must match saved layout folder metadata',
@@ -2183,6 +2240,7 @@ async function validateCmSshSessionManager(spec) {
     requireCondition(text.includes('folder keyboard'), `${label} must document desktop CM session layout folder keyboard polish`);
     requireCondition(text.includes('folder accessibility'), `${label} must document desktop CM session layout folder accessibility polish`);
     requireCondition(text.includes('folder empty state') || text.includes('folder empty-state'), `${label} must document desktop CM session layout folder empty-state polish`);
+    requireCondition(text.includes('folder drag/reorder') || text.includes('folder drag reorder'), `${label} must document desktop CM session layout folder drag/reorder polish`);
     requireCondition(text.includes('export/import') || text.includes('session export'), `${label} must document desktop CM session export/import`);
     requireCondition(text.includes('web app must not expose SSH'), `${label} must document that the web app must not expose SSH`);
   }
