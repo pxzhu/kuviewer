@@ -78,6 +78,8 @@ Desktop CM saved layout preset folder reorder status history timestamp filter pr
 
 Desktop CM saved layout preset folder reorder status history timestamp filter preset accessibility polish is desktop-only UI state. The panel links the filter preset group to hidden help and an atomic live active-preset summary, and each preset button exposes a safe scope/status/density label. Accessibility preset state stays in browser memory and adds no storage key, order field, export/import field, Tauri payload field, credential data, runtime profile, diagnostic history, Events, or logs.
 
+Desktop CM saved layout preset folder reorder status history timestamp filter preset keyboard polish is desktop-only UI state. The panel provides one roving tab stop for filter presets, Arrow/Home/End focus movement, Enter/Space activation, hidden keyboard help, and live focus status. Keyboard preset state stays in browser memory and adds no storage key, order field, export/import field, Tauri payload field, credential data, runtime profile, diagnostic history, Events, or logs.
+
 The old remote server profile UX is prototype-only. It stores only the selected Kuviewer server URL in browser `localStorage`; admin tokens remain session-only, and profile changes clear the current token. The current CM/SSH session manager clears that legacy profile in desktop runtime and keeps it out of the product UI.
 
 ## Local Sidecar Runtime
