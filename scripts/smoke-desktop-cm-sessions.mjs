@@ -451,6 +451,25 @@ async function smokeDesktopRuntime(browser, url) {
     await page.getByTestId('desktop-cm-session-layout-review-view').waitFor({ state: 'visible', timeout: 10_000 });
     await page.getByTestId('desktop-cm-session-layout-conflict-preview').waitFor({ state: 'visible', timeout: 10_000 });
     await page.getByTestId('desktop-cm-session-layout-conflict-ops-view').waitFor({ state: 'visible', timeout: 10_000 });
+    await requireTestIdFocused(page, 'desktop-cm-session-layout-conflict-preview', 'desktop CM session layout conflict preview must receive focus on open');
+    const conflictPreviewLabelledBy = await page.getByTestId('desktop-cm-session-layout-conflict-preview').getAttribute('aria-labelledby');
+    const conflictPreviewDescribedBy = await page.getByTestId('desktop-cm-session-layout-conflict-preview').getAttribute('aria-describedby');
+    requireCondition(conflictPreviewLabelledBy === 'desktop-cm-session-layout-conflict-title', 'desktop CM session layout conflict preview must be labelled by its title');
+    requireCondition(
+      conflictPreviewDescribedBy?.includes('desktop-cm-session-layout-conflict-description') &&
+        conflictPreviewDescribedBy.includes('desktop-cm-session-layout-conflict-live-status'),
+      'desktop CM session layout conflict preview must describe keyboard and live summary regions'
+    );
+    const conflictLiveStatus = await page.getByTestId('desktop-cm-session-layout-conflict-live-status').textContent();
+    requireCondition(conflictLiveStatus?.includes('0 of 1 resolved') && conflictLiveStatus.includes('1 remaining'), 'desktop CM session layout conflict live status must announce initial progress');
+    const conflictRowRole = await page.getByTestId('desktop-cm-session-layout-conflict-ops-view').getAttribute('role');
+    const conflictRowId = await page.getByTestId('desktop-cm-session-layout-conflict-ops-view').getAttribute('id');
+    const conflictRowLabel = await page.getByTestId('desktop-cm-session-layout-conflict-ops-view').getAttribute('aria-label');
+    requireCondition(conflictRowRole === 'listitem', 'desktop CM session layout conflict row must expose listitem role');
+    requireCondition(conflictRowId === 'desktop-cm-session-layout-conflict-row-ops-view', 'desktop CM session layout conflict row must expose stable id');
+    requireCondition(conflictRowLabel?.includes('Ops View') && conflictRowLabel.includes('Current layout') && conflictRowLabel.includes('Incoming layout'), 'desktop CM session layout conflict row must expose safe aria label');
+    const conflictIncomingButtonLabel = await page.getByTestId('desktop-cm-session-layout-conflict-row-use-incoming-ops-view').getAttribute('aria-label');
+    requireCondition(conflictIncomingButtonLabel === 'Use incoming layout for Ops View', 'desktop CM session layout conflict row button must expose specific aria label');
     await requireConflictActive(page, 'ops-view', true, 'desktop CM session layout conflict preview must activate the first conflict row on open');
     let layoutConflictSummaryProgress = await page.getByTestId('desktop-cm-session-layout-conflict-summary-progress').textContent();
     let layoutConflictSummaryRemaining = await page.getByTestId('desktop-cm-session-layout-conflict-summary-remaining').textContent();
@@ -522,6 +541,8 @@ async function smokeDesktopRuntime(browser, url) {
     await page.getByTestId('desktop-cm-session-layout-conflict-preview').waitFor({ state: 'visible', timeout: 10_000 });
     await page.getByTestId('desktop-cm-session-layout-conflict-review-view').waitFor({ state: 'hidden', timeout: 10_000 });
     await requireConflictActive(page, 'ops-view', true, 'desktop CM layout conflict keyboard resolution must move active row to the next remaining conflict');
+    const conflictLiveStatusAfterKeyboardResolve = await page.getByTestId('desktop-cm-session-layout-conflict-live-status').textContent();
+    requireCondition(conflictLiveStatusAfterKeyboardResolve?.includes('1 of 2 resolved') && conflictLiveStatusAfterKeyboardResolve.includes('1 remaining'), 'desktop CM session layout conflict live status must update after keyboard resolution');
     layoutConflictSummaryProgress = await page.getByTestId('desktop-cm-session-layout-conflict-summary-progress').textContent();
     layoutConflictSummaryRemaining = await page.getByTestId('desktop-cm-session-layout-conflict-summary-remaining').textContent();
     layoutConflictSummaryResolutions = await page.getByTestId('desktop-cm-session-layout-conflict-summary-resolutions').textContent();
@@ -564,6 +585,9 @@ async function smokeDesktopRuntime(browser, url) {
     await page.getByTestId('desktop-cm-session-layout-conflict-preview').focus();
     await page.keyboard.press('Escape');
     await requireConflictActive(page, 'ops-view', false, 'desktop CM layout conflict Escape must clear active row');
+    await page.keyboard.press('Escape');
+    await requireTestIdNotFocused(page, 'desktop-cm-session-layout-conflict-preview', 'desktop CM layout conflict second Escape must release preview focus');
+    await page.getByTestId('desktop-cm-session-layout-conflict-preview').focus();
     await page.keyboard.press('ArrowDown');
     await requireConflictActive(page, 'ops-view', true, 'desktop CM layout conflict ArrowDown must restore row activation after Escape');
     await page.keyboard.press('r');
@@ -1089,6 +1113,18 @@ function requireCondition(condition, message) {
 async function requireConflictActive(page, slug, expected, message) {
   const ariaCurrent = await page.getByTestId(`desktop-cm-session-layout-conflict-${slug}`).getAttribute('aria-current');
   requireCondition((ariaCurrent === 'true') === expected, message);
+}
+
+async function requireTestIdFocused(page, testId, message) {
+  await page.waitForFunction((expectedTestId) => document.activeElement?.getAttribute('data-testid') === expectedTestId, testId, { timeout: 5_000 }).catch(() => null);
+  const focusedTestId = await page.evaluate(() => document.activeElement?.getAttribute('data-testid') || '');
+  requireCondition(focusedTestId === testId, message);
+}
+
+async function requireTestIdNotFocused(page, testId, message) {
+  await page.waitForFunction((expectedTestId) => document.activeElement?.getAttribute('data-testid') !== expectedTestId, testId, { timeout: 5_000 }).catch(() => null);
+  const focusedTestId = await page.evaluate(() => document.activeElement?.getAttribute('data-testid') || '');
+  requireCondition(focusedTestId !== testId, message);
 }
 
 function requireCommandOrder(invocations, expectedOrder) {
