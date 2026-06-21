@@ -682,8 +682,23 @@ async function smokeDesktopRuntime(browser, url) {
     const layoutReorderHistoryPresetDiscoverabilityHintDescribedBy = await page.getByTestId('desktop-cm-session-layout-reorder-history-filter-preset-discoverability-hint').getAttribute('aria-describedby');
     const layoutReorderHistoryPresetHelpTooltipRole = await page.getByTestId('desktop-cm-session-layout-reorder-history-filter-preset-help-tooltip').getAttribute('role');
     const layoutReorderHistoryPresetHelpTooltipText = await page.getByTestId('desktop-cm-session-layout-reorder-history-filter-preset-help-tooltip').textContent();
+    const layoutReorderHistoryPresetHelpTooltipPlacement = await page.getByTestId('desktop-cm-session-layout-reorder-history-filter-preset-help-tooltip').getAttribute('data-placement');
+    const layoutReorderHistoryPresetHelpTooltipClass = await page.getByTestId('desktop-cm-session-layout-reorder-history-filter-preset-help-tooltip').getAttribute('class');
     await page.getByTestId('desktop-cm-session-layout-reorder-history-filter-preset-discoverability-hint').hover();
     const layoutReorderHistoryPresetHelpTooltipVisibleOnHover = await page.getByTestId('desktop-cm-session-layout-reorder-history-filter-preset-help-tooltip').isVisible();
+    const originalViewportSize = page.viewportSize() || { width: 1280, height: 720 };
+    await page.setViewportSize({ width: 360, height: 740 });
+    await page.getByTestId('desktop-cm-session-layout-reorder-history-filter-preset-discoverability-hint').scrollIntoViewIfNeeded();
+    await page.getByTestId('desktop-cm-session-layout-reorder-history-filter-preset-discoverability-hint').hover();
+    const layoutReorderHistoryPresetHelpTooltipNarrowBox = await page.getByTestId('desktop-cm-session-layout-reorder-history-filter-preset-help-tooltip').boundingBox();
+    const layoutReorderHistoryPresetHelpTooltipNarrowViewport = page.viewportSize();
+    const layoutReorderHistoryPresetHelpTooltipFitsNarrowViewport =
+      Boolean(layoutReorderHistoryPresetHelpTooltipNarrowBox && layoutReorderHistoryPresetHelpTooltipNarrowViewport) &&
+      layoutReorderHistoryPresetHelpTooltipNarrowBox.x >= 8 &&
+      layoutReorderHistoryPresetHelpTooltipNarrowBox.x + layoutReorderHistoryPresetHelpTooltipNarrowBox.width <=
+        (layoutReorderHistoryPresetHelpTooltipNarrowViewport?.width || 0) - 8;
+    await page.setViewportSize(originalViewportSize);
+    await page.getByTestId('desktop-cm-session-layout-reorder-history-filter-preset-discoverability-hint').scrollIntoViewIfNeeded();
     const sessionLayoutStorageAfterPresetHints = await page.evaluate(() => localStorage.getItem('kuviewer_desktop_cm_session_layout_presets') || '');
     const layoutReorderHistoryPresetKeyboardStatusRole = await page.getByTestId('desktop-cm-session-layout-reorder-history-filter-preset-keyboard-status').getAttribute('role');
     const layoutReorderHistoryPresetKeyboardStatusLive = await page.getByTestId('desktop-cm-session-layout-reorder-history-filter-preset-keyboard-status').getAttribute('aria-live');
@@ -776,12 +791,16 @@ async function smokeDesktopRuntime(browser, url) {
       layoutReorderHistoryPresetHelpTooltipRole === 'tooltip' &&
         layoutReorderHistoryPresetDiscoverabilityHintDescribedBy === 'desktop-cm-session-layout-reorder-history-filter-preset-help-tooltip' &&
         layoutReorderHistoryPresetHelpTooltipVisibleOnHover &&
+        layoutReorderHistoryPresetHelpTooltipPlacement === 'bottom-inline-safe' &&
+        layoutReorderHistoryPresetHelpTooltipClass?.includes('max-w-[calc(100vw-2rem)]') &&
+        layoutReorderHistoryPresetHelpTooltipClass.includes('before:') &&
+        layoutReorderHistoryPresetHelpTooltipFitsNarrowViewport &&
         layoutReorderHistoryPresetHelpTooltipText?.includes('Tooltip: All is active') &&
         layoutReorderHistoryPresetHelpTooltipText.includes('Hover or focus this help button') &&
         layoutReorderHistoryPresetHelpTooltipText.includes('UI-only and not stored') &&
         !sessionLayoutStorageAfterPresetHints.includes('Tooltip:') &&
         !sessionLayoutStorageAfterPresetHints.includes('Hover or focus this help button'),
-      'desktop CM session layout reorder history timestamp filter preset help tooltip must expose hover tooltip without persistence'
+      'desktop CM session layout reorder history timestamp filter preset help tooltip must expose hover tooltip with viewport-safe placement without persistence'
     );
     await page.getByTestId('desktop-cm-session-layout-reorder-history-filter-preset-discoverability-hint').focus();
     const layoutReorderHistoryPresetHelpTooltipVisibleOnFocus = await page.getByTestId('desktop-cm-session-layout-reorder-history-filter-preset-help-tooltip').isVisible();
