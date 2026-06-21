@@ -91,6 +91,15 @@ interface DesktopCmSessionLayoutReorderHistoryEntry {
   createdAt: number;
 }
 
+type DesktopCmSessionLayoutReorderHistoryScopeFilter = 'all' | DesktopCmSessionLayoutReorderHistoryEntry['scope'];
+type DesktopCmSessionLayoutReorderHistoryStatusFilter =
+  | 'all'
+  | 'reorder-complete'
+  | 'reorder-unavailable'
+  | 'reorder-unchanged'
+  | 'focus-restored'
+  | 'focus-unavailable';
+
 interface DesktopCmSessionViewPreference {
   sessionId: string;
   group: string;
@@ -150,6 +159,15 @@ const maxDesktopCmSessionCloneNameLength = 60;
 const maxDesktopCmSessionGroupNameLength = 40;
 const defaultDesktopCmSessionGroup = 'General';
 const defaultDesktopCmSessionLayoutFolder = 'General';
+const desktopCmSessionLayoutReorderHistoryScopeFilterOptions: DesktopCmSessionLayoutReorderHistoryScopeFilter[] = ['all', 'folder', 'preset', 'focus', 'system'];
+const desktopCmSessionLayoutReorderHistoryStatusFilterOptions: DesktopCmSessionLayoutReorderHistoryStatusFilter[] = [
+  'all',
+  'reorder-complete',
+  'reorder-unavailable',
+  'reorder-unchanged',
+  'focus-restored',
+  'focus-unavailable',
+];
 
 type CmDiagnosticStageFilter = (typeof cmDiagnosticStageFilterOptions)[number];
 type CmDiagnosticSeverityFilter = (typeof cmDiagnosticSeverityFilterOptions)[number];
@@ -199,6 +217,10 @@ export function DesktopCmSessionPanel({
   const [sessionLayoutReorderFocusTargetLabel, setSessionLayoutReorderFocusTargetLabel] = useState('');
   const [sessionLayoutReorderFocusMessage, setSessionLayoutReorderFocusMessage] = useState('');
   const [sessionLayoutReorderHistory, setSessionLayoutReorderHistory] = useState<DesktopCmSessionLayoutReorderHistoryEntry[]>(() => []);
+  const [sessionLayoutReorderHistoryScopeFilter, setSessionLayoutReorderHistoryScopeFilter] =
+    useState<DesktopCmSessionLayoutReorderHistoryScopeFilter>('all');
+  const [sessionLayoutReorderHistoryStatusFilter, setSessionLayoutReorderHistoryStatusFilter] =
+    useState<DesktopCmSessionLayoutReorderHistoryStatusFilter>('all');
   const [sessionLayoutPresets, setSessionLayoutPresets] = useState<DesktopCmSessionLayoutPreset[]>(() => readDesktopCmSessionLayoutPresets());
   const [collapsedSessionLayoutFolders, setCollapsedSessionLayoutFolders] = useState<Set<string>>(() => readDesktopCmSessionLayoutCollapsedFolders());
   const [selectedSessionLayoutPresetNames, setSelectedSessionLayoutPresetNames] = useState<Set<string>>(() => new Set());
@@ -349,7 +371,19 @@ export function DesktopCmSessionPanel({
       ? sessionLayoutReorderUnavailableReason
       : 'Reorder ready: keyboard shortcuts can move folders and presets.');
   const sessionLayoutReorderFocusLiveText = sessionLayoutReorderFocusMessage || 'Focus restoration ready: focus returns to the moved control after reorder.';
-  const sessionLayoutReorderHistoryLatestMessage = sessionLayoutReorderHistory[0]?.message || 'No reorder status history yet.';
+  const sessionLayoutReorderHistoryFiltersActive = sessionLayoutReorderHistoryScopeFilter !== 'all' || sessionLayoutReorderHistoryStatusFilter !== 'all';
+  const visibleSessionLayoutReorderHistory = useMemo(
+    () =>
+      sessionLayoutReorderHistory.filter(
+        (entry) =>
+          matchesDesktopCmSessionLayoutReorderHistoryScope(entry, sessionLayoutReorderHistoryScopeFilter) &&
+          matchesDesktopCmSessionLayoutReorderHistoryStatus(entry, sessionLayoutReorderHistoryStatusFilter),
+      ),
+    [sessionLayoutReorderHistory, sessionLayoutReorderHistoryScopeFilter, sessionLayoutReorderHistoryStatusFilter],
+  );
+  const sessionLayoutReorderHistoryLatestMessage =
+    visibleSessionLayoutReorderHistory[0]?.message ||
+    (sessionLayoutReorderHistoryFiltersActive ? 'No matching reorder status history.' : 'No reorder status history yet.');
   const activeSessionLayoutFolder = groupedSessionLayoutPresets.find((folder) => folder.folder === activeSessionLayoutFolderName);
   const activeSessionLayoutFolderIndex = sessionLayoutFolderNames.findIndex((folderName) => folderName === activeSessionLayoutFolderName);
   const sessionLayoutFolderKeyboardLiveText = activeSessionLayoutFolder
@@ -1073,6 +1107,20 @@ export function DesktopCmSessionPanel({
   const sessionLayoutReorderPositionLabel = (index: number, total: number) => `position ${index + 1} of ${total}`;
   const sessionLayoutReorderHistoryScopeLabel = (scope: DesktopCmSessionLayoutReorderHistoryEntry['scope']) =>
     scope === 'folder' ? 'Folder' : scope === 'preset' ? 'Preset' : scope === 'focus' ? 'Focus' : 'System';
+  const sessionLayoutReorderHistoryScopeFilterLabel = (scope: DesktopCmSessionLayoutReorderHistoryScopeFilter) =>
+    scope === 'all' ? 'All scopes' : sessionLayoutReorderHistoryScopeLabel(scope);
+  const sessionLayoutReorderHistoryStatusFilterLabel = (status: DesktopCmSessionLayoutReorderHistoryStatusFilter) =>
+    status === 'all'
+      ? 'All statuses'
+      : status === 'reorder-complete'
+        ? 'Reorder complete'
+        : status === 'reorder-unavailable'
+          ? 'Reorder unavailable'
+          : status === 'reorder-unchanged'
+            ? 'Reorder unchanged'
+            : status === 'focus-restored'
+              ? 'Focus restored'
+              : 'Focus unavailable';
   const sessionLayoutReorderHistoryTimeLabel = (createdAt: number) =>
     new Date(createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
   const sessionLayoutFolderReorderSuccessMessage = (folderName: string, direction: -1 | 1 | 'first' | 'last', targetIndex: number, total: number) =>
@@ -2487,23 +2535,71 @@ export function DesktopCmSessionPanel({
               >
                 <div className="flex min-w-0 flex-wrap items-center gap-2">
                   <span className="ku-chip" data-testid="desktop-cm-session-layout-reorder-history-count">
-                    최근 reorder status {sessionLayoutReorderHistory.length} / {maxDesktopCmSessionLayoutReorderHistoryEntries}
+                    최근 reorder status {visibleSessionLayoutReorderHistory.length} / 전체 {sessionLayoutReorderHistory.length}
                   </span>
                   <span className="min-w-0 flex-1 truncate text-xs font-semibold text-[rgba(60,60,67,0.62)]" data-testid="desktop-cm-session-layout-reorder-history-latest">
                     {sessionLayoutReorderHistoryLatestMessage}
                   </span>
+                  <label className="min-w-[138px]">
+                    <span className="ku-meta">Scope</span>
+                    <select
+                      className="ku-field mt-1 h-8 w-full text-xs"
+                      data-testid="desktop-cm-session-layout-reorder-history-scope-filter"
+                      value={sessionLayoutReorderHistoryScopeFilter}
+                      onChange={(event) => setSessionLayoutReorderHistoryScopeFilter(event.target.value as DesktopCmSessionLayoutReorderHistoryScopeFilter)}
+                    >
+                      {desktopCmSessionLayoutReorderHistoryScopeFilterOptions.map((option) => (
+                        <option key={option} value={option}>
+                          {sessionLayoutReorderHistoryScopeFilterLabel(option)}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="min-w-[158px]">
+                    <span className="ku-meta">Status</span>
+                    <select
+                      className="ku-field mt-1 h-8 w-full text-xs"
+                      data-testid="desktop-cm-session-layout-reorder-history-status-filter"
+                      value={sessionLayoutReorderHistoryStatusFilter}
+                      onChange={(event) => setSessionLayoutReorderHistoryStatusFilter(event.target.value as DesktopCmSessionLayoutReorderHistoryStatusFilter)}
+                    >
+                      {desktopCmSessionLayoutReorderHistoryStatusFilterOptions.map((option) => (
+                        <option key={option} value={option}>
+                          {sessionLayoutReorderHistoryStatusFilterLabel(option)}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <button
+                    className="ku-control h-8 text-xs"
+                    data-testid="desktop-cm-session-layout-reorder-history-filter-clear"
+                    type="button"
+                    disabled={!sessionLayoutReorderHistoryFiltersActive}
+                    onClick={() => {
+                      setSessionLayoutReorderHistoryScopeFilter('all');
+                      setSessionLayoutReorderHistoryStatusFilter('all');
+                    }}
+                  >
+                    <Filter size={13} aria-hidden="true" />
+                    filter clear
+                  </button>
                   <button
                     className="ku-control h-8 text-xs"
                     data-testid="desktop-cm-session-layout-reorder-history-clear"
                     type="button"
-                    onClick={() => setSessionLayoutReorderHistory([])}
+                    onClick={() => {
+                      setSessionLayoutReorderHistory([]);
+                      setSessionLayoutReorderHistoryScopeFilter('all');
+                      setSessionLayoutReorderHistoryStatusFilter('all');
+                    }}
                   >
                     <XCircle size={13} aria-hidden="true" />
                     history clear
                   </button>
                 </div>
-                <ol className="grid gap-1" data-testid="desktop-cm-session-layout-reorder-history-list">
-                  {sessionLayoutReorderHistory.map((entry) => (
+                {visibleSessionLayoutReorderHistory.length > 0 ? (
+                  <ol className="grid gap-1" data-testid="desktop-cm-session-layout-reorder-history-list">
+                    {visibleSessionLayoutReorderHistory.map((entry) => (
                     <li
                       key={entry.id}
                       className="grid gap-1 rounded-[8px] border border-[rgba(60,60,67,0.08)] bg-white/70 px-2 py-1 text-xs font-semibold text-[rgba(60,60,67,0.68)] sm:grid-cols-[auto_1fr_auto] sm:items-center"
@@ -2517,8 +2613,16 @@ export function DesktopCmSessionPanel({
                         {sessionLayoutReorderHistoryTimeLabel(entry.createdAt)}
                       </time>
                     </li>
-                  ))}
-                </ol>
+                    ))}
+                  </ol>
+                ) : (
+                  <div
+                    className="rounded-[8px] border border-dashed border-[rgba(60,60,67,0.12)] bg-white/54 px-2 py-2 text-xs font-semibold text-[rgba(60,60,67,0.58)]"
+                    data-testid="desktop-cm-session-layout-reorder-history-empty"
+                  >
+                    필터와 일치하는 reorder status history 없음
+                  </div>
+                )}
               </div>
             ) : null}
             {sessionLayoutImportConflicts ? (
@@ -4451,6 +4555,36 @@ function normalizeCmDiagnosticStageFilter(value: unknown): CmDiagnosticStageFilt
 
 function normalizeCmDiagnosticSeverityFilter(value: unknown): CmDiagnosticSeverityFilter {
   return typeof value === 'string' && cmDiagnosticSeverityFilterOptions.includes(value as CmDiagnosticSeverityFilter) ? (value as CmDiagnosticSeverityFilter) : 'all';
+}
+
+function matchesDesktopCmSessionLayoutReorderHistoryScope(
+  entry: DesktopCmSessionLayoutReorderHistoryEntry,
+  scopeFilter: DesktopCmSessionLayoutReorderHistoryScopeFilter,
+) {
+  return scopeFilter === 'all' || entry.scope === scopeFilter;
+}
+
+function matchesDesktopCmSessionLayoutReorderHistoryStatus(
+  entry: DesktopCmSessionLayoutReorderHistoryEntry,
+  statusFilter: DesktopCmSessionLayoutReorderHistoryStatusFilter,
+) {
+  if (statusFilter === 'all') {
+    return true;
+  }
+  const message = entry.message.toLowerCase();
+  if (statusFilter === 'reorder-complete') {
+    return message.startsWith('reorder complete:');
+  }
+  if (statusFilter === 'reorder-unavailable') {
+    return message.startsWith('reorder unavailable:');
+  }
+  if (statusFilter === 'reorder-unchanged') {
+    return message.startsWith('reorder unchanged:');
+  }
+  if (statusFilter === 'focus-restored') {
+    return message.startsWith('focus restored:');
+  }
+  return message.startsWith('focus target unavailable');
 }
 
 function isDesktopCmKeyboardIgnoredTarget(target: EventTarget | null) {

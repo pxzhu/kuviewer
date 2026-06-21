@@ -522,6 +522,31 @@ async function smokeDesktopRuntime(browser, url) {
         !layoutReorderHistoryText.includes(`desktop-cm-session-layout-drag-handle-${firstPrimaryPresetSlug}`),
       'desktop CM session layout reorder history must include focus restoration'
     );
+    await page.getByTestId('desktop-cm-session-layout-reorder-history-status-filter').selectOption('reorder-complete');
+    layoutReorderHistoryText = await page.getByTestId('desktop-cm-session-layout-reorder-history').textContent();
+    layoutReorderHistoryLatest = await page.getByTestId('desktop-cm-session-layout-reorder-history-latest').textContent();
+    let layoutReorderHistoryCount = await page.getByTestId('desktop-cm-session-layout-reorder-history-count').textContent();
+    requireCondition(
+      layoutReorderHistoryText?.includes('Preset') &&
+        layoutReorderHistoryLatest?.includes('Reorder complete') &&
+        layoutReorderHistoryCount?.includes('1 / 전체 2'),
+      'desktop CM session layout reorder history status filter must show matching complete status only'
+    );
+    await page.getByTestId('desktop-cm-session-layout-reorder-history-scope-filter').selectOption('focus');
+    await page.getByTestId('desktop-cm-session-layout-reorder-history-empty').waitFor({ state: 'visible', timeout: 10_000 });
+    layoutReorderHistoryCount = await page.getByTestId('desktop-cm-session-layout-reorder-history-count').textContent();
+    requireCondition(layoutReorderHistoryCount?.includes('0 / 전체 2'), 'desktop CM session layout reorder history filter empty state must keep total count');
+    await page.getByTestId('desktop-cm-session-layout-reorder-history-status-filter').selectOption('focus-restored');
+    layoutReorderHistoryText = await page.getByTestId('desktop-cm-session-layout-reorder-history').textContent();
+    layoutReorderHistoryCount = await page.getByTestId('desktop-cm-session-layout-reorder-history-count').textContent();
+    requireCondition(
+      layoutReorderHistoryText?.includes('Focus') && layoutReorderHistoryText.includes('Focus restored') && layoutReorderHistoryCount?.includes('1 / 전체 2'),
+      'desktop CM session layout reorder history scope filter must show focus status only'
+    );
+    await page.getByTestId('desktop-cm-session-layout-reorder-history-filter-clear').click();
+    layoutReorderHistoryCount = await page.getByTestId('desktop-cm-session-layout-reorder-history-count').textContent();
+    requireCondition(layoutReorderHistoryCount?.includes('2 / 전체 2'), 'desktop CM session layout reorder history filter clear must restore all visible entries');
+    await page.getByTestId(`desktop-cm-session-layout-drag-handle-${firstPrimaryPresetSlug}`).focus();
     const layoutReorderFocusRole = await page.getByTestId('desktop-cm-session-layout-reorder-focus-status').getAttribute('role');
     const layoutReorderFocusAtomic = await page.getByTestId('desktop-cm-session-layout-reorder-focus-status').getAttribute('aria-atomic');
     requireCondition(
@@ -545,7 +570,9 @@ async function smokeDesktopRuntime(browser, url) {
       !sessionLayoutStorage.includes('sessionLayoutReorderKeyboardMessage') &&
         !sessionLayoutStorage.includes('sessionLayoutReorderFocusTargetTestId') &&
         !sessionLayoutStorage.includes('sessionLayoutReorderFocusTargetLabel') &&
-        !sessionLayoutStorage.includes('sessionLayoutReorderHistory'),
+        !sessionLayoutStorage.includes('sessionLayoutReorderHistory') &&
+        !sessionLayoutStorage.includes('sessionLayoutReorderHistoryScopeFilter') &&
+        !sessionLayoutStorage.includes('sessionLayoutReorderHistoryStatusFilter'),
       'desktop CM session layout reorder keyboard and focus status must stay memory-only'
     );
     await page.getByTestId('desktop-cm-session-layout-reorder-history-clear').click();
@@ -745,7 +772,9 @@ async function smokeDesktopRuntime(browser, url) {
         !sessionLayoutStorage.includes('sessionLayoutReorderKeyboardMessage') &&
         !sessionLayoutStorage.includes('sessionLayoutReorderFocusTargetTestId') &&
         !sessionLayoutStorage.includes('sessionLayoutReorderFocusTargetLabel') &&
-        !sessionLayoutStorage.includes('sessionLayoutReorderHistory'),
+        !sessionLayoutStorage.includes('sessionLayoutReorderHistory') &&
+        !sessionLayoutStorage.includes('sessionLayoutReorderHistoryScopeFilter') &&
+        !sessionLayoutStorage.includes('sessionLayoutReorderHistoryStatusFilter'),
       'desktop CM session layout drag, reorder keyboard, and focus state must stay memory-only'
     );
     await page.getByTestId('desktop-cm-session-layout-bulk-clear-toolbar').click();
