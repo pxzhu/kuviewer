@@ -384,6 +384,8 @@ export function DesktopCmSessionPanel({
   const sessionLayoutReorderHistoryFilterPresetHelpTooltipId = 'desktop-cm-session-layout-reorder-history-filter-preset-help-tooltip';
   const sessionLayoutReorderHistoryFilterPresetHelpTooltipContrastDescriptionId =
     'desktop-cm-session-layout-reorder-history-filter-preset-help-tooltip-contrast-description';
+  const sessionLayoutReorderHistoryFilterPresetHelpTooltipFocusVisibleDescriptionId =
+    'desktop-cm-session-layout-reorder-history-filter-preset-help-tooltip-focus-visible-description';
   const sessionLayoutReorderFilterDisabledReason =
     sessionLayoutSearchActive && sessionLayoutFolderFilterActive
       ? 'Reorder unavailable: layout search and folder filter are active. Clear both filters to reorder.'
@@ -1222,6 +1224,8 @@ export function DesktopCmSessionPanel({
       : 'Tooltip: no preset currently matches. Hover or focus this help button to review shortcuts; Enter or Space moves focus to the first preset. UI-only and not stored.';
   const sessionLayoutReorderHistoryFilterPresetHelpTooltipContrastDescription =
     'Contrast note: tooltip text and surface keep at least 7:1 contrast. This contrast note is UI-only and not stored.';
+  const sessionLayoutReorderHistoryFilterPresetHelpTooltipFocusVisibleDescription =
+    'Focus-visible note: keyboard focus shows a high-contrast outline, ring, and offset around this help button. This focus-visible note is UI-only and not stored.';
   const sessionLayoutReorderHistoryFilterPresetLabel = (preset: DesktopCmSessionLayoutReorderHistoryFilterPreset, index: number, total: number) =>
     `Apply ${preset.label} reorder history preset, ${index + 1} of ${total}: ${sessionLayoutReorderHistoryScopeFilterLabel(preset.scope)}, ${sessionLayoutReorderHistoryStatusFilterLabel(preset.status)}, ${sessionLayoutReorderHistoryDensityLabel(preset.density)} density. Arrow keys move between presets, Home and End jump, Enter or Space applies.`;
   const sessionLayoutReorderHistoryFilterPresetTitle = (preset: DesktopCmSessionLayoutReorderHistoryFilterPreset, index: number, total: number) =>
@@ -2769,7 +2773,7 @@ export function DesktopCmSessionPanel({
                     ))}
                   </div>
                   <div
-                    aria-describedby={`${sessionLayoutReorderHistoryFilterPresetDescriptionId} ${sessionLayoutReorderHistoryFilterPresetKeyboardDescriptionId} ${sessionLayoutReorderHistoryFilterPresetShortcutHintId} ${sessionLayoutReorderHistoryFilterPresetDiscoverabilityHintId} ${sessionLayoutReorderHistoryFilterPresetHelpTooltipId} ${sessionLayoutReorderHistoryFilterPresetHelpTooltipContrastDescriptionId} ${sessionLayoutReorderHistoryFilterPresetSummaryId} ${sessionLayoutReorderHistoryFilterPresetKeyboardStatusId}`}
+                    aria-describedby={`${sessionLayoutReorderHistoryFilterPresetDescriptionId} ${sessionLayoutReorderHistoryFilterPresetKeyboardDescriptionId} ${sessionLayoutReorderHistoryFilterPresetShortcutHintId} ${sessionLayoutReorderHistoryFilterPresetDiscoverabilityHintId} ${sessionLayoutReorderHistoryFilterPresetHelpTooltipId} ${sessionLayoutReorderHistoryFilterPresetHelpTooltipContrastDescriptionId} ${sessionLayoutReorderHistoryFilterPresetHelpTooltipFocusVisibleDescriptionId} ${sessionLayoutReorderHistoryFilterPresetSummaryId} ${sessionLayoutReorderHistoryFilterPresetKeyboardStatusId}`}
                     aria-label="Reorder history filter presets"
                     className="flex min-w-0 flex-1 basis-full flex-wrap gap-1 rounded-[8px] border border-[rgba(60,60,67,0.12)] bg-white/55 p-1 sm:flex-none sm:basis-auto"
                     data-testid="desktop-cm-session-layout-reorder-history-filter-presets"
@@ -2803,9 +2807,16 @@ export function DesktopCmSessionPanel({
                     >
                       {sessionLayoutReorderHistoryFilterPresetHelpTooltipContrastDescription}
                     </p>
+                    <p
+                      className="sr-only"
+                      data-testid="desktop-cm-session-layout-reorder-history-filter-preset-help-tooltip-focus-visible-description"
+                      id={sessionLayoutReorderHistoryFilterPresetHelpTooltipFocusVisibleDescriptionId}
+                    >
+                      {sessionLayoutReorderHistoryFilterPresetHelpTooltipFocusVisibleDescription}
+                    </p>
                     <span className="group relative inline-flex shrink-0">
                       <button
-                        aria-describedby={`${sessionLayoutReorderHistoryFilterPresetHelpTooltipId} ${sessionLayoutReorderHistoryFilterPresetHelpTooltipContrastDescriptionId}`}
+                        aria-describedby={`${sessionLayoutReorderHistoryFilterPresetHelpTooltipId} ${sessionLayoutReorderHistoryFilterPresetHelpTooltipContrastDescriptionId} ${sessionLayoutReorderHistoryFilterPresetHelpTooltipFocusVisibleDescriptionId}`}
                         aria-label={sessionLayoutReorderHistoryFilterPresetDiscoverabilityHint}
                         aria-keyshortcuts="Enter Space"
                         className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-[6px] border border-[rgba(42,111,151,0.16)] bg-[rgba(255,255,255,0.76)] text-[rgba(42,111,151,0.82)] transition hover:bg-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0f4f68] focus-visible:ring-2 focus-visible:ring-[#8bd3f7] focus-visible:ring-offset-2 focus-visible:ring-offset-[#f8fcff]"
