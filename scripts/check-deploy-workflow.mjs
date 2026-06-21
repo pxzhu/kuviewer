@@ -47,7 +47,13 @@ requireIncludes(deployWorkflow, 'remote-preflight-ok', 'deploy workflow must rep
 requireIncludes(deployWorkflow, 'compose version >/dev/null', 'deploy preflight must verify docker compose availability');
 requireIncludes(deployWorkflow, 'DEPLOY_PATH must be absolute', 'deploy preflight must validate DEPLOY_PATH');
 requireIncludes(deployWorkflow, 'test -f "$DEPLOY_PATH/deploy/standalone/.env"', 'deploy preflight must verify existing standalone .env');
-requireIncludes(deployWorkflow, 'SCP upload attempt', 'deploy workflow must retry SCP uploads');
+requireIncludes(deployWorkflow, 'UPLOAD_ATTEMPT_TIMEOUT_SECONDS: 300', 'deploy workflow must define bounded SCP upload attempt timeout');
+requireIncludes(deployWorkflow, 'SCP upload attempt ${attempt}/3 timeout=${UPLOAD_ATTEMPT_TIMEOUT_SECONDS}s', 'deploy workflow must report bounded SCP upload attempts safely');
+requireIncludes(deployWorkflow, 'timeout "${UPLOAD_ATTEMPT_TIMEOUT_SECONDS}" scp', 'deploy workflow must bound each SCP upload attempt');
+requireIncludes(deployWorkflow, 'cleanup_remote_image()', 'deploy workflow must define remote partial image cleanup');
+requireIncludes(deployWorkflow, 'rm -f \\"${REMOTE_IMAGE_TAR}\\"', 'deploy workflow must cleanup partial remote image uploads safely');
+requireIncludes(deployWorkflow, 'scp-upload-timeout attempt=${attempt}/3 seconds=${UPLOAD_ATTEMPT_TIMEOUT_SECONDS}', 'deploy workflow must report SCP upload timeout safely');
+requireIncludes(deployWorkflow, 'scp-upload-failed attempt=${attempt}/3 status=${scp_status}', 'deploy workflow must report SCP upload failure safely');
 requireIncludes(deployWorkflow, 'ROLLBACK_IMAGE="kuviewer:rollback-${GITHUB_RUN_ID}"', 'deploy workflow must define a per-run rollback image tag');
 requireIncludes(deployWorkflow, 'deploy-rollback-image-ready', 'deploy workflow must preserve the previous image for rollback');
 requireIncludes(deployWorkflow, 'deploy-rollback-start', 'deploy workflow must attempt rollback after failed health checks');
@@ -218,7 +224,7 @@ requireIncludes(sshEndpointDiagnosticsHelper, '--host <host>', 'SSH endpoint dia
 requireNotIncludes(sshEndpointDiagnosticsHelper, 'SERVER_SSH_KEY', 'SSH endpoint diagnostics helper must not use deploy private keys');
 
 const deployWorkflowPolicy = packagingSpec.deployWorkflowPolicy || {};
-requireCondition(deployWorkflowPolicy.status === 'self-hosted-runner-deploy-fallback', 'deployWorkflowPolicy.status must be self-hosted-runner-deploy-fallback');
+requireCondition(deployWorkflowPolicy.status === 'bounded-scp-upload-timeout', 'deployWorkflowPolicy.status must be bounded-scp-upload-timeout');
 requireCondition(deployWorkflowPolicy.workflowPath === '.github/workflows/deploy.yml', 'deployWorkflowPolicy.workflowPath must point to deploy workflow');
 requireCondition(deployWorkflowPolicy.preflightWorkflowPath === '.github/workflows/deploy-preflight.yml', 'deployWorkflowPolicy.preflightWorkflowPath must point to preflight workflow');
 requireCondition(deployWorkflowPolicy.knownHostsBootstrapWorkflowPath === '.github/workflows/deploy-known-hosts-bootstrap.yml', 'deployWorkflowPolicy.knownHostsBootstrapWorkflowPath must point to known_hosts bootstrap workflow');
@@ -252,6 +258,10 @@ requireCondition(deployWorkflowPolicy.acceptNonEmptyKeyscanOutput === true, 'dep
 requireCondition(deployWorkflowPolicy.ipv4KeyscanFallback === true, 'deployWorkflowPolicy.ipv4KeyscanFallback must be true');
 requireCondition(deployWorkflowPolicy.serverPortRangeValidation === true, 'deployWorkflowPolicy.serverPortRangeValidation must be true');
 requireCondition(deployWorkflowPolicy.uploadRetryAttempts === 3, 'deployWorkflowPolicy.uploadRetryAttempts must be 3');
+requireCondition(deployWorkflowPolicy.uploadAttemptTimeoutSeconds === 300, 'deployWorkflowPolicy.uploadAttemptTimeoutSeconds must be 300');
+requireCondition(deployWorkflowPolicy.uploadPartialCleanup === true, 'deployWorkflowPolicy.uploadPartialCleanup must be true');
+requireCondition(deployWorkflowPolicy.uploadTimeoutSafeMarker === 'scp-upload-timeout', 'deployWorkflowPolicy.uploadTimeoutSafeMarker must document scp-upload-timeout');
+requireCondition(deployWorkflowPolicy.uploadFailureSafeMarker === 'scp-upload-failed', 'deployWorkflowPolicy.uploadFailureSafeMarker must document scp-upload-failed');
 requireCondition(deployWorkflowPolicy.rollbackImageTag === 'kuviewer:rollback-${GITHUB_RUN_ID}', 'deployWorkflowPolicy.rollbackImageTag must document the per-run rollback tag');
 requireCondition(deployWorkflowPolicy.healthRetryAttempts === 12, 'deployWorkflowPolicy.healthRetryAttempts must be 12');
 requireCondition(deployWorkflowPolicy.safeDeployStatePath === '$DEPLOY_PATH/.kuviewer/deploy-state.json', 'deployWorkflowPolicy.safeDeployStatePath must document the safe deploy-state path');
