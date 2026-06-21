@@ -75,6 +75,7 @@ requireCondition(
     'desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-polish',
     'desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-accessibility-polish',
     'desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-keyboard-polish',
+    'desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-shortcut-hint-polish',
   ].includes(spec.status),
   'status must be a known desktop packaging milestone'
 );
@@ -196,6 +197,10 @@ requireCondition(
   phases.includes('desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-keyboard-polish'),
   'phaseOrder must include desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-keyboard-polish'
 );
+requireCondition(
+  phases.includes('desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-shortcut-hint-polish'),
+  'phaseOrder must include desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-shortcut-hint-polish'
+);
 
 await validateBuildPrerequisites(spec);
 await validateDesktopDistributionPolicy(spec);
@@ -261,6 +266,7 @@ if (
     'desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-polish',
     'desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-accessibility-polish',
     'desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-keyboard-polish',
+    'desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-shortcut-hint-polish',
   ].includes(spec.status)
 ) {
   await validateTauriScaffold(spec.tauri || {});
@@ -2682,6 +2688,87 @@ async function validateCmSshSessionManager(spec) {
     sessionLayoutPresetFolderReorderStatusHistoryTimestampFilterPresetKeyboard.folderCollapseExported === false,
     'cmSshSessionManager.sessionLayoutPresetFolderReorderStatusHistoryTimestampFilterPresetKeyboard.folderCollapseExported must be false'
   );
+  const sessionLayoutPresetFolderReorderStatusHistoryTimestampFilterPresetShortcutHint =
+    manager.sessionLayoutPresetFolderReorderStatusHistoryTimestampFilterPresetShortcutHint || {};
+  requireCondition(
+    sessionLayoutPresetFolderReorderStatusHistoryTimestampFilterPresetShortcutHint.desktopOnly === true,
+    'cmSshSessionManager.sessionLayoutPresetFolderReorderStatusHistoryTimestampFilterPresetShortcutHint.desktopOnly must be true'
+  );
+  requireCondition(
+    sessionLayoutPresetFolderReorderStatusHistoryTimestampFilterPresetShortcutHint.uiOnly === true,
+    'cmSshSessionManager.sessionLayoutPresetFolderReorderStatusHistoryTimestampFilterPresetShortcutHint.uiOnly must be true'
+  );
+  requireCondition(
+    sessionLayoutPresetFolderReorderStatusHistoryTimestampFilterPresetShortcutHint.stateStorage === 'memory-only',
+    'cmSshSessionManager.sessionLayoutPresetFolderReorderStatusHistoryTimestampFilterPresetShortcutHint.stateStorage must be memory-only'
+  );
+  requireCondition(
+    sessionLayoutPresetFolderReorderStatusHistoryTimestampFilterPresetShortcutHint.usesExistingLayoutStorage === 'kuviewer_desktop_cm_session_layout_presets',
+    'cmSshSessionManager.sessionLayoutPresetFolderReorderStatusHistoryTimestampFilterPresetShortcutHint.usesExistingLayoutStorage must be kuviewer_desktop_cm_session_layout_presets'
+  );
+  requireCondition(
+    sessionLayoutPresetFolderReorderStatusHistoryTimestampFilterPresetShortcutHint.orderStorage === 'existing-preset-array-order',
+    'cmSshSessionManager.sessionLayoutPresetFolderReorderStatusHistoryTimestampFilterPresetShortcutHint.orderStorage must be existing-preset-array-order'
+  );
+  requireCondition(
+    sessionLayoutPresetFolderReorderStatusHistoryTimestampFilterPresetShortcutHint.addsOrderField === false,
+    'cmSshSessionManager.sessionLayoutPresetFolderReorderStatusHistoryTimestampFilterPresetShortcutHint.addsOrderField must be false'
+  );
+  requireCondition(
+    sessionLayoutPresetFolderReorderStatusHistoryTimestampFilterPresetShortcutHint.addsStorageKey === false,
+    'cmSshSessionManager.sessionLayoutPresetFolderReorderStatusHistoryTimestampFilterPresetShortcutHint.addsStorageKey must be false'
+  );
+  for (const flag of [
+    'hiddenShortcutHint',
+    'groupDescribedByShortcutHint',
+    'ariaKeyshortcuts',
+    'buttonTitles',
+    'buttonAriaLabelsIncludeShortcutHint',
+    'noVisibleStaticShortcutText',
+    'rovingTabIndexPreserved',
+    'keyboardNavigationPreserved',
+    'enterSpaceActivationPreserved',
+    'keyboardLiveStatusPreserved',
+    'ariaPressedPreserved',
+    'noPresetPersistence',
+    'timestampDateTimePreserved',
+    'accessibilityLabelsPreserved',
+    'responsiveBehaviorPreserved',
+    'densityBehaviorPreserved',
+    'doesNotMutateHistory',
+    'humanReadableOnly',
+    'noInternalTestIdInStatus',
+    'preservesPresetNames',
+    'preservesFolders',
+    'preservesViewPreferences',
+    'preservesSelection',
+    'preservesCollapseState',
+    'folderMetadataExported',
+    'folderMetadataImported',
+    'sameNameGlobalUnique',
+    'noSessionExportImportSchemaChange',
+    'noLayoutExportImportSchemaChange',
+    'noTauriSchemaChange',
+    'noSessionSearch',
+    'noDiagnosticFilters',
+    'noEndpointMetadata',
+    'noCredentialPayload',
+    'noRuntimeProfile',
+    'noDiagnosticHistory',
+    'noToken',
+    'noKubeconfig',
+    'noSecretValues',
+    'noEventsOrLogs',
+  ]) {
+    requireCondition(
+      sessionLayoutPresetFolderReorderStatusHistoryTimestampFilterPresetShortcutHint[flag] === true,
+      `cmSshSessionManager.sessionLayoutPresetFolderReorderStatusHistoryTimestampFilterPresetShortcutHint.${flag} must be true`
+    );
+  }
+  requireCondition(
+    sessionLayoutPresetFolderReorderStatusHistoryTimestampFilterPresetShortcutHint.folderCollapseExported === false,
+    'cmSshSessionManager.sessionLayoutPresetFolderReorderStatusHistoryTimestampFilterPresetShortcutHint.folderCollapseExported must be false'
+  );
   const sessionLayoutImportExport = manager.sessionLayoutImportExport || {};
   requireCondition(sessionLayoutImportExport.desktopOnly === true, 'cmSshSessionManager.sessionLayoutImportExport.desktopOnly must be true');
   requireCondition(sessionLayoutImportExport.uiOnly === true, 'cmSshSessionManager.sessionLayoutImportExport.uiOnly must be true');
@@ -2929,6 +3016,7 @@ async function validateCmSshSessionManager(spec) {
     'desktop-cm-session-layout-reorder-history-filter-preset-description',
     'desktop-cm-session-layout-reorder-history-filter-preset-summary',
     'desktop-cm-session-layout-reorder-history-filter-preset-keyboard-description',
+    'desktop-cm-session-layout-reorder-history-filter-preset-shortcut-hint',
     'desktop-cm-session-layout-reorder-history-filter-preset-keyboard-status',
     'desktop-cm-session-layout-reorder-history-latest-age',
     'desktop-cm-session-layout-reorder-history-age',
@@ -3287,18 +3375,23 @@ async function validateCmSshSessionManager(spec) {
     'desktop-cm-session-layout-reorder-history-filter-preset-description',
     'desktop-cm-session-layout-reorder-history-filter-preset-summary',
     'desktop-cm-session-layout-reorder-history-filter-preset-keyboard-description',
+    'desktop-cm-session-layout-reorder-history-filter-preset-shortcut-hint',
     'desktop-cm-session-layout-reorder-history-filter-preset-keyboard-status',
     'desktop-cm-session-layout-reorder-history-filter-preset-${preset.id}',
     'desktopCmSessionLayoutReorderHistoryFilterPresets',
     'desktopCmSessionLayoutReorderHistoryFilterPresetIds',
+    'desktopCmSessionLayoutReorderHistoryFilterPresetShortcuts',
     'activeSessionLayoutReorderHistoryFilterPreset',
     'applySessionLayoutReorderHistoryFilterPreset',
     'sessionLayoutReorderHistoryFilterPresetDescriptionId',
     'sessionLayoutReorderHistoryFilterPresetSummaryId',
     'sessionLayoutReorderHistoryFilterPresetKeyboardDescriptionId',
+    'sessionLayoutReorderHistoryFilterPresetShortcutHintId',
     'sessionLayoutReorderHistoryFilterPresetKeyboardStatusId',
     'sessionLayoutReorderHistoryFilterPresetSummary',
     'sessionLayoutReorderHistoryFilterPresetLabel',
+    'sessionLayoutReorderHistoryFilterPresetTitle',
+    'sessionLayoutReorderHistoryFilterPresetShortcutHint',
     'sessionLayoutReorderHistoryFilterPresetFocusId',
     'sessionLayoutReorderHistoryFilterPresetKeyboardMessage',
     'sessionLayoutReorderHistoryFilterPresetTabStopId',
@@ -3309,6 +3402,8 @@ async function validateCmSshSessionManager(spec) {
     'sessionLayoutReorderHistoryDensity',
     'data-density={sessionLayoutReorderHistoryDensity}',
     'aria-pressed={sessionLayoutReorderHistoryDensity === density}',
+    'aria-keyshortcuts={desktopCmSessionLayoutReorderHistoryFilterPresetShortcuts}',
+    'title={sessionLayoutReorderHistoryFilterPresetTitle',
     'Saved layout reorder status history entries, newest first',
     'formatDesktopCmSessionLayoutReorderHistoryScopeLabel',
     'basis-full sm:min-w-[138px]',
@@ -3551,6 +3646,7 @@ async function validateCmSshSessionManager(spec) {
     'desktop CM session layout reorder history timestamp filter presets must apply scope status and density without persistence',
     'desktop CM session layout reorder history timestamp filter preset accessibility must expose help summary and button labels',
     'desktop CM session layout reorder history timestamp filter preset keyboard shortcuts must move focus and apply presets without persistence',
+    'desktop CM session layout reorder history timestamp filter preset shortcut hints must expose hidden hint title and aria-keyshortcuts without persistence',
     'desktop CM session layout reorder history status filter must show matching complete status only',
     'desktop CM session layout reorder history filter empty state must keep total count',
     'desktop CM session layout reorder history scope filter must show focus status only',
@@ -3644,6 +3740,7 @@ async function validateCmSshSessionManager(spec) {
     requireCondition(text.includes('reorder status history timestamp filter preset'), `${label} must document desktop CM session layout folder reorder status history timestamp filter preset polish`);
     requireCondition(text.includes('reorder status history timestamp filter preset accessibility'), `${label} must document desktop CM session layout folder reorder status history timestamp filter preset accessibility polish`);
     requireCondition(text.includes('reorder status history timestamp filter preset keyboard'), `${label} must document desktop CM session layout folder reorder status history timestamp filter preset keyboard polish`);
+    requireCondition(text.includes('reorder status history timestamp filter preset shortcut hint'), `${label} must document desktop CM session layout folder reorder status history timestamp filter preset shortcut hint polish`);
     requireCondition(text.includes('export/import') || text.includes('session export'), `${label} must document desktop CM session export/import`);
     requireCondition(text.includes('web app must not expose SSH'), `${label} must document that the web app must not expose SSH`);
   }
