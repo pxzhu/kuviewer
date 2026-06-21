@@ -48,6 +48,7 @@ requireIncludes(deployWorkflow, 'compose version >/dev/null', 'deploy preflight 
 requireIncludes(deployWorkflow, 'DEPLOY_PATH must be absolute', 'deploy preflight must validate DEPLOY_PATH');
 requireIncludes(deployWorkflow, 'test -f "$DEPLOY_PATH/deploy/standalone/.env"', 'deploy preflight must verify existing standalone .env');
 requireIncludes(deployWorkflow, 'UPLOAD_ATTEMPT_TIMEOUT_SECONDS: 300', 'deploy workflow must define bounded SCP upload attempt timeout');
+requireIncludes(deployWorkflow, 'timeout-minutes: 18', 'deploy workflow must bound the full SCP upload step');
 requireIncludes(deployWorkflow, 'SCP upload attempt ${attempt}/3 timeout=${UPLOAD_ATTEMPT_TIMEOUT_SECONDS}s', 'deploy workflow must report bounded SCP upload attempts safely');
 requireIncludes(deployWorkflow, 'timeout "${UPLOAD_ATTEMPT_TIMEOUT_SECONDS}" scp', 'deploy workflow must bound each SCP upload attempt');
 requireIncludes(deployWorkflow, 'cleanup_remote_image()', 'deploy workflow must define remote partial image cleanup');
@@ -224,7 +225,7 @@ requireIncludes(sshEndpointDiagnosticsHelper, '--host <host>', 'SSH endpoint dia
 requireNotIncludes(sshEndpointDiagnosticsHelper, 'SERVER_SSH_KEY', 'SSH endpoint diagnostics helper must not use deploy private keys');
 
 const deployWorkflowPolicy = packagingSpec.deployWorkflowPolicy || {};
-requireCondition(deployWorkflowPolicy.status === 'bounded-scp-upload-timeout', 'deployWorkflowPolicy.status must be bounded-scp-upload-timeout');
+requireCondition(deployWorkflowPolicy.status === 'bounded-scp-upload-step-timeout', 'deployWorkflowPolicy.status must be bounded-scp-upload-step-timeout');
 requireCondition(deployWorkflowPolicy.workflowPath === '.github/workflows/deploy.yml', 'deployWorkflowPolicy.workflowPath must point to deploy workflow');
 requireCondition(deployWorkflowPolicy.preflightWorkflowPath === '.github/workflows/deploy-preflight.yml', 'deployWorkflowPolicy.preflightWorkflowPath must point to preflight workflow');
 requireCondition(deployWorkflowPolicy.knownHostsBootstrapWorkflowPath === '.github/workflows/deploy-known-hosts-bootstrap.yml', 'deployWorkflowPolicy.knownHostsBootstrapWorkflowPath must point to known_hosts bootstrap workflow');
@@ -259,6 +260,7 @@ requireCondition(deployWorkflowPolicy.ipv4KeyscanFallback === true, 'deployWorkf
 requireCondition(deployWorkflowPolicy.serverPortRangeValidation === true, 'deployWorkflowPolicy.serverPortRangeValidation must be true');
 requireCondition(deployWorkflowPolicy.uploadRetryAttempts === 3, 'deployWorkflowPolicy.uploadRetryAttempts must be 3');
 requireCondition(deployWorkflowPolicy.uploadAttemptTimeoutSeconds === 300, 'deployWorkflowPolicy.uploadAttemptTimeoutSeconds must be 300');
+requireCondition(deployWorkflowPolicy.uploadStepTimeoutMinutes === 18, 'deployWorkflowPolicy.uploadStepTimeoutMinutes must be 18');
 requireCondition(deployWorkflowPolicy.uploadPartialCleanup === true, 'deployWorkflowPolicy.uploadPartialCleanup must be true');
 requireCondition(deployWorkflowPolicy.uploadTimeoutSafeMarker === 'scp-upload-timeout', 'deployWorkflowPolicy.uploadTimeoutSafeMarker must document scp-upload-timeout');
 requireCondition(deployWorkflowPolicy.uploadFailureSafeMarker === 'scp-upload-failed', 'deployWorkflowPolicy.uploadFailureSafeMarker must document scp-upload-failed');

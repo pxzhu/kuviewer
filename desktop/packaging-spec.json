@@ -22,7 +22,7 @@
     "notes": "Desktop code remains a local CM/SSH session prototype. Public downloadable installer artifacts are not part of the active Kuviewer product path."
   },
   "deployWorkflowPolicy": {
-    "status": "bounded-scp-upload-timeout",
+    "status": "bounded-scp-upload-step-timeout",
     "workflowPath": ".github/workflows/deploy.yml",
     "preflightWorkflowPath": ".github/workflows/deploy-preflight.yml",
     "knownHostsBootstrapWorkflowPath": ".github/workflows/deploy-known-hosts-bootstrap.yml",
@@ -56,6 +56,7 @@
     "remoteCapabilityChecks": ["git", "curl", "gzip", "docker", "docker-compose", "deploy-path", "standalone-env", "tmp-write"],
     "uploadRetryAttempts": 3,
     "uploadAttemptTimeoutSeconds": 300,
+    "uploadStepTimeoutMinutes": 18,
     "uploadPartialCleanup": true,
     "uploadTimeoutSafeMarker": "scp-upload-timeout",
     "uploadFailureSafeMarker": "scp-upload-failed",
