@@ -246,6 +246,7 @@ export function DesktopCmSessionPanel({
     desktopCmSessionLayoutReorderHistoryFilterPresetIds[0] || '',
   );
   const [sessionLayoutReorderHistoryFilterPresetKeyboardMessage, setSessionLayoutReorderHistoryFilterPresetKeyboardMessage] = useState('');
+  const [sessionLayoutReorderHistoryFilterPresetHelpFocusVisible, setSessionLayoutReorderHistoryFilterPresetHelpFocusVisible] = useState(false);
   const [sessionLayoutPresets, setSessionLayoutPresets] = useState<DesktopCmSessionLayoutPreset[]>(() => readDesktopCmSessionLayoutPresets());
   const [collapsedSessionLayoutFolders, setCollapsedSessionLayoutFolders] = useState<Set<string>>(() => readDesktopCmSessionLayoutCollapsedFolders());
   const [selectedSessionLayoutPresetNames, setSelectedSessionLayoutPresetNames] = useState<Set<string>>(() => new Set());
@@ -1226,6 +1227,15 @@ export function DesktopCmSessionPanel({
     'Contrast note: tooltip text and surface keep at least 7:1 contrast. This contrast note is UI-only and not stored.';
   const sessionLayoutReorderHistoryFilterPresetHelpTooltipFocusVisibleDescription =
     'Focus-visible note: keyboard focus shows a high-contrast outline, ring, and offset around this help button. This focus-visible note is UI-only and not stored.';
+  const sessionLayoutReorderHistoryFilterPresetHelpFocusVisibleStyle = sessionLayoutReorderHistoryFilterPresetHelpFocusVisible
+    ? {
+        backgroundColor: '#f8fcff',
+        borderColor: '#0f4f68',
+        boxShadow: '0 0 0 2px #8bd3f7, 0 0 0 4px rgba(139, 211, 247, 0.34)',
+        color: '#0f4f68',
+        transform: 'scale(1.04)',
+      }
+    : undefined;
   const sessionLayoutReorderHistoryFilterPresetLabel = (preset: DesktopCmSessionLayoutReorderHistoryFilterPreset, index: number, total: number) =>
     `Apply ${preset.label} reorder history preset, ${index + 1} of ${total}: ${sessionLayoutReorderHistoryScopeFilterLabel(preset.scope)}, ${sessionLayoutReorderHistoryStatusFilterLabel(preset.status)}, ${sessionLayoutReorderHistoryDensityLabel(preset.density)} density. Arrow keys move between presets, Home and End jump, Enter or Space applies.`;
   const sessionLayoutReorderHistoryFilterPresetTitle = (preset: DesktopCmSessionLayoutReorderHistoryFilterPreset, index: number, total: number) =>
@@ -2819,17 +2829,21 @@ export function DesktopCmSessionPanel({
                         aria-describedby={`${sessionLayoutReorderHistoryFilterPresetHelpTooltipId} ${sessionLayoutReorderHistoryFilterPresetHelpTooltipContrastDescriptionId} ${sessionLayoutReorderHistoryFilterPresetHelpTooltipFocusVisibleDescriptionId}`}
                         aria-label={sessionLayoutReorderHistoryFilterPresetDiscoverabilityHint}
                         aria-keyshortcuts="Enter Space"
-                        className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-[6px] border border-[rgba(42,111,151,0.16)] bg-[rgba(255,255,255,0.76)] text-[rgba(42,111,151,0.82)] transition hover:bg-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0f4f68] focus-visible:ring-2 focus-visible:ring-[#8bd3f7] focus-visible:ring-offset-2 focus-visible:ring-offset-[#f8fcff]"
+                        className="ku-focus-visible-solid-highlight inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-[6px] border border-[rgba(42,111,151,0.16)] bg-[rgba(255,255,255,0.76)] text-[rgba(42,111,151,0.82)] transition hover:bg-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0f4f68] focus-visible:ring-2 focus-visible:ring-[#8bd3f7] focus-visible:ring-offset-2 focus-visible:ring-offset-[#f8fcff]"
                         data-focus-visible="high-safe-ring"
+                        data-focus-visible-visual="solid-highlight"
                         data-testid="desktop-cm-session-layout-reorder-history-filter-preset-discoverability-hint"
                         id={sessionLayoutReorderHistoryFilterPresetDiscoverabilityHintId}
+                        style={sessionLayoutReorderHistoryFilterPresetHelpFocusVisibleStyle}
                         title={sessionLayoutReorderHistoryFilterPresetDiscoverabilityHint}
                         type="button"
-                        onFocus={() =>
+                        onBlur={() => setSessionLayoutReorderHistoryFilterPresetHelpFocusVisible(false)}
+                        onFocus={() => {
+                          setSessionLayoutReorderHistoryFilterPresetHelpFocusVisible(true);
                           setSessionLayoutReorderHistoryFilterPresetKeyboardMessage(
                             'Preset help focused. Press Enter or Space to focus the active reorder history preset.',
-                          )
-                        }
+                          );
+                        }}
                         onClick={focusSessionLayoutReorderHistoryFilterPresetHelpTarget}
                       >
                         <CircleHelp className="h-3.5 w-3.5" aria-hidden="true" />
