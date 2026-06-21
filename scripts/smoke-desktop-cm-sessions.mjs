@@ -466,6 +466,11 @@ async function smokeDesktopRuntime(browser, url) {
     );
     await page.getByTestId(`desktop-cm-session-layout-drag-handle-${firstPrimaryPresetSlug}`).focus();
     await page.keyboard.press('ArrowDown');
+    await requireTestIdFocused(
+      page,
+      `desktop-cm-session-layout-drag-handle-${firstPrimaryPresetSlug}`,
+      'desktop CM session layout preset keyboard reorder must restore preset drag handle focus after ArrowDown'
+    );
     let primaryPresetOrderAfter = await page.evaluate(() =>
       [...document.querySelectorAll('#desktop-cm-session-layout-folder-items-primary > span[data-testid^="desktop-cm-session-layout-"]')]
         .map((element) => element.getAttribute('data-testid')?.replace('desktop-cm-session-layout-', '') || '')
@@ -474,7 +479,14 @@ async function smokeDesktopRuntime(browser, url) {
     requireCondition(primaryPresetOrderAfter[1] === firstPrimaryPresetSlug, 'desktop CM session layout preset keyboard ArrowDown must move first preset down');
     let layoutReorderKeyboardStatus = await page.getByTestId('desktop-cm-session-layout-reorder-keyboard-status').textContent();
     requireCondition(layoutReorderKeyboardStatus?.includes('moved down'), 'desktop CM session layout reorder keyboard live status must announce preset move');
+    let layoutReorderFocusStatus = await page.getByTestId('desktop-cm-session-layout-reorder-focus-status').textContent();
+    requireCondition(layoutReorderFocusStatus?.includes(`desktop-cm-session-layout-drag-handle-${firstPrimaryPresetSlug}`), 'desktop CM session layout reorder focus status must announce preset handle restoration');
     await page.keyboard.press('ArrowUp');
+    await requireTestIdFocused(
+      page,
+      `desktop-cm-session-layout-drag-handle-${firstPrimaryPresetSlug}`,
+      'desktop CM session layout preset keyboard reorder must restore preset drag handle focus after ArrowUp'
+    );
     primaryPresetOrderAfter = await page.evaluate(() =>
       [...document.querySelectorAll('#desktop-cm-session-layout-folder-items-primary > span[data-testid^="desktop-cm-session-layout-"]')]
         .map((element) => element.getAttribute('data-testid')?.replace('desktop-cm-session-layout-', '') || '')
@@ -482,7 +494,10 @@ async function smokeDesktopRuntime(browser, url) {
     );
     requireCondition(primaryPresetOrderAfter[0] === firstPrimaryPresetSlug, 'desktop CM session layout preset keyboard ArrowUp must restore preset order');
     sessionLayoutStorage = await page.evaluate(() => window.localStorage.getItem('kuviewer_desktop_cm_session_layout_presets') || '');
-    requireCondition(!sessionLayoutStorage.includes('sessionLayoutReorderKeyboardMessage'), 'desktop CM session layout reorder keyboard status must stay memory-only');
+    requireCondition(
+      !sessionLayoutStorage.includes('sessionLayoutReorderKeyboardMessage') && !sessionLayoutStorage.includes('sessionLayoutReorderFocusTargetTestId'),
+      'desktop CM session layout reorder keyboard and focus status must stay memory-only'
+    );
     await page.getByTestId('desktop-cm-session-layout-bulk-select-input-ops-view-copy').check();
     await page.getByTestId('desktop-cm-session-layout-bulk-toolbar').waitFor({ state: 'visible', timeout: 10_000 });
     let layoutBulkCount = await page.getByTestId('desktop-cm-session-layout-bulk-count').textContent();
@@ -553,13 +568,25 @@ async function smokeDesktopRuntime(browser, url) {
     const firstLayoutFolderDragHandle = await page.getByTestId(`desktop-cm-session-layout-folder-drag-handle-${firstLayoutFolderSlug}`).getAttribute('draggable');
     requireCondition(firstLayoutFolderDragHandle === 'true', 'desktop CM session layout folder drag handle must be enabled when filters are clear');
     await page.getByTestId(`desktop-cm-session-layout-folder-reorder-down-${firstLayoutFolderSlug}`).click();
+    await requireTestIdFocused(
+      page,
+      `desktop-cm-session-layout-folder-drag-handle-${firstLayoutFolderSlug}`,
+      'desktop CM session layout folder button reorder must restore folder drag handle focus after down'
+    );
     let layoutFolderOrderAfter = await page.evaluate(() =>
       [...document.querySelectorAll('[data-testid="desktop-cm-session-layout-list"] > div[data-testid^="desktop-cm-session-layout-folder-"]')]
         .map((element) => element.getAttribute('data-testid')?.replace('desktop-cm-session-layout-folder-', '') || '')
         .filter(Boolean)
     );
     requireCondition(layoutFolderOrderAfter[1] === firstLayoutFolderSlug, 'desktop CM session layout folder reorder down must move the first folder after the next folder');
+    layoutReorderFocusStatus = await page.getByTestId('desktop-cm-session-layout-reorder-focus-status').textContent();
+    requireCondition(layoutReorderFocusStatus?.includes(`desktop-cm-session-layout-folder-drag-handle-${firstLayoutFolderSlug}`), 'desktop CM session layout reorder focus status must announce folder handle restoration');
     await page.getByTestId(`desktop-cm-session-layout-folder-reorder-up-${firstLayoutFolderSlug}`).click();
+    await requireTestIdFocused(
+      page,
+      `desktop-cm-session-layout-folder-drag-handle-${firstLayoutFolderSlug}`,
+      'desktop CM session layout folder button reorder must restore folder drag handle focus after up'
+    );
     layoutFolderOrderAfter = await page.evaluate(() =>
       [...document.querySelectorAll('[data-testid="desktop-cm-session-layout-list"] > div[data-testid^="desktop-cm-session-layout-folder-"]')]
         .map((element) => element.getAttribute('data-testid')?.replace('desktop-cm-session-layout-folder-', '') || '')
@@ -579,6 +606,7 @@ async function smokeDesktopRuntime(browser, url) {
     await page.getByTestId('desktop-cm-session-layout-list').focus();
     await page.keyboard.press('Home');
     await page.keyboard.press('Shift+ArrowDown');
+    await requireTestIdFocused(page, 'desktop-cm-session-layout-list', 'desktop CM session layout folder keyboard reorder must restore folder list focus after Shift ArrowDown');
     layoutFolderOrderAfter = await page.evaluate(() =>
       [...document.querySelectorAll('[data-testid="desktop-cm-session-layout-list"] > div[data-testid^="desktop-cm-session-layout-folder-"]')]
         .map((element) => element.getAttribute('data-testid')?.replace('desktop-cm-session-layout-folder-', '') || '')
@@ -587,7 +615,10 @@ async function smokeDesktopRuntime(browser, url) {
     requireCondition(layoutFolderOrderAfter[1] === firstLayoutFolderSlug, 'desktop CM session layout folder keyboard Shift ArrowDown must move active folder down');
     layoutReorderKeyboardStatus = await page.getByTestId('desktop-cm-session-layout-reorder-keyboard-status').textContent();
     requireCondition(layoutReorderKeyboardStatus?.includes('moved down'), 'desktop CM session layout reorder keyboard live status must announce folder move');
+    layoutReorderFocusStatus = await page.getByTestId('desktop-cm-session-layout-reorder-focus-status').textContent();
+    requireCondition(layoutReorderFocusStatus?.includes('desktop-cm-session-layout-list'), 'desktop CM session layout reorder focus status must announce folder list restoration');
     await page.keyboard.press('Shift+ArrowUp');
+    await requireTestIdFocused(page, 'desktop-cm-session-layout-list', 'desktop CM session layout folder keyboard reorder must restore folder list focus after Shift ArrowUp');
     layoutFolderOrderAfter = await page.evaluate(() =>
       [...document.querySelectorAll('[data-testid="desktop-cm-session-layout-list"] > div[data-testid^="desktop-cm-session-layout-folder-"]')]
         .map((element) => element.getAttribute('data-testid')?.replace('desktop-cm-session-layout-folder-', '') || '')
@@ -598,8 +629,9 @@ async function smokeDesktopRuntime(browser, url) {
     requireCondition(
       !sessionLayoutStorage.includes('draggingSessionLayoutFolderName') &&
         !sessionLayoutStorage.includes('draggingSessionLayoutPresetName') &&
-        !sessionLayoutStorage.includes('sessionLayoutReorderKeyboardMessage'),
-      'desktop CM session layout drag and reorder keyboard state must stay memory-only'
+        !sessionLayoutStorage.includes('sessionLayoutReorderKeyboardMessage') &&
+        !sessionLayoutStorage.includes('sessionLayoutReorderFocusTargetTestId'),
+      'desktop CM session layout drag, reorder keyboard, and focus state must stay memory-only'
     );
     await page.getByTestId('desktop-cm-session-layout-bulk-clear-toolbar').click();
     await page.getByTestId('desktop-cm-session-layout-folder-select-primary').click();

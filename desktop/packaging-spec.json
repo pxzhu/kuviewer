@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "name": "Kuviewer Desktop CM Session Explorer",
   "goal": "desktop-cm-session-prototype",
-  "status": "desktop-cm-session-layout-preset-folder-drag-reorder-keyboard-polish",
+  "status": "desktop-cm-session-layout-preset-folder-reorder-focus-polish",
   "recommendedPackager": "tauri",
   "fallbackPackager": "electron",
   "tauri": {
@@ -105,7 +105,7 @@
     "noOperationalActions": true
   },
   "cmSshSessionManager": {
-    "status": "session-layout-preset-folder-drag-reorder-keyboard-polish",
+    "status": "session-layout-preset-folder-reorder-focus-polish",
     "desktopOnly": true,
     "webExposed": false,
     "storage": "tauri-state-safe-metadata-with-os-credential-store-and-session-runtime",
@@ -728,6 +728,49 @@
       "noSecretValues": true,
       "noEventsOrLogs": true
     },
+    "sessionLayoutPresetFolderReorderFocus": {
+      "desktopOnly": true,
+      "uiOnly": true,
+      "stateStorage": "memory-only",
+      "focusTargetStorage": "memory-only",
+      "focusStatusStorage": "memory-only",
+      "usesExistingLayoutStorage": "kuviewer_desktop_cm_session_layout_presets",
+      "orderStorage": "existing-preset-array-order",
+      "addsOrderField": false,
+      "restoresFolderListFocusAfterListShortcut": true,
+      "restoresFolderHandleFocusAfterFolderButton": true,
+      "restoresFolderHandleFocusAfterFolderDragDrop": true,
+      "restoresPresetHandleFocusAfterPresetButton": true,
+      "restoresPresetHandleFocusAfterPresetKeyboard": true,
+      "restoresPresetHandleFocusAfterPresetDragDrop": true,
+      "usesPreventScroll": true,
+      "supportsScreenReaderLiveStatus": true,
+      "disabledDuringSearch": true,
+      "disabledDuringFolderFilter": true,
+      "sameFolderPresetReorderOnly": true,
+      "preservesPresetNames": true,
+      "preservesFolders": true,
+      "preservesViewPreferences": true,
+      "preservesSelection": true,
+      "preservesCollapseState": true,
+      "folderCollapseExported": false,
+      "folderMetadataExported": true,
+      "folderMetadataImported": true,
+      "sameNameGlobalUnique": true,
+      "noSessionExportImportSchemaChange": true,
+      "noLayoutExportImportSchemaChange": true,
+      "noTauriSchemaChange": true,
+      "noSessionSearch": true,
+      "noDiagnosticFilters": true,
+      "noEndpointMetadata": true,
+      "noCredentialPayload": true,
+      "noRuntimeProfile": true,
+      "noDiagnosticHistory": true,
+      "noToken": true,
+      "noKubeconfig": true,
+      "noSecretValues": true,
+      "noEventsOrLogs": true
+    },
     "sessionLayoutImportExport": {
       "desktopOnly": true,
       "uiOnly": true,
@@ -897,7 +940,7 @@
       "desktop-use-sidecar-profile"
     ],
     "next": [
-      "Desktop CM session layout preset folder reorder focus polish"
+      "Desktop CM session layout preset folder reorder focus accessibility polish"
     ]
   },
   "remoteConnectionProfile": {
@@ -1175,6 +1218,7 @@
     "desktop-cm-session-layout-preset-folder-accessibility-polish",
     "desktop-cm-session-layout-preset-folder-empty-state-polish",
     "desktop-cm-session-layout-preset-folder-drag-reorder-polish",
-    "desktop-cm-session-layout-preset-folder-drag-reorder-keyboard-polish"
+    "desktop-cm-session-layout-preset-folder-drag-reorder-keyboard-polish",
+    "desktop-cm-session-layout-preset-folder-reorder-focus-polish"
   ]
 }

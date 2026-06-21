@@ -65,6 +65,8 @@ Desktop CM saved layout folder drag/reorder polish is desktop-only UI state. Fol
 
 Desktop CM saved layout folder drag/reorder keyboard polish is desktop-only UI state. The focused folder list can move the active folder with `Shift+ArrowUp`, `Shift+ArrowDown`, `Shift+Home`, and `Shift+End`; focused folder or layout drag handles can use `ArrowUp`, `ArrowDown`, `Home`, and `End`. Keyboard reorder status is announced through screen-reader live text and stays browser-memory only. It still writes only the existing saved layout preset array order and adds no `order` field, storage key, export/import field, Tauri payload, credentials, runtime profile, diagnostics history, Events, or logs.
 
+Desktop CM saved layout folder reorder focus polish is desktop-only UI state. After folder-list shortcut reorder, focus returns to the folder list; after folder or preset button/handle reorder, focus returns to the stable drag handle for the moved item. Focus target and focus status are browser-memory only, use `preventScroll`, and are not stored, exported, synced, or sent through Tauri.
+
 Existing remote API profile, local sidecar, and direct Kubernetes/keychain paths remain prototype-only scaffolds. The local sidecar no longer starts by default in the desktop product path; it requires `KUVIEWER_DESKTOP_ENABLE_PROTOTYPE_SIDECAR=1` for explicit prototype work. The web app must not expose SSH.
 
 The Flow view is intended to feel closer to real request movement than a generic resource graph. It derives paths such as:

@@ -62,6 +62,7 @@ requireCondition(
     'desktop-cm-session-layout-preset-folder-empty-state-polish',
     'desktop-cm-session-layout-preset-folder-drag-reorder-polish',
     'desktop-cm-session-layout-preset-folder-drag-reorder-keyboard-polish',
+    'desktop-cm-session-layout-preset-folder-reorder-focus-polish',
   ].includes(spec.status),
   'status must be a known desktop packaging milestone'
 );
@@ -131,6 +132,10 @@ requireCondition(
   phases.includes('desktop-cm-session-layout-preset-folder-drag-reorder-keyboard-polish'),
   'phaseOrder must include desktop-cm-session-layout-preset-folder-drag-reorder-keyboard-polish'
 );
+requireCondition(
+  phases.includes('desktop-cm-session-layout-preset-folder-reorder-focus-polish'),
+  'phaseOrder must include desktop-cm-session-layout-preset-folder-reorder-focus-polish'
+);
 
 await validateBuildPrerequisites(spec);
 await validateDesktopDistributionPolicy(spec);
@@ -183,6 +188,7 @@ if (
     'desktop-cm-session-layout-preset-folder-empty-state-polish',
     'desktop-cm-session-layout-preset-folder-drag-reorder-polish',
     'desktop-cm-session-layout-preset-folder-drag-reorder-keyboard-polish',
+    'desktop-cm-session-layout-preset-folder-reorder-focus-polish',
   ].includes(spec.status)
 ) {
   await validateTauriScaffold(spec.tauri || {});
@@ -814,6 +820,7 @@ async function validateCmSshSessionManager(spec) {
       'session-layout-preset-folder-empty-state-polish',
       'session-layout-preset-folder-drag-reorder-polish',
       'session-layout-preset-folder-drag-reorder-keyboard-polish',
+      'session-layout-preset-folder-reorder-focus-polish',
     ].includes(manager.status),
     'cmSshSessionManager.status must be a known CM/SSH session manager milestone'
   );
@@ -1546,6 +1553,82 @@ async function validateCmSshSessionManager(spec) {
     sessionLayoutPresetFolderDragReorderKeyboard.folderCollapseExported === false,
     'cmSshSessionManager.sessionLayoutPresetFolderDragReorderKeyboard.folderCollapseExported must be false'
   );
+  const sessionLayoutPresetFolderReorderFocus = manager.sessionLayoutPresetFolderReorderFocus || {};
+  requireCondition(
+    sessionLayoutPresetFolderReorderFocus.desktopOnly === true,
+    'cmSshSessionManager.sessionLayoutPresetFolderReorderFocus.desktopOnly must be true'
+  );
+  requireCondition(
+    sessionLayoutPresetFolderReorderFocus.uiOnly === true,
+    'cmSshSessionManager.sessionLayoutPresetFolderReorderFocus.uiOnly must be true'
+  );
+  requireCondition(
+    sessionLayoutPresetFolderReorderFocus.stateStorage === 'memory-only',
+    'cmSshSessionManager.sessionLayoutPresetFolderReorderFocus.stateStorage must be memory-only'
+  );
+  requireCondition(
+    sessionLayoutPresetFolderReorderFocus.focusTargetStorage === 'memory-only',
+    'cmSshSessionManager.sessionLayoutPresetFolderReorderFocus.focusTargetStorage must be memory-only'
+  );
+  requireCondition(
+    sessionLayoutPresetFolderReorderFocus.focusStatusStorage === 'memory-only',
+    'cmSshSessionManager.sessionLayoutPresetFolderReorderFocus.focusStatusStorage must be memory-only'
+  );
+  requireCondition(
+    sessionLayoutPresetFolderReorderFocus.usesExistingLayoutStorage === 'kuviewer_desktop_cm_session_layout_presets',
+    'cmSshSessionManager.sessionLayoutPresetFolderReorderFocus.usesExistingLayoutStorage must be kuviewer_desktop_cm_session_layout_presets'
+  );
+  requireCondition(
+    sessionLayoutPresetFolderReorderFocus.orderStorage === 'existing-preset-array-order',
+    'cmSshSessionManager.sessionLayoutPresetFolderReorderFocus.orderStorage must be existing-preset-array-order'
+  );
+  requireCondition(
+    sessionLayoutPresetFolderReorderFocus.addsOrderField === false,
+    'cmSshSessionManager.sessionLayoutPresetFolderReorderFocus.addsOrderField must be false'
+  );
+  for (const flag of [
+    'restoresFolderListFocusAfterListShortcut',
+    'restoresFolderHandleFocusAfterFolderButton',
+    'restoresFolderHandleFocusAfterFolderDragDrop',
+    'restoresPresetHandleFocusAfterPresetButton',
+    'restoresPresetHandleFocusAfterPresetKeyboard',
+    'restoresPresetHandleFocusAfterPresetDragDrop',
+    'usesPreventScroll',
+    'supportsScreenReaderLiveStatus',
+    'disabledDuringSearch',
+    'disabledDuringFolderFilter',
+    'sameFolderPresetReorderOnly',
+    'preservesPresetNames',
+    'preservesFolders',
+    'preservesViewPreferences',
+    'preservesSelection',
+    'preservesCollapseState',
+    'folderMetadataExported',
+    'folderMetadataImported',
+    'sameNameGlobalUnique',
+    'noSessionExportImportSchemaChange',
+    'noLayoutExportImportSchemaChange',
+    'noTauriSchemaChange',
+    'noSessionSearch',
+    'noDiagnosticFilters',
+    'noEndpointMetadata',
+    'noCredentialPayload',
+    'noRuntimeProfile',
+    'noDiagnosticHistory',
+    'noToken',
+    'noKubeconfig',
+    'noSecretValues',
+    'noEventsOrLogs',
+  ]) {
+    requireCondition(
+      sessionLayoutPresetFolderReorderFocus[flag] === true,
+      `cmSshSessionManager.sessionLayoutPresetFolderReorderFocus.${flag} must be true`
+    );
+  }
+  requireCondition(
+    sessionLayoutPresetFolderReorderFocus.folderCollapseExported === false,
+    'cmSshSessionManager.sessionLayoutPresetFolderReorderFocus.folderCollapseExported must be false'
+  );
   const sessionLayoutImportExport = manager.sessionLayoutImportExport || {};
   requireCondition(sessionLayoutImportExport.desktopOnly === true, 'cmSshSessionManager.sessionLayoutImportExport.desktopOnly must be true');
   requireCondition(sessionLayoutImportExport.uiOnly === true, 'cmSshSessionManager.sessionLayoutImportExport.uiOnly must be true');
@@ -1782,6 +1865,7 @@ async function validateCmSshSessionManager(spec) {
     'desktop-cm-session-layout-bulk-folder-input',
     'desktop-cm-session-layout-bulk-folder-apply',
     'desktop-cm-session-layout-reorder-state',
+    'desktop-cm-session-layout-reorder-focus-status',
     'desktop-cm-session-layout-drag-handle-',
     'desktop-cm-session-layout-reorder-up-',
     'desktop-cm-session-layout-reorder-down-',
@@ -1858,7 +1942,14 @@ async function validateCmSshSessionManager(spec) {
     'sessionLayoutFolderListTitleId',
     'sessionLayoutFolderKeyboardDescriptionId',
     'sessionLayoutFolderKeyboardLiveStatusId',
+    'sessionLayoutReorderFocusStatusId',
     'sessionLayoutFolderKeyboardLiveText',
+    'sessionLayoutReorderFocusLiveText',
+    'sessionLayoutReorderFocusTargetTestId',
+    'sessionLayoutReorderFocusMessage',
+    'requestSessionLayoutReorderFocus',
+    'sessionLayoutFolderDragHandleTestId',
+    'sessionLayoutPresetDragHandleTestId',
     'sessionLayoutFolderListRef',
     'collapsedSessionLayoutFolders',
     'groupedSessionLayoutPresets',
@@ -1908,6 +1999,7 @@ async function validateCmSshSessionManager(spec) {
     'moveDesktopCmSessionLayoutPresetToIndex',
     'sessionLayoutReorderKeyboardMessage',
     'sessionLayoutReorderKeyboardLiveText',
+    'setSessionLayoutReorderFocusTargetTestId',
     'kuviewer.desktop.cmSessionLayouts',
   ]) {
     requireCondition(desktopCmSessionPanel.includes(marker), `DesktopCmSessionPanel must include ${marker}`);
@@ -2280,20 +2372,29 @@ async function validateCmSshSessionManager(spec) {
     'desktop CM session layout folder reorder controls must enable when search and folder filter are clear',
     'desktop CM session layout folder reorder smoke must start with two folders',
     'desktop CM session layout folder drag handle must be enabled when filters are clear',
+    'desktop CM session layout folder button reorder must restore folder drag handle focus after down',
     'desktop CM session layout folder reorder down must move the first folder after the next folder',
+    'desktop CM session layout reorder focus status must announce folder handle restoration',
+    'desktop CM session layout folder button reorder must restore folder drag handle focus after up',
     'desktop CM session layout folder reorder up must restore the folder order',
     'desktop CM session layout folder list must expose keyboard reorder shortcuts',
     'desktop CM session layout folder drag handle must expose keyboard reorder shortcuts',
+    'desktop CM session layout folder keyboard reorder must restore folder list focus after Shift ArrowDown',
     'desktop CM session layout folder keyboard Shift ArrowDown must move active folder down',
     'desktop CM session layout reorder keyboard live status must announce folder move',
+    'desktop CM session layout reorder focus status must announce folder list restoration',
+    'desktop CM session layout folder keyboard reorder must restore folder list focus after Shift ArrowUp',
     'desktop CM session layout folder keyboard Shift ArrowUp must restore folder order',
-    'desktop CM session layout drag and reorder keyboard state must stay memory-only',
+    'desktop CM session layout drag, reorder keyboard, and focus state must stay memory-only',
     'desktop CM session layout preset keyboard reorder smoke must start with two presets in one folder',
     'desktop CM session layout preset drag handle must expose keyboard reorder shortcuts',
+    'desktop CM session layout preset keyboard reorder must restore preset drag handle focus after ArrowDown',
     'desktop CM session layout preset keyboard ArrowDown must move first preset down',
     'desktop CM session layout reorder keyboard live status must announce preset move',
+    'desktop CM session layout reorder focus status must announce preset handle restoration',
+    'desktop CM session layout preset keyboard reorder must restore preset drag handle focus after ArrowUp',
     'desktop CM session layout preset keyboard ArrowUp must restore preset order',
-    'desktop CM session layout reorder keyboard status must stay memory-only',
+    'desktop CM session layout reorder keyboard and focus status must stay memory-only',
     'desktop CM session layout folder count must show saved layout presets',
     'desktop CM session layout save must persist safe folder metadata',
     'desktop CM session layout search must match saved layout folder metadata',
@@ -2365,6 +2466,7 @@ async function validateCmSshSessionManager(spec) {
     requireCondition(text.includes('folder empty state') || text.includes('folder empty-state'), `${label} must document desktop CM session layout folder empty-state polish`);
     requireCondition(text.includes('folder drag/reorder') || text.includes('folder drag reorder'), `${label} must document desktop CM session layout folder drag/reorder polish`);
     requireCondition(text.includes('drag/reorder keyboard') || text.includes('drag reorder keyboard'), `${label} must document desktop CM session layout folder drag/reorder keyboard polish`);
+    requireCondition(text.includes('reorder focus'), `${label} must document desktop CM session layout folder reorder focus polish`);
     requireCondition(text.includes('export/import') || text.includes('session export'), `${label} must document desktop CM session export/import`);
     requireCondition(text.includes('web app must not expose SSH'), `${label} must document that the web app must not expose SSH`);
   }
