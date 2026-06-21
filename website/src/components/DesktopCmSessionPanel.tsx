@@ -178,6 +178,7 @@ export function DesktopCmSessionPanel({
   const [collapsedSessionLayoutFolders, setCollapsedSessionLayoutFolders] = useState<Set<string>>(() => readDesktopCmSessionLayoutCollapsedFolders());
   const [selectedSessionLayoutPresetNames, setSelectedSessionLayoutPresetNames] = useState<Set<string>>(() => new Set());
   const [sessionLayoutBulkDeleteConfirm, setSessionLayoutBulkDeleteConfirm] = useState(false);
+  const [sessionLayoutBulkFolderName, setSessionLayoutBulkFolderName] = useState(defaultDesktopCmSessionLayoutFolder);
   const [selectedBulkSessionIds, setSelectedBulkSessionIds] = useState<Set<string>>(() => new Set());
   const [bulkGroupName, setBulkGroupName] = useState(defaultDesktopCmSessionGroup);
   const [bulkDeleteConfirm, setBulkDeleteConfirm] = useState(false);
@@ -815,6 +816,32 @@ export function DesktopCmSessionPanel({
       const nextPresets = normalizeDesktopCmSessionLayoutPresets(
         current.map((preset) =>
           preset.name === presetName
+            ? {
+                ...preset,
+                folder,
+                updatedAt: Date.now(),
+              }
+            : preset,
+        ),
+      );
+      writeDesktopCmSessionLayoutPresets(nextPresets);
+      return nextPresets;
+    });
+  };
+
+  const handleMoveSelectedSessionLayoutsToFolder = () => {
+    if (selectedSessionLayoutPresetNames.size === 0) {
+      return;
+    }
+    const folder = normalizeDesktopCmSessionLayoutFolderName(sessionLayoutBulkFolderName);
+    const selectedNames = new Set(selectedSessionLayoutPresetNames);
+    setSessionLayoutBulkFolderName(folder);
+    setSessionLayoutImportConflicts(null);
+    setSessionLayoutBulkDeleteConfirm(false);
+    setSessionLayoutPresets((current) => {
+      const nextPresets = normalizeDesktopCmSessionLayoutPresets(
+        current.map((preset) =>
+          selectedNames.has(preset.name)
             ? {
                 ...preset,
                 folder,
@@ -1757,6 +1784,29 @@ export function DesktopCmSessionPanel({
                 <span className="ku-chip border-[rgba(0,122,255,0.18)] bg-white/65 text-[#0066cc]" data-testid="desktop-cm-session-layout-bulk-count">
                   선택 {selectedSessionLayoutPresetNames.size}개 · 현재 결과 {selectedVisibleSessionLayoutPresetCount}개
                 </span>
+                <label className="min-w-[150px] flex-1">
+                  <span className="ku-meta">Bulk folder</span>
+                  <input
+                    className="ku-field mt-1 h-8 w-full text-xs"
+                    data-testid="desktop-cm-session-layout-bulk-folder-input"
+                    maxLength={maxDesktopCmSessionLayoutFolderNameLength}
+                    placeholder={defaultDesktopCmSessionLayoutFolder}
+                    value={sessionLayoutBulkFolderName}
+                    onChange={(event) => {
+                      setSessionLayoutBulkDeleteConfirm(false);
+                      setSessionLayoutBulkFolderName(event.target.value);
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') {
+                        handleMoveSelectedSessionLayoutsToFolder();
+                      }
+                    }}
+                  />
+                </label>
+                <button className="ku-control h-8 self-end text-xs" data-testid="desktop-cm-session-layout-bulk-folder-apply" type="button" onClick={handleMoveSelectedSessionLayoutsToFolder}>
+                  <Folder size={13} aria-hidden="true" />
+                  Folder 이동
+                </button>
                 <button
                   className="ku-control h-8 text-xs"
                   data-testid="desktop-cm-session-layout-bulk-export"
