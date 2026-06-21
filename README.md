@@ -520,7 +520,7 @@ If both the workflow keyscan fallback and the helper cannot collect host keys, S
 
 Before creating a new release tag, the manual `deploy-preflight` workflow can validate only the deploy connection path. It checks required secrets, SSH TCP reachability, the optional pinned host key, strict SSH connection setup, remote `git`/`curl`/`gzip`/Docker/Compose availability, `DEPLOY_PATH`, existing `deploy/standalone/.env`, and temporary write access. It does not build an image, upload files, run compose, roll back, or change the server deployment.
 
-Tag deploy bounds each SCP image upload attempt to 300 seconds and retries up to three times. A timed-out attempt prints `scp-upload-timeout`, other failed attempts print `scp-upload-failed`, and the workflow removes the partial remote image tar before retrying. If upload timeouts repeat, run `deploy-ssh-endpoint-diagnostics` and verify SSH/network throughput or use the self-hosted fallback below.
+Tag deploy bounds each SCP image upload attempt to 300 seconds, retries up to three times, and caps the whole upload step at 18 minutes. A timed-out attempt prints `scp-upload-timeout`, other failed attempts print `scp-upload-failed`, and the workflow removes the partial remote image tar before retrying. If upload timeouts repeat, run `deploy-ssh-endpoint-diagnostics` and verify SSH/network throughput or use the self-hosted fallback below.
 
 For the self-hosted fallback, install/configure the runner outside this repository and assign the `kuviewer-deploy` label. The runner user needs access to Docker/Compose, `git`, `curl`, and `tar`. Prepare `DEPLOY_PATH` once with an untracked env file before running the workflow:
 

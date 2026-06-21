@@ -217,6 +217,7 @@ jobs:
           ls -lh "${IMAGE_TAR}"
 
       - name: Upload image to server
+        timeout-minutes: 18
         shell: bash
         run: |
           set -euo pipefail
