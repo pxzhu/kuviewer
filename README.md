@@ -53,6 +53,8 @@ Desktop CM saved layout folder bulk move is desktop-only UI state. The bulk tool
 
 Desktop CM saved layout folder filter is desktop-only UI state. The saved layout list can be narrowed to an existing folder, combines that folder filter with the layout search query, and uses filtered results for visible bulk selection. The active folder filter is kept in browser memory only and is not written to localStorage, sessionStorage, export/import JSON, Tauri payloads, credentials, runtime profiles, diagnostics, Events, or logs.
 
+Desktop CM saved layout folder actions are desktop-only UI controls on each saved layout folder header. Users can select the currently visible presets in a folder or rename a folder, which moves every preset in that folder to the normalized target folder by updating only safe preset `folder` metadata. Folder action drafts and selections stay in browser memory; the feature does not change session export/import, layout export/import schema, Tauri payloads, credentials, runtime profiles, diagnostics, Events, or logs.
+
 Existing remote API profile, local sidecar, and direct Kubernetes/keychain paths remain prototype-only scaffolds. The local sidecar no longer starts by default in the desktop product path; it requires `KUVIEWER_DESKTOP_ENABLE_PROTOTYPE_SIDECAR=1` for explicit prototype work. The web app must not expose SSH.
 
 The Flow view is intended to feel closer to real request movement than a generic resource graph. It derives paths such as:

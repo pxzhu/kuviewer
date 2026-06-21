@@ -181,6 +181,8 @@ export function DesktopCmSessionPanel({
   const [sessionLayoutRenameTargetName, setSessionLayoutRenameTargetName] = useState('');
   const [sessionLayoutRenameDraftName, setSessionLayoutRenameDraftName] = useState('');
   const [sessionLayoutRenameError, setSessionLayoutRenameError] = useState('');
+  const [sessionLayoutFolderRenameTarget, setSessionLayoutFolderRenameTarget] = useState('');
+  const [sessionLayoutFolderRenameDraft, setSessionLayoutFolderRenameDraft] = useState('');
   const [sessionLayoutPresets, setSessionLayoutPresets] = useState<DesktopCmSessionLayoutPreset[]>(() => readDesktopCmSessionLayoutPresets());
   const [collapsedSessionLayoutFolders, setCollapsedSessionLayoutFolders] = useState<Set<string>>(() => readDesktopCmSessionLayoutCollapsedFolders());
   const [selectedSessionLayoutPresetNames, setSelectedSessionLayoutPresetNames] = useState<Set<string>>(() => new Set());
@@ -382,6 +384,16 @@ export function DesktopCmSessionPanel({
       setSessionLayoutFolderFilter('all');
     }
   }, [sessionLayoutFolderFilter, sessionLayoutFolderFilterOptions]);
+
+  useEffect(() => {
+    if (!sessionLayoutFolderRenameTarget) {
+      return;
+    }
+    if (!sessionLayoutFolderFilterOptions.some((option) => option.folder === sessionLayoutFolderRenameTarget)) {
+      setSessionLayoutFolderRenameTarget('');
+      setSessionLayoutFolderRenameDraft('');
+    }
+  }, [sessionLayoutFolderFilterOptions, sessionLayoutFolderRenameTarget]);
 
   useEffect(() => {
     if (selectedSessionLayoutPresetNames.size === 0 && sessionLayoutBulkDeleteConfirm) {
@@ -803,6 +815,18 @@ export function DesktopCmSessionPanel({
     setSelectedSessionLayoutPresetNames((current) => new Set([...current, ...visibleSessionLayoutPresets.map((preset) => preset.name)]));
   };
 
+  const handleSelectSessionLayoutFolderPresets = (folderName: string) => {
+    const folder = normalizeDesktopCmSessionLayoutFolderName(folderName);
+    setSessionLayoutBulkDeleteConfirm(false);
+    setSelectedSessionLayoutPresetNames(
+      (current) =>
+        new Set([
+          ...current,
+          ...visibleSessionLayoutPresets.filter((preset) => normalizeDesktopCmSessionLayoutFolderName(preset.folder) === folder).map((preset) => preset.name),
+        ]),
+    );
+  };
+
   const handleClearSessionLayoutPresetSelection = () => {
     setSessionLayoutBulkDeleteConfirm(false);
     setSelectedSessionLayoutPresetNames(new Set());
@@ -850,6 +874,60 @@ export function DesktopCmSessionPanel({
       writeDesktopCmSessionLayoutPresets(nextPresets);
       return nextPresets;
     });
+  };
+
+  const handleStartRenameSessionLayoutFolder = (folderName: string) => {
+    const folder = normalizeDesktopCmSessionLayoutFolderName(folderName);
+    setSessionLayoutBulkDeleteConfirm(false);
+    setSessionLayoutFolderRenameTarget(folder);
+    setSessionLayoutFolderRenameDraft(folder);
+  };
+
+  const handleCancelRenameSessionLayoutFolder = () => {
+    setSessionLayoutFolderRenameTarget('');
+    setSessionLayoutFolderRenameDraft('');
+  };
+
+  const handleSaveRenamedSessionLayoutFolder = () => {
+    const sourceFolder = normalizeDesktopCmSessionLayoutFolderName(sessionLayoutFolderRenameTarget);
+    const targetFolder = normalizeDesktopCmSessionLayoutFolderName(sessionLayoutFolderRenameDraft);
+    if (!sourceFolder) {
+      handleCancelRenameSessionLayoutFolder();
+      return;
+    }
+    if (sourceFolder === targetFolder) {
+      handleCancelRenameSessionLayoutFolder();
+      return;
+    }
+    setSessionLayoutImportConflicts(null);
+    setSessionLayoutBulkDeleteConfirm(false);
+    setCollapsedSessionLayoutFolders((current) => {
+      if (!current.has(sourceFolder)) {
+        return current;
+      }
+      const nextCollapsedFolders = new Set(current);
+      nextCollapsedFolders.delete(sourceFolder);
+      nextCollapsedFolders.add(targetFolder);
+      writeDesktopCmSessionLayoutCollapsedFolders(nextCollapsedFolders);
+      return nextCollapsedFolders;
+    });
+    setSessionLayoutFolderFilter((current) => (normalizeDesktopCmSessionLayoutFolderName(current) === sourceFolder ? targetFolder : current));
+    setSessionLayoutPresets((current) => {
+      const nextPresets = normalizeDesktopCmSessionLayoutPresets(
+        current.map((preset) =>
+          normalizeDesktopCmSessionLayoutFolderName(preset.folder) === sourceFolder
+            ? {
+                ...preset,
+                folder: targetFolder,
+                updatedAt: Date.now(),
+              }
+            : preset,
+        ),
+      );
+      writeDesktopCmSessionLayoutPresets(nextPresets);
+      return nextPresets;
+    });
+    handleCancelRenameSessionLayoutFolder();
   };
 
   const handleMoveSelectedSessionLayoutsToFolder = () => {
@@ -2062,6 +2140,67 @@ export function DesktopCmSessionPanel({
                       <span className="ku-chip" data-testid={`desktop-cm-session-layout-folder-count-${folder.slug}`}>
                         {folder.presets.length} / {folder.totalCount}
                       </span>
+                      {sessionLayoutFolderRenameTarget === folder.folder ? (
+                        <span className="flex min-w-[220px] flex-1 flex-wrap items-center gap-1" data-testid={`desktop-cm-session-layout-folder-rename-editor-${folder.slug}`}>
+                          <input
+                            className="ku-field h-8 min-w-[150px] flex-1 px-2 py-1 text-xs"
+                            data-testid={`desktop-cm-session-layout-folder-rename-input-${folder.slug}`}
+                            maxLength={maxDesktopCmSessionLayoutFolderNameLength}
+                            value={sessionLayoutFolderRenameDraft}
+                            onChange={(event) => setSessionLayoutFolderRenameDraft(event.target.value)}
+                            onKeyDown={(event) => {
+                              if (event.key === 'Enter') {
+                                event.preventDefault();
+                                handleSaveRenamedSessionLayoutFolder();
+                              }
+                              if (event.key === 'Escape') {
+                                event.preventDefault();
+                                handleCancelRenameSessionLayoutFolder();
+                              }
+                            }}
+                          />
+                          <button
+                            className="ku-control h-8 text-xs"
+                            data-testid={`desktop-cm-session-layout-folder-rename-save-${folder.slug}`}
+                            type="button"
+                            onClick={handleSaveRenamedSessionLayoutFolder}
+                          >
+                            <CheckCircle2 size={13} aria-hidden="true" />
+                            저장
+                          </button>
+                          <button
+                            className="ku-control h-8 text-xs"
+                            data-testid={`desktop-cm-session-layout-folder-rename-cancel-${folder.slug}`}
+                            type="button"
+                            onClick={handleCancelRenameSessionLayoutFolder}
+                          >
+                            <XCircle size={13} aria-hidden="true" />
+                            취소
+                          </button>
+                        </span>
+                      ) : (
+                        <>
+                          <button
+                            className="ku-control h-8 text-xs"
+                            data-testid={`desktop-cm-session-layout-folder-select-${folder.slug}`}
+                            type="button"
+                            disabled={folder.presets.length === 0}
+                            onClick={() => handleSelectSessionLayoutFolderPresets(folder.folder)}
+                          >
+                            <CheckCircle2 size={13} aria-hidden="true" />
+                            Folder 선택
+                          </button>
+                          <button
+                            className="ku-control h-8 text-xs"
+                            data-testid={`desktop-cm-session-layout-folder-rename-${folder.slug}`}
+                            type="button"
+                            onClick={() => handleStartRenameSessionLayoutFolder(folder.folder)}
+                          >
+                            <Pencil size={13} aria-hidden="true" />
+                            Folder 이름
+                          </button>
+                        </>
+                      )}
                     </div>
                     {!folder.collapsed ? (
                       <div className="flex min-w-0 flex-wrap items-center gap-2" data-testid={`desktop-cm-session-layout-folder-items-${folder.slug}`}>
