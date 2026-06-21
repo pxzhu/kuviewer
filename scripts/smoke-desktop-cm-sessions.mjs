@@ -677,7 +677,8 @@ async function smokeDesktopRuntime(browser, url) {
     const layoutReorderHistoryPresetDiscoverabilityHintVisible = await page.getByTestId('desktop-cm-session-layout-reorder-history-filter-preset-discoverability-hint').isVisible();
     const layoutReorderHistoryPresetDiscoverabilityHintTitle = await page.getByTestId('desktop-cm-session-layout-reorder-history-filter-preset-discoverability-hint').getAttribute('title');
     const layoutReorderHistoryPresetDiscoverabilityHintLabel = await page.getByTestId('desktop-cm-session-layout-reorder-history-filter-preset-discoverability-hint').getAttribute('aria-label');
-    const layoutReorderHistoryPresetDiscoverabilityHintRole = await page.getByTestId('desktop-cm-session-layout-reorder-history-filter-preset-discoverability-hint').getAttribute('role');
+    const layoutReorderHistoryPresetDiscoverabilityHintType = await page.getByTestId('desktop-cm-session-layout-reorder-history-filter-preset-discoverability-hint').getAttribute('type');
+    const layoutReorderHistoryPresetDiscoverabilityHintShortcuts = await page.getByTestId('desktop-cm-session-layout-reorder-history-filter-preset-discoverability-hint').getAttribute('aria-keyshortcuts');
     const sessionLayoutStorageAfterPresetHints = await page.evaluate(() => localStorage.getItem('kuviewer_desktop_cm_session_layout_presets') || '');
     const layoutReorderHistoryPresetKeyboardStatusRole = await page.getByTestId('desktop-cm-session-layout-reorder-history-filter-preset-keyboard-status').getAttribute('role');
     const layoutReorderHistoryPresetKeyboardStatusLive = await page.getByTestId('desktop-cm-session-layout-reorder-history-filter-preset-keyboard-status').getAttribute('aria-live');
@@ -754,14 +755,29 @@ async function smokeDesktopRuntime(browser, url) {
     );
     requireCondition(
       layoutReorderHistoryPresetDiscoverabilityHintVisible &&
-        layoutReorderHistoryPresetDiscoverabilityHintRole === 'note' &&
+        layoutReorderHistoryPresetDiscoverabilityHintType === 'button' &&
+        layoutReorderHistoryPresetDiscoverabilityHintShortcuts === 'Enter Space' &&
         layoutReorderHistoryPresetDiscoverabilityHintTitle?.includes('Preset help for All') &&
         layoutReorderHistoryPresetDiscoverabilityHintTitle.includes('arrow keys move between presets') &&
+        layoutReorderHistoryPresetDiscoverabilityHintTitle.includes('help button focuses the active preset') &&
         layoutReorderHistoryPresetDiscoverabilityHintTitle.includes('UI-only') &&
         layoutReorderHistoryPresetDiscoverabilityHintLabel === layoutReorderHistoryPresetDiscoverabilityHintTitle &&
         !sessionLayoutStorageAfterPresetHints.includes('Preset help') &&
         !sessionLayoutStorageAfterPresetHints.includes('arrow keys move between presets'),
       'desktop CM session layout reorder history timestamp filter preset discoverability smoke must expose UI-only visible help without persistence'
+    );
+    await page.getByTestId('desktop-cm-session-layout-reorder-history-filter-preset-discoverability-hint').focus();
+    const layoutReorderHistoryPresetHelpFocusStatus = await page.getByTestId('desktop-cm-session-layout-reorder-history-filter-preset-keyboard-status').textContent();
+    requireCondition(
+      layoutReorderHistoryPresetHelpFocusStatus?.includes('Preset help focused') &&
+        layoutReorderHistoryPresetHelpFocusStatus.includes('focus the active reorder history preset'),
+      'desktop CM session layout reorder history timestamp filter preset help focus must announce focus action'
+    );
+    await page.keyboard.press('Enter');
+    await requireTestIdFocused(
+      page,
+      'desktop-cm-session-layout-reorder-history-filter-preset-all-comfortable',
+      'desktop CM session layout reorder history timestamp filter preset help focus must move focus to active preset'
     );
     await page.getByTestId('desktop-cm-session-layout-reorder-history-filter-preset-all-comfortable').focus();
     await page.keyboard.press('ArrowRight');

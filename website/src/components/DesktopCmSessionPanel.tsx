@@ -1211,8 +1211,8 @@ export function DesktopCmSessionPanel({
     'Shortcut hint: Arrow keys move across reorder history presets, Home and End jump to the ends, and Enter or Space applies the focused preset.';
   const sessionLayoutReorderHistoryFilterPresetDiscoverabilityHint =
     activeSessionLayoutReorderHistoryFilterPreset
-      ? `Preset help for ${activeSessionLayoutReorderHistoryFilterPreset.label}: arrow keys move between presets, Home and End jump, and Enter or Space applies. This hint is UI-only.`
-      : 'Preset help: arrow keys move between presets, Home and End jump, and Enter or Space applies. This hint is UI-only.';
+      ? `Preset help for ${activeSessionLayoutReorderHistoryFilterPreset.label}: arrow keys move between presets, Home and End jump, Enter or Space applies, and this help button focuses the active preset. This hint is UI-only.`
+      : 'Preset help: arrow keys move between presets, Home and End jump, Enter or Space applies, and this help button focuses the first preset. This hint is UI-only.';
   const sessionLayoutReorderHistoryFilterPresetLabel = (preset: DesktopCmSessionLayoutReorderHistoryFilterPreset, index: number, total: number) =>
     `Apply ${preset.label} reorder history preset, ${index + 1} of ${total}: ${sessionLayoutReorderHistoryScopeFilterLabel(preset.scope)}, ${sessionLayoutReorderHistoryStatusFilterLabel(preset.status)}, ${sessionLayoutReorderHistoryDensityLabel(preset.density)} density. Arrow keys move between presets, Home and End jump, Enter or Space applies.`;
   const sessionLayoutReorderHistoryFilterPresetTitle = (preset: DesktopCmSessionLayoutReorderHistoryFilterPreset, index: number, total: number) =>
@@ -1224,6 +1224,13 @@ export function DesktopCmSessionPanel({
       `Focus ${preset.label} reorder history preset, ${presetIndex + 1} of ${desktopCmSessionLayoutReorderHistoryFilterPresets.length}. Press Enter or Space to apply.`,
     );
     window.requestAnimationFrame(() => sessionLayoutReorderHistoryFilterPresetButtonRefs.current[preset.id]?.focus({ preventScroll: true }));
+  };
+  const focusSessionLayoutReorderHistoryFilterPresetHelpTarget = () => {
+    const targetPreset = activeSessionLayoutReorderHistoryFilterPreset || desktopCmSessionLayoutReorderHistoryFilterPresets[0];
+    if (!targetPreset) {
+      return;
+    }
+    focusSessionLayoutReorderHistoryFilterPreset(targetPreset);
   };
   const handleSessionLayoutReorderHistoryFilterPresetKeyDown = (
     event: KeyboardEvent<HTMLButtonElement>,
@@ -2780,18 +2787,24 @@ export function DesktopCmSessionPanel({
                     >
                       {sessionLayoutReorderHistoryFilterPresetShortcutHint}
                     </p>
-                    <span
+                    <button
                       aria-label={sessionLayoutReorderHistoryFilterPresetDiscoverabilityHint}
-                      className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-[6px] border border-[rgba(42,111,151,0.16)] bg-[rgba(255,255,255,0.76)] text-[rgba(42,111,151,0.82)]"
+                      aria-keyshortcuts="Enter Space"
+                      className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-[6px] border border-[rgba(42,111,151,0.16)] bg-[rgba(255,255,255,0.76)] text-[rgba(42,111,151,0.82)] transition hover:bg-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[rgba(42,111,151,0.45)]"
                       data-testid="desktop-cm-session-layout-reorder-history-filter-preset-discoverability-hint"
                       id={sessionLayoutReorderHistoryFilterPresetDiscoverabilityHintId}
-                      role="note"
-                      tabIndex={0}
                       title={sessionLayoutReorderHistoryFilterPresetDiscoverabilityHint}
+                      type="button"
+                      onFocus={() =>
+                        setSessionLayoutReorderHistoryFilterPresetKeyboardMessage(
+                          'Preset help focused. Press Enter or Space to focus the active reorder history preset.',
+                        )
+                      }
+                      onClick={focusSessionLayoutReorderHistoryFilterPresetHelpTarget}
                     >
                       <CircleHelp className="h-3.5 w-3.5" aria-hidden="true" />
                       <span className="sr-only">{sessionLayoutReorderHistoryFilterPresetDiscoverabilityHint}</span>
-                    </span>
+                    </button>
                     <p
                       aria-atomic="true"
                       aria-live="polite"
