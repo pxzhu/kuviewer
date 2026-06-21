@@ -50,6 +50,7 @@ requireCondition(
     'desktop-cm-session-layout-conflict-keyboard',
     'desktop-cm-session-layout-conflict-accessibility',
     'desktop-cm-session-layout-preset-search',
+    'desktop-cm-session-layout-preset-rename',
   ].includes(spec.status),
   'status must be a known desktop packaging milestone'
 );
@@ -104,6 +105,7 @@ requireCondition(phases.includes('desktop-cm-session-layout-conflict-summary'), 
 requireCondition(phases.includes('desktop-cm-session-layout-conflict-keyboard'), 'phaseOrder must include desktop-cm-session-layout-conflict-keyboard');
 requireCondition(phases.includes('desktop-cm-session-layout-conflict-accessibility'), 'phaseOrder must include desktop-cm-session-layout-conflict-accessibility');
 requireCondition(phases.includes('desktop-cm-session-layout-preset-search'), 'phaseOrder must include desktop-cm-session-layout-preset-search');
+requireCondition(phases.includes('desktop-cm-session-layout-preset-rename'), 'phaseOrder must include desktop-cm-session-layout-preset-rename');
 
 await validateBuildPrerequisites(spec);
 await validateDesktopDistributionPolicy(spec);
@@ -144,6 +146,7 @@ if (
     'desktop-cm-session-layout-conflict-keyboard',
     'desktop-cm-session-layout-conflict-accessibility',
     'desktop-cm-session-layout-preset-search',
+    'desktop-cm-session-layout-preset-rename',
   ].includes(spec.status)
 ) {
   await validateTauriScaffold(spec.tauri || {});
@@ -763,6 +766,7 @@ async function validateCmSshSessionManager(spec) {
       'session-layout-conflict-keyboard',
       'session-layout-conflict-accessibility',
       'session-layout-preset-search',
+      'session-layout-preset-rename',
     ].includes(manager.status),
     'cmSshSessionManager.status must be a known CM/SSH session manager milestone'
   );
@@ -1010,6 +1014,36 @@ async function validateCmSshSessionManager(spec) {
   ]) {
     requireCondition(sessionLayoutPresetSearch[flag] === true, `cmSshSessionManager.sessionLayoutPresetSearch.${flag} must be true`);
   }
+  const sessionLayoutPresetRename = manager.sessionLayoutPresetRename || {};
+  requireCondition(sessionLayoutPresetRename.desktopOnly === true, 'cmSshSessionManager.sessionLayoutPresetRename.desktopOnly must be true');
+  requireCondition(sessionLayoutPresetRename.uiOnly === true, 'cmSshSessionManager.sessionLayoutPresetRename.uiOnly must be true');
+  requireCondition(sessionLayoutPresetRename.draftStateStorage === 'memory-only', 'cmSshSessionManager.sessionLayoutPresetRename.draftStateStorage must be memory-only');
+  requireCondition(sessionLayoutPresetRename.usesExistingLayoutStorage === 'kuviewer_desktop_cm_session_layout_presets', 'cmSshSessionManager.sessionLayoutPresetRename.usesExistingLayoutStorage must be kuviewer_desktop_cm_session_layout_presets');
+  requireCondition(sessionLayoutPresetRename.defaultEmptyName === 'Session layout', 'cmSshSessionManager.sessionLayoutPresetRename.defaultEmptyName must be Session layout');
+  requireCondition(sessionLayoutPresetRename.maxNameLength === 40, 'cmSshSessionManager.sessionLayoutPresetRename.maxNameLength must be 40');
+  for (const flag of [
+    'normalizesName',
+    'preservesViewPreferences',
+    'preservesSearchQuery',
+    'sameNameNoop',
+    'duplicateNameRejected',
+    'inlineError',
+    'noSessionExportImportSchemaChange',
+    'noLayoutExportImportSchemaChange',
+    'noTauriSchemaChange',
+    'noSessionSearch',
+    'noDiagnosticFilters',
+    'noEndpointMetadata',
+    'noCredentialPayload',
+    'noRuntimeProfile',
+    'noDiagnosticHistory',
+    'noToken',
+    'noKubeconfig',
+    'noSecretValues',
+    'noEventsOrLogs',
+  ]) {
+    requireCondition(sessionLayoutPresetRename[flag] === true, `cmSshSessionManager.sessionLayoutPresetRename.${flag} must be true`);
+  }
   const sessionLayoutImportExport = manager.sessionLayoutImportExport || {};
   requireCondition(sessionLayoutImportExport.desktopOnly === true, 'cmSshSessionManager.sessionLayoutImportExport.desktopOnly must be true');
   requireCondition(sessionLayoutImportExport.uiOnly === true, 'cmSshSessionManager.sessionLayoutImportExport.uiOnly must be true');
@@ -1228,6 +1262,11 @@ async function validateCmSshSessionManager(spec) {
     'desktop-cm-session-layout-save',
     'desktop-cm-session-layout-',
     'desktop-cm-session-layout-delete-',
+    'desktop-cm-session-layout-rename-',
+    'desktop-cm-session-layout-rename-input-',
+    'desktop-cm-session-layout-rename-save-',
+    'desktop-cm-session-layout-rename-cancel-',
+    'desktop-cm-session-layout-rename-error',
     'desktop-cm-session-layout-export',
     'desktop-cm-session-layout-import',
     'desktop-cm-session-layout-conflict-preview',
@@ -1246,6 +1285,12 @@ async function validateCmSshSessionManager(spec) {
     'desktop-cm-session-layout-conflict-row-keep-current-',
     'desktop-cm-session-layout-conflict-row-rename-incoming-',
     'activeSessionLayoutConflictName',
+    'sessionLayoutRenameTargetName',
+    'sessionLayoutRenameDraftName',
+    'sessionLayoutRenameError',
+    'handleStartRenameSessionLayoutPreset',
+    'handleSaveRenamedSessionLayoutPreset',
+    'handleCancelRenameSessionLayoutPreset',
     'handleSessionLayoutConflictKeyDown',
     'handleMoveActiveSessionLayoutConflict',
     'handleResolveActiveSessionLayoutConflict',
@@ -1409,6 +1454,11 @@ async function validateCmSshSessionManager(spec) {
     'desktop-cm-session-layout-save',
     'desktop-cm-session-layout-list',
     'desktop-cm-session-layout-delete-',
+    'desktop-cm-session-layout-rename-',
+    'desktop-cm-session-layout-rename-input-',
+    'desktop-cm-session-layout-rename-save-',
+    'desktop-cm-session-layout-rename-cancel-',
+    'desktop-cm-session-layout-rename-error',
     'desktop-cm-session-layout-export',
     'desktop-cm-session-layout-import',
     'desktop-cm-session-layout-import-summary',
@@ -1428,6 +1478,12 @@ async function validateCmSshSessionManager(spec) {
     'desktop-cm-session-layout-conflict-row-keep-current-',
     'desktop-cm-session-layout-conflict-row-rename-incoming-',
     'activeSessionLayoutConflictName',
+    'sessionLayoutRenameTargetName',
+    'sessionLayoutRenameDraftName',
+    'sessionLayoutRenameError',
+    'handleStartRenameSessionLayoutPreset',
+    'handleSaveRenamedSessionLayoutPreset',
+    'handleCancelRenameSessionLayoutPreset',
     'handleSessionLayoutConflictKeyDown',
     'handleMoveActiveSessionLayoutConflict',
     'handleResolveActiveSessionLayoutConflict',
@@ -1527,6 +1583,8 @@ async function validateCmSshSessionManager(spec) {
     'desktop CM bulk delete must require inline confirmation',
     'desktop CM import must report newly imported sessions',
     'desktop CM session layout save must persist safe layout metadata',
+    'desktop CM session layout rename must update only preset name metadata',
+    'desktop CM session layout rename draft must stay memory-only',
     'desktop CM session layout apply must restore group and favorite preferences',
     'desktop CM session layout delete must remove saved layout',
     'desktop CM session layout preset must not include session endpoint metadata',

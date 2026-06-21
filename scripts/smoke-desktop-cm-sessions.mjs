@@ -394,6 +394,27 @@ async function smokeDesktopRuntime(browser, url) {
     await page.getByTestId('desktop-cm-session-layout-ops-view').waitFor({ state: 'visible', timeout: 10_000 });
     sessionLayoutSearchCount = await page.getByTestId('desktop-cm-session-layout-search-count').textContent();
     requireCondition(sessionLayoutSearchCount?.includes('1 / 전체 1'), 'desktop CM session layout search clear must restore saved layouts');
+    await page.getByTestId('desktop-cm-session-layout-rename-ops-view').click();
+    await page.getByTestId('desktop-cm-session-layout-rename-input-ops-view').fill('Ops Primary');
+    await page.getByTestId('desktop-cm-session-layout-rename-save-ops-view').click();
+    await page.getByTestId('desktop-cm-session-layout-ops-primary').waitFor({ state: 'visible', timeout: 10_000 });
+    sessionLayoutStorage = await page.evaluate(() => window.localStorage.getItem('kuviewer_desktop_cm_session_layout_presets') || '');
+    requireCondition(sessionLayoutStorage.includes('Ops Primary'), 'desktop CM session layout rename must update only preset name metadata');
+    requireCondition(sessionLayoutStorage.includes('collapsedGroups') && sessionLayoutStorage.includes('"favorite":true'), 'desktop CM session layout rename must preserve saved layout preferences');
+    requireCondition(
+      !sessionLayoutStorage.includes('sessionLayoutRenameTargetName') &&
+        !sessionLayoutStorage.includes('sessionLayoutRenameDraftName') &&
+        !sessionLayoutStorage.includes('layout 이름 중복'),
+      'desktop CM session layout rename draft must stay memory-only'
+    );
+    await page.getByTestId('desktop-cm-session-layout-search').fill('primary');
+    sessionLayoutSearchCount = await page.getByTestId('desktop-cm-session-layout-search-count').textContent();
+    requireCondition(sessionLayoutSearchCount?.includes('1 / 전체 1'), 'desktop CM session layout search must match renamed layout metadata');
+    await page.getByTestId('desktop-cm-session-layout-search-clear').click();
+    await page.getByTestId('desktop-cm-session-layout-rename-ops-primary').click();
+    await page.getByTestId('desktop-cm-session-layout-rename-input-ops-primary').fill('Ops View');
+    await page.getByTestId('desktop-cm-session-layout-rename-save-ops-primary').click();
+    await page.getByTestId('desktop-cm-session-layout-ops-view').waitFor({ state: 'visible', timeout: 10_000 });
     const layoutDownloadPromise = page.waitForEvent('download');
     await page.getByTestId('desktop-cm-session-layout-export').click();
     const layoutDownload = await layoutDownloadPromise;
