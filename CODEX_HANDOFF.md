@@ -203,7 +203,8 @@ https://kuviewer.example.com/
    - Desktop CM session layout preset folder drag/reorder polish는 완료됐다. Folder row와 preset chip은 search/folder filter가 clear일 때 drag handle 및 up/down controls로 재정렬할 수 있고, reorder는 기존 `kuviewer_desktop_cm_session_layout_presets` 배열 순서만 바꾸며 새 order field/storage/Tauri/export schema를 추가하지 않는다.
    - Desktop CM session layout preset folder drag/reorder keyboard polish는 완료됐다. Folder list focus 상태에서는 `Shift+ArrowUp/Down/Home/End`로 active folder를 재정렬하고, folder/preset drag handle focus 상태에서는 `ArrowUp/Down/Home/End`로 순서를 바꾸며 live status와 shortcut state는 memory-only다. 저장되는 것은 기존 saved layout preset array order뿐이고 새 order field/storage/Tauri/export schema는 추가하지 않는다.
    - Desktop CM session layout preset folder reorder focus polish는 완료됐다. Folder-list shortcut reorder 후에는 folder list에, folder/preset button/handle reorder 후에는 이동된 항목의 drag handle에 `preventScroll`로 focus를 복원하며 focus target/status는 memory-only이고 저장/내보내기/Tauri payload에는 포함하지 않는다.
-   - 다음 확장 후보는 Desktop CM session layout preset folder reorder focus accessibility polish다.
+   - Desktop CM session layout preset folder reorder focus accessibility polish는 완료됐다. Folder list와 folder/preset drag handle은 focus 복원 설명과 atomic `status` live region을 연결하고, live status는 내부 test id가 아닌 사람이 읽을 수 있는 folder/preset/list label을 사용한다. Focus label/status는 memory-only이고 저장/내보내기/Tauri payload에는 포함하지 않는다.
+   - 다음 확장 후보는 Desktop CM session layout preset folder reorder disabled-state polish다.
 
 4. 실제 Kubernetes 연결 설계
    - 브라우저에 kube credential을 직접 넣지 않는 방향 유지.
