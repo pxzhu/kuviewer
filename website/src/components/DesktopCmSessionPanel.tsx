@@ -286,12 +286,13 @@ export function DesktopCmSessionPanel({
   const sessionLayoutConflictLiveText = sessionLayoutConflictSummary
     ? `Layout conflicts: ${sessionLayoutConflictSummary.resolved} of ${sessionLayoutConflictSummary.total} resolved, ${sessionLayoutConflictSummary.remaining} remaining. Incoming ${sessionLayoutConflictSummary.incomingResolved}, keep current ${sessionLayoutConflictSummary.currentResolved}, rename ${sessionLayoutConflictSummary.renamedResolved}.`
     : '';
+  const sessionLayoutFolderListTitleId = 'desktop-cm-session-layout-folder-list-title';
   const sessionLayoutFolderKeyboardDescriptionId = 'desktop-cm-session-layout-folder-keyboard-description';
   const sessionLayoutFolderKeyboardLiveStatusId = 'desktop-cm-session-layout-folder-keyboard-live-status';
   const activeSessionLayoutFolder = groupedSessionLayoutPresets.find((folder) => folder.folder === activeSessionLayoutFolderName);
   const activeSessionLayoutFolderIndex = sessionLayoutFolderNames.findIndex((folderName) => folderName === activeSessionLayoutFolderName);
   const sessionLayoutFolderKeyboardLiveText = activeSessionLayoutFolder
-    ? `Layout folder ${activeSessionLayoutFolder.folder} active, ${activeSessionLayoutFolder.presets.length} visible presets, ${activeSessionLayoutFolderIndex + 1} of ${sessionLayoutFolderNames.length}.`
+    ? `Layout folder ${activeSessionLayoutFolder.folder} active, ${activeSessionLayoutFolder.presets.length} visible presets, ${activeSessionLayoutFolder.totalCount} total presets, ${activeSessionLayoutFolder.collapsed ? 'collapsed' : 'expanded'}, ${activeSessionLayoutFolderIndex + 1} of ${sessionLayoutFolderNames.length}.`
     : `${sessionLayoutFolderNames.length} layout folders available.`;
   const connectionPreview = `${form.user || 'user'}@${form.host || 'host'}:${form.port || 22} -> ${form.remoteApiHost || desktopCmDefaultRemoteApiHost}:${form.remoteApiPort || desktopCmDefaultRemoteApiPort}`;
   const selectedRuntimeActive = Boolean(selectedSession && runtimeProfile?.sessionId === selectedSession.id);
@@ -2248,41 +2249,57 @@ export function DesktopCmSessionPanel({
               </div>
             ) : null}
             {sessionLayoutPresets.length > 0 ? (
-              <div
-                ref={sessionLayoutFolderListRef}
-                aria-describedby={`${sessionLayoutFolderKeyboardDescriptionId} ${sessionLayoutFolderKeyboardLiveStatusId}`}
-                aria-label="Saved session layout folders"
-                className="grid min-w-0 gap-2 outline-none focus-visible:ring-2 focus-visible:ring-[rgba(0,122,255,0.22)]"
-                data-testid="desktop-cm-session-layout-list"
-                onKeyDown={handleSessionLayoutFolderKeyDown}
-                role="group"
-                tabIndex={0}
-              >
+              <>
+                <p className="sr-only" data-testid="desktop-cm-session-layout-folder-list-title" id={sessionLayoutFolderListTitleId}>
+                  Saved session layout folders
+                </p>
                 <p className="sr-only" data-testid="desktop-cm-session-layout-folder-keyboard-description" id={sessionLayoutFolderKeyboardDescriptionId}>
                   Saved layout folder keyboard state is browser memory only. Use arrow keys, Home, End, Enter, S, R, and Escape when this folder list has focus.
                 </p>
                 <p aria-live="polite" className="sr-only" data-testid="desktop-cm-session-layout-folder-keyboard-live-status" id={sessionLayoutFolderKeyboardLiveStatusId}>
                   {sessionLayoutFolderKeyboardLiveText}
                 </p>
+                <div
+                  ref={sessionLayoutFolderListRef}
+                  aria-activedescendant={
+                    activeSessionLayoutFolder ? `desktop-cm-session-layout-folder-row-${slugifyTestId(activeSessionLayoutFolder.folder)}` : undefined
+                  }
+                  aria-describedby={`${sessionLayoutFolderKeyboardDescriptionId} ${sessionLayoutFolderKeyboardLiveStatusId}`}
+                  aria-labelledby={sessionLayoutFolderListTitleId}
+                  className="grid min-w-0 gap-2 outline-none focus-visible:ring-2 focus-visible:ring-[rgba(0,122,255,0.22)]"
+                  data-testid="desktop-cm-session-layout-list"
+                  onKeyDown={handleSessionLayoutFolderKeyDown}
+                  role="list"
+                  tabIndex={0}
+                >
                 {groupedSessionLayoutPresets.map((folder) => {
                   const folderActive = activeSessionLayoutFolderName === folder.folder;
+                  const folderRowId = `desktop-cm-session-layout-folder-row-${folder.slug}`;
+                  const folderTitleId = `desktop-cm-session-layout-folder-title-${folder.slug}`;
+                  const folderCountId = `desktop-cm-session-layout-folder-a11y-count-${folder.slug}`;
+                  const folderActionsId = `desktop-cm-session-layout-folder-actions-${folder.slug}`;
+                  const folderItemsId = `desktop-cm-session-layout-folder-items-${folder.slug}`;
                   return (
                   <div
                     key={folder.folder}
                     aria-current={folderActive ? 'true' : undefined}
-                    aria-label={`${folder.folder} layout folder. ${folder.presets.length} visible presets, ${folder.totalCount} total presets.${folderActive ? ' Active folder.' : ''}`}
+                    aria-describedby={`${folderCountId} ${folderActionsId}`}
+                    aria-labelledby={folderTitleId}
                     className={`grid gap-2 rounded-[8px] border px-2 py-2 transition ${
                       folderActive
                         ? 'border-[rgba(0,122,255,0.34)] bg-white/82 shadow-[0_0_0_2px_rgba(0,122,255,0.1)]'
                         : 'border-[rgba(60,60,67,0.08)] bg-white/56'
                     }`}
                     data-testid={`desktop-cm-session-layout-folder-${folder.slug}`}
+                    id={folderRowId}
                     onClick={() => setActiveSessionLayoutFolderName(folder.folder)}
                     role="listitem"
                   >
                     <div className="flex min-w-0 flex-wrap items-center gap-2">
                       <button
+                        aria-controls={folderItemsId}
                         aria-expanded={!folder.collapsed}
+                        aria-label={`${folder.folder} layout folder ${folder.collapsed ? 'expand' : 'collapse'}`}
                         className="ku-control h-8 text-xs"
                         data-testid={`desktop-cm-session-layout-folder-toggle-${folder.slug}`}
                         type="button"
@@ -2290,14 +2307,23 @@ export function DesktopCmSessionPanel({
                       >
                         {folder.collapsed ? <ChevronRight size={13} aria-hidden="true" /> : <ChevronDown size={13} aria-hidden="true" />}
                         <Folder size={13} aria-hidden="true" />
-                        <span className="truncate">{folder.folder}</span>
+                        <span className="truncate" id={folderTitleId}>{folder.folder}</span>
                       </button>
-                      <span className="ku-chip" data-testid={`desktop-cm-session-layout-folder-count-${folder.slug}`}>
+                      <span className="ku-chip" data-testid={`desktop-cm-session-layout-folder-count-${folder.slug}`} id={folderCountId}>
                         {folder.presets.length} / {folder.totalCount}
                       </span>
+                      <span className="sr-only" data-testid={`desktop-cm-session-layout-folder-actions-${folder.slug}`} id={folderActionsId}>
+                        {folder.folder} has {folder.presets.length} visible presets and {folder.totalCount} total presets. Keyboard actions can toggle, select visible presets, or rename this folder.
+                      </span>
                       {sessionLayoutFolderRenameTarget === folder.folder ? (
-                        <span className="flex min-w-[220px] flex-1 flex-wrap items-center gap-1" data-testid={`desktop-cm-session-layout-folder-rename-editor-${folder.slug}`}>
+                        <span
+                          aria-label={`Rename ${folder.folder} layout folder`}
+                          className="flex min-w-[220px] flex-1 flex-wrap items-center gap-1"
+                          data-testid={`desktop-cm-session-layout-folder-rename-editor-${folder.slug}`}
+                          role="group"
+                        >
                           <input
+                            aria-label={`New name for ${folder.folder} layout folder`}
                             className="ku-field h-8 min-w-[150px] flex-1 px-2 py-1 text-xs"
                             data-testid={`desktop-cm-session-layout-folder-rename-input-${folder.slug}`}
                             maxLength={maxDesktopCmSessionLayoutFolderNameLength}
@@ -2315,6 +2341,7 @@ export function DesktopCmSessionPanel({
                             }}
                           />
                           <button
+                            aria-label={`Save ${folder.folder} layout folder name`}
                             className="ku-control h-8 text-xs"
                             data-testid={`desktop-cm-session-layout-folder-rename-save-${folder.slug}`}
                             type="button"
@@ -2324,6 +2351,7 @@ export function DesktopCmSessionPanel({
                             저장
                           </button>
                           <button
+                            aria-label={`Cancel ${folder.folder} layout folder rename`}
                             className="ku-control h-8 text-xs"
                             data-testid={`desktop-cm-session-layout-folder-rename-cancel-${folder.slug}`}
                             type="button"
@@ -2336,6 +2364,7 @@ export function DesktopCmSessionPanel({
                       ) : (
                         <>
                           <button
+                            aria-label={`Select visible layouts in ${folder.folder}`}
                             className="ku-control h-8 text-xs"
                             data-testid={`desktop-cm-session-layout-folder-select-${folder.slug}`}
                             type="button"
@@ -2346,6 +2375,7 @@ export function DesktopCmSessionPanel({
                             Folder 선택
                           </button>
                           <button
+                            aria-label={`Rename ${folder.folder} layout folder`}
                             className="ku-control h-8 text-xs"
                             data-testid={`desktop-cm-session-layout-folder-rename-${folder.slug}`}
                             type="button"
@@ -2357,8 +2387,12 @@ export function DesktopCmSessionPanel({
                         </>
                       )}
                     </div>
-                    {!folder.collapsed ? (
-                      <div className="flex min-w-0 flex-wrap items-center gap-2" data-testid={`desktop-cm-session-layout-folder-items-${folder.slug}`}>
+                    <div
+                      aria-hidden={folder.collapsed}
+                      className={`${folder.collapsed ? 'hidden' : 'flex'} min-w-0 flex-wrap items-center gap-2`}
+                      data-testid={`desktop-cm-session-layout-folder-items-${folder.slug}`}
+                      id={folderItemsId}
+                    >
                         {folder.presets.map((preset) => {
                           const active = preset.name === activeSessionLayoutPresetName;
                           const presetSlug = slugifyTestId(preset.name);
@@ -2472,7 +2506,6 @@ export function DesktopCmSessionPanel({
                           );
                         })}
                       </div>
-                    ) : null}
                   </div>
                   );
                 })}
@@ -2481,7 +2514,8 @@ export function DesktopCmSessionPanel({
                     일치하는 saved layout 없음
                   </p>
                 ) : null}
-              </div>
+                </div>
+              </>
             ) : (
               <p className="text-xs font-semibold text-[rgba(60,60,67,0.58)]" data-testid="desktop-cm-session-layout-empty">
                 저장된 session layout 없음
