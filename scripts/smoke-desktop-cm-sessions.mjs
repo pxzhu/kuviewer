@@ -673,10 +673,13 @@ async function smokeDesktopRuntime(browser, url) {
     const layoutReorderHistoryPresetSummaryLive = await page.getByTestId('desktop-cm-session-layout-reorder-history-filter-preset-summary').getAttribute('aria-live');
     const layoutReorderHistoryPresetSummaryAtomic = await page.getByTestId('desktop-cm-session-layout-reorder-history-filter-preset-summary').getAttribute('aria-atomic');
     const layoutReorderHistoryPresetKeyboardDescription = await page.getByTestId('desktop-cm-session-layout-reorder-history-filter-preset-keyboard-description').textContent();
+    const layoutReorderHistoryPresetShortcutHint = await page.getByTestId('desktop-cm-session-layout-reorder-history-filter-preset-shortcut-hint').textContent();
     const layoutReorderHistoryPresetKeyboardStatusRole = await page.getByTestId('desktop-cm-session-layout-reorder-history-filter-preset-keyboard-status').getAttribute('role');
     const layoutReorderHistoryPresetKeyboardStatusLive = await page.getByTestId('desktop-cm-session-layout-reorder-history-filter-preset-keyboard-status').getAttribute('aria-live');
     const layoutReorderHistoryPresetKeyboardStatusAtomic = await page.getByTestId('desktop-cm-session-layout-reorder-history-filter-preset-keyboard-status').getAttribute('aria-atomic');
     const layoutReorderHistoryCompletePresetLabel = await page.getByTestId('desktop-cm-session-layout-reorder-history-filter-preset-complete-compact').getAttribute('aria-label');
+    const layoutReorderHistoryCompletePresetTitle = await page.getByTestId('desktop-cm-session-layout-reorder-history-filter-preset-complete-compact').getAttribute('title');
+    const layoutReorderHistoryCompletePresetShortcuts = await page.getByTestId('desktop-cm-session-layout-reorder-history-filter-preset-complete-compact').getAttribute('aria-keyshortcuts');
     const layoutReorderHistoryFocusPresetLabel = await page.getByTestId('desktop-cm-session-layout-reorder-history-filter-preset-focus-compact').getAttribute('aria-label');
     requireCondition(
       layoutReorderHistoryScopeValue === 'all' &&
@@ -710,6 +713,9 @@ async function smokeDesktopRuntime(browser, url) {
         layoutReorderHistoryPresetKeyboardDescription.includes('Home') &&
         layoutReorderHistoryPresetKeyboardDescription.includes('End') &&
         layoutReorderHistoryPresetKeyboardDescription.includes('Enter or Space') &&
+        layoutReorderHistoryPresetShortcutHint?.includes('Shortcut hint') &&
+        layoutReorderHistoryPresetShortcutHint.includes('Arrow keys') &&
+        layoutReorderHistoryPresetShortcutHint.includes('Enter or Space') &&
         layoutReorderHistoryPresetKeyboardStatusRole === 'status' &&
         layoutReorderHistoryPresetKeyboardStatusLive === 'polite' &&
         layoutReorderHistoryPresetKeyboardStatusAtomic === 'true' &&
@@ -717,11 +723,28 @@ async function smokeDesktopRuntime(browser, url) {
         layoutReorderHistoryCompletePresetLabel.includes('2 of 4') &&
         layoutReorderHistoryCompletePresetLabel.includes('Reorder complete') &&
         layoutReorderHistoryCompletePresetLabel.includes('Compact density') &&
+        layoutReorderHistoryCompletePresetLabel.includes('Arrow keys move') &&
+        layoutReorderHistoryCompletePresetTitle?.includes('Shortcuts: Arrow keys, Home, End, Enter, Space') &&
+        layoutReorderHistoryCompletePresetShortcuts?.includes('ArrowLeft') &&
+        layoutReorderHistoryCompletePresetShortcuts.includes('ArrowRight') &&
+        layoutReorderHistoryCompletePresetShortcuts.includes('Home') &&
+        layoutReorderHistoryCompletePresetShortcuts.includes('End') &&
+        layoutReorderHistoryCompletePresetShortcuts.includes('Enter') &&
+        layoutReorderHistoryCompletePresetShortcuts.includes('Space') &&
         layoutReorderHistoryFocusPresetLabel?.includes('Apply Focus reorder history preset') &&
         layoutReorderHistoryFocusPresetLabel.includes('3 of 4') &&
         layoutReorderHistoryFocusPresetLabel.includes('Focus restored') &&
         layoutReorderHistoryFocusPresetLabel.includes('Compact density'),
       'desktop CM session layout reorder history timestamp filter preset accessibility must expose help summary and button labels'
+    );
+    requireCondition(
+      layoutReorderHistoryPresetGroupDescription?.includes('desktop-cm-session-layout-reorder-history-filter-preset-shortcut-hint') &&
+        layoutReorderHistoryPresetShortcutHint?.includes('Shortcut hint') &&
+        layoutReorderHistoryPresetShortcutHint.includes('Home and End') &&
+        layoutReorderHistoryCompletePresetLabel?.includes('Arrow keys move') &&
+        layoutReorderHistoryCompletePresetTitle?.includes('Shortcuts: Arrow keys, Home, End, Enter, Space') &&
+        layoutReorderHistoryCompletePresetShortcuts === 'ArrowLeft ArrowRight ArrowUp ArrowDown Home End Enter Space',
+      'desktop CM session layout reorder history timestamp filter preset shortcut hints must expose hidden hint title and aria-keyshortcuts without persistence'
     );
     await page.getByTestId('desktop-cm-session-layout-reorder-history-filter-preset-all-comfortable').focus();
     await page.keyboard.press('ArrowRight');

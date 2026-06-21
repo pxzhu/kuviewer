@@ -185,6 +185,7 @@ const desktopCmSessionLayoutReorderHistoryFilterPresets: DesktopCmSessionLayoutR
   { id: 'blocked-compact', label: 'Blocked', scope: 'all', status: 'reorder-unavailable', density: 'compact' },
 ];
 const desktopCmSessionLayoutReorderHistoryFilterPresetIds = desktopCmSessionLayoutReorderHistoryFilterPresets.map((preset) => preset.id);
+const desktopCmSessionLayoutReorderHistoryFilterPresetShortcuts = 'ArrowLeft ArrowRight ArrowUp ArrowDown Home End Enter Space';
 
 type CmDiagnosticStageFilter = (typeof cmDiagnosticStageFilterOptions)[number];
 type CmDiagnosticSeverityFilter = (typeof cmDiagnosticSeverityFilterOptions)[number];
@@ -378,6 +379,7 @@ export function DesktopCmSessionPanel({
   const sessionLayoutReorderHistoryFilterPresetSummaryId = 'desktop-cm-session-layout-reorder-history-filter-preset-summary';
   const sessionLayoutReorderHistoryFilterPresetKeyboardDescriptionId = 'desktop-cm-session-layout-reorder-history-filter-preset-keyboard-description';
   const sessionLayoutReorderHistoryFilterPresetKeyboardStatusId = 'desktop-cm-session-layout-reorder-history-filter-preset-keyboard-status';
+  const sessionLayoutReorderHistoryFilterPresetShortcutHintId = 'desktop-cm-session-layout-reorder-history-filter-preset-shortcut-hint';
   const sessionLayoutReorderFilterDisabledReason =
     sessionLayoutSearchActive && sessionLayoutFolderFilterActive
       ? 'Reorder unavailable: layout search and folder filter are active. Clear both filters to reorder.'
@@ -1204,8 +1206,12 @@ export function DesktopCmSessionPanel({
     : activeSessionLayoutReorderHistoryFilterPreset?.id || desktopCmSessionLayoutReorderHistoryFilterPresetIds[0] || '';
   const sessionLayoutReorderHistoryFilterPresetKeyboardStatus =
     sessionLayoutReorderHistoryFilterPresetKeyboardMessage || 'Reorder history filter preset keyboard focus is ready.';
+  const sessionLayoutReorderHistoryFilterPresetShortcutHint =
+    'Shortcut hint: Arrow keys move across reorder history presets, Home and End jump to the ends, and Enter or Space applies the focused preset.';
   const sessionLayoutReorderHistoryFilterPresetLabel = (preset: DesktopCmSessionLayoutReorderHistoryFilterPreset, index: number, total: number) =>
-    `Apply ${preset.label} reorder history preset, ${index + 1} of ${total}: ${sessionLayoutReorderHistoryScopeFilterLabel(preset.scope)}, ${sessionLayoutReorderHistoryStatusFilterLabel(preset.status)}, ${sessionLayoutReorderHistoryDensityLabel(preset.density)} density.`;
+    `Apply ${preset.label} reorder history preset, ${index + 1} of ${total}: ${sessionLayoutReorderHistoryScopeFilterLabel(preset.scope)}, ${sessionLayoutReorderHistoryStatusFilterLabel(preset.status)}, ${sessionLayoutReorderHistoryDensityLabel(preset.density)} density. Arrow keys move between presets, Home and End jump, Enter or Space applies.`;
+  const sessionLayoutReorderHistoryFilterPresetTitle = (preset: DesktopCmSessionLayoutReorderHistoryFilterPreset, index: number, total: number) =>
+    `${sessionLayoutReorderHistoryFilterPresetLabel(preset, index, total)} Shortcuts: Arrow keys, Home, End, Enter, Space.`;
   const focusSessionLayoutReorderHistoryFilterPreset = (preset: DesktopCmSessionLayoutReorderHistoryFilterPreset) => {
     const presetIndex = desktopCmSessionLayoutReorderHistoryFilterPresets.findIndex((candidate) => candidate.id === preset.id);
     setSessionLayoutReorderHistoryFilterPresetFocusId(preset.id);
@@ -2742,7 +2748,7 @@ export function DesktopCmSessionPanel({
                     ))}
                   </div>
                   <div
-                    aria-describedby={`${sessionLayoutReorderHistoryFilterPresetDescriptionId} ${sessionLayoutReorderHistoryFilterPresetKeyboardDescriptionId} ${sessionLayoutReorderHistoryFilterPresetSummaryId} ${sessionLayoutReorderHistoryFilterPresetKeyboardStatusId}`}
+                    aria-describedby={`${sessionLayoutReorderHistoryFilterPresetDescriptionId} ${sessionLayoutReorderHistoryFilterPresetKeyboardDescriptionId} ${sessionLayoutReorderHistoryFilterPresetShortcutHintId} ${sessionLayoutReorderHistoryFilterPresetSummaryId} ${sessionLayoutReorderHistoryFilterPresetKeyboardStatusId}`}
                     aria-label="Reorder history filter presets"
                     className="flex min-w-0 flex-1 basis-full flex-wrap gap-1 rounded-[8px] border border-[rgba(60,60,67,0.12)] bg-white/55 p-1 sm:flex-none sm:basis-auto"
                     data-testid="desktop-cm-session-layout-reorder-history-filter-presets"
@@ -2761,6 +2767,13 @@ export function DesktopCmSessionPanel({
                       id={sessionLayoutReorderHistoryFilterPresetKeyboardDescriptionId}
                     >
                       Use arrow keys, Home, and End to move across reorder history filter presets. Press Enter or Space to apply the focused preset.
+                    </p>
+                    <p
+                      className="sr-only"
+                      data-testid="desktop-cm-session-layout-reorder-history-filter-preset-shortcut-hint"
+                      id={sessionLayoutReorderHistoryFilterPresetShortcutHintId}
+                    >
+                      {sessionLayoutReorderHistoryFilterPresetShortcutHint}
                     </p>
                     <p
                       aria-atomic="true"
@@ -2792,11 +2805,13 @@ export function DesktopCmSessionPanel({
                           }}
                           aria-label={sessionLayoutReorderHistoryFilterPresetLabel(preset, index, desktopCmSessionLayoutReorderHistoryFilterPresets.length)}
                           aria-pressed={active}
+                          aria-keyshortcuts={desktopCmSessionLayoutReorderHistoryFilterPresetShortcuts}
                           className={`h-7 flex-1 rounded-[6px] px-2 text-xs font-semibold transition sm:flex-none ${
                             active ? 'bg-[rgba(42,111,151,0.14)] text-[rgba(23,68,93,0.92)]' : 'text-[rgba(60,60,67,0.58)] hover:bg-white/70'
                           }`}
                           data-testid={`desktop-cm-session-layout-reorder-history-filter-preset-${preset.id}`}
                           tabIndex={sessionLayoutReorderHistoryFilterPresetTabStopId === preset.id ? 0 : -1}
+                          title={sessionLayoutReorderHistoryFilterPresetTitle(preset, index, desktopCmSessionLayoutReorderHistoryFilterPresets.length)}
                           type="button"
                           onFocus={() => setSessionLayoutReorderHistoryFilterPresetFocusId(preset.id)}
                           onKeyDown={(event) => handleSessionLayoutReorderHistoryFilterPresetKeyDown(event, preset)}
