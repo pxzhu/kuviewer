@@ -46,6 +46,7 @@ requireCondition(
     'desktop-cm-session-layout-import-export',
     'desktop-cm-session-layout-conflict-preview',
     'desktop-cm-session-layout-row-conflicts',
+    'desktop-cm-session-layout-conflict-summary',
   ].includes(spec.status),
   'status must be a known desktop packaging milestone'
 );
@@ -96,6 +97,7 @@ requireCondition(phases.includes('desktop-cm-session-saved-layouts'), 'phaseOrde
 requireCondition(phases.includes('desktop-cm-session-layout-import-export'), 'phaseOrder must include desktop-cm-session-layout-import-export');
 requireCondition(phases.includes('desktop-cm-session-layout-conflict-preview'), 'phaseOrder must include desktop-cm-session-layout-conflict-preview');
 requireCondition(phases.includes('desktop-cm-session-layout-row-conflicts'), 'phaseOrder must include desktop-cm-session-layout-row-conflicts');
+requireCondition(phases.includes('desktop-cm-session-layout-conflict-summary'), 'phaseOrder must include desktop-cm-session-layout-conflict-summary');
 
 await validateBuildPrerequisites(spec);
 await validateDesktopDistributionPolicy(spec);
@@ -132,6 +134,7 @@ if (
     'desktop-cm-session-layout-import-export',
     'desktop-cm-session-layout-conflict-preview',
     'desktop-cm-session-layout-row-conflicts',
+    'desktop-cm-session-layout-conflict-summary',
   ].includes(spec.status)
 ) {
   await validateTauriScaffold(spec.tauri || {});
@@ -747,6 +750,7 @@ async function validateCmSshSessionManager(spec) {
       'session-layout-import-export',
       'session-layout-conflict-preview',
       'session-layout-row-conflicts',
+      'session-layout-conflict-summary',
     ].includes(manager.status),
     'cmSshSessionManager.status must be a known CM/SSH session manager milestone'
   );
@@ -1056,6 +1060,36 @@ async function validateCmSshSessionManager(spec) {
   ]) {
     requireCondition(sessionLayoutConflictRowActions[flag] === true, `cmSshSessionManager.sessionLayoutConflictRowActions.${flag} must be true`);
   }
+  const sessionLayoutConflictSummary = manager.sessionLayoutConflictSummary || {};
+  requireCondition(sessionLayoutConflictSummary.desktopOnly === true, 'cmSshSessionManager.sessionLayoutConflictSummary.desktopOnly must be true');
+  requireCondition(sessionLayoutConflictSummary.uiOnly === true, 'cmSshSessionManager.sessionLayoutConflictSummary.uiOnly must be true');
+  requireCondition(sessionLayoutConflictSummary.stateStorage === 'memory-only', 'cmSshSessionManager.sessionLayoutConflictSummary.stateStorage must be memory-only');
+  for (const flag of [
+    'showsInitialConflictCount',
+    'showsRemainingConflictCount',
+    'showsResolvedConflictCount',
+    'showsResolutionModeCounts',
+    'showsImportResultCounts',
+    'updatesAfterBulkResolution',
+    'updatesAfterRowResolution',
+    'lastConflictClosesPreview',
+    'finalImportSummaryPersists',
+    'noSessionExportImportSchemaChange',
+    'noLayoutExportImportSchemaChange',
+    'noTauriSchemaChange',
+    'noSessionSearch',
+    'noDiagnosticFilters',
+    'noEndpointMetadata',
+    'noCredentialPayload',
+    'noRuntimeProfile',
+    'noDiagnosticHistory',
+    'noToken',
+    'noKubeconfig',
+    'noSecretValues',
+    'noEventsOrLogs',
+  ]) {
+    requireCondition(sessionLayoutConflictSummary[flag] === true, `cmSshSessionManager.sessionLayoutConflictSummary.${flag} must be true`);
+  }
   const hiddenPrototypeUi = new Set(Array.isArray(manager.hiddenPrototypeUi) ? manager.hiddenPrototypeUi : []);
   for (const marker of ['DesktopConnectionProfilePanel', 'DesktopKubernetesProfilePanel', 'desktop-use-sidecar-profile']) {
     requireCondition(hiddenPrototypeUi.has(marker), `cmSshSessionManager.hiddenPrototypeUi must include ${marker}`);
@@ -1081,6 +1115,11 @@ async function validateCmSshSessionManager(spec) {
     'desktop-cm-session-layout-export',
     'desktop-cm-session-layout-import',
     'desktop-cm-session-layout-conflict-preview',
+    'desktop-cm-session-layout-conflict-summary',
+    'desktop-cm-session-layout-conflict-summary-progress',
+    'desktop-cm-session-layout-conflict-summary-remaining',
+    'desktop-cm-session-layout-conflict-summary-resolutions',
+    'desktop-cm-session-layout-conflict-summary-import',
     'desktop-cm-session-layout-conflict-use-incoming',
     'desktop-cm-session-layout-conflict-keep-current',
     'desktop-cm-session-layout-conflict-rename-incoming',
@@ -1233,6 +1272,11 @@ async function validateCmSshSessionManager(spec) {
     'desktop-cm-session-layout-import',
     'desktop-cm-session-layout-import-summary',
     'desktop-cm-session-layout-conflict-preview',
+    'desktop-cm-session-layout-conflict-summary',
+    'desktop-cm-session-layout-conflict-summary-progress',
+    'desktop-cm-session-layout-conflict-summary-remaining',
+    'desktop-cm-session-layout-conflict-summary-resolutions',
+    'desktop-cm-session-layout-conflict-summary-import',
     'desktop-cm-session-layout-conflict-use-incoming',
     'desktop-cm-session-layout-conflict-keep-current',
     'desktop-cm-session-layout-conflict-rename-incoming',
