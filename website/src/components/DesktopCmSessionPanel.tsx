@@ -1236,6 +1236,9 @@ export function DesktopCmSessionPanel({
         transform: 'scale(1.04)',
       }
     : undefined;
+  const sessionLayoutReorderHistoryFilterPresetHelpVisualRegressionState = sessionLayoutReorderHistoryFilterPresetHelpFocusVisible
+    ? 'focus-visible'
+    : 'idle';
   const sessionLayoutReorderHistoryFilterPresetLabel = (preset: DesktopCmSessionLayoutReorderHistoryFilterPreset, index: number, total: number) =>
     `Apply ${preset.label} reorder history preset, ${index + 1} of ${total}: ${sessionLayoutReorderHistoryScopeFilterLabel(preset.scope)}, ${sessionLayoutReorderHistoryStatusFilterLabel(preset.status)}, ${sessionLayoutReorderHistoryDensityLabel(preset.density)} density. Arrow keys move between presets, Home and End jump, Enter or Space applies.`;
   const sessionLayoutReorderHistoryFilterPresetTitle = (preset: DesktopCmSessionLayoutReorderHistoryFilterPreset, index: number, total: number) =>
@@ -2833,6 +2836,9 @@ export function DesktopCmSessionPanel({
                         data-focus-visible="high-safe-ring"
                         data-focus-visible-visual="solid-highlight"
                         data-testid="desktop-cm-session-layout-reorder-history-filter-preset-discoverability-hint"
+                        data-visual-regression="desktop-cm-session-layout-reorder-history-filter-preset-help-focus-visible"
+                        data-visual-regression-state={sessionLayoutReorderHistoryFilterPresetHelpVisualRegressionState}
+                        data-visual-regression-token="solid-highlight-v1"
                         id={sessionLayoutReorderHistoryFilterPresetDiscoverabilityHintId}
                         style={sessionLayoutReorderHistoryFilterPresetHelpFocusVisibleStyle}
                         title={sessionLayoutReorderHistoryFilterPresetDiscoverabilityHint}
