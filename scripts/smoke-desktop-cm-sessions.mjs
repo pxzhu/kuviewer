@@ -452,6 +452,37 @@ async function smokeDesktopRuntime(browser, url) {
     for (const forbiddenField of ['host', 'remoteApiHost', 'credentialAvailable', 'runtimeStatus', 'diagnosticMessage', 'serverUrl', 'adminToken', 'BEGIN OPENSSH PRIVATE KEY']) {
       requireCondition(!sessionLayoutStorage.includes(forbiddenField), `desktop CM session layout duplicate must not include ${forbiddenField}`);
     }
+    const primaryPresetOrderBefore = await page.evaluate(() =>
+      [...document.querySelectorAll('#desktop-cm-session-layout-folder-items-primary > span[data-testid^="desktop-cm-session-layout-"]')]
+        .map((element) => element.getAttribute('data-testid')?.replace('desktop-cm-session-layout-', '') || '')
+        .filter(Boolean)
+    );
+    requireCondition(primaryPresetOrderBefore.length === 2, 'desktop CM session layout preset keyboard reorder smoke must start with two presets in one folder');
+    const firstPrimaryPresetSlug = primaryPresetOrderBefore[0];
+    const presetDragHandleShortcuts = await page.getByTestId(`desktop-cm-session-layout-drag-handle-${firstPrimaryPresetSlug}`).getAttribute('aria-keyshortcuts');
+    requireCondition(
+      presetDragHandleShortcuts?.includes('ArrowDown') && presetDragHandleShortcuts.includes('Home') && presetDragHandleShortcuts.includes('End'),
+      'desktop CM session layout preset drag handle must expose keyboard reorder shortcuts'
+    );
+    await page.getByTestId(`desktop-cm-session-layout-drag-handle-${firstPrimaryPresetSlug}`).focus();
+    await page.keyboard.press('ArrowDown');
+    let primaryPresetOrderAfter = await page.evaluate(() =>
+      [...document.querySelectorAll('#desktop-cm-session-layout-folder-items-primary > span[data-testid^="desktop-cm-session-layout-"]')]
+        .map((element) => element.getAttribute('data-testid')?.replace('desktop-cm-session-layout-', '') || '')
+        .filter(Boolean)
+    );
+    requireCondition(primaryPresetOrderAfter[1] === firstPrimaryPresetSlug, 'desktop CM session layout preset keyboard ArrowDown must move first preset down');
+    let layoutReorderKeyboardStatus = await page.getByTestId('desktop-cm-session-layout-reorder-keyboard-status').textContent();
+    requireCondition(layoutReorderKeyboardStatus?.includes('moved down'), 'desktop CM session layout reorder keyboard live status must announce preset move');
+    await page.keyboard.press('ArrowUp');
+    primaryPresetOrderAfter = await page.evaluate(() =>
+      [...document.querySelectorAll('#desktop-cm-session-layout-folder-items-primary > span[data-testid^="desktop-cm-session-layout-"]')]
+        .map((element) => element.getAttribute('data-testid')?.replace('desktop-cm-session-layout-', '') || '')
+        .filter(Boolean)
+    );
+    requireCondition(primaryPresetOrderAfter[0] === firstPrimaryPresetSlug, 'desktop CM session layout preset keyboard ArrowUp must restore preset order');
+    sessionLayoutStorage = await page.evaluate(() => window.localStorage.getItem('kuviewer_desktop_cm_session_layout_presets') || '');
+    requireCondition(!sessionLayoutStorage.includes('sessionLayoutReorderKeyboardMessage'), 'desktop CM session layout reorder keyboard status must stay memory-only');
     await page.getByTestId('desktop-cm-session-layout-bulk-select-input-ops-view-copy').check();
     await page.getByTestId('desktop-cm-session-layout-bulk-toolbar').waitFor({ state: 'visible', timeout: 10_000 });
     let layoutBulkCount = await page.getByTestId('desktop-cm-session-layout-bulk-count').textContent();
@@ -535,8 +566,41 @@ async function smokeDesktopRuntime(browser, url) {
         .filter(Boolean)
     );
     requireCondition(layoutFolderOrderAfter[0] === firstLayoutFolderSlug, 'desktop CM session layout folder reorder up must restore the folder order');
+    const layoutFolderListShortcuts = await page.getByTestId('desktop-cm-session-layout-list').getAttribute('aria-keyshortcuts');
+    requireCondition(
+      layoutFolderListShortcuts?.includes('Shift+ArrowDown') && layoutFolderListShortcuts.includes('Shift+ArrowUp'),
+      'desktop CM session layout folder list must expose keyboard reorder shortcuts'
+    );
+    const firstLayoutFolderHandleShortcuts = await page.getByTestId(`desktop-cm-session-layout-folder-drag-handle-${firstLayoutFolderSlug}`).getAttribute('aria-keyshortcuts');
+    requireCondition(
+      firstLayoutFolderHandleShortcuts?.includes('ArrowDown') && firstLayoutFolderHandleShortcuts.includes('Home') && firstLayoutFolderHandleShortcuts.includes('End'),
+      'desktop CM session layout folder drag handle must expose keyboard reorder shortcuts'
+    );
+    await page.getByTestId('desktop-cm-session-layout-list').focus();
+    await page.keyboard.press('Home');
+    await page.keyboard.press('Shift+ArrowDown');
+    layoutFolderOrderAfter = await page.evaluate(() =>
+      [...document.querySelectorAll('[data-testid="desktop-cm-session-layout-list"] > div[data-testid^="desktop-cm-session-layout-folder-"]')]
+        .map((element) => element.getAttribute('data-testid')?.replace('desktop-cm-session-layout-folder-', '') || '')
+        .filter(Boolean)
+    );
+    requireCondition(layoutFolderOrderAfter[1] === firstLayoutFolderSlug, 'desktop CM session layout folder keyboard Shift ArrowDown must move active folder down');
+    layoutReorderKeyboardStatus = await page.getByTestId('desktop-cm-session-layout-reorder-keyboard-status').textContent();
+    requireCondition(layoutReorderKeyboardStatus?.includes('moved down'), 'desktop CM session layout reorder keyboard live status must announce folder move');
+    await page.keyboard.press('Shift+ArrowUp');
+    layoutFolderOrderAfter = await page.evaluate(() =>
+      [...document.querySelectorAll('[data-testid="desktop-cm-session-layout-list"] > div[data-testid^="desktop-cm-session-layout-folder-"]')]
+        .map((element) => element.getAttribute('data-testid')?.replace('desktop-cm-session-layout-folder-', '') || '')
+        .filter(Boolean)
+    );
+    requireCondition(layoutFolderOrderAfter[0] === firstLayoutFolderSlug, 'desktop CM session layout folder keyboard Shift ArrowUp must restore folder order');
     sessionLayoutStorage = await page.evaluate(() => window.localStorage.getItem('kuviewer_desktop_cm_session_layout_presets') || '');
-    requireCondition(!sessionLayoutStorage.includes('draggingSessionLayoutFolderName') && !sessionLayoutStorage.includes('draggingSessionLayoutPresetName'), 'desktop CM session layout drag state must stay memory-only');
+    requireCondition(
+      !sessionLayoutStorage.includes('draggingSessionLayoutFolderName') &&
+        !sessionLayoutStorage.includes('draggingSessionLayoutPresetName') &&
+        !sessionLayoutStorage.includes('sessionLayoutReorderKeyboardMessage'),
+      'desktop CM session layout drag and reorder keyboard state must stay memory-only'
+    );
     await page.getByTestId('desktop-cm-session-layout-bulk-clear-toolbar').click();
     await page.getByTestId('desktop-cm-session-layout-folder-select-primary').click();
     await page.getByTestId('desktop-cm-session-layout-bulk-toolbar').waitFor({ state: 'visible', timeout: 10_000 });
