@@ -2813,7 +2813,8 @@ export function DesktopCmSessionPanel({
                         <span className="sr-only">{sessionLayoutReorderHistoryFilterPresetDiscoverabilityHint}</span>
                       </button>
                       <span
-                        className="pointer-events-none absolute left-0 top-[calc(100%+0.45rem)] z-30 hidden w-64 max-w-[calc(100vw-2rem)] rounded-[6px] border border-[rgba(42,111,151,0.18)] bg-white px-2.5 py-2 text-[0.68rem] leading-snug text-[rgba(29,63,84,0.86)] shadow-[0_10px_28px_rgba(26,65,88,0.16)] before:absolute before:-top-[5px] before:left-3 before:h-2.5 before:w-2.5 before:rotate-45 before:border-l before:border-t before:border-[rgba(42,111,151,0.18)] before:bg-white group-focus-within:block group-hover:block sm:left-auto sm:right-0 sm:translate-x-0 sm:before:left-auto sm:before:right-3"
+                        className="pointer-events-none absolute left-0 top-[calc(100%+0.45rem)] z-30 hidden w-64 max-w-[calc(100vw-2rem)] rounded-[6px] border border-[#2a6f97] bg-[#f8fcff] px-2.5 py-2 text-[0.68rem] leading-snug text-[#102a3a] shadow-[0_12px_30px_rgba(16,42,58,0.22)] before:absolute before:-top-[5px] before:left-3 before:h-2.5 before:w-2.5 before:rotate-45 before:border-l before:border-t before:border-[#2a6f97] before:bg-[#f8fcff] group-focus-within:block group-hover:block sm:left-auto sm:right-0 sm:translate-x-0 sm:before:left-auto sm:before:right-3"
+                        data-contrast="high-safe"
                         data-testid="desktop-cm-session-layout-reorder-history-filter-preset-help-tooltip"
                         data-placement="bottom-inline-safe"
                         id={sessionLayoutReorderHistoryFilterPresetHelpTooltipId}
