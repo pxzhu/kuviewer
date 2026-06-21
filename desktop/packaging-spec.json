@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "name": "Kuviewer Desktop CM Session Explorer",
   "goal": "desktop-cm-session-prototype",
-  "status": "desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-contrast-polish",
+  "status": "desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-contrast-accessibility-polish",
   "recommendedPackager": "tauri",
   "fallbackPackager": "electron",
   "tauri": {
@@ -1487,10 +1487,14 @@
       "tooltipHighContrast": true,
       "tooltipContrastMinimumRatio": 7,
       "tooltipContrastTokenized": true,
+      "tooltipContrastDescribedBy": true,
+      "tooltipContrastDescriptionHidden": true,
+      "tooltipContrastMinRatioExposed": true,
       "smokeCoversHoverTooltip": true,
       "smokeCoversFocusTooltip": true,
       "smokeCoversNarrowViewportPlacement": true,
       "smokeCoversTooltipContrast": true,
+      "smokeCoversTooltipContrastAccessibility": true,
       "smokeCoversNoPersistence": true,
       "noPresetPersistence": true,
       "hiddenShortcutHintPreserved": true,
@@ -1700,7 +1704,7 @@
       "desktop-use-sidecar-profile"
     ],
     "next": [
-      "Desktop CM session layout preset folder reorder status history timestamp filter preset help tooltip contrast accessibility polish"
+      "Desktop CM session layout preset folder reorder status history timestamp filter preset help tooltip focus-visible polish"
     ]
   },
   "remoteConnectionProfile": {
@@ -1997,6 +2001,7 @@
     "desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-focus-polish",
     "desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-polish",
     "desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-placement-polish",
-    "desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-contrast-polish"
+    "desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-contrast-polish",
+    "desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-contrast-accessibility-polish"
   ]
 }

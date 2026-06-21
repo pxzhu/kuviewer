@@ -382,6 +382,8 @@ export function DesktopCmSessionPanel({
   const sessionLayoutReorderHistoryFilterPresetShortcutHintId = 'desktop-cm-session-layout-reorder-history-filter-preset-shortcut-hint';
   const sessionLayoutReorderHistoryFilterPresetDiscoverabilityHintId = 'desktop-cm-session-layout-reorder-history-filter-preset-discoverability-hint';
   const sessionLayoutReorderHistoryFilterPresetHelpTooltipId = 'desktop-cm-session-layout-reorder-history-filter-preset-help-tooltip';
+  const sessionLayoutReorderHistoryFilterPresetHelpTooltipContrastDescriptionId =
+    'desktop-cm-session-layout-reorder-history-filter-preset-help-tooltip-contrast-description';
   const sessionLayoutReorderFilterDisabledReason =
     sessionLayoutSearchActive && sessionLayoutFolderFilterActive
       ? 'Reorder unavailable: layout search and folder filter are active. Clear both filters to reorder.'
@@ -1218,6 +1220,8 @@ export function DesktopCmSessionPanel({
     activeSessionLayoutReorderHistoryFilterPreset
       ? `Tooltip: ${activeSessionLayoutReorderHistoryFilterPreset.label} is active. Hover or focus this help button to review shortcuts; Enter or Space moves focus to the active preset. UI-only and not stored.`
       : 'Tooltip: no preset currently matches. Hover or focus this help button to review shortcuts; Enter or Space moves focus to the first preset. UI-only and not stored.';
+  const sessionLayoutReorderHistoryFilterPresetHelpTooltipContrastDescription =
+    'Contrast note: tooltip text and surface keep at least 7:1 contrast. This contrast note is UI-only and not stored.';
   const sessionLayoutReorderHistoryFilterPresetLabel = (preset: DesktopCmSessionLayoutReorderHistoryFilterPreset, index: number, total: number) =>
     `Apply ${preset.label} reorder history preset, ${index + 1} of ${total}: ${sessionLayoutReorderHistoryScopeFilterLabel(preset.scope)}, ${sessionLayoutReorderHistoryStatusFilterLabel(preset.status)}, ${sessionLayoutReorderHistoryDensityLabel(preset.density)} density. Arrow keys move between presets, Home and End jump, Enter or Space applies.`;
   const sessionLayoutReorderHistoryFilterPresetTitle = (preset: DesktopCmSessionLayoutReorderHistoryFilterPreset, index: number, total: number) =>
@@ -2765,7 +2769,7 @@ export function DesktopCmSessionPanel({
                     ))}
                   </div>
                   <div
-                    aria-describedby={`${sessionLayoutReorderHistoryFilterPresetDescriptionId} ${sessionLayoutReorderHistoryFilterPresetKeyboardDescriptionId} ${sessionLayoutReorderHistoryFilterPresetShortcutHintId} ${sessionLayoutReorderHistoryFilterPresetDiscoverabilityHintId} ${sessionLayoutReorderHistoryFilterPresetHelpTooltipId} ${sessionLayoutReorderHistoryFilterPresetSummaryId} ${sessionLayoutReorderHistoryFilterPresetKeyboardStatusId}`}
+                    aria-describedby={`${sessionLayoutReorderHistoryFilterPresetDescriptionId} ${sessionLayoutReorderHistoryFilterPresetKeyboardDescriptionId} ${sessionLayoutReorderHistoryFilterPresetShortcutHintId} ${sessionLayoutReorderHistoryFilterPresetDiscoverabilityHintId} ${sessionLayoutReorderHistoryFilterPresetHelpTooltipId} ${sessionLayoutReorderHistoryFilterPresetHelpTooltipContrastDescriptionId} ${sessionLayoutReorderHistoryFilterPresetSummaryId} ${sessionLayoutReorderHistoryFilterPresetKeyboardStatusId}`}
                     aria-label="Reorder history filter presets"
                     className="flex min-w-0 flex-1 basis-full flex-wrap gap-1 rounded-[8px] border border-[rgba(60,60,67,0.12)] bg-white/55 p-1 sm:flex-none sm:basis-auto"
                     data-testid="desktop-cm-session-layout-reorder-history-filter-presets"
@@ -2792,9 +2796,16 @@ export function DesktopCmSessionPanel({
                     >
                       {sessionLayoutReorderHistoryFilterPresetShortcutHint}
                     </p>
+                    <p
+                      className="sr-only"
+                      data-testid="desktop-cm-session-layout-reorder-history-filter-preset-help-tooltip-contrast-description"
+                      id={sessionLayoutReorderHistoryFilterPresetHelpTooltipContrastDescriptionId}
+                    >
+                      {sessionLayoutReorderHistoryFilterPresetHelpTooltipContrastDescription}
+                    </p>
                     <span className="group relative inline-flex shrink-0">
                       <button
-                        aria-describedby={sessionLayoutReorderHistoryFilterPresetHelpTooltipId}
+                        aria-describedby={`${sessionLayoutReorderHistoryFilterPresetHelpTooltipId} ${sessionLayoutReorderHistoryFilterPresetHelpTooltipContrastDescriptionId}`}
                         aria-label={sessionLayoutReorderHistoryFilterPresetDiscoverabilityHint}
                         aria-keyshortcuts="Enter Space"
                         className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-[6px] border border-[rgba(42,111,151,0.16)] bg-[rgba(255,255,255,0.76)] text-[rgba(42,111,151,0.82)] transition hover:bg-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[rgba(42,111,151,0.45)]"
@@ -2815,6 +2826,7 @@ export function DesktopCmSessionPanel({
                       <span
                         className="pointer-events-none absolute left-0 top-[calc(100%+0.45rem)] z-30 hidden w-64 max-w-[calc(100vw-2rem)] rounded-[6px] border border-[#2a6f97] bg-[#f8fcff] px-2.5 py-2 text-[0.68rem] leading-snug text-[#102a3a] shadow-[0_12px_30px_rgba(16,42,58,0.22)] before:absolute before:-top-[5px] before:left-3 before:h-2.5 before:w-2.5 before:rotate-45 before:border-l before:border-t before:border-[#2a6f97] before:bg-[#f8fcff] group-focus-within:block group-hover:block sm:left-auto sm:right-0 sm:translate-x-0 sm:before:left-auto sm:before:right-3"
                         data-contrast="high-safe"
+                        data-contrast-min-ratio="7"
                         data-testid="desktop-cm-session-layout-reorder-history-filter-preset-help-tooltip"
                         data-placement="bottom-inline-safe"
                         id={sessionLayoutReorderHistoryFilterPresetHelpTooltipId}

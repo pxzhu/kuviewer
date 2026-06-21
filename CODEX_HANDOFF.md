@@ -221,7 +221,8 @@ https://kuviewer.example.com/
    - Desktop CM session layout preset folder reorder status history timestamp filter preset help tooltip polish는 완료됐다. Visible help button은 `aria-describedby`로 연결된 hover/focus tooltip을 제공하고 tooltip은 shortcut/focus action/UI-only 문구만 담으며 help tooltip state는 memory/rendered DOM-only이고 저장/내보내기/Tauri payload에는 포함하지 않는다.
    - Desktop CM session layout preset folder reorder status history timestamp filter preset help tooltip placement polish는 완료됐다. Tooltip은 viewport-clamped bottom inline placement, anchored arrow, narrow viewport bounding smoke를 제공하며 placement state는 memory/rendered DOM-only이고 저장/내보내기/Tauri payload에는 포함하지 않는다.
    - Desktop CM session layout preset folder reorder status history timestamp filter preset help tooltip contrast polish는 완료됐다. Tooltip은 high-contrast safe color token, 7:1 rendered contrast smoke, contrast marker를 제공하며 contrast state는 memory/rendered DOM-only이고 저장/내보내기/Tauri payload에는 포함하지 않는다.
-   - 다음 확장 후보는 Desktop CM session layout preset folder reorder status history timestamp filter preset help tooltip contrast accessibility polish다.
+   - Desktop CM session layout preset folder reorder status history timestamp filter preset help tooltip contrast accessibility polish는 완료됐다. Help button과 preset group은 hidden contrast note를 `aria-describedby`로 참조하고 tooltip은 `data-contrast-min-ratio=7`을 노출하며 contrast accessibility metadata는 memory/rendered DOM-only이고 저장/내보내기/Tauri payload에는 포함하지 않는다.
+   - 다음 확장 후보는 Desktop CM session layout preset folder reorder status history timestamp filter preset help tooltip focus-visible polish다.
 
 4. 실제 Kubernetes 연결 설계
    - 브라우저에 kube credential을 직접 넣지 않는 방향 유지.
