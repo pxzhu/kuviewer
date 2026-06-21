@@ -44,6 +44,8 @@ Desktop CM saved layout preset folder filter is desktop-only UI state. It filter
 
 Desktop CM saved layout preset folder actions are desktop-only UI controls. They select visible presets in a folder or rename a folder by updating only safe preset folder metadata. Action drafts and selection state stay in browser memory and are not persisted, exported/imported, sent through Tauri, or mixed with credentials, runtime profiles, diagnostic history, Events, or logs.
 
+Desktop CM saved layout preset folder keyboard polish is desktop-only UI state. Folder-list shortcuts move an active folder, toggle collapse, select visible presets, start rename, or clear active state. Active folder state, shortcut state, and rename drafts remain browser memory only; explicit rename writes only safe preset folder metadata.
+
 The old remote server profile UX is prototype-only. It stores only the selected Kuviewer server URL in browser `localStorage`; admin tokens remain session-only, and profile changes clear the current token. The current CM/SSH session manager clears that legacy profile in desktop runtime and keeps it out of the product UI.
 
 ## Local Sidecar Runtime

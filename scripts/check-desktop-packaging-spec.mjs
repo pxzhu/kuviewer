@@ -57,6 +57,7 @@ requireCondition(
     'desktop-cm-session-layout-preset-folder-bulk-move',
     'desktop-cm-session-layout-preset-folder-filter-polish',
     'desktop-cm-session-layout-preset-folder-action-polish',
+    'desktop-cm-session-layout-preset-folder-keyboard-polish',
   ].includes(spec.status),
   'status must be a known desktop packaging milestone'
 );
@@ -118,6 +119,7 @@ requireCondition(phases.includes('desktop-cm-session-layout-preset-folder-polish
 requireCondition(phases.includes('desktop-cm-session-layout-preset-folder-bulk-move'), 'phaseOrder must include desktop-cm-session-layout-preset-folder-bulk-move');
 requireCondition(phases.includes('desktop-cm-session-layout-preset-folder-filter-polish'), 'phaseOrder must include desktop-cm-session-layout-preset-folder-filter-polish');
 requireCondition(phases.includes('desktop-cm-session-layout-preset-folder-action-polish'), 'phaseOrder must include desktop-cm-session-layout-preset-folder-action-polish');
+requireCondition(phases.includes('desktop-cm-session-layout-preset-folder-keyboard-polish'), 'phaseOrder must include desktop-cm-session-layout-preset-folder-keyboard-polish');
 
 await validateBuildPrerequisites(spec);
 await validateDesktopDistributionPolicy(spec);
@@ -165,6 +167,7 @@ if (
     'desktop-cm-session-layout-preset-folder-bulk-move',
     'desktop-cm-session-layout-preset-folder-filter-polish',
     'desktop-cm-session-layout-preset-folder-action-polish',
+    'desktop-cm-session-layout-preset-folder-keyboard-polish',
   ].includes(spec.status)
 ) {
   await validateTauriScaffold(spec.tauri || {});
@@ -791,6 +794,7 @@ async function validateCmSshSessionManager(spec) {
       'session-layout-preset-folder-bulk-move',
       'session-layout-preset-folder-filter-polish',
       'session-layout-preset-folder-action-polish',
+      'session-layout-preset-folder-keyboard-polish',
     ].includes(manager.status),
     'cmSshSessionManager.status must be a known CM/SSH session manager milestone'
   );
@@ -1269,6 +1273,49 @@ async function validateCmSshSessionManager(spec) {
     requireCondition(sessionLayoutPresetFolderActions[flag] === true, `cmSshSessionManager.sessionLayoutPresetFolderActions.${flag} must be true`);
   }
   requireCondition(sessionLayoutPresetFolderActions.folderCollapseExported === false, 'cmSshSessionManager.sessionLayoutPresetFolderActions.folderCollapseExported must be false');
+  const sessionLayoutPresetFolderKeyboard = manager.sessionLayoutPresetFolderKeyboard || {};
+  requireCondition(sessionLayoutPresetFolderKeyboard.desktopOnly === true, 'cmSshSessionManager.sessionLayoutPresetFolderKeyboard.desktopOnly must be true');
+  requireCondition(sessionLayoutPresetFolderKeyboard.uiOnly === true, 'cmSshSessionManager.sessionLayoutPresetFolderKeyboard.uiOnly must be true');
+  requireCondition(sessionLayoutPresetFolderKeyboard.activeFolderStorage === 'memory-only', 'cmSshSessionManager.sessionLayoutPresetFolderKeyboard.activeFolderStorage must be memory-only');
+  requireCondition(sessionLayoutPresetFolderKeyboard.shortcutStateStorage === 'memory-only', 'cmSshSessionManager.sessionLayoutPresetFolderKeyboard.shortcutStateStorage must be memory-only');
+  requireCondition(sessionLayoutPresetFolderKeyboard.usesExistingLayoutStorage === 'kuviewer_desktop_cm_session_layout_presets', 'cmSshSessionManager.sessionLayoutPresetFolderKeyboard.usesExistingLayoutStorage must be kuviewer_desktop_cm_session_layout_presets');
+  const folderShortcuts = new Set(Array.isArray(sessionLayoutPresetFolderKeyboard.shortcuts) ? sessionLayoutPresetFolderKeyboard.shortcuts : []);
+  for (const shortcut of ['ArrowUp', 'ArrowDown', 'Home', 'End', 'Enter', 'S', 'R', 'Escape']) {
+    requireCondition(folderShortcuts.has(shortcut), `cmSshSessionManager.sessionLayoutPresetFolderKeyboard.shortcuts must include ${shortcut}`);
+  }
+  for (const flag of [
+    'ignoresEditableControls',
+    'supportsActiveFolderAriaCurrent',
+    'supportsScreenReaderLiveStatus',
+    'enterTogglesCollapse',
+    'sSelectsVisibleFolderPresets',
+    'rStartsFolderRename',
+    'escapeClearsActiveOrRename',
+    'renameUpdatesFolderMetadataOnly',
+    'preservesPresetNames',
+    'preservesViewPreferences',
+    'preservesSearchQuery',
+    'preservesFolderFilter',
+    'folderMetadataExported',
+    'folderMetadataImported',
+    'sameNameGlobalUnique',
+    'noSessionExportImportSchemaChange',
+    'noLayoutExportImportSchemaChange',
+    'noTauriSchemaChange',
+    'noSessionSearch',
+    'noDiagnosticFilters',
+    'noEndpointMetadata',
+    'noCredentialPayload',
+    'noRuntimeProfile',
+    'noDiagnosticHistory',
+    'noToken',
+    'noKubeconfig',
+    'noSecretValues',
+    'noEventsOrLogs',
+  ]) {
+    requireCondition(sessionLayoutPresetFolderKeyboard[flag] === true, `cmSshSessionManager.sessionLayoutPresetFolderKeyboard.${flag} must be true`);
+  }
+  requireCondition(sessionLayoutPresetFolderKeyboard.folderCollapseExported === false, 'cmSshSessionManager.sessionLayoutPresetFolderKeyboard.folderCollapseExported must be false');
   const sessionLayoutImportExport = manager.sessionLayoutImportExport || {};
   requireCondition(sessionLayoutImportExport.desktopOnly === true, 'cmSshSessionManager.sessionLayoutImportExport.desktopOnly must be true');
   requireCondition(sessionLayoutImportExport.uiOnly === true, 'cmSshSessionManager.sessionLayoutImportExport.uiOnly must be true');
@@ -1516,6 +1563,8 @@ async function validateCmSshSessionManager(spec) {
     'desktop-cm-session-layout-folder-rename-input-',
     'desktop-cm-session-layout-folder-rename-save-',
     'desktop-cm-session-layout-folder-rename-cancel-',
+    'desktop-cm-session-layout-folder-keyboard-description',
+    'desktop-cm-session-layout-folder-keyboard-live-status',
     'desktop-cm-session-layout-export',
     'desktop-cm-session-layout-import',
     'desktop-cm-session-layout-conflict-preview',
@@ -1557,14 +1606,25 @@ async function validateCmSshSessionManager(spec) {
     'sessionLayoutFolderFilterActive',
     'sessionLayoutFolderRenameTarget',
     'sessionLayoutFolderRenameDraft',
+    'activeSessionLayoutFolderName',
+    'sessionLayoutFolderKeyboardDescriptionId',
+    'sessionLayoutFolderKeyboardLiveStatusId',
+    'sessionLayoutFolderKeyboardLiveText',
+    'sessionLayoutFolderListRef',
     'collapsedSessionLayoutFolders',
     'groupedSessionLayoutPresets',
+    'sessionLayoutFolderNames',
     'handleSelectSessionLayoutFolderPresets',
     'handleToggleSessionLayoutFolder',
     'handleUpdateSessionLayoutPresetFolder',
     'handleStartRenameSessionLayoutFolder',
     'handleCancelRenameSessionLayoutFolder',
     'handleSaveRenamedSessionLayoutFolder',
+    'handleMoveActiveSessionLayoutFolder',
+    'handleToggleActiveSessionLayoutFolder',
+    'handleSelectActiveSessionLayoutFolder',
+    'handleRenameActiveSessionLayoutFolder',
+    'handleSessionLayoutFolderKeyDown',
     'matchesDesktopCmSessionLayoutFolderFilter',
     'buildDesktopCmSessionLayoutFolderFilterOptions',
     'desktopCmSessionLayoutFolderCollapseStorageKey',
@@ -1907,6 +1967,17 @@ async function validateCmSshSessionManager(spec) {
     'desktop CM session layout folder rename must update folder metadata',
     'desktop CM session layout folder rename draft must stay memory-only',
     'desktop CM session layout folder rename must keep renamed folders filterable',
+    'desktop CM session layout folder list must expose keyboard description and live status',
+    'desktop CM session layout folder list must be keyboard focusable',
+    'desktop CM session layout folder Home must activate first folder',
+    'desktop CM session layout folder live status must announce active folder',
+    'desktop CM session layout folder End must activate last folder',
+    'desktop CM session layout folder keyboard select must select active visible presets',
+    'desktop CM session layout folder active keyboard state must stay memory-only',
+    'desktop CM session layout folder keyboard rename must focus rename input',
+    'desktop CM session layout folder keyboard rename must keep renamed folder active',
+    'desktop CM session layout folder keyboard rename must update safe folder metadata',
+    'desktop CM session layout folder keyboard state and rename draft must stay memory-only',
     'desktop CM session layout bulk select visible must select matching layout results',
     'desktop CM session layout bulk delete must require inline confirmation',
     'desktop CM session layout folder count must show saved layout presets',
@@ -1975,6 +2046,7 @@ async function validateCmSshSessionManager(spec) {
     requireCondition(text.includes('folder bulk move'), `${label} must document desktop CM session layout folder bulk move`);
     requireCondition(text.includes('folder filter'), `${label} must document desktop CM session layout folder filter`);
     requireCondition(text.includes('folder actions') || text.includes('folder action'), `${label} must document desktop CM session layout folder actions`);
+    requireCondition(text.includes('folder keyboard'), `${label} must document desktop CM session layout folder keyboard polish`);
     requireCondition(text.includes('export/import') || text.includes('session export'), `${label} must document desktop CM session export/import`);
     requireCondition(text.includes('web app must not expose SSH'), `${label} must document that the web app must not expose SSH`);
   }

@@ -512,6 +512,53 @@ async function smokeDesktopRuntime(browser, url) {
     sessionLayoutSearchCount = await page.getByTestId('desktop-cm-session-layout-search-count').textContent();
     requireCondition(sessionLayoutSearchCount?.includes('1 / 전체 2'), 'desktop CM session layout folder rename must keep renamed folders filterable');
     await page.getByTestId('desktop-cm-session-layout-folder-filter-clear').click();
+    const layoutFolderListDescribedBy = await page.getByTestId('desktop-cm-session-layout-list').getAttribute('aria-describedby');
+    requireCondition(
+      layoutFolderListDescribedBy?.includes('desktop-cm-session-layout-folder-keyboard-description') &&
+        layoutFolderListDescribedBy.includes('desktop-cm-session-layout-folder-keyboard-live-status'),
+      'desktop CM session layout folder list must expose keyboard description and live status'
+    );
+    await page.getByTestId('desktop-cm-session-layout-list').focus();
+    await requireTestIdFocused(page, 'desktop-cm-session-layout-list', 'desktop CM session layout folder list must be keyboard focusable');
+    const layoutFolderSlugs = await page.evaluate(() =>
+      [...document.querySelectorAll('[data-testid="desktop-cm-session-layout-list"] > div[data-testid^="desktop-cm-session-layout-folder-"]')]
+        .map((element) => element.getAttribute('data-testid')?.replace('desktop-cm-session-layout-folder-', '') || '')
+        .filter(Boolean)
+    );
+    requireCondition(layoutFolderSlugs.length === 2 && layoutFolderSlugs.includes('team-layouts') && layoutFolderSlugs.includes('archive'), 'desktop CM session layout folder keyboard smoke must have two target folders');
+    await page.keyboard.press('Home');
+    await requireLayoutFolderActive(page, layoutFolderSlugs[0], true, 'desktop CM session layout folder Home must activate first folder');
+    let layoutFolderLiveStatus = await page.getByTestId('desktop-cm-session-layout-folder-keyboard-live-status').textContent();
+    requireCondition(layoutFolderLiveStatus?.includes('1 of 2'), 'desktop CM session layout folder live status must announce active folder');
+    await page.keyboard.press('End');
+    await requireLayoutFolderActive(page, layoutFolderSlugs[layoutFolderSlugs.length - 1], true, 'desktop CM session layout folder End must activate last folder');
+    await page.getByTestId('desktop-cm-session-layout-folder-archive').click();
+    await page.getByTestId('desktop-cm-session-layout-list').focus();
+    await page.keyboard.press('Enter');
+    await page.getByTestId('desktop-cm-session-layout-folder-items-archive').waitFor({ state: 'hidden', timeout: 10_000 });
+    await page.keyboard.press('Enter');
+    await page.getByTestId('desktop-cm-session-layout-folder-items-archive').waitFor({ state: 'visible', timeout: 10_000 });
+    await page.keyboard.press('s');
+    await page.getByTestId('desktop-cm-session-layout-bulk-toolbar').waitFor({ state: 'visible', timeout: 10_000 });
+    layoutBulkCount = await page.getByTestId('desktop-cm-session-layout-bulk-count').textContent();
+    requireCondition(layoutBulkCount?.includes('선택 1개') && layoutBulkCount.includes('현재 결과 1개'), 'desktop CM session layout folder keyboard select must select active visible presets');
+    sessionLayoutStorage = await page.evaluate(() => window.localStorage.getItem('kuviewer_desktop_cm_session_layout_presets') || '');
+    requireCondition(!sessionLayoutStorage.includes('activeSessionLayoutFolderName'), 'desktop CM session layout folder active keyboard state must stay memory-only');
+    await page.getByTestId('desktop-cm-session-layout-bulk-clear-toolbar').click();
+    await page.getByTestId('desktop-cm-session-layout-list').focus();
+    await page.keyboard.press('r');
+    await page.getByTestId('desktop-cm-session-layout-folder-rename-input-archive').waitFor({ state: 'visible', timeout: 10_000 });
+    await requireTestIdFocused(page, 'desktop-cm-session-layout-folder-rename-input-archive', 'desktop CM session layout folder keyboard rename must focus rename input');
+    await page.getByTestId('desktop-cm-session-layout-folder-rename-input-archive').fill('Keyboard Archive');
+    await page.keyboard.press('Enter');
+    await page.getByTestId('desktop-cm-session-layout-folder-keyboard-archive').waitFor({ state: 'visible', timeout: 10_000 });
+    await requireLayoutFolderActive(page, 'keyboard-archive', true, 'desktop CM session layout folder keyboard rename must keep renamed folder active');
+    sessionLayoutStorage = await page.evaluate(() => window.localStorage.getItem('kuviewer_desktop_cm_session_layout_presets') || '');
+    requireCondition(sessionLayoutStorage.includes('"folder":"Keyboard Archive"'), 'desktop CM session layout folder keyboard rename must update safe folder metadata');
+    requireCondition(
+      !sessionLayoutStorage.includes('sessionLayoutFolderKeyboard') && !sessionLayoutStorage.includes('sessionLayoutFolderRenameDraft'),
+      'desktop CM session layout folder keyboard state and rename draft must stay memory-only'
+    );
     await page.getByTestId('desktop-cm-session-layout-search').fill('copy');
     sessionLayoutSearchCount = await page.getByTestId('desktop-cm-session-layout-search-count').textContent();
     requireCondition(sessionLayoutSearchCount?.includes('1 / 전체 2'), 'desktop CM session layout search must match duplicated layout metadata');
@@ -1263,6 +1310,11 @@ function requireCondition(condition, message) {
 
 async function requireConflictActive(page, slug, expected, message) {
   const ariaCurrent = await page.getByTestId(`desktop-cm-session-layout-conflict-${slug}`).getAttribute('aria-current');
+  requireCondition((ariaCurrent === 'true') === expected, message);
+}
+
+async function requireLayoutFolderActive(page, slug, expected, message) {
+  const ariaCurrent = await page.getByTestId(`desktop-cm-session-layout-folder-${slug}`).getAttribute('aria-current');
   requireCondition((ariaCurrent === 'true') === expected, message);
 }
 
