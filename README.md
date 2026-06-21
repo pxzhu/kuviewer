@@ -93,6 +93,8 @@ Desktop CM saved layout folder reorder status history timestamp filter preset ke
 
 Desktop CM saved layout folder reorder status history timestamp filter preset shortcut hint polish is desktop-only UI state. The filter preset group exposes hidden shortcut hint text, `aria-keyshortcuts`, and safe button titles so keyboard affordances are discoverable without adding persistent state or static visible shortcut copy. Shortcut hint metadata stays in browser memory/rendered DOM only and is not stored, exported, sent through Tauri, or mixed with credentials, runtime profiles, diagnostics, Events, or logs.
 
+Desktop CM saved layout folder reorder status history timestamp filter preset discoverability smoke polish is desktop-only UI state. The filter preset group now includes a compact visible help icon with safe title/aria text for the same Arrow/Home/End/Enter/Space controls, and the desktop smoke verifies that the hint is visible, described by the preset group, and absent from saved layout storage. Discoverability hint metadata stays in browser memory/rendered DOM only and is not stored, exported, sent through Tauri, or mixed with credentials, runtime profiles, diagnostics, Events, or logs.
+
 Existing remote API profile, local sidecar, and direct Kubernetes/keychain paths remain prototype-only scaffolds. The local sidecar no longer starts by default in the desktop product path; it requires `KUVIEWER_DESKTOP_ENABLE_PROTOTYPE_SIDECAR=1` for explicit prototype work. The web app must not expose SSH.
 
 The Flow view is intended to feel closer to real request movement than a generic resource graph. It derives paths such as:

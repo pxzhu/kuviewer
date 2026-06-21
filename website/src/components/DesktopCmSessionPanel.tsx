@@ -1,5 +1,5 @@
 import { type DragEvent as ReactDragEvent, type KeyboardEvent, useEffect, useMemo, useRef, useState } from 'react';
-import { Activity, ArrowDown, ArrowUp, Bookmark, CheckCircle2, ChevronDown, ChevronRight, Copy, Download, Filter, Folder, GripVertical, KeyRound, Pencil, Play, Plus, RotateCcw, Search, ServerCog, ShieldCheck, Square, Star, Trash2, Unplug, Upload, XCircle } from 'lucide-react';
+import { Activity, ArrowDown, ArrowUp, Bookmark, CheckCircle2, ChevronDown, ChevronRight, CircleHelp, Copy, Download, Filter, Folder, GripVertical, KeyRound, Pencil, Play, Plus, RotateCcw, Search, ServerCog, ShieldCheck, Square, Star, Trash2, Unplug, Upload, XCircle } from 'lucide-react';
 import {
   createDesktopCmSessionExportBundle,
   desktopCmDefaultRemoteApiHost,
@@ -380,6 +380,7 @@ export function DesktopCmSessionPanel({
   const sessionLayoutReorderHistoryFilterPresetKeyboardDescriptionId = 'desktop-cm-session-layout-reorder-history-filter-preset-keyboard-description';
   const sessionLayoutReorderHistoryFilterPresetKeyboardStatusId = 'desktop-cm-session-layout-reorder-history-filter-preset-keyboard-status';
   const sessionLayoutReorderHistoryFilterPresetShortcutHintId = 'desktop-cm-session-layout-reorder-history-filter-preset-shortcut-hint';
+  const sessionLayoutReorderHistoryFilterPresetDiscoverabilityHintId = 'desktop-cm-session-layout-reorder-history-filter-preset-discoverability-hint';
   const sessionLayoutReorderFilterDisabledReason =
     sessionLayoutSearchActive && sessionLayoutFolderFilterActive
       ? 'Reorder unavailable: layout search and folder filter are active. Clear both filters to reorder.'
@@ -1208,6 +1209,10 @@ export function DesktopCmSessionPanel({
     sessionLayoutReorderHistoryFilterPresetKeyboardMessage || 'Reorder history filter preset keyboard focus is ready.';
   const sessionLayoutReorderHistoryFilterPresetShortcutHint =
     'Shortcut hint: Arrow keys move across reorder history presets, Home and End jump to the ends, and Enter or Space applies the focused preset.';
+  const sessionLayoutReorderHistoryFilterPresetDiscoverabilityHint =
+    activeSessionLayoutReorderHistoryFilterPreset
+      ? `Preset help for ${activeSessionLayoutReorderHistoryFilterPreset.label}: arrow keys move between presets, Home and End jump, and Enter or Space applies. This hint is UI-only.`
+      : 'Preset help: arrow keys move between presets, Home and End jump, and Enter or Space applies. This hint is UI-only.';
   const sessionLayoutReorderHistoryFilterPresetLabel = (preset: DesktopCmSessionLayoutReorderHistoryFilterPreset, index: number, total: number) =>
     `Apply ${preset.label} reorder history preset, ${index + 1} of ${total}: ${sessionLayoutReorderHistoryScopeFilterLabel(preset.scope)}, ${sessionLayoutReorderHistoryStatusFilterLabel(preset.status)}, ${sessionLayoutReorderHistoryDensityLabel(preset.density)} density. Arrow keys move between presets, Home and End jump, Enter or Space applies.`;
   const sessionLayoutReorderHistoryFilterPresetTitle = (preset: DesktopCmSessionLayoutReorderHistoryFilterPreset, index: number, total: number) =>
@@ -2748,7 +2753,7 @@ export function DesktopCmSessionPanel({
                     ))}
                   </div>
                   <div
-                    aria-describedby={`${sessionLayoutReorderHistoryFilterPresetDescriptionId} ${sessionLayoutReorderHistoryFilterPresetKeyboardDescriptionId} ${sessionLayoutReorderHistoryFilterPresetShortcutHintId} ${sessionLayoutReorderHistoryFilterPresetSummaryId} ${sessionLayoutReorderHistoryFilterPresetKeyboardStatusId}`}
+                    aria-describedby={`${sessionLayoutReorderHistoryFilterPresetDescriptionId} ${sessionLayoutReorderHistoryFilterPresetKeyboardDescriptionId} ${sessionLayoutReorderHistoryFilterPresetShortcutHintId} ${sessionLayoutReorderHistoryFilterPresetDiscoverabilityHintId} ${sessionLayoutReorderHistoryFilterPresetSummaryId} ${sessionLayoutReorderHistoryFilterPresetKeyboardStatusId}`}
                     aria-label="Reorder history filter presets"
                     className="flex min-w-0 flex-1 basis-full flex-wrap gap-1 rounded-[8px] border border-[rgba(60,60,67,0.12)] bg-white/55 p-1 sm:flex-none sm:basis-auto"
                     data-testid="desktop-cm-session-layout-reorder-history-filter-presets"
@@ -2775,6 +2780,18 @@ export function DesktopCmSessionPanel({
                     >
                       {sessionLayoutReorderHistoryFilterPresetShortcutHint}
                     </p>
+                    <span
+                      aria-label={sessionLayoutReorderHistoryFilterPresetDiscoverabilityHint}
+                      className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-[6px] border border-[rgba(42,111,151,0.16)] bg-[rgba(255,255,255,0.76)] text-[rgba(42,111,151,0.82)]"
+                      data-testid="desktop-cm-session-layout-reorder-history-filter-preset-discoverability-hint"
+                      id={sessionLayoutReorderHistoryFilterPresetDiscoverabilityHintId}
+                      role="note"
+                      tabIndex={0}
+                      title={sessionLayoutReorderHistoryFilterPresetDiscoverabilityHint}
+                    >
+                      <CircleHelp className="h-3.5 w-3.5" aria-hidden="true" />
+                      <span className="sr-only">{sessionLayoutReorderHistoryFilterPresetDiscoverabilityHint}</span>
+                    </span>
                     <p
                       aria-atomic="true"
                       aria-live="polite"
