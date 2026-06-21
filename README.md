@@ -57,6 +57,8 @@ Desktop CM saved layout folder actions are desktop-only UI controls on each save
 
 Desktop CM saved layout folder keyboard polish is desktop-only UI state. When the saved layout folder list has focus, ArrowUp/ArrowDown, Home/End, Enter, S, R, and Escape move the active folder, toggle collapse, select visible presets, start folder rename, or clear the active state. Active folder state, shortcut state, and rename drafts remain browser-memory only; only explicit folder rename writes safe preset `folder` metadata to `kuviewer_desktop_cm_session_layout_presets`.
 
+Desktop CM saved layout folder accessibility polish is desktop-only UI metadata. The saved layout folder list exposes a labelled list, active descendant, listitem rows, row count/action descriptions, toggle `aria-controls`, explicit folder action labels, rename editor group labels, and screen-reader live status that includes collapsed/expanded state. These accessibility fields do not add visible keyboard instruction text and do not change saved layout data, export/import JSON, Tauri payloads, credentials, runtime profiles, diagnostics, Events, or logs.
+
 Existing remote API profile, local sidecar, and direct Kubernetes/keychain paths remain prototype-only scaffolds. The local sidecar no longer starts by default in the desktop product path; it requires `KUVIEWER_DESKTOP_ENABLE_PROTOTYPE_SIDECAR=1` for explicit prototype work. The web app must not expose SSH.
 
 The Flow view is intended to feel closer to real request movement than a generic resource graph. It derives paths such as:

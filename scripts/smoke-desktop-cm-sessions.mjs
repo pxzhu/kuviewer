@@ -512,6 +512,12 @@ async function smokeDesktopRuntime(browser, url) {
     sessionLayoutSearchCount = await page.getByTestId('desktop-cm-session-layout-search-count').textContent();
     requireCondition(sessionLayoutSearchCount?.includes('1 / 전체 2'), 'desktop CM session layout folder rename must keep renamed folders filterable');
     await page.getByTestId('desktop-cm-session-layout-folder-filter-clear').click();
+    const layoutFolderListRole = await page.getByTestId('desktop-cm-session-layout-list').getAttribute('role');
+    requireCondition(layoutFolderListRole === 'list', 'desktop CM session layout folder list must expose list role');
+    const layoutFolderListLabelledBy = await page.getByTestId('desktop-cm-session-layout-list').getAttribute('aria-labelledby');
+    requireCondition(layoutFolderListLabelledBy === 'desktop-cm-session-layout-folder-list-title', 'desktop CM session layout folder list must be labelled by sr-only title');
+    const layoutFolderListTitle = await page.getByTestId('desktop-cm-session-layout-folder-list-title').textContent();
+    requireCondition(layoutFolderListTitle?.includes('Saved session layout folders'), 'desktop CM session layout folder list title must be available to assistive tech');
     const layoutFolderListDescribedBy = await page.getByTestId('desktop-cm-session-layout-list').getAttribute('aria-describedby');
     requireCondition(
       layoutFolderListDescribedBy?.includes('desktop-cm-session-layout-folder-keyboard-description') &&
@@ -526,18 +532,52 @@ async function smokeDesktopRuntime(browser, url) {
         .filter(Boolean)
     );
     requireCondition(layoutFolderSlugs.length === 2 && layoutFolderSlugs.includes('team-layouts') && layoutFolderSlugs.includes('archive'), 'desktop CM session layout folder keyboard smoke must have two target folders');
+    const archiveFolderRole = await page.getByTestId('desktop-cm-session-layout-folder-archive').getAttribute('role');
+    const archiveFolderId = await page.getByTestId('desktop-cm-session-layout-folder-archive').getAttribute('id');
+    const archiveFolderLabelledBy = await page.getByTestId('desktop-cm-session-layout-folder-archive').getAttribute('aria-labelledby');
+    const archiveFolderDescribedBy = await page.getByTestId('desktop-cm-session-layout-folder-archive').getAttribute('aria-describedby');
+    requireCondition(archiveFolderRole === 'listitem', 'desktop CM session layout folder row must expose listitem role');
+    requireCondition(archiveFolderId === 'desktop-cm-session-layout-folder-row-archive', 'desktop CM session layout folder row must expose stable id');
+    requireCondition(archiveFolderLabelledBy === 'desktop-cm-session-layout-folder-title-archive', 'desktop CM session layout folder row must be labelled by folder title');
+    requireCondition(
+      archiveFolderDescribedBy?.includes('desktop-cm-session-layout-folder-a11y-count-archive') &&
+        archiveFolderDescribedBy.includes('desktop-cm-session-layout-folder-actions-archive'),
+      'desktop CM session layout folder row must describe count and actions'
+    );
+    const archiveFolderTitle = await page.getByTestId('desktop-cm-session-layout-folder-archive').locator('#desktop-cm-session-layout-folder-title-archive').textContent();
+    const archiveFolderActionsText = await page.getByTestId('desktop-cm-session-layout-folder-actions-archive').textContent();
+    requireCondition(archiveFolderTitle === 'Archive', 'desktop CM session layout folder title id must expose safe folder name');
+    requireCondition(archiveFolderActionsText?.includes('visible presets') && archiveFolderActionsText.includes('rename this folder'), 'desktop CM session layout folder actions description must stay safe and specific');
+    const archiveToggleControls = await page.getByTestId('desktop-cm-session-layout-folder-toggle-archive').getAttribute('aria-controls');
+    const archiveItemsId = await page.getByTestId('desktop-cm-session-layout-folder-items-archive').getAttribute('id');
+    const archiveToggleLabel = await page.getByTestId('desktop-cm-session-layout-folder-toggle-archive').getAttribute('aria-label');
+    const archiveSelectLabel = await page.getByTestId('desktop-cm-session-layout-folder-select-archive').getAttribute('aria-label');
+    const archiveRenameLabel = await page.getByTestId('desktop-cm-session-layout-folder-rename-archive').getAttribute('aria-label');
+    requireCondition(archiveToggleControls === archiveItemsId, 'desktop CM session layout folder toggle must control folder items region');
+    requireCondition(archiveToggleLabel?.includes('Archive') && archiveToggleLabel.includes('collapse'), 'desktop CM session layout folder toggle must expose action label');
+    requireCondition(archiveSelectLabel === 'Select visible layouts in Archive', 'desktop CM session layout folder select must expose action label');
+    requireCondition(archiveRenameLabel === 'Rename Archive layout folder', 'desktop CM session layout folder rename must expose action label');
     await page.keyboard.press('Home');
     await requireLayoutFolderActive(page, layoutFolderSlugs[0], true, 'desktop CM session layout folder Home must activate first folder');
+    let layoutFolderActiveDescendant = await page.getByTestId('desktop-cm-session-layout-list').getAttribute('aria-activedescendant');
+    requireCondition(layoutFolderActiveDescendant === `desktop-cm-session-layout-folder-row-${layoutFolderSlugs[0]}`, 'desktop CM session layout folder list must expose active descendant after Home');
     let layoutFolderLiveStatus = await page.getByTestId('desktop-cm-session-layout-folder-keyboard-live-status').textContent();
-    requireCondition(layoutFolderLiveStatus?.includes('1 of 2'), 'desktop CM session layout folder live status must announce active folder');
+    requireCondition(layoutFolderLiveStatus?.includes('visible presets') && layoutFolderLiveStatus.includes('expanded') && layoutFolderLiveStatus.includes('1 of 2'), 'desktop CM session layout folder live status must announce active folder');
     await page.keyboard.press('End');
     await requireLayoutFolderActive(page, layoutFolderSlugs[layoutFolderSlugs.length - 1], true, 'desktop CM session layout folder End must activate last folder');
+    layoutFolderActiveDescendant = await page.getByTestId('desktop-cm-session-layout-list').getAttribute('aria-activedescendant');
+    requireCondition(layoutFolderActiveDescendant === `desktop-cm-session-layout-folder-row-${layoutFolderSlugs[layoutFolderSlugs.length - 1]}`, 'desktop CM session layout folder list must expose active descendant after End');
     await page.getByTestId('desktop-cm-session-layout-folder-archive').click();
     await page.getByTestId('desktop-cm-session-layout-list').focus();
     await page.keyboard.press('Enter');
     await page.getByTestId('desktop-cm-session-layout-folder-items-archive').waitFor({ state: 'hidden', timeout: 10_000 });
+    let archiveToggleExpanded = await page.getByTestId('desktop-cm-session-layout-folder-toggle-archive').getAttribute('aria-expanded');
+    layoutFolderLiveStatus = await page.getByTestId('desktop-cm-session-layout-folder-keyboard-live-status').textContent();
+    requireCondition(archiveToggleExpanded === 'false' && layoutFolderLiveStatus?.includes('collapsed'), 'desktop CM session layout folder Enter must update collapsed aria state');
     await page.keyboard.press('Enter');
     await page.getByTestId('desktop-cm-session-layout-folder-items-archive').waitFor({ state: 'visible', timeout: 10_000 });
+    archiveToggleExpanded = await page.getByTestId('desktop-cm-session-layout-folder-toggle-archive').getAttribute('aria-expanded');
+    requireCondition(archiveToggleExpanded === 'true', 'desktop CM session layout folder Enter must restore expanded aria state');
     await page.keyboard.press('s');
     await page.getByTestId('desktop-cm-session-layout-bulk-toolbar').waitFor({ state: 'visible', timeout: 10_000 });
     layoutBulkCount = await page.getByTestId('desktop-cm-session-layout-bulk-count').textContent();
@@ -548,6 +588,15 @@ async function smokeDesktopRuntime(browser, url) {
     await page.getByTestId('desktop-cm-session-layout-list').focus();
     await page.keyboard.press('r');
     await page.getByTestId('desktop-cm-session-layout-folder-rename-input-archive').waitFor({ state: 'visible', timeout: 10_000 });
+    const archiveRenameEditorRole = await page.getByTestId('desktop-cm-session-layout-folder-rename-editor-archive').getAttribute('role');
+    const archiveRenameEditorLabel = await page.getByTestId('desktop-cm-session-layout-folder-rename-editor-archive').getAttribute('aria-label');
+    const archiveRenameInputLabel = await page.getByTestId('desktop-cm-session-layout-folder-rename-input-archive').getAttribute('aria-label');
+    const archiveRenameSaveLabel = await page.getByTestId('desktop-cm-session-layout-folder-rename-save-archive').getAttribute('aria-label');
+    const archiveRenameCancelLabel = await page.getByTestId('desktop-cm-session-layout-folder-rename-cancel-archive').getAttribute('aria-label');
+    requireCondition(archiveRenameEditorRole === 'group' && archiveRenameEditorLabel === 'Rename Archive layout folder', 'desktop CM session layout folder rename editor must expose group label');
+    requireCondition(archiveRenameInputLabel === 'New name for Archive layout folder', 'desktop CM session layout folder rename input must expose label');
+    requireCondition(archiveRenameSaveLabel === 'Save Archive layout folder name', 'desktop CM session layout folder rename save must expose label');
+    requireCondition(archiveRenameCancelLabel === 'Cancel Archive layout folder rename', 'desktop CM session layout folder rename cancel must expose label');
     await requireTestIdFocused(page, 'desktop-cm-session-layout-folder-rename-input-archive', 'desktop CM session layout folder keyboard rename must focus rename input');
     await page.getByTestId('desktop-cm-session-layout-folder-rename-input-archive').fill('Keyboard Archive');
     await page.keyboard.press('Enter');
