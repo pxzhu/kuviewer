@@ -185,7 +185,8 @@ https://kuviewer.example.com/
    - Desktop CM session layout import/export polish는 완료됐다. 설치형/Tauri CM/SSH session panel은 별도 `kuviewer.desktop.cmSessionLayouts` JSON bundle로 saved layout preset만 export/import하며 invalid skip, unknown session id prune을 수행하고 CM session export/import schema와 Tauri command payload는 변경하지 않는다.
    - Desktop CM session layout conflict preview는 완료됐다. same-name/different-layout import는 즉시 덮어쓰지 않고 memory-only preview에서 incoming 우선, 현재 유지, 이름 바꿔 둘 다 보관 중 명시 선택한 뒤에만 반영한다.
    - Desktop CM session layout per-row conflict actions는 완료됐다. conflict preview 안에서 row별 incoming, 현재 유지, rename incoming을 독립 처리하고 남은 row는 preview에 계속 표시하며 마지막 row 해결 시 preview를 닫는다.
-   - 다음 확장 후보는 Desktop CM session layout conflict summary polish다.
+   - Desktop CM session layout conflict summary polish는 완료됐다. conflict preview는 total/resolved/remaining, incoming/current/rename 해결 수, import result count를 memory-only로 표시하며 localStorage/sessionStorage/export/import/Tauri payload에는 저장하지 않는다.
+   - 다음 확장 후보는 Desktop CM session layout conflict keyboard polish다.
 
 4. 실제 Kubernetes 연결 설계
    - 브라우저에 kube credential을 직접 넣지 않는 방향 유지.

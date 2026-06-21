@@ -451,9 +451,24 @@ async function smokeDesktopRuntime(browser, url) {
     await page.getByTestId('desktop-cm-session-layout-review-view').waitFor({ state: 'visible', timeout: 10_000 });
     await page.getByTestId('desktop-cm-session-layout-conflict-preview').waitFor({ state: 'visible', timeout: 10_000 });
     await page.getByTestId('desktop-cm-session-layout-conflict-ops-view').waitFor({ state: 'visible', timeout: 10_000 });
+    let layoutConflictSummaryProgress = await page.getByTestId('desktop-cm-session-layout-conflict-summary-progress').textContent();
+    let layoutConflictSummaryRemaining = await page.getByTestId('desktop-cm-session-layout-conflict-summary-remaining').textContent();
+    let layoutConflictSummaryResolutions = await page.getByTestId('desktop-cm-session-layout-conflict-summary-resolutions').textContent();
+    let layoutConflictSummaryImport = await page.getByTestId('desktop-cm-session-layout-conflict-summary-import').textContent();
+    requireCondition(layoutConflictSummaryProgress?.includes('충돌 1개 중 0개 해결'), 'desktop CM session layout conflict summary must show initial conflict progress');
+    requireCondition(layoutConflictSummaryRemaining?.includes('남은 1개'), 'desktop CM session layout conflict summary must show initial remaining conflicts');
+    requireCondition(
+      layoutConflictSummaryResolutions?.includes('incoming 반영 0') && layoutConflictSummaryResolutions.includes('현재 유지 0') && layoutConflictSummaryResolutions.includes('rename 0'),
+      'desktop CM session layout conflict summary must show initial resolution counts'
+    );
+    requireCondition(
+      layoutConflictSummaryImport?.includes('new 1') && layoutConflictSummaryImport.includes('updated 0') && layoutConflictSummaryImport.includes('invalid 1'),
+      'desktop CM session layout conflict summary must show import counts'
+    );
     sessionLayoutStorage = await page.evaluate(() => window.localStorage.getItem('kuviewer_desktop_cm_session_layout_presets') || '');
     requireCondition(sessionLayoutStorage.includes('Review View'), 'desktop CM session layout import must persist new layout presets');
     requireCondition(!sessionLayoutStorage.includes('Imported'), 'desktop CM session layout conflict preview must not overwrite same-name layouts before resolution');
+    requireCondition(!sessionLayoutStorage.includes('incomingResolved') && !sessionLayoutStorage.includes('currentResolved') && !sessionLayoutStorage.includes('renamedResolved'), 'desktop CM session layout conflict summary must not persist resolution counters');
     requireCondition(!sessionLayoutStorage.includes('conflict-preview'), 'desktop CM session layout conflict preview must not persist conflict state');
     requireCondition(!sessionLayoutStorage.includes('missing-session-id') && !sessionLayoutStorage.includes('Ghost'), 'desktop CM session layout import must prune unknown session ids');
     requireCondition(!sessionLayoutStorage.includes('cm.example.internal') && !sessionLayoutStorage.includes('should-not-persist'), 'desktop CM session layout import must not persist endpoint or diagnostic metadata');
@@ -489,9 +504,21 @@ async function smokeDesktopRuntime(browser, url) {
     await page.getByTestId('desktop-cm-session-layout-import').setInputFiles(layoutMultiConflictPath);
     await page.getByTestId('desktop-cm-session-layout-conflict-preview').waitFor({ state: 'visible', timeout: 10_000 });
     await page.getByTestId('desktop-cm-session-layout-conflict-review-view').waitFor({ state: 'visible', timeout: 10_000 });
+    layoutConflictSummaryProgress = await page.getByTestId('desktop-cm-session-layout-conflict-summary-progress').textContent();
+    layoutConflictSummaryRemaining = await page.getByTestId('desktop-cm-session-layout-conflict-summary-remaining').textContent();
+    requireCondition(layoutConflictSummaryProgress?.includes('충돌 2개 중 0개 해결'), 'desktop CM multi layout conflict summary must show initial progress');
+    requireCondition(layoutConflictSummaryRemaining?.includes('남은 2개'), 'desktop CM multi layout conflict summary must show initial remaining count');
     await page.getByTestId('desktop-cm-session-layout-conflict-row-keep-current-review-view').click();
     await page.getByTestId('desktop-cm-session-layout-conflict-preview').waitFor({ state: 'visible', timeout: 10_000 });
     await page.getByTestId('desktop-cm-session-layout-conflict-review-view').waitFor({ state: 'hidden', timeout: 10_000 });
+    layoutConflictSummaryProgress = await page.getByTestId('desktop-cm-session-layout-conflict-summary-progress').textContent();
+    layoutConflictSummaryRemaining = await page.getByTestId('desktop-cm-session-layout-conflict-summary-remaining').textContent();
+    layoutConflictSummaryResolutions = await page.getByTestId('desktop-cm-session-layout-conflict-summary-resolutions').textContent();
+    layoutConflictSummaryImport = await page.getByTestId('desktop-cm-session-layout-conflict-summary-import').textContent();
+    requireCondition(layoutConflictSummaryProgress?.includes('충돌 2개 중 1개 해결'), 'desktop CM row keep current must update conflict summary progress');
+    requireCondition(layoutConflictSummaryRemaining?.includes('남은 1개'), 'desktop CM row keep current must update remaining conflict count');
+    requireCondition(layoutConflictSummaryResolutions?.includes('현재 유지 1'), 'desktop CM row keep current must update current resolution count');
+    requireCondition(layoutConflictSummaryImport?.includes('skipped 1'), 'desktop CM row keep current must update skipped import count');
     sessionLayoutStorage = await page.evaluate(() => window.localStorage.getItem('kuviewer_desktop_cm_session_layout_presets') || '');
     requireCondition(!sessionLayoutStorage.includes('Review Incoming'), 'desktop CM session layout row keep current must resolve only the selected conflict');
     await page.getByTestId('desktop-cm-session-layout-conflict-row-use-incoming-ops-view').click();
@@ -517,10 +544,17 @@ async function smokeDesktopRuntime(browser, url) {
     }));
     await page.getByTestId('desktop-cm-session-layout-import').setInputFiles(layoutRenameImportPath);
     await page.getByTestId('desktop-cm-session-layout-conflict-preview').waitFor({ state: 'visible', timeout: 10_000 });
+    layoutConflictSummaryProgress = await page.getByTestId('desktop-cm-session-layout-conflict-summary-progress').textContent();
+    layoutConflictSummaryRemaining = await page.getByTestId('desktop-cm-session-layout-conflict-summary-remaining').textContent();
+    requireCondition(layoutConflictSummaryProgress?.includes('충돌 1개 중 0개 해결'), 'desktop CM rename conflict summary must reset progress for a new import');
+    requireCondition(layoutConflictSummaryRemaining?.includes('남은 1개'), 'desktop CM rename conflict summary must reset remaining count for a new import');
     await page.getByTestId('desktop-cm-session-layout-conflict-row-rename-incoming-ops-view').click();
     await page.getByTestId('desktop-cm-session-layout-ops-view-import').waitFor({ state: 'visible', timeout: 10_000 });
+    layoutImportSummary = await page.getByTestId('desktop-cm-session-layout-import-summary').textContent();
+    requireCondition(layoutImportSummary?.includes('new 1'), 'desktop CM session layout row rename must update final import summary');
     sessionLayoutStorage = await page.evaluate(() => window.localStorage.getItem('kuviewer_desktop_cm_session_layout_presets') || '');
     requireCondition(sessionLayoutStorage.includes('Ops View import') && sessionLayoutStorage.includes('Renamed'), 'desktop CM session layout row rename must keep both layouts');
+    requireCondition(!sessionLayoutStorage.includes('incomingResolved') && !sessionLayoutStorage.includes('currentResolved') && !sessionLayoutStorage.includes('renamedResolved'), 'desktop CM session layout conflict summary counters must stay memory-only after rename');
     requireCondition(!sessionLayoutStorage.includes('conflict-preview'), 'desktop CM session layout conflict resolution must keep conflict state memory-only');
     await rm(layoutImportDir, { force: true, recursive: true });
     await page.getByTestId('desktop-cm-session-diagnostic-stage-filter').selectOption('metadata');
