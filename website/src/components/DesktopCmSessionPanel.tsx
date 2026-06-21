@@ -188,6 +188,7 @@ export function DesktopCmSessionPanel({
   const [draggingSessionLayoutPresetName, setDraggingSessionLayoutPresetName] = useState('');
   const [sessionLayoutReorderKeyboardMessage, setSessionLayoutReorderKeyboardMessage] = useState('');
   const [sessionLayoutReorderFocusTargetTestId, setSessionLayoutReorderFocusTargetTestId] = useState('');
+  const [sessionLayoutReorderFocusTargetLabel, setSessionLayoutReorderFocusTargetLabel] = useState('');
   const [sessionLayoutReorderFocusMessage, setSessionLayoutReorderFocusMessage] = useState('');
   const [sessionLayoutPresets, setSessionLayoutPresets] = useState<DesktopCmSessionLayoutPreset[]>(() => readDesktopCmSessionLayoutPresets());
   const [collapsedSessionLayoutFolders, setCollapsedSessionLayoutFolders] = useState<Set<string>>(() => readDesktopCmSessionLayoutCollapsedFolders());
@@ -309,6 +310,7 @@ export function DesktopCmSessionPanel({
   const sessionLayoutFolderKeyboardLiveStatusId = 'desktop-cm-session-layout-folder-keyboard-live-status';
   const sessionLayoutReorderKeyboardDescriptionId = 'desktop-cm-session-layout-reorder-keyboard-description';
   const sessionLayoutReorderKeyboardStatusId = 'desktop-cm-session-layout-reorder-keyboard-status';
+  const sessionLayoutReorderFocusDescriptionId = 'desktop-cm-session-layout-reorder-focus-description';
   const sessionLayoutReorderFocusStatusId = 'desktop-cm-session-layout-reorder-focus-status';
   const sessionLayoutReorderKeyboardLiveText =
     sessionLayoutReorderKeyboardMessage ||
@@ -369,14 +371,15 @@ export function DesktopCmSessionPanel({
             ) || null;
       if (target) {
         target.focus({ preventScroll: true });
-        setSessionLayoutReorderFocusMessage(`Focus restored to ${sessionLayoutReorderFocusTargetTestId}.`);
+        setSessionLayoutReorderFocusMessage(`Focus restored to ${sessionLayoutReorderFocusTargetLabel || 'the moved layout reorder control'}.`);
       } else {
-        setSessionLayoutReorderFocusMessage(`Focus target ${sessionLayoutReorderFocusTargetTestId} is no longer visible.`);
+        setSessionLayoutReorderFocusMessage(`${sessionLayoutReorderFocusTargetLabel || 'The moved layout reorder control'} is no longer visible after reorder.`);
       }
       setSessionLayoutReorderFocusTargetTestId('');
+      setSessionLayoutReorderFocusTargetLabel('');
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [sessionLayoutPresets, sessionLayoutReorderFocusTargetTestId]);
+  }, [sessionLayoutPresets, sessionLayoutReorderFocusTargetLabel, sessionLayoutReorderFocusTargetTestId]);
 
   useEffect(() => {
     if (sessions.length === 0) {
@@ -1004,8 +1007,9 @@ export function DesktopCmSessionPanel({
     handleCancelRenameSessionLayoutFolder();
   };
 
-  const requestSessionLayoutReorderFocus = (targetTestId: string) => {
+  const requestSessionLayoutReorderFocus = (targetTestId: string, targetLabel: string) => {
     setSessionLayoutReorderFocusTargetTestId(targetTestId);
+    setSessionLayoutReorderFocusTargetLabel(targetLabel);
   };
 
   const sessionLayoutFolderDragHandleTestId = (folderName: string) => `desktop-cm-session-layout-folder-drag-handle-${slugifyTestId(folderName)}`;
@@ -1044,7 +1048,10 @@ export function DesktopCmSessionPanel({
     const movement =
       direction === 'first' ? 'moved to first' : direction === 'last' ? 'moved to last' : direction < 0 ? 'moved up' : 'moved down';
     setSessionLayoutReorderKeyboardMessage(`${folder} layout folder ${movement}.`);
-    requestSessionLayoutReorderFocus(focusTarget === 'folder-list' ? 'desktop-cm-session-layout-list' : sessionLayoutFolderDragHandleTestId(folder));
+    requestSessionLayoutReorderFocus(
+      focusTarget === 'folder-list' ? 'desktop-cm-session-layout-list' : sessionLayoutFolderDragHandleTestId(folder),
+      focusTarget === 'folder-list' ? 'saved layout folder list' : `${folder} layout folder drag handle`,
+    );
   };
 
   const handleDropSessionLayoutFolder = (targetFolderName: string, event: ReactDragEvent<HTMLDivElement>) => {
@@ -1067,7 +1074,7 @@ export function DesktopCmSessionPanel({
       writeDesktopCmSessionLayoutPresets(nextPresets);
       return nextPresets;
     });
-    requestSessionLayoutReorderFocus(sessionLayoutFolderDragHandleTestId(sourceFolder));
+    requestSessionLayoutReorderFocus(sessionLayoutFolderDragHandleTestId(sourceFolder), `${sourceFolder} layout folder drag handle`);
     setDraggingSessionLayoutFolderName('');
   };
 
@@ -1103,7 +1110,7 @@ export function DesktopCmSessionPanel({
     const movement =
       direction === 'first' ? 'moved to first' : direction === 'last' ? 'moved to last' : direction < 0 ? 'moved up' : 'moved down';
     setSessionLayoutReorderKeyboardMessage(`${presetName} layout ${movement} in ${folder}.`);
-    requestSessionLayoutReorderFocus(sessionLayoutPresetDragHandleTestId(presetName));
+    requestSessionLayoutReorderFocus(sessionLayoutPresetDragHandleTestId(presetName), `${presetName} layout drag handle in ${folder}`);
   };
 
   const handleDropSessionLayoutPreset = (targetPresetName: string, event: ReactDragEvent<HTMLSpanElement>) => {
@@ -1124,7 +1131,7 @@ export function DesktopCmSessionPanel({
       writeDesktopCmSessionLayoutPresets(nextPresets);
       return nextPresets;
     });
-    requestSessionLayoutReorderFocus(sessionLayoutPresetDragHandleTestId(sourcePresetName));
+    requestSessionLayoutReorderFocus(sessionLayoutPresetDragHandleTestId(sourcePresetName), `${sourcePresetName} layout drag handle`);
     setDraggingSessionLayoutPresetName('');
   };
 
@@ -2522,13 +2529,16 @@ export function DesktopCmSessionPanel({
                 <p className="sr-only" data-testid="desktop-cm-session-layout-reorder-keyboard-description" id={sessionLayoutReorderKeyboardDescriptionId}>
                   Reorder keyboard state is browser memory only. Focus a folder or layout drag handle and use ArrowUp, ArrowDown, Home, or End to reorder without adding saved fields.
                 </p>
-                <p aria-live="polite" className="sr-only" data-testid="desktop-cm-session-layout-folder-keyboard-live-status" id={sessionLayoutFolderKeyboardLiveStatusId}>
+                <p className="sr-only" data-testid="desktop-cm-session-layout-reorder-focus-description" id={sessionLayoutReorderFocusDescriptionId}>
+                  After a layout folder or preset reorder, focus returns to the moved drag handle or the saved layout folder list without scrolling the panel.
+                </p>
+                <p aria-atomic="true" aria-live="polite" className="sr-only" data-testid="desktop-cm-session-layout-folder-keyboard-live-status" id={sessionLayoutFolderKeyboardLiveStatusId} role="status">
                   {sessionLayoutFolderKeyboardLiveText}
                 </p>
-                <p aria-live="polite" className="sr-only" data-testid="desktop-cm-session-layout-reorder-keyboard-status" id={sessionLayoutReorderKeyboardStatusId}>
+                <p aria-atomic="true" aria-live="polite" className="sr-only" data-testid="desktop-cm-session-layout-reorder-keyboard-status" id={sessionLayoutReorderKeyboardStatusId} role="status">
                   {sessionLayoutReorderKeyboardLiveText}
                 </p>
-                <p aria-live="polite" className="sr-only" data-testid="desktop-cm-session-layout-reorder-focus-status" id={sessionLayoutReorderFocusStatusId}>
+                <p aria-atomic="true" aria-live="polite" className="sr-only" data-testid="desktop-cm-session-layout-reorder-focus-status" id={sessionLayoutReorderFocusStatusId} role="status">
                   {sessionLayoutReorderFocusLiveText}
                 </p>
                 <div
@@ -2536,7 +2546,7 @@ export function DesktopCmSessionPanel({
                   aria-activedescendant={
                     activeSessionLayoutFolder ? `desktop-cm-session-layout-folder-row-${slugifyTestId(activeSessionLayoutFolder.folder)}` : undefined
                   }
-                  aria-describedby={`${sessionLayoutFolderKeyboardDescriptionId} ${sessionLayoutReorderKeyboardDescriptionId} ${sessionLayoutFolderKeyboardLiveStatusId} ${sessionLayoutReorderKeyboardStatusId} ${sessionLayoutReorderFocusStatusId}`}
+                  aria-describedby={`${sessionLayoutFolderKeyboardDescriptionId} ${sessionLayoutReorderKeyboardDescriptionId} ${sessionLayoutReorderFocusDescriptionId} ${sessionLayoutFolderKeyboardLiveStatusId} ${sessionLayoutReorderKeyboardStatusId} ${sessionLayoutReorderFocusStatusId}`}
                   aria-keyshortcuts="ArrowUp ArrowDown Home End Enter S R Escape Shift+ArrowUp Shift+ArrowDown Shift+Home Shift+End"
                   aria-labelledby={sessionLayoutFolderListTitleId}
                   className="grid min-w-0 gap-2 outline-none focus-visible:ring-2 focus-visible:ring-[rgba(0,122,255,0.22)]"
@@ -2579,6 +2589,7 @@ export function DesktopCmSessionPanel({
                     <div className="flex min-w-0 flex-wrap items-center gap-2">
                       <button
                         aria-label={`${folder.folder} layout folder 순서 드래그`}
+                        aria-describedby={`${sessionLayoutReorderKeyboardDescriptionId} ${sessionLayoutReorderFocusDescriptionId} ${sessionLayoutReorderFocusStatusId} ${folderActionsId}`}
                         aria-keyshortcuts="ArrowUp ArrowDown Home End"
                         className="ku-control h-8 text-xs"
                         data-testid={`desktop-cm-session-layout-folder-drag-handle-${folder.slug}`}
@@ -2788,6 +2799,7 @@ export function DesktopCmSessionPanel({
                                 <>
                                   <button
                                     aria-label={`${preset.name} layout 순서 드래그`}
+                                    aria-describedby={`${sessionLayoutReorderKeyboardDescriptionId} ${sessionLayoutReorderFocusDescriptionId} ${sessionLayoutReorderFocusStatusId}`}
                                     aria-keyshortcuts="ArrowUp ArrowDown Home End"
                                     className="rounded-full p-0.5 hover:bg-[rgba(60,60,67,0.08)] disabled:cursor-not-allowed disabled:opacity-45"
                                     data-testid={`desktop-cm-session-layout-drag-handle-${presetSlug}`}
