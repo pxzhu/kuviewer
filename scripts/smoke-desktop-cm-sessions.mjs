@@ -705,6 +705,8 @@ async function smokeDesktopRuntime(browser, url) {
     const layoutReorderHistoryPresetDiscoverabilityHintType = await page.getByTestId('desktop-cm-session-layout-reorder-history-filter-preset-discoverability-hint').getAttribute('type');
     const layoutReorderHistoryPresetDiscoverabilityHintShortcuts = await page.getByTestId('desktop-cm-session-layout-reorder-history-filter-preset-discoverability-hint').getAttribute('aria-keyshortcuts');
     const layoutReorderHistoryPresetDiscoverabilityHintDescribedBy = await page.getByTestId('desktop-cm-session-layout-reorder-history-filter-preset-discoverability-hint').getAttribute('aria-describedby');
+    const layoutReorderHistoryPresetDiscoverabilityHintFocusVisible = await page.getByTestId('desktop-cm-session-layout-reorder-history-filter-preset-discoverability-hint').getAttribute('data-focus-visible');
+    const layoutReorderHistoryPresetDiscoverabilityHintClass = await page.getByTestId('desktop-cm-session-layout-reorder-history-filter-preset-discoverability-hint').getAttribute('class');
     const layoutReorderHistoryPresetHelpTooltipRole = await page.getByTestId('desktop-cm-session-layout-reorder-history-filter-preset-help-tooltip').getAttribute('role');
     const layoutReorderHistoryPresetHelpTooltipText = await page.getByTestId('desktop-cm-session-layout-reorder-history-filter-preset-help-tooltip').textContent();
     const layoutReorderHistoryPresetHelpTooltipPlacement = await page.getByTestId('desktop-cm-session-layout-reorder-history-filter-preset-help-tooltip').getAttribute('data-placement');
@@ -830,9 +832,14 @@ async function smokeDesktopRuntime(browser, url) {
         layoutReorderHistoryPresetDiscoverabilityHintTitle.includes('help button focuses the active preset') &&
         layoutReorderHistoryPresetDiscoverabilityHintTitle.includes('UI-only') &&
         layoutReorderHistoryPresetDiscoverabilityHintLabel === layoutReorderHistoryPresetDiscoverabilityHintTitle &&
+        layoutReorderHistoryPresetDiscoverabilityHintFocusVisible === 'high-safe-ring' &&
+        layoutReorderHistoryPresetDiscoverabilityHintClass?.includes('focus-visible:outline-[#0f4f68]') &&
+        layoutReorderHistoryPresetDiscoverabilityHintClass.includes('focus-visible:ring-2') &&
+        layoutReorderHistoryPresetDiscoverabilityHintClass.includes('focus-visible:ring-[#8bd3f7]') &&
+        layoutReorderHistoryPresetDiscoverabilityHintClass.includes('focus-visible:ring-offset-[#f8fcff]') &&
         !sessionLayoutStorageAfterPresetHints.includes('Preset help') &&
         !sessionLayoutStorageAfterPresetHints.includes('arrow keys move between presets'),
-      'desktop CM session layout reorder history timestamp filter preset discoverability smoke must expose UI-only visible help without persistence'
+      'desktop CM session layout reorder history timestamp filter preset discoverability smoke must expose UI-only visible help with high-contrast focus-visible ring without persistence'
     );
     requireCondition(
       layoutReorderHistoryPresetHelpTooltipRole === 'tooltip' &&

@@ -82,6 +82,7 @@ requireCondition(
     'desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-placement-polish',
     'desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-contrast-polish',
     'desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-contrast-accessibility-polish',
+    'desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-polish',
   ].includes(spec.status),
   'status must be a known desktop packaging milestone'
 );
@@ -231,6 +232,10 @@ requireCondition(
   phases.includes('desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-contrast-accessibility-polish'),
   'phaseOrder must include desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-contrast-accessibility-polish'
 );
+requireCondition(
+  phases.includes('desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-polish'),
+  'phaseOrder must include desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-polish'
+);
 
 await validateBuildPrerequisites(spec);
 await validateDesktopDistributionPolicy(spec);
@@ -303,6 +308,7 @@ if (
     'desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-placement-polish',
     'desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-contrast-polish',
     'desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-contrast-accessibility-polish',
+    'desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-polish',
   ].includes(spec.status)
 ) {
   await validateTauriScaffold(spec.tauri || {});
@@ -2997,11 +3003,15 @@ async function validateCmSshSessionManager(spec) {
     'tooltipContrastDescribedBy',
     'tooltipContrastDescriptionHidden',
     'tooltipContrastMinRatioExposed',
+    'helpButtonFocusVisibleHighContrast',
+    'helpButtonFocusVisibleRing',
+    'helpButtonFocusVisibleOffset',
     'smokeCoversHoverTooltip',
     'smokeCoversFocusTooltip',
     'smokeCoversNarrowViewportPlacement',
     'smokeCoversTooltipContrast',
     'smokeCoversTooltipContrastAccessibility',
+    'smokeCoversFocusVisibleRing',
     'smokeCoversNoPersistence',
     'noPresetPersistence',
     'hiddenShortcutHintPreserved',
@@ -3698,6 +3708,7 @@ async function validateCmSshSessionManager(spec) {
     'CircleHelp',
     'type="button"',
     'aria-keyshortcuts="Enter Space"',
+    'data-focus-visible="high-safe-ring"',
     'Preset help focused. Press Enter or Space to focus the active reorder history preset.',
     'title={sessionLayoutReorderHistoryFilterPresetDiscoverabilityHint}',
     'onClick={focusSessionLayoutReorderHistoryFilterPresetHelpTarget}',
@@ -3708,6 +3719,9 @@ async function validateCmSshSessionManager(spec) {
     'data-placement="bottom-inline-safe"',
     'data-contrast="high-safe"',
     'data-contrast-min-ratio="7"',
+    'focus-visible:outline-[#0f4f68]',
+    'focus-visible:ring-[#8bd3f7]',
+    'focus-visible:ring-offset-[#f8fcff]',
     'role="tooltip"',
     'group-focus-within:block group-hover:block',
     'max-w-[calc(100vw-2rem)]',
@@ -3961,7 +3975,7 @@ async function validateCmSshSessionManager(spec) {
     'desktop CM session layout reorder history timestamp filter preset accessibility must expose help summary and button labels',
     'desktop CM session layout reorder history timestamp filter preset keyboard shortcuts must move focus and apply presets without persistence',
     'desktop CM session layout reorder history timestamp filter preset shortcut hints must expose hidden hint title and aria-keyshortcuts without persistence',
-    'desktop CM session layout reorder history timestamp filter preset discoverability smoke must expose UI-only visible help without persistence',
+    'desktop CM session layout reorder history timestamp filter preset discoverability smoke must expose UI-only visible help with high-contrast focus-visible ring without persistence',
     'desktop CM session layout reorder history timestamp filter preset help tooltip must expose accessible high-contrast viewport-safe hover tooltip without persistence',
     'desktop CM session layout reorder history timestamp filter preset help tooltip must remain visible on focus',
     'desktop CM session layout reorder history timestamp filter preset help focus must announce focus action',
@@ -4066,6 +4080,7 @@ async function validateCmSshSessionManager(spec) {
     requireCondition(text.includes('reorder status history timestamp filter preset help tooltip placement'), `${label} must document desktop CM session layout folder reorder status history timestamp filter preset help tooltip placement polish`);
     requireCondition(text.includes('reorder status history timestamp filter preset help tooltip contrast'), `${label} must document desktop CM session layout folder reorder status history timestamp filter preset help tooltip contrast polish`);
     requireCondition(text.includes('reorder status history timestamp filter preset help tooltip contrast accessibility'), `${label} must document desktop CM session layout folder reorder status history timestamp filter preset help tooltip contrast accessibility polish`);
+    requireCondition(text.includes('reorder status history timestamp filter preset help tooltip focus-visible'), `${label} must document desktop CM session layout folder reorder status history timestamp filter preset help tooltip focus-visible polish`);
     requireCondition(text.includes('export/import') || text.includes('session export'), `${label} must document desktop CM session export/import`);
     requireCondition(text.includes('web app must not expose SSH'), `${label} must document that the web app must not expose SSH`);
   }
