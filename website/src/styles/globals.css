@@ -485,3 +485,14 @@ select:focus-visible,
 .ku-app-shell[data-brand-theme="radar"] [class*="hover:bg-white"]:hover {
   background-color: rgba(19, 39, 63, 0.94) !important;
 }
+
+.ku-app-shell .ku-focus-visible-solid-highlight:focus-visible,
+.ku-app-shell[data-brand-theme="radar"] .ku-focus-visible-solid-highlight:focus-visible {
+  background-color: #f8fcff !important;
+  border-color: #0f4f68 !important;
+  color: #0f4f68 !important;
+  box-shadow:
+    0 0 0 2px #8bd3f7,
+    0 0 0 4px rgba(139, 211, 247, 0.34) !important;
+  transform: scale(1.04);
+}

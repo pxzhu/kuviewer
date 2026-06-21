@@ -706,6 +706,9 @@ async function smokeDesktopRuntime(browser, url) {
     const layoutReorderHistoryPresetDiscoverabilityHintShortcuts = await page.getByTestId('desktop-cm-session-layout-reorder-history-filter-preset-discoverability-hint').getAttribute('aria-keyshortcuts');
     const layoutReorderHistoryPresetDiscoverabilityHintDescribedBy = await page.getByTestId('desktop-cm-session-layout-reorder-history-filter-preset-discoverability-hint').getAttribute('aria-describedby');
     const layoutReorderHistoryPresetDiscoverabilityHintFocusVisible = await page.getByTestId('desktop-cm-session-layout-reorder-history-filter-preset-discoverability-hint').getAttribute('data-focus-visible');
+    const layoutReorderHistoryPresetDiscoverabilityHintFocusVisibleVisual = await page
+      .getByTestId('desktop-cm-session-layout-reorder-history-filter-preset-discoverability-hint')
+      .getAttribute('data-focus-visible-visual');
     const layoutReorderHistoryPresetDiscoverabilityHintClass = await page.getByTestId('desktop-cm-session-layout-reorder-history-filter-preset-discoverability-hint').getAttribute('class');
     const layoutReorderHistoryPresetHelpTooltipRole = await page.getByTestId('desktop-cm-session-layout-reorder-history-filter-preset-help-tooltip').getAttribute('role');
     const layoutReorderHistoryPresetHelpTooltipText = await page.getByTestId('desktop-cm-session-layout-reorder-history-filter-preset-help-tooltip').textContent();
@@ -758,16 +761,37 @@ async function smokeDesktopRuntime(browser, url) {
       'desktop-cm-session-layout-reorder-history-filter-preset-discoverability-hint',
       'desktop CM session layout reorder history timestamp filter preset help focus-visible keyboard smoke must tab to help button'
     );
+    await page
+      .waitForFunction(() => {
+        const element = document.querySelector('[data-testid="desktop-cm-session-layout-reorder-history-filter-preset-discoverability-hint"]');
+        if (!element?.matches(':focus-visible')) {
+          return false;
+        }
+        const style = window.getComputedStyle(element);
+        return (
+          style.backgroundColor === 'rgb(248, 252, 255)' &&
+          style.borderTopColor === 'rgb(15, 79, 104)' &&
+          style.color === 'rgb(15, 79, 104)' &&
+          style.boxShadow !== 'none' &&
+          (style.transform !== 'none' || !['', 'none', '1'].includes(style.scale))
+        );
+      }, null, { timeout: 1500 })
+      .catch(() => undefined);
     const layoutReorderHistoryPresetHelpKeyboardFocusStyles = await page
       .getByTestId('desktop-cm-session-layout-reorder-history-filter-preset-discoverability-hint')
       .evaluate((element) => {
         const style = window.getComputedStyle(element);
         return {
+          backgroundColor: style.backgroundColor,
+          borderColor: style.borderTopColor,
           boxShadow: style.boxShadow,
+          color: style.color,
           focusVisible: element.matches(':focus-visible'),
           outlineColor: style.outlineColor,
           outlineStyle: style.outlineStyle,
           outlineWidth: style.outlineWidth,
+          scale: style.scale,
+          transform: style.transform,
         };
       });
     const layoutReorderHistoryPresetHelpTooltipVisibleAfterKeyboardTab = await page
@@ -864,7 +888,9 @@ async function smokeDesktopRuntime(browser, url) {
         layoutReorderHistoryPresetDiscoverabilityHintLabel === layoutReorderHistoryPresetDiscoverabilityHintTitle &&
         layoutReorderHistoryPresetDiscoverabilityHintDescribedBy?.includes('desktop-cm-session-layout-reorder-history-filter-preset-help-tooltip-focus-visible-description') &&
         layoutReorderHistoryPresetDiscoverabilityHintFocusVisible === 'high-safe-ring' &&
-        layoutReorderHistoryPresetDiscoverabilityHintClass?.includes('focus-visible:outline-[#0f4f68]') &&
+        layoutReorderHistoryPresetDiscoverabilityHintFocusVisibleVisual === 'solid-highlight' &&
+        layoutReorderHistoryPresetDiscoverabilityHintClass?.includes('ku-focus-visible-solid-highlight') &&
+        layoutReorderHistoryPresetDiscoverabilityHintClass.includes('focus-visible:outline-[#0f4f68]') &&
         layoutReorderHistoryPresetDiscoverabilityHintClass.includes('focus-visible:ring-2') &&
         layoutReorderHistoryPresetDiscoverabilityHintClass.includes('focus-visible:ring-[#8bd3f7]') &&
         layoutReorderHistoryPresetDiscoverabilityHintClass.includes('focus-visible:ring-offset-[#f8fcff]') &&
@@ -881,12 +907,18 @@ async function smokeDesktopRuntime(browser, url) {
         layoutReorderHistoryPresetHelpKeyboardFocusStyles.outlineStyle !== 'none' &&
         layoutReorderHistoryPresetHelpKeyboardFocusStyles.outlineWidth !== '0px' &&
         !['transparent', 'rgba(0, 0, 0, 0)'].includes(layoutReorderHistoryPresetHelpKeyboardFocusStyles.outlineColor) &&
+        layoutReorderHistoryPresetHelpKeyboardFocusStyles.backgroundColor === 'rgb(248, 252, 255)' &&
+        layoutReorderHistoryPresetHelpKeyboardFocusStyles.borderColor === 'rgb(15, 79, 104)' &&
+        layoutReorderHistoryPresetHelpKeyboardFocusStyles.color === 'rgb(15, 79, 104)' &&
         layoutReorderHistoryPresetHelpKeyboardFocusStyles.boxShadow !== 'none' &&
+        (layoutReorderHistoryPresetHelpKeyboardFocusStyles.transform !== 'none' ||
+          !['', 'none', '1'].includes(layoutReorderHistoryPresetHelpKeyboardFocusStyles.scale)) &&
         layoutReorderHistoryPresetHelpTooltipVisibleAfterKeyboardTab &&
         layoutReorderHistoryPresetHelpKeyboardFocusStatus?.includes('Preset help focused') &&
         layoutReorderHistoryPresetHelpKeyboardFocusStatus.includes('focus the active reorder history preset') &&
-        !sessionLayoutStorageAfterPresetHints.includes('focus-visible keyboard smoke'),
-      'desktop CM session layout reorder history timestamp filter preset help focus-visible keyboard smoke must verify Tab focus ring and tooltip without persistence'
+        !sessionLayoutStorageAfterPresetHints.includes('focus-visible keyboard smoke') &&
+        !sessionLayoutStorageAfterPresetHints.includes('solid-highlight'),
+      'desktop CM session layout reorder history timestamp filter preset help focus-visible visual polish must verify Tab focus color scale and tooltip without persistence'
     );
     requireCondition(
       layoutReorderHistoryPresetHelpTooltipRole === 'tooltip' &&
