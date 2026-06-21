@@ -158,6 +158,9 @@ export function DesktopCmSessionPanel({
   const [sessionViewPreferences, setSessionViewPreferences] = useState<DesktopCmSessionViewPreferences>(() => readDesktopCmSessionViewPreferences());
   const [sessionLayoutPresetName, setSessionLayoutPresetName] = useState('');
   const [sessionLayoutSearchQuery, setSessionLayoutSearchQuery] = useState('');
+  const [sessionLayoutRenameTargetName, setSessionLayoutRenameTargetName] = useState('');
+  const [sessionLayoutRenameDraftName, setSessionLayoutRenameDraftName] = useState('');
+  const [sessionLayoutRenameError, setSessionLayoutRenameError] = useState('');
   const [sessionLayoutPresets, setSessionLayoutPresets] = useState<DesktopCmSessionLayoutPreset[]>(() => readDesktopCmSessionLayoutPresets());
   const [selectedBulkSessionIds, setSelectedBulkSessionIds] = useState<Set<string>>(() => new Set());
   const [bulkGroupName, setBulkGroupName] = useState(defaultDesktopCmSessionGroup);
@@ -297,6 +300,17 @@ export function DesktopCmSessionPanel({
       setBulkDeleteConfirm(false);
     }
   }, [bulkDeleteConfirm, selectedBulkSessionIds.size]);
+
+  useEffect(() => {
+    if (
+      sessionLayoutRenameTargetName &&
+      !sessionLayoutPresets.some((preset) => preset.name.toLowerCase() === sessionLayoutRenameTargetName.toLowerCase())
+    ) {
+      setSessionLayoutRenameTargetName('');
+      setSessionLayoutRenameDraftName('');
+      setSessionLayoutRenameError('');
+    }
+  }, [sessionLayoutPresets, sessionLayoutRenameTargetName]);
 
   const handleSave = async () => {
     setError('');
@@ -561,6 +575,9 @@ export function DesktopCmSessionPanel({
 
   const handleSaveSessionLayoutPreset = () => {
     setSessionLayoutImportConflicts(null);
+    setSessionLayoutRenameTargetName('');
+    setSessionLayoutRenameDraftName('');
+    setSessionLayoutRenameError('');
     const presetName = normalizeDesktopCmSessionLayoutPresetName(sessionLayoutPresetName || `Layout ${sessionLayoutPresets.length + 1}`);
     const preset: DesktopCmSessionLayoutPreset = {
       name: presetName,
@@ -576,8 +593,67 @@ export function DesktopCmSessionPanel({
     setSessionLayoutPresetName('');
   };
 
+  const handleStartRenameSessionLayoutPreset = (preset: DesktopCmSessionLayoutPreset) => {
+    setSessionLayoutImportConflicts(null);
+    setSessionLayoutRenameTargetName(preset.name);
+    setSessionLayoutRenameDraftName(preset.name);
+    setSessionLayoutRenameError('');
+  };
+
+  const handleCancelRenameSessionLayoutPreset = () => {
+    setSessionLayoutRenameTargetName('');
+    setSessionLayoutRenameDraftName('');
+    setSessionLayoutRenameError('');
+  };
+
+  const handleSaveRenamedSessionLayoutPreset = () => {
+    if (!sessionLayoutRenameTargetName) {
+      return;
+    }
+    const targetKey = sessionLayoutRenameTargetName.toLowerCase();
+    const nextName = normalizeDesktopCmSessionLayoutPresetName(sessionLayoutRenameDraftName);
+    const nextKey = nextName.toLowerCase();
+    if (targetKey === nextKey) {
+      handleCancelRenameSessionLayoutPreset();
+      return;
+    }
+    const duplicate = sessionLayoutPresets.some((preset) => preset.name.toLowerCase() === nextKey && preset.name.toLowerCase() !== targetKey);
+    if (duplicate) {
+      setSessionLayoutRenameError('layout 이름 중복');
+      return;
+    }
+    setSessionLayoutImportConflicts(null);
+    setSessionLayoutPresets((current) => {
+      const nextPresets = normalizeDesktopCmSessionLayoutPresets(
+        current.map((preset) =>
+          preset.name.toLowerCase() === targetKey
+            ? {
+                ...preset,
+                name: nextName,
+                updatedAt: Date.now(),
+              }
+            : preset,
+        ),
+      );
+      writeDesktopCmSessionLayoutPresets(nextPresets);
+      return nextPresets;
+    });
+    handleCancelRenameSessionLayoutPreset();
+  };
+
+  const handleSessionLayoutRenameKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      handleSaveRenamedSessionLayoutPreset();
+    } else if (event.key === 'Escape') {
+      event.preventDefault();
+      handleCancelRenameSessionLayoutPreset();
+    }
+  };
+
   const handleApplySessionLayoutPreset = (preset: DesktopCmSessionLayoutPreset) => {
     setSessionLayoutImportConflicts(null);
+    handleCancelRenameSessionLayoutPreset();
     const nextPreferences = pruneDesktopCmSessionViewPreferences(preset.viewPreferences, sessions);
     setSessionViewPreferences(nextPreferences);
     writeDesktopCmSessionViewPreferences(nextPreferences);
@@ -587,6 +663,9 @@ export function DesktopCmSessionPanel({
 
   const handleDeleteSessionLayoutPreset = (presetName: string) => {
     setSessionLayoutImportConflicts(null);
+    if (sessionLayoutRenameTargetName.toLowerCase() === presetName.toLowerCase()) {
+      handleCancelRenameSessionLayoutPreset();
+    }
     setSessionLayoutPresets((current) => {
       const nextPresets = current.filter((preset) => preset.name !== presetName);
       writeDesktopCmSessionLayoutPresets(nextPresets);
@@ -611,6 +690,7 @@ export function DesktopCmSessionPanel({
       return;
     }
     setError('');
+    handleCancelRenameSessionLayoutPreset();
     setSessionLayoutImportConflicts(null);
     setActiveSessionLayoutConflictName('');
     setBusyAction('import-session-layouts');
@@ -1632,26 +1712,78 @@ export function DesktopCmSessionPanel({
               <div className="flex min-w-0 flex-wrap items-center gap-2" data-testid="desktop-cm-session-layout-list">
                 {visibleSessionLayoutPresets.map((preset) => {
                   const active = preset.name === activeSessionLayoutPresetName;
+                  const presetSlug = slugifyTestId(preset.name);
+                  const renaming = sessionLayoutRenameTargetName.toLowerCase() === preset.name.toLowerCase();
                   return (
                     <span
                       key={preset.name}
-                      className={`ku-chip max-w-full gap-1 ${active ? 'border-[rgba(52,199,89,0.22)] bg-[rgba(52,199,89,0.1)] text-[#248a3d]' : ''}`}
-                      data-testid={`desktop-cm-session-layout-${slugifyTestId(preset.name)}`}
+                      className={`ku-chip max-w-full gap-1 ${renaming ? 'items-stretch' : ''} ${active ? 'border-[rgba(52,199,89,0.22)] bg-[rgba(52,199,89,0.1)] text-[#248a3d]' : ''}`}
+                      data-testid={`desktop-cm-session-layout-${presetSlug}`}
                     >
-                      <button className="flex min-w-0 items-center gap-1 truncate" type="button" onClick={() => handleApplySessionLayoutPreset(preset)}>
-                        <Folder size={12} aria-hidden="true" />
-                        <span className="truncate">{preset.name}</span>
-                        <span className="truncate font-mono text-[10px]">{formatDesktopCmSessionLayoutSummary(preset.viewPreferences)}</span>
-                      </button>
-                      <button
-                        className="ml-1 rounded-full p-0.5 hover:bg-[rgba(60,60,67,0.08)]"
-                        data-testid={`desktop-cm-session-layout-delete-${slugifyTestId(preset.name)}`}
-                        type="button"
-                        title={`${preset.name} 삭제`}
-                        onClick={() => handleDeleteSessionLayoutPreset(preset.name)}
-                      >
-                        <XCircle size={12} aria-hidden="true" />
-                      </button>
+                      {renaming ? (
+                        <span className="flex min-w-0 flex-wrap items-center gap-1">
+                          <input
+                            className="ku-field h-7 min-w-[150px] flex-1 px-2 py-1 text-xs"
+                            data-testid={`desktop-cm-session-layout-rename-input-${presetSlug}`}
+                            maxLength={maxDesktopCmSessionLayoutPresetNameLength}
+                            value={sessionLayoutRenameDraftName}
+                            onChange={(event) => {
+                              setSessionLayoutRenameDraftName(event.target.value);
+                              setSessionLayoutRenameError('');
+                            }}
+                            onKeyDown={handleSessionLayoutRenameKeyDown}
+                          />
+                          <button
+                            className="rounded-full p-0.5 hover:bg-[rgba(60,60,67,0.08)]"
+                            data-testid={`desktop-cm-session-layout-rename-save-${presetSlug}`}
+                            type="button"
+                            title={`${preset.name} 이름 저장`}
+                            onClick={handleSaveRenamedSessionLayoutPreset}
+                          >
+                            <CheckCircle2 size={12} aria-hidden="true" />
+                          </button>
+                          <button
+                            className="rounded-full p-0.5 hover:bg-[rgba(60,60,67,0.08)]"
+                            data-testid={`desktop-cm-session-layout-rename-cancel-${presetSlug}`}
+                            type="button"
+                            title={`${preset.name} 이름 변경 취소`}
+                            onClick={handleCancelRenameSessionLayoutPreset}
+                          >
+                            <XCircle size={12} aria-hidden="true" />
+                          </button>
+                          {sessionLayoutRenameError ? (
+                            <span className="text-[10px] font-bold text-[#b42318]" data-testid="desktop-cm-session-layout-rename-error">
+                              {sessionLayoutRenameError}
+                            </span>
+                          ) : null}
+                        </span>
+                      ) : (
+                        <>
+                          <button className="flex min-w-0 items-center gap-1 truncate" type="button" onClick={() => handleApplySessionLayoutPreset(preset)}>
+                            <Folder size={12} aria-hidden="true" />
+                            <span className="truncate">{preset.name}</span>
+                            <span className="truncate font-mono text-[10px]">{formatDesktopCmSessionLayoutSummary(preset.viewPreferences)}</span>
+                          </button>
+                          <button
+                            className="ml-1 rounded-full p-0.5 hover:bg-[rgba(60,60,67,0.08)]"
+                            data-testid={`desktop-cm-session-layout-rename-${presetSlug}`}
+                            type="button"
+                            title={`${preset.name} 이름 변경`}
+                            onClick={() => handleStartRenameSessionLayoutPreset(preset)}
+                          >
+                            <Pencil size={12} aria-hidden="true" />
+                          </button>
+                          <button
+                            className="rounded-full p-0.5 hover:bg-[rgba(60,60,67,0.08)]"
+                            data-testid={`desktop-cm-session-layout-delete-${presetSlug}`}
+                            type="button"
+                            title={`${preset.name} 삭제`}
+                            onClick={() => handleDeleteSessionLayoutPreset(preset.name)}
+                          >
+                            <XCircle size={12} aria-hidden="true" />
+                          </button>
+                        </>
+                      )}
                     </span>
                   );
                 })}
