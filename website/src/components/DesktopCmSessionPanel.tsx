@@ -168,6 +168,7 @@ export function DesktopCmSessionPanel({
   const [cloneDraftSourceName, setCloneDraftSourceName] = useState('');
   const importInputRef = useRef<HTMLInputElement | null>(null);
   const sessionLayoutImportInputRef = useRef<HTMLInputElement | null>(null);
+  const sessionLayoutConflictPreviewRef = useRef<HTMLDivElement | null>(null);
   const normalizedSessionSearchQuery = normalizeSearchValue(sessionSearchQuery);
   const sessionPreferenceMap = useMemo(() => new Map(sessionViewPreferences.sessions.map((preference) => [preference.sessionId, preference])), [sessionViewPreferences.sessions]);
   const visibleSessions = useMemo(
@@ -218,6 +219,15 @@ export function DesktopCmSessionPanel({
     };
   }, [sessionLayoutImportConflicts]);
   const sessionLayoutConflictNames = useMemo(() => sessionLayoutImportConflicts?.conflicts.map((conflict) => conflict.name) ?? [], [sessionLayoutImportConflicts]);
+  const sessionLayoutConflictPreviewFocusKey = sessionLayoutImportConflicts
+    ? `${sessionLayoutImportConflicts.fileName}:${sessionLayoutImportConflicts.initialConflictCount}:${sessionLayoutImportConflicts.invalid}`
+    : '';
+  const sessionLayoutConflictTitleId = 'desktop-cm-session-layout-conflict-title';
+  const sessionLayoutConflictDescriptionId = 'desktop-cm-session-layout-conflict-description';
+  const sessionLayoutConflictLiveStatusId = 'desktop-cm-session-layout-conflict-live-status';
+  const sessionLayoutConflictLiveText = sessionLayoutConflictSummary
+    ? `Layout conflicts: ${sessionLayoutConflictSummary.resolved} of ${sessionLayoutConflictSummary.total} resolved, ${sessionLayoutConflictSummary.remaining} remaining. Incoming ${sessionLayoutConflictSummary.incomingResolved}, keep current ${sessionLayoutConflictSummary.currentResolved}, rename ${sessionLayoutConflictSummary.renamedResolved}.`
+    : '';
   const connectionPreview = `${form.user || 'user'}@${form.host || 'host'}:${form.port || 22} -> ${form.remoteApiHost || desktopCmDefaultRemoteApiHost}:${form.remoteApiPort || desktopCmDefaultRemoteApiPort}`;
   const selectedRuntimeActive = Boolean(selectedSession && runtimeProfile?.sessionId === selectedSession.id);
   const selectedRuntimeStatus = selectedRuntimeActive ? runtimeProfile?.status || selectedSession?.runtimeStatus || 'runtime-active' : selectedSession?.runtimeStatus || 'stopped';
@@ -243,6 +253,15 @@ export function DesktopCmSessionPanel({
       setActiveSessionLayoutConflictName(sessionLayoutImportConflicts.conflicts[0]?.name || '');
     }
   }, [activeSessionLayoutConflictName, sessionLayoutImportConflicts]);
+
+  useEffect(() => {
+    if (!sessionLayoutConflictPreviewFocusKey) {
+      return;
+    }
+    window.requestAnimationFrame(() => {
+      sessionLayoutConflictPreviewRef.current?.focus({ preventScroll: true });
+    });
+  }, [sessionLayoutConflictPreviewFocusKey]);
 
   useEffect(() => {
     if (sessions.length === 0) {
@@ -770,7 +789,11 @@ export function DesktopCmSessionPanel({
     }
     if (event.key === 'Escape') {
       event.preventDefault();
-      setActiveSessionLayoutConflictName('');
+      if (activeSessionLayoutConflictName) {
+        setActiveSessionLayoutConflictName('');
+      } else {
+        sessionLayoutConflictPreviewRef.current?.blur();
+      }
       return;
     }
     const key = event.key.toLowerCase();
@@ -1423,7 +1446,9 @@ export function DesktopCmSessionPanel({
             </div>
             {sessionLayoutImportConflicts ? (
               <div
-                aria-label="Desktop CM session layout conflict preview"
+                ref={sessionLayoutConflictPreviewRef}
+                aria-describedby={`${sessionLayoutConflictDescriptionId} ${sessionLayoutConflictLiveStatusId}`}
+                aria-labelledby={sessionLayoutConflictTitleId}
                 className="grid gap-2 rounded-[10px] border border-[rgba(255,149,0,0.22)] bg-[rgba(255,149,0,0.08)] px-3 py-2 outline-none focus-visible:ring-2 focus-visible:ring-[rgba(255,149,0,0.28)]"
                 data-testid="desktop-cm-session-layout-conflict-preview"
                 onKeyDown={handleSessionLayoutConflictKeyDown}
@@ -1431,11 +1456,16 @@ export function DesktopCmSessionPanel({
                 tabIndex={0}
               >
                 <div className="flex min-w-0 flex-wrap items-center gap-2">
-                  <span className="ku-chip border-[rgba(255,149,0,0.24)] bg-white/65 text-[#9a5a00]">
+                  <span
+                    className="ku-chip border-[rgba(255,149,0,0.24)] bg-white/65 text-[#9a5a00]"
+                    data-testid="desktop-cm-session-layout-conflict-title"
+                    id={sessionLayoutConflictTitleId}
+                  >
                     layout conflict preview · {sessionLayoutImportConflicts.fileName} · {sessionLayoutImportConflicts.conflicts.length} conflict
                     {sessionLayoutImportConflicts.conflicts.length === 1 ? '' : 's'}
                   </span>
                   <button
+                    aria-label="Use incoming layout for all remaining layout conflicts"
                     className="ku-control h-8 text-xs"
                     data-testid="desktop-cm-session-layout-conflict-use-incoming"
                     type="button"
@@ -1444,6 +1474,7 @@ export function DesktopCmSessionPanel({
                     incoming 우선
                   </button>
                   <button
+                    aria-label="Keep current layout for all remaining layout conflicts"
                     className="ku-control h-8 text-xs"
                     data-testid="desktop-cm-session-layout-conflict-keep-current"
                     type="button"
@@ -1452,6 +1483,7 @@ export function DesktopCmSessionPanel({
                     현재 유지
                   </button>
                   <button
+                    aria-label="Rename incoming layout for all remaining layout conflicts"
                     className="ku-control h-8 text-xs"
                     data-testid="desktop-cm-session-layout-conflict-rename-incoming"
                     type="button"
@@ -1460,6 +1492,12 @@ export function DesktopCmSessionPanel({
                     이름 바꿔 둘 다 보관
                   </button>
                 </div>
+                <p className="sr-only" data-testid="desktop-cm-session-layout-conflict-description" id={sessionLayoutConflictDescriptionId}>
+                  Same-name layout conflicts are kept in browser memory until explicitly resolved. Use arrow keys, Home, End, Enter, K, R, and Escape when this preview has focus.
+                </p>
+                <p aria-live="polite" className="sr-only" data-testid="desktop-cm-session-layout-conflict-live-status" id={sessionLayoutConflictLiveStatusId}>
+                  {sessionLayoutConflictLiveText}
+                </p>
                 {sessionLayoutConflictSummary ? (
                   <div
                     className="grid gap-1 rounded-[8px] border border-[rgba(255,149,0,0.16)] bg-white/58 px-2 py-2 text-xs font-semibold text-[rgba(60,60,67,0.68)]"
@@ -1486,28 +1524,35 @@ export function DesktopCmSessionPanel({
                     </div>
                   </div>
                 ) : null}
-                <div className="grid gap-1">
+                <div aria-label="Layout import conflicts" className="grid gap-1" role="list">
                   {sessionLayoutImportConflicts.conflicts.map((conflict) => {
                     const active = activeSessionLayoutConflictName.toLowerCase() === conflict.name.toLowerCase();
+                    const conflictSlug = slugifyTestId(conflict.name);
+                    const currentSummary = formatDesktopCmSessionLayoutSummary(conflict.current.viewPreferences);
+                    const incomingSummary = formatDesktopCmSessionLayoutSummary(conflict.incoming.viewPreferences);
                     return (
                       <div
                         key={conflict.name}
+                        aria-label={`${conflict.name}. Current layout ${currentSummary}. Incoming layout ${incomingSummary}.${active ? ' Active conflict row.' : ''}`}
                         aria-current={active ? 'true' : undefined}
                         className={`grid gap-1 rounded-[8px] border px-2 py-1 text-xs font-semibold text-[rgba(60,60,67,0.72)] transition ${
                           active
                             ? 'border-[rgba(255,149,0,0.42)] bg-white/86 shadow-[0_0_0_2px_rgba(255,149,0,0.14)]'
                             : 'border-[rgba(60,60,67,0.08)] bg-white/64'
                         }`}
-                        data-testid={`desktop-cm-session-layout-conflict-${slugifyTestId(conflict.name)}`}
+                        data-testid={`desktop-cm-session-layout-conflict-${conflictSlug}`}
+                        id={`desktop-cm-session-layout-conflict-row-${conflictSlug}`}
                         onClick={() => setActiveSessionLayoutConflictName(conflict.name)}
+                        role="listitem"
                       >
                         <span className="truncate text-[rgba(60,60,67,0.86)]">{conflict.name}</span>
-                        <span className="font-mono">현재 · {formatDesktopCmSessionLayoutSummary(conflict.current.viewPreferences)}</span>
-                        <span className="font-mono">incoming · {formatDesktopCmSessionLayoutSummary(conflict.incoming.viewPreferences)}</span>
+                        <span className="font-mono">현재 · {currentSummary}</span>
+                        <span className="font-mono">incoming · {incomingSummary}</span>
                         <span className="flex min-w-0 flex-wrap items-center gap-1">
                           <button
+                            aria-label={`Use incoming layout for ${conflict.name}`}
                             className="ku-control h-7 text-[11px]"
-                            data-testid={`desktop-cm-session-layout-conflict-row-use-incoming-${slugifyTestId(conflict.name)}`}
+                            data-testid={`desktop-cm-session-layout-conflict-row-use-incoming-${conflictSlug}`}
                             type="button"
                             onClick={(event) => {
                               event.stopPropagation();
@@ -1518,8 +1563,9 @@ export function DesktopCmSessionPanel({
                             incoming
                           </button>
                           <button
+                            aria-label={`Keep current layout for ${conflict.name}`}
                             className="ku-control h-7 text-[11px]"
-                            data-testid={`desktop-cm-session-layout-conflict-row-keep-current-${slugifyTestId(conflict.name)}`}
+                            data-testid={`desktop-cm-session-layout-conflict-row-keep-current-${conflictSlug}`}
                             type="button"
                             onClick={(event) => {
                               event.stopPropagation();
@@ -1530,8 +1576,9 @@ export function DesktopCmSessionPanel({
                             현재 유지
                           </button>
                           <button
+                            aria-label={`Rename incoming layout for ${conflict.name}`}
                             className="ku-control h-7 text-[11px]"
-                            data-testid={`desktop-cm-session-layout-conflict-row-rename-incoming-${slugifyTestId(conflict.name)}`}
+                            data-testid={`desktop-cm-session-layout-conflict-row-rename-incoming-${conflictSlug}`}
                             type="button"
                             onClick={(event) => {
                               event.stopPropagation();

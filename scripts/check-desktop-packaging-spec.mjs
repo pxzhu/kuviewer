@@ -48,6 +48,7 @@ requireCondition(
     'desktop-cm-session-layout-row-conflicts',
     'desktop-cm-session-layout-conflict-summary',
     'desktop-cm-session-layout-conflict-keyboard',
+    'desktop-cm-session-layout-conflict-accessibility',
   ].includes(spec.status),
   'status must be a known desktop packaging milestone'
 );
@@ -100,6 +101,7 @@ requireCondition(phases.includes('desktop-cm-session-layout-conflict-preview'), 
 requireCondition(phases.includes('desktop-cm-session-layout-row-conflicts'), 'phaseOrder must include desktop-cm-session-layout-row-conflicts');
 requireCondition(phases.includes('desktop-cm-session-layout-conflict-summary'), 'phaseOrder must include desktop-cm-session-layout-conflict-summary');
 requireCondition(phases.includes('desktop-cm-session-layout-conflict-keyboard'), 'phaseOrder must include desktop-cm-session-layout-conflict-keyboard');
+requireCondition(phases.includes('desktop-cm-session-layout-conflict-accessibility'), 'phaseOrder must include desktop-cm-session-layout-conflict-accessibility');
 
 await validateBuildPrerequisites(spec);
 await validateDesktopDistributionPolicy(spec);
@@ -138,6 +140,7 @@ if (
     'desktop-cm-session-layout-row-conflicts',
     'desktop-cm-session-layout-conflict-summary',
     'desktop-cm-session-layout-conflict-keyboard',
+    'desktop-cm-session-layout-conflict-accessibility',
   ].includes(spec.status)
 ) {
   await validateTauriScaffold(spec.tauri || {});
@@ -755,6 +758,7 @@ async function validateCmSshSessionManager(spec) {
       'session-layout-row-conflicts',
       'session-layout-conflict-summary',
       'session-layout-conflict-keyboard',
+      'session-layout-conflict-accessibility',
     ].includes(manager.status),
     'cmSshSessionManager.status must be a known CM/SSH session manager milestone'
   );
@@ -1130,6 +1134,40 @@ async function validateCmSshSessionManager(spec) {
   ]) {
     requireCondition(sessionLayoutConflictKeyboard[flag] === true, `cmSshSessionManager.sessionLayoutConflictKeyboard.${flag} must be true`);
   }
+  const sessionLayoutConflictAccessibility = manager.sessionLayoutConflictAccessibility || {};
+  requireCondition(sessionLayoutConflictAccessibility.desktopOnly === true, 'cmSshSessionManager.sessionLayoutConflictAccessibility.desktopOnly must be true');
+  requireCondition(sessionLayoutConflictAccessibility.uiOnly === true, 'cmSshSessionManager.sessionLayoutConflictAccessibility.uiOnly must be true');
+  requireCondition(sessionLayoutConflictAccessibility.stateStorage === 'memory-only', 'cmSshSessionManager.sessionLayoutConflictAccessibility.stateStorage must be memory-only');
+  requireCondition(sessionLayoutConflictAccessibility.rowRole === 'listitem', 'cmSshSessionManager.sessionLayoutConflictAccessibility.rowRole must be listitem');
+  for (const flag of [
+    'focusOnOpen',
+    'escapeReleasesFocusWhenNoActiveRow',
+    'previewLabelledByTitle',
+    'previewDescribedByHelpAndLiveStatus',
+    'liveSummary',
+    'rowStableId',
+    'rowAriaLabel',
+    'rowAriaCurrent',
+    'bulkButtonAriaLabels',
+    'rowButtonAriaLabels',
+    'screenReaderHelpVisibleOnlyToAssistiveTech',
+    'noVisibleKeyboardInstructionText',
+    'noSessionExportImportSchemaChange',
+    'noLayoutExportImportSchemaChange',
+    'noTauriSchemaChange',
+    'noSessionSearch',
+    'noDiagnosticFilters',
+    'noEndpointMetadata',
+    'noCredentialPayload',
+    'noRuntimeProfile',
+    'noDiagnosticHistory',
+    'noToken',
+    'noKubeconfig',
+    'noSecretValues',
+    'noEventsOrLogs',
+  ]) {
+    requireCondition(sessionLayoutConflictAccessibility[flag] === true, `cmSshSessionManager.sessionLayoutConflictAccessibility.${flag} must be true`);
+  }
   const hiddenPrototypeUi = new Set(Array.isArray(manager.hiddenPrototypeUi) ? manager.hiddenPrototypeUi : []);
   for (const marker of ['DesktopConnectionProfilePanel', 'DesktopKubernetesProfilePanel', 'desktop-use-sidecar-profile']) {
     requireCondition(hiddenPrototypeUi.has(marker), `cmSshSessionManager.hiddenPrototypeUi must include ${marker}`);
@@ -1160,6 +1198,9 @@ async function validateCmSshSessionManager(spec) {
     'desktop-cm-session-layout-conflict-summary-remaining',
     'desktop-cm-session-layout-conflict-summary-resolutions',
     'desktop-cm-session-layout-conflict-summary-import',
+    'desktop-cm-session-layout-conflict-title',
+    'desktop-cm-session-layout-conflict-description',
+    'desktop-cm-session-layout-conflict-live-status',
     'desktop-cm-session-layout-conflict-use-incoming',
     'desktop-cm-session-layout-conflict-keep-current',
     'desktop-cm-session-layout-conflict-rename-incoming',
@@ -1171,7 +1212,15 @@ async function validateCmSshSessionManager(spec) {
     'handleMoveActiveSessionLayoutConflict',
     'handleResolveActiveSessionLayoutConflict',
     'isDesktopCmKeyboardIgnoredTarget',
+    'sessionLayoutConflictPreviewRef',
+    'aria-labelledby',
+    'aria-describedby',
+    'aria-live',
     'aria-current',
+    'role="list"',
+    'role="listitem"',
+    'preventScroll',
+    '?.blur()',
     'ArrowUp',
     'ArrowDown',
     'Home',
@@ -1327,6 +1376,9 @@ async function validateCmSshSessionManager(spec) {
     'desktop-cm-session-layout-conflict-summary-remaining',
     'desktop-cm-session-layout-conflict-summary-resolutions',
     'desktop-cm-session-layout-conflict-summary-import',
+    'desktop-cm-session-layout-conflict-title',
+    'desktop-cm-session-layout-conflict-description',
+    'desktop-cm-session-layout-conflict-live-status',
     'desktop-cm-session-layout-conflict-use-incoming',
     'desktop-cm-session-layout-conflict-keep-current',
     'desktop-cm-session-layout-conflict-rename-incoming',
@@ -1338,7 +1390,15 @@ async function validateCmSshSessionManager(spec) {
     'handleMoveActiveSessionLayoutConflict',
     'handleResolveActiveSessionLayoutConflict',
     'isDesktopCmKeyboardIgnoredTarget',
+    'sessionLayoutConflictPreviewRef',
+    'aria-labelledby',
+    'aria-describedby',
+    'aria-live',
     'aria-current',
+    'role="list"',
+    'role="listitem"',
+    'preventScroll',
+    '?.blur()',
     'ArrowUp',
     'ArrowDown',
     'Home',
