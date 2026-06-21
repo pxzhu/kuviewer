@@ -1,5 +1,5 @@
-import { type KeyboardEvent, useEffect, useMemo, useRef, useState } from 'react';
-import { Activity, Bookmark, CheckCircle2, ChevronDown, ChevronRight, Copy, Download, Filter, Folder, KeyRound, Pencil, Play, Plus, RotateCcw, Search, ServerCog, ShieldCheck, Square, Star, Trash2, Unplug, Upload, XCircle } from 'lucide-react';
+import { type DragEvent as ReactDragEvent, type KeyboardEvent, useEffect, useMemo, useRef, useState } from 'react';
+import { Activity, ArrowDown, ArrowUp, Bookmark, CheckCircle2, ChevronDown, ChevronRight, Copy, Download, Filter, Folder, GripVertical, KeyRound, Pencil, Play, Plus, RotateCcw, Search, ServerCog, ShieldCheck, Square, Star, Trash2, Unplug, Upload, XCircle } from 'lucide-react';
 import {
   createDesktopCmSessionExportBundle,
   desktopCmDefaultRemoteApiHost,
@@ -184,6 +184,8 @@ export function DesktopCmSessionPanel({
   const [sessionLayoutFolderRenameTarget, setSessionLayoutFolderRenameTarget] = useState('');
   const [sessionLayoutFolderRenameDraft, setSessionLayoutFolderRenameDraft] = useState('');
   const [activeSessionLayoutFolderName, setActiveSessionLayoutFolderName] = useState('');
+  const [draggingSessionLayoutFolderName, setDraggingSessionLayoutFolderName] = useState('');
+  const [draggingSessionLayoutPresetName, setDraggingSessionLayoutPresetName] = useState('');
   const [sessionLayoutPresets, setSessionLayoutPresets] = useState<DesktopCmSessionLayoutPreset[]>(() => readDesktopCmSessionLayoutPresets());
   const [collapsedSessionLayoutFolders, setCollapsedSessionLayoutFolders] = useState<Set<string>>(() => readDesktopCmSessionLayoutCollapsedFolders());
   const [selectedSessionLayoutPresetNames, setSelectedSessionLayoutPresetNames] = useState<Set<string>>(() => new Set());
@@ -267,6 +269,9 @@ export function DesktopCmSessionPanel({
       : sessionLayoutFolderFilterActive
         ? `${sessionLayoutFolderFilter} folder에 표시할 saved layout 없음`
         : `"${sessionLayoutSearchQuery.trim()}"와 일치하는 saved layout 없음`;
+  const sessionLayoutReorderBlocked = sessionLayoutSearchActive || sessionLayoutFolderFilterActive;
+  const canReorderSessionLayoutFolders = sessionLayoutFolderNames.length > 1 && !sessionLayoutReorderBlocked;
+  const canReorderSessionLayoutPresets = visibleSessionLayoutPresets.length > 1 && !sessionLayoutReorderBlocked;
   const sessionLayoutConflictSummary = useMemo(() => {
     if (!sessionLayoutImportConflicts) {
       return null;
@@ -963,6 +968,87 @@ export function DesktopCmSessionPanel({
       return nextPresets;
     });
     handleCancelRenameSessionLayoutFolder();
+  };
+
+  const handleMoveSessionLayoutFolderOrder = (folderName: string, direction: -1 | 1) => {
+    if (!canReorderSessionLayoutFolders) {
+      return;
+    }
+    const folder = normalizeDesktopCmSessionLayoutFolderName(folderName);
+    const folderOrder = desktopCmSessionLayoutFolderOrder(sessionLayoutPresets);
+    const currentIndex = folderOrder.indexOf(folder);
+    const targetFolder = folderOrder[currentIndex + direction];
+    if (currentIndex < 0 || !targetFolder) {
+      return;
+    }
+    setSessionLayoutImportConflicts(null);
+    setSessionLayoutBulkDeleteConfirm(false);
+    setActiveSessionLayoutFolderName(folder);
+    setSessionLayoutPresets((current) => {
+      const nextPresets =
+        direction < 0
+          ? moveDesktopCmSessionLayoutFolderBefore(current, folder, targetFolder)
+          : moveDesktopCmSessionLayoutFolderBefore(current, targetFolder, folder);
+      writeDesktopCmSessionLayoutPresets(nextPresets);
+      return nextPresets;
+    });
+  };
+
+  const handleDropSessionLayoutFolder = (targetFolderName: string, event: ReactDragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    if (!canReorderSessionLayoutFolders) {
+      setDraggingSessionLayoutFolderName('');
+      return;
+    }
+    const sourceFolder = normalizeDesktopCmSessionLayoutFolderName(event.dataTransfer.getData('application/x-kuviewer-layout-folder') || draggingSessionLayoutFolderName);
+    const targetFolder = normalizeDesktopCmSessionLayoutFolderName(targetFolderName);
+    if (!sourceFolder || sourceFolder === targetFolder) {
+      setDraggingSessionLayoutFolderName('');
+      return;
+    }
+    setSessionLayoutImportConflicts(null);
+    setSessionLayoutBulkDeleteConfirm(false);
+    setActiveSessionLayoutFolderName(sourceFolder);
+    setSessionLayoutPresets((current) => {
+      const nextPresets = moveDesktopCmSessionLayoutFolderBefore(current, sourceFolder, targetFolder);
+      writeDesktopCmSessionLayoutPresets(nextPresets);
+      return nextPresets;
+    });
+    setDraggingSessionLayoutFolderName('');
+  };
+
+  const handleMoveSessionLayoutPresetOrder = (presetName: string, direction: -1 | 1) => {
+    if (!canReorderSessionLayoutPresets) {
+      return;
+    }
+    setSessionLayoutImportConflicts(null);
+    setSessionLayoutBulkDeleteConfirm(false);
+    setSessionLayoutPresets((current) => {
+      const nextPresets = moveDesktopCmSessionLayoutPresetByDirection(current, presetName, direction);
+      writeDesktopCmSessionLayoutPresets(nextPresets);
+      return nextPresets;
+    });
+  };
+
+  const handleDropSessionLayoutPreset = (targetPresetName: string, event: ReactDragEvent<HTMLSpanElement>) => {
+    event.preventDefault();
+    if (!canReorderSessionLayoutPresets) {
+      setDraggingSessionLayoutPresetName('');
+      return;
+    }
+    const sourcePresetName = event.dataTransfer.getData('application/x-kuviewer-layout-preset') || draggingSessionLayoutPresetName;
+    if (!sourcePresetName || sourcePresetName === targetPresetName) {
+      setDraggingSessionLayoutPresetName('');
+      return;
+    }
+    setSessionLayoutImportConflicts(null);
+    setSessionLayoutBulkDeleteConfirm(false);
+    setSessionLayoutPresets((current) => {
+      const nextPresets = moveDesktopCmSessionLayoutPresetBefore(current, sourcePresetName, targetPresetName);
+      writeDesktopCmSessionLayoutPresets(nextPresets);
+      return nextPresets;
+    });
+    setDraggingSessionLayoutPresetName('');
   };
 
   const handleMoveActiveSessionLayoutFolder = (direction: 'previous' | 'next' | 'first' | 'last') => {
@@ -1987,6 +2073,12 @@ export function DesktopCmSessionPanel({
               <span className="ku-chip" data-testid="desktop-cm-session-layout-folder-filter-count">
                 Folder {sessionLayoutFolderFilterActive ? sessionLayoutFolderFilter : '전체'}
               </span>
+              <span
+                className={`ku-chip ${sessionLayoutReorderBlocked ? 'border-[rgba(255,149,0,0.24)] bg-[rgba(255,149,0,0.1)] text-[#8a4d00]' : ''}`}
+                data-testid="desktop-cm-session-layout-reorder-state"
+              >
+                {sessionLayoutReorderBlocked ? '검색/folder 필터 해제 후 순서 변경' : 'folder/preset 순서 변경 가능'}
+              </span>
               <button
                 className="ku-control h-9"
                 data-testid="desktop-cm-session-layout-search-clear"
@@ -2282,20 +2374,22 @@ export function DesktopCmSessionPanel({
                   role="list"
                   tabIndex={0}
                 >
-                {groupedSessionLayoutPresets.map((folder) => {
+                {groupedSessionLayoutPresets.map((folder, folderIndex) => {
                   const folderActive = activeSessionLayoutFolderName === folder.folder;
                   const folderRowId = `desktop-cm-session-layout-folder-row-${folder.slug}`;
                   const folderTitleId = `desktop-cm-session-layout-folder-title-${folder.slug}`;
                   const folderCountId = `desktop-cm-session-layout-folder-a11y-count-${folder.slug}`;
                   const folderActionsId = `desktop-cm-session-layout-folder-actions-${folder.slug}`;
                   const folderItemsId = `desktop-cm-session-layout-folder-items-${folder.slug}`;
+                  const canMoveFolderUp = canReorderSessionLayoutFolders && folderIndex > 0;
+                  const canMoveFolderDown = canReorderSessionLayoutFolders && folderIndex < groupedSessionLayoutPresets.length - 1;
                   return (
                   <div
                     key={folder.folder}
                     aria-current={folderActive ? 'true' : undefined}
                     aria-describedby={`${folderCountId} ${folderActionsId}`}
                     aria-labelledby={folderTitleId}
-                    className={`grid gap-2 rounded-[8px] border px-2 py-2 transition ${
+                    className={`grid gap-2 rounded-[8px] border px-2 py-2 transition ${draggingSessionLayoutFolderName === folder.folder ? 'opacity-60' : ''} ${
                       folderActive
                         ? 'border-[rgba(0,122,255,0.34)] bg-white/82 shadow-[0_0_0_2px_rgba(0,122,255,0.1)]'
                         : 'border-[rgba(60,60,67,0.08)] bg-white/56'
@@ -2303,9 +2397,57 @@ export function DesktopCmSessionPanel({
                     data-testid={`desktop-cm-session-layout-folder-${folder.slug}`}
                     id={folderRowId}
                     onClick={() => setActiveSessionLayoutFolderName(folder.folder)}
+                    onDragOver={(event) => {
+                      if (canReorderSessionLayoutFolders) {
+                        event.preventDefault();
+                      }
+                    }}
+                    onDrop={(event) => handleDropSessionLayoutFolder(folder.folder, event)}
                     role="listitem"
                   >
                     <div className="flex min-w-0 flex-wrap items-center gap-2">
+                      <button
+                        aria-label={`${folder.folder} layout folder 순서 드래그`}
+                        className="ku-control h-8 text-xs"
+                        data-testid={`desktop-cm-session-layout-folder-drag-handle-${folder.slug}`}
+                        disabled={!canReorderSessionLayoutFolders}
+                        draggable={canReorderSessionLayoutFolders}
+                        title={canReorderSessionLayoutFolders ? 'Drag to reorder layout folder' : '검색/folder 필터 해제 후 순서 변경'}
+                        type="button"
+                        onDragStart={(event) => {
+                          if (!canReorderSessionLayoutFolders) {
+                            event.preventDefault();
+                            return;
+                          }
+                          setDraggingSessionLayoutFolderName(folder.folder);
+                          event.dataTransfer.effectAllowed = 'move';
+                          event.dataTransfer.setData('application/x-kuviewer-layout-folder', folder.folder);
+                          event.dataTransfer.setData('text/plain', folder.folder);
+                        }}
+                        onDragEnd={() => setDraggingSessionLayoutFolderName('')}
+                      >
+                        <GripVertical size={13} aria-hidden="true" />
+                      </button>
+                      <button
+                        aria-label={`${folder.folder} layout folder 위로 이동`}
+                        className="ku-control h-8 text-xs"
+                        data-testid={`desktop-cm-session-layout-folder-reorder-up-${folder.slug}`}
+                        disabled={!canMoveFolderUp}
+                        type="button"
+                        onClick={() => handleMoveSessionLayoutFolderOrder(folder.folder, -1)}
+                      >
+                        <ArrowUp size={13} aria-hidden="true" />
+                      </button>
+                      <button
+                        aria-label={`${folder.folder} layout folder 아래로 이동`}
+                        className="ku-control h-8 text-xs"
+                        data-testid={`desktop-cm-session-layout-folder-reorder-down-${folder.slug}`}
+                        disabled={!canMoveFolderDown}
+                        type="button"
+                        onClick={() => handleMoveSessionLayoutFolderOrder(folder.folder, 1)}
+                      >
+                        <ArrowDown size={13} aria-hidden="true" />
+                      </button>
                       <button
                         aria-controls={folderItemsId}
                         aria-expanded={!folder.collapsed}
@@ -2323,7 +2465,7 @@ export function DesktopCmSessionPanel({
                         {folder.presets.length} / {folder.totalCount}
                       </span>
                       <span className="sr-only" data-testid={`desktop-cm-session-layout-folder-actions-${folder.slug}`} id={folderActionsId}>
-                        {folder.folder} has {folder.presets.length} visible presets and {folder.totalCount} total presets. Keyboard actions can toggle, select visible presets, or rename this folder.
+                        {folder.folder} has {folder.presets.length} visible presets and {folder.totalCount} total presets. Keyboard actions can toggle, select visible presets, or rename this folder. Reorder controls are UI-only and use saved layout preset array order.
                       </span>
                       {sessionLayoutFolderRenameTarget === folder.folder ? (
                         <span
@@ -2413,15 +2555,24 @@ export function DesktopCmSessionPanel({
                             이 folder에 일치하는 saved layout 없음
                           </span>
                         ) : null}
-                        {folder.presets.map((preset) => {
+                        {folder.presets.map((preset, presetIndex) => {
                           const active = preset.name === activeSessionLayoutPresetName;
                           const presetSlug = slugifyTestId(preset.name);
                           const renaming = sessionLayoutRenameTargetName.toLowerCase() === preset.name.toLowerCase();
+                          const canReorderPresetInFolder = canReorderSessionLayoutPresets && folder.presets.length > 1;
+                          const canMovePresetUp = canReorderPresetInFolder && presetIndex > 0;
+                          const canMovePresetDown = canReorderPresetInFolder && presetIndex < folder.presets.length - 1;
                           return (
                             <span
                               key={preset.name}
-                              className={`ku-chip max-w-full gap-1 ${renaming ? 'items-stretch' : ''} ${active ? 'border-[rgba(52,199,89,0.22)] bg-[rgba(52,199,89,0.1)] text-[#248a3d]' : ''}`}
+                              className={`ku-chip max-w-full gap-1 ${draggingSessionLayoutPresetName === preset.name ? 'opacity-60' : ''} ${renaming ? 'items-stretch' : ''} ${active ? 'border-[rgba(52,199,89,0.22)] bg-[rgba(52,199,89,0.1)] text-[#248a3d]' : ''}`}
                               data-testid={`desktop-cm-session-layout-${presetSlug}`}
+                              onDragOver={(event) => {
+                                if (canReorderPresetInFolder) {
+                                  event.preventDefault();
+                                }
+                              }}
+                              onDrop={(event) => handleDropSessionLayoutPreset(preset.name, event)}
                             >
                               {renaming ? (
                                 <span className="flex min-w-0 flex-wrap items-center gap-1">
@@ -2462,6 +2613,48 @@ export function DesktopCmSessionPanel({
                                 </span>
                               ) : (
                                 <>
+                                  <button
+                                    aria-label={`${preset.name} layout 순서 드래그`}
+                                    className="rounded-full p-0.5 hover:bg-[rgba(60,60,67,0.08)] disabled:cursor-not-allowed disabled:opacity-45"
+                                    data-testid={`desktop-cm-session-layout-drag-handle-${presetSlug}`}
+                                    disabled={!canReorderPresetInFolder}
+                                    draggable={canReorderPresetInFolder}
+                                    title={canReorderPresetInFolder ? 'Drag to reorder layout preset' : '검색/folder 필터 해제 후 순서 변경'}
+                                    type="button"
+                                    onDragStart={(event) => {
+                                      if (!canReorderPresetInFolder) {
+                                        event.preventDefault();
+                                        return;
+                                      }
+                                      setDraggingSessionLayoutPresetName(preset.name);
+                                      event.dataTransfer.effectAllowed = 'move';
+                                      event.dataTransfer.setData('application/x-kuviewer-layout-preset', preset.name);
+                                      event.dataTransfer.setData('text/plain', preset.name);
+                                    }}
+                                    onDragEnd={() => setDraggingSessionLayoutPresetName('')}
+                                  >
+                                    <GripVertical size={12} aria-hidden="true" />
+                                  </button>
+                                  <button
+                                    aria-label={`${preset.name} layout 위로 이동`}
+                                    className="rounded-full p-0.5 hover:bg-[rgba(60,60,67,0.08)] disabled:cursor-not-allowed disabled:opacity-45"
+                                    data-testid={`desktop-cm-session-layout-reorder-up-${presetSlug}`}
+                                    disabled={!canMovePresetUp}
+                                    type="button"
+                                    onClick={() => handleMoveSessionLayoutPresetOrder(preset.name, -1)}
+                                  >
+                                    <ArrowUp size={12} aria-hidden="true" />
+                                  </button>
+                                  <button
+                                    aria-label={`${preset.name} layout 아래로 이동`}
+                                    className="rounded-full p-0.5 hover:bg-[rgba(60,60,67,0.08)] disabled:cursor-not-allowed disabled:opacity-45"
+                                    data-testid={`desktop-cm-session-layout-reorder-down-${presetSlug}`}
+                                    disabled={!canMovePresetDown}
+                                    type="button"
+                                    onClick={() => handleMoveSessionLayoutPresetOrder(preset.name, 1)}
+                                  >
+                                    <ArrowDown size={12} aria-hidden="true" />
+                                  </button>
                                   <label className="inline-flex shrink-0 items-center gap-1 text-[10px] font-bold" data-testid={`desktop-cm-session-layout-bulk-select-${presetSlug}`}>
                                     <input
                                       className="h-3.5 w-3.5 accent-[#007aff]"
@@ -3474,6 +3667,103 @@ function buildDesktopCmSessionLayoutFolders(
     folders.get(folder)?.presets.push(preset);
   }
   return [...folders.values()];
+}
+
+function desktopCmSessionLayoutFolderOrder(presets: DesktopCmSessionLayoutPreset[]) {
+  const folderOrder: string[] = [];
+  const seenFolders = new Set<string>();
+  for (const preset of presets) {
+    const folder = normalizeDesktopCmSessionLayoutFolderName(preset.folder);
+    if (!seenFolders.has(folder)) {
+      seenFolders.add(folder);
+      folderOrder.push(folder);
+    }
+  }
+  return folderOrder;
+}
+
+function groupDesktopCmSessionLayoutPresetsByFolder(presets: DesktopCmSessionLayoutPreset[]) {
+  const folderOrder: string[] = [];
+  const grouped = new Map<string, DesktopCmSessionLayoutPreset[]>();
+  for (const preset of presets) {
+    const folder = normalizeDesktopCmSessionLayoutFolderName(preset.folder);
+    if (!grouped.has(folder)) {
+      grouped.set(folder, []);
+      folderOrder.push(folder);
+    }
+    grouped.get(folder)?.push(preset);
+  }
+  return { folderOrder, grouped };
+}
+
+function flattenDesktopCmSessionLayoutPresetFolders(folderOrder: string[], grouped: Map<string, DesktopCmSessionLayoutPreset[]>) {
+  return normalizeDesktopCmSessionLayoutPresets(folderOrder.flatMap((folder) => grouped.get(folder) || []));
+}
+
+function moveDesktopCmSessionLayoutFolderBefore(presets: DesktopCmSessionLayoutPreset[], sourceFolderName: string, targetFolderName: string) {
+  const sourceFolder = normalizeDesktopCmSessionLayoutFolderName(sourceFolderName);
+  const targetFolder = normalizeDesktopCmSessionLayoutFolderName(targetFolderName);
+  if (!sourceFolder || sourceFolder === targetFolder) {
+    return normalizeDesktopCmSessionLayoutPresets(presets);
+  }
+  const { folderOrder, grouped } = groupDesktopCmSessionLayoutPresetsByFolder(presets);
+  if (!grouped.has(sourceFolder) || !grouped.has(targetFolder)) {
+    return normalizeDesktopCmSessionLayoutPresets(presets);
+  }
+  const remainingFolders = folderOrder.filter((folder) => folder !== sourceFolder);
+  const targetIndex = remainingFolders.indexOf(targetFolder);
+  if (targetIndex < 0) {
+    return normalizeDesktopCmSessionLayoutPresets(presets);
+  }
+  const nextFolderOrder = [...remainingFolders.slice(0, targetIndex), sourceFolder, ...remainingFolders.slice(targetIndex)];
+  return flattenDesktopCmSessionLayoutPresetFolders(nextFolderOrder, grouped);
+}
+
+function moveDesktopCmSessionLayoutPresetBefore(presets: DesktopCmSessionLayoutPreset[], sourcePresetName: string, targetPresetName: string) {
+  if (!sourcePresetName || sourcePresetName === targetPresetName) {
+    return normalizeDesktopCmSessionLayoutPresets(presets);
+  }
+  const { folderOrder, grouped } = groupDesktopCmSessionLayoutPresetsByFolder(presets);
+  const sourcePreset = presets.find((preset) => preset.name === sourcePresetName);
+  const targetPreset = presets.find((preset) => preset.name === targetPresetName);
+  if (!sourcePreset || !targetPreset) {
+    return normalizeDesktopCmSessionLayoutPresets(presets);
+  }
+  const sourceFolder = normalizeDesktopCmSessionLayoutFolderName(sourcePreset.folder);
+  const targetFolder = normalizeDesktopCmSessionLayoutFolderName(targetPreset.folder);
+  if (sourceFolder !== targetFolder) {
+    return normalizeDesktopCmSessionLayoutPresets(presets);
+  }
+  const folderPresets = grouped.get(sourceFolder) || [];
+  const source = folderPresets.find((preset) => preset.name === sourcePresetName);
+  if (!source) {
+    return normalizeDesktopCmSessionLayoutPresets(presets);
+  }
+  const withoutSource = folderPresets.filter((preset) => preset.name !== sourcePresetName);
+  const targetIndex = withoutSource.findIndex((preset) => preset.name === targetPresetName);
+  if (targetIndex < 0) {
+    return normalizeDesktopCmSessionLayoutPresets(presets);
+  }
+  grouped.set(sourceFolder, [...withoutSource.slice(0, targetIndex), source, ...withoutSource.slice(targetIndex)]);
+  return flattenDesktopCmSessionLayoutPresetFolders(folderOrder, grouped);
+}
+
+function moveDesktopCmSessionLayoutPresetByDirection(presets: DesktopCmSessionLayoutPreset[], presetName: string, direction: -1 | 1) {
+  const { grouped } = groupDesktopCmSessionLayoutPresetsByFolder(presets);
+  const sourcePreset = presets.find((preset) => preset.name === presetName);
+  if (!sourcePreset) {
+    return normalizeDesktopCmSessionLayoutPresets(presets);
+  }
+  const folder = normalizeDesktopCmSessionLayoutFolderName(sourcePreset.folder);
+  const folderPresets = grouped.get(folder) || [];
+  const currentIndex = folderPresets.findIndex((preset) => preset.name === presetName);
+  const targetPreset = folderPresets[currentIndex + direction];
+  if (currentIndex < 0 || !targetPreset) {
+    return normalizeDesktopCmSessionLayoutPresets(presets);
+  }
+  return direction < 0
+    ? moveDesktopCmSessionLayoutPresetBefore(presets, presetName, targetPreset.name)
+    : moveDesktopCmSessionLayoutPresetBefore(presets, targetPreset.name, presetName);
 }
 
 function buildDesktopCmSessionLayoutImportName(baseName: string, existingNames: Set<string>) {

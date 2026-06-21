@@ -61,6 +61,8 @@ Desktop CM saved layout folder accessibility polish is desktop-only UI metadata.
 
 Desktop CM saved layout folder empty-state polish is desktop-only UI state. The saved layout area distinguishes no saved layouts, search-only empty results, folder-filter empty results, and selected-folder rows with zero visible presets while keeping safe search/folder context visible. Empty-state text and counts stay in browser memory only and do not change saved layout data, export/import JSON, Tauri payloads, credentials, runtime profiles, diagnostics, Events, or logs.
 
+Desktop CM saved layout folder drag/reorder polish is desktop-only UI state. Folder headers and layout presets expose drag handles plus up/down controls, disabled while layout search or folder filter is active. Reorder writes only the existing `kuviewer_desktop_cm_session_layout_presets` array order; it adds no `order` field, no storage key, and no Tauri/export/import schema changes.
+
 Existing remote API profile, local sidecar, and direct Kubernetes/keychain paths remain prototype-only scaffolds. The local sidecar no longer starts by default in the desktop product path; it requires `KUVIEWER_DESKTOP_ENABLE_PROTOTYPE_SIDECAR=1` for explicit prototype work. The web app must not expose SSH.
 
 The Flow view is intended to feel closer to real request movement than a generic resource graph. It derives paths such as:

@@ -510,6 +510,33 @@ async function smokeDesktopRuntime(browser, url) {
     await page.getByTestId('desktop-cm-session-layout-folder-filter-clear').click();
     sessionLayoutSearchCount = await page.getByTestId('desktop-cm-session-layout-search-count').textContent();
     requireCondition(sessionLayoutSearchCount?.includes('2 / 전체 2'), 'desktop CM session layout folder filter clear must restore saved layouts');
+    let layoutReorderState = await page.getByTestId('desktop-cm-session-layout-reorder-state').textContent();
+    requireCondition(layoutReorderState?.includes('순서 변경 가능'), 'desktop CM session layout folder reorder controls must enable when search and folder filter are clear');
+    const layoutFolderOrderBefore = await page.evaluate(() =>
+      [...document.querySelectorAll('[data-testid="desktop-cm-session-layout-list"] > div[data-testid^="desktop-cm-session-layout-folder-"]')]
+        .map((element) => element.getAttribute('data-testid')?.replace('desktop-cm-session-layout-folder-', '') || '')
+        .filter(Boolean)
+    );
+    requireCondition(layoutFolderOrderBefore.length === 2, 'desktop CM session layout folder reorder smoke must start with two folders');
+    const firstLayoutFolderSlug = layoutFolderOrderBefore[0];
+    const firstLayoutFolderDragHandle = await page.getByTestId(`desktop-cm-session-layout-folder-drag-handle-${firstLayoutFolderSlug}`).getAttribute('draggable');
+    requireCondition(firstLayoutFolderDragHandle === 'true', 'desktop CM session layout folder drag handle must be enabled when filters are clear');
+    await page.getByTestId(`desktop-cm-session-layout-folder-reorder-down-${firstLayoutFolderSlug}`).click();
+    let layoutFolderOrderAfter = await page.evaluate(() =>
+      [...document.querySelectorAll('[data-testid="desktop-cm-session-layout-list"] > div[data-testid^="desktop-cm-session-layout-folder-"]')]
+        .map((element) => element.getAttribute('data-testid')?.replace('desktop-cm-session-layout-folder-', '') || '')
+        .filter(Boolean)
+    );
+    requireCondition(layoutFolderOrderAfter[1] === firstLayoutFolderSlug, 'desktop CM session layout folder reorder down must move the first folder after the next folder');
+    await page.getByTestId(`desktop-cm-session-layout-folder-reorder-up-${firstLayoutFolderSlug}`).click();
+    layoutFolderOrderAfter = await page.evaluate(() =>
+      [...document.querySelectorAll('[data-testid="desktop-cm-session-layout-list"] > div[data-testid^="desktop-cm-session-layout-folder-"]')]
+        .map((element) => element.getAttribute('data-testid')?.replace('desktop-cm-session-layout-folder-', '') || '')
+        .filter(Boolean)
+    );
+    requireCondition(layoutFolderOrderAfter[0] === firstLayoutFolderSlug, 'desktop CM session layout folder reorder up must restore the folder order');
+    sessionLayoutStorage = await page.evaluate(() => window.localStorage.getItem('kuviewer_desktop_cm_session_layout_presets') || '');
+    requireCondition(!sessionLayoutStorage.includes('draggingSessionLayoutFolderName') && !sessionLayoutStorage.includes('draggingSessionLayoutPresetName'), 'desktop CM session layout drag state must stay memory-only');
     await page.getByTestId('desktop-cm-session-layout-bulk-clear-toolbar').click();
     await page.getByTestId('desktop-cm-session-layout-folder-select-primary').click();
     await page.getByTestId('desktop-cm-session-layout-bulk-toolbar').waitFor({ state: 'visible', timeout: 10_000 });
