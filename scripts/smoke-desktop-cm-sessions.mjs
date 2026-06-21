@@ -451,6 +451,7 @@ async function smokeDesktopRuntime(browser, url) {
     await page.getByTestId('desktop-cm-session-layout-review-view').waitFor({ state: 'visible', timeout: 10_000 });
     await page.getByTestId('desktop-cm-session-layout-conflict-preview').waitFor({ state: 'visible', timeout: 10_000 });
     await page.getByTestId('desktop-cm-session-layout-conflict-ops-view').waitFor({ state: 'visible', timeout: 10_000 });
+    await requireConflictActive(page, 'ops-view', true, 'desktop CM session layout conflict preview must activate the first conflict row on open');
     let layoutConflictSummaryProgress = await page.getByTestId('desktop-cm-session-layout-conflict-summary-progress').textContent();
     let layoutConflictSummaryRemaining = await page.getByTestId('desktop-cm-session-layout-conflict-summary-remaining').textContent();
     let layoutConflictSummaryResolutions = await page.getByTestId('desktop-cm-session-layout-conflict-summary-resolutions').textContent();
@@ -503,14 +504,24 @@ async function smokeDesktopRuntime(browser, url) {
     }));
     await page.getByTestId('desktop-cm-session-layout-import').setInputFiles(layoutMultiConflictPath);
     await page.getByTestId('desktop-cm-session-layout-conflict-preview').waitFor({ state: 'visible', timeout: 10_000 });
+    await page.getByTestId('desktop-cm-session-layout-conflict-ops-view').waitFor({ state: 'visible', timeout: 10_000 });
     await page.getByTestId('desktop-cm-session-layout-conflict-review-view').waitFor({ state: 'visible', timeout: 10_000 });
+    await requireConflictActive(page, 'ops-view', true, 'desktop CM multi layout conflict preview must activate the first row');
+    await page.getByTestId('desktop-cm-session-layout-conflict-preview').focus();
+    await page.keyboard.press('ArrowDown');
+    await requireConflictActive(page, 'review-view', true, 'desktop CM layout conflict ArrowDown must activate the next row');
+    await page.keyboard.press('Home');
+    await requireConflictActive(page, 'ops-view', true, 'desktop CM layout conflict Home must activate the first row');
+    await page.keyboard.press('End');
+    await requireConflictActive(page, 'review-view', true, 'desktop CM layout conflict End must activate the last row');
     layoutConflictSummaryProgress = await page.getByTestId('desktop-cm-session-layout-conflict-summary-progress').textContent();
     layoutConflictSummaryRemaining = await page.getByTestId('desktop-cm-session-layout-conflict-summary-remaining').textContent();
     requireCondition(layoutConflictSummaryProgress?.includes('충돌 2개 중 0개 해결'), 'desktop CM multi layout conflict summary must show initial progress');
     requireCondition(layoutConflictSummaryRemaining?.includes('남은 2개'), 'desktop CM multi layout conflict summary must show initial remaining count');
-    await page.getByTestId('desktop-cm-session-layout-conflict-row-keep-current-review-view').click();
+    await page.keyboard.press('k');
     await page.getByTestId('desktop-cm-session-layout-conflict-preview').waitFor({ state: 'visible', timeout: 10_000 });
     await page.getByTestId('desktop-cm-session-layout-conflict-review-view').waitFor({ state: 'hidden', timeout: 10_000 });
+    await requireConflictActive(page, 'ops-view', true, 'desktop CM layout conflict keyboard resolution must move active row to the next remaining conflict');
     layoutConflictSummaryProgress = await page.getByTestId('desktop-cm-session-layout-conflict-summary-progress').textContent();
     layoutConflictSummaryRemaining = await page.getByTestId('desktop-cm-session-layout-conflict-summary-remaining').textContent();
     layoutConflictSummaryResolutions = await page.getByTestId('desktop-cm-session-layout-conflict-summary-resolutions').textContent();
@@ -521,7 +532,8 @@ async function smokeDesktopRuntime(browser, url) {
     requireCondition(layoutConflictSummaryImport?.includes('skipped 1'), 'desktop CM row keep current must update skipped import count');
     sessionLayoutStorage = await page.evaluate(() => window.localStorage.getItem('kuviewer_desktop_cm_session_layout_presets') || '');
     requireCondition(!sessionLayoutStorage.includes('Review Incoming'), 'desktop CM session layout row keep current must resolve only the selected conflict');
-    await page.getByTestId('desktop-cm-session-layout-conflict-row-use-incoming-ops-view').click();
+    await page.getByTestId('desktop-cm-session-layout-conflict-preview').focus();
+    await page.keyboard.press('Enter');
     layoutImportSummary = await page.getByTestId('desktop-cm-session-layout-import-summary').textContent();
     requireCondition(layoutImportSummary?.includes('updated 1'), 'desktop CM session layout row incoming must update only the selected layout');
     sessionLayoutStorage = await page.evaluate(() => window.localStorage.getItem('kuviewer_desktop_cm_session_layout_presets') || '');
@@ -544,11 +556,17 @@ async function smokeDesktopRuntime(browser, url) {
     }));
     await page.getByTestId('desktop-cm-session-layout-import').setInputFiles(layoutRenameImportPath);
     await page.getByTestId('desktop-cm-session-layout-conflict-preview').waitFor({ state: 'visible', timeout: 10_000 });
+    await requireConflictActive(page, 'ops-view', true, 'desktop CM rename conflict preview must activate first row');
     layoutConflictSummaryProgress = await page.getByTestId('desktop-cm-session-layout-conflict-summary-progress').textContent();
     layoutConflictSummaryRemaining = await page.getByTestId('desktop-cm-session-layout-conflict-summary-remaining').textContent();
     requireCondition(layoutConflictSummaryProgress?.includes('충돌 1개 중 0개 해결'), 'desktop CM rename conflict summary must reset progress for a new import');
     requireCondition(layoutConflictSummaryRemaining?.includes('남은 1개'), 'desktop CM rename conflict summary must reset remaining count for a new import');
-    await page.getByTestId('desktop-cm-session-layout-conflict-row-rename-incoming-ops-view').click();
+    await page.getByTestId('desktop-cm-session-layout-conflict-preview').focus();
+    await page.keyboard.press('Escape');
+    await requireConflictActive(page, 'ops-view', false, 'desktop CM layout conflict Escape must clear active row');
+    await page.keyboard.press('ArrowDown');
+    await requireConflictActive(page, 'ops-view', true, 'desktop CM layout conflict ArrowDown must restore row activation after Escape');
+    await page.keyboard.press('r');
     await page.getByTestId('desktop-cm-session-layout-ops-view-import').waitFor({ state: 'visible', timeout: 10_000 });
     layoutImportSummary = await page.getByTestId('desktop-cm-session-layout-import-summary').textContent();
     requireCondition(layoutImportSummary?.includes('new 1'), 'desktop CM session layout row rename must update final import summary');
@@ -1066,6 +1084,11 @@ function requireCondition(condition, message) {
   if (!condition) {
     throw new Error(message);
   }
+}
+
+async function requireConflictActive(page, slug, expected, message) {
+  const ariaCurrent = await page.getByTestId(`desktop-cm-session-layout-conflict-${slug}`).getAttribute('aria-current');
+  requireCondition((ariaCurrent === 'true') === expected, message);
 }
 
 function requireCommandOrder(invocations, expectedOrder) {
