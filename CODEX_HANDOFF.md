@@ -191,7 +191,8 @@ https://kuviewer.example.com/
    - Desktop CM session layout preset search/filter는 완료됐다. Saved layout 목록은 preset name/summary/group/collapsed/favorite/session count 기준으로 메모리에서 필터링하고 검색어는 저장/내보내기/Tauri payload에 포함하지 않는다.
    - Desktop CM session layout preset rename polish는 완료됐다. Inline rename은 preset name만 바꾸고 view preferences를 보존하며, draft/error는 메모리에만 유지하고 중복 이름은 거부한다.
    - Desktop CM session layout preset duplicate polish는 완료됐다. Duplicate는 safe view preferences를 `copy` suffix 이름으로 복제하고 search/session/export/Tauri schema를 변경하지 않는다.
-   - 다음 확장 후보는 Desktop CM session layout preset bulk management다.
+   - Desktop CM session layout preset bulk management는 완료됐다. Selection/delete confirm은 memory-only이며 visible-result selection, selected layout export, inline two-step selected delete만 제공하고 session/layout export schema와 Tauri schema는 변경하지 않는다.
+   - 다음 확장 후보는 Desktop CM session layout preset folder polish다.
 
 4. 실제 Kubernetes 연결 설계
    - 브라우저에 kube credential을 직접 넣지 않는 방향 유지.
