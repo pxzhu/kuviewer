@@ -47,6 +47,7 @@ requireCondition(
     'desktop-cm-session-layout-conflict-preview',
     'desktop-cm-session-layout-row-conflicts',
     'desktop-cm-session-layout-conflict-summary',
+    'desktop-cm-session-layout-conflict-keyboard',
   ].includes(spec.status),
   'status must be a known desktop packaging milestone'
 );
@@ -98,6 +99,7 @@ requireCondition(phases.includes('desktop-cm-session-layout-import-export'), 'ph
 requireCondition(phases.includes('desktop-cm-session-layout-conflict-preview'), 'phaseOrder must include desktop-cm-session-layout-conflict-preview');
 requireCondition(phases.includes('desktop-cm-session-layout-row-conflicts'), 'phaseOrder must include desktop-cm-session-layout-row-conflicts');
 requireCondition(phases.includes('desktop-cm-session-layout-conflict-summary'), 'phaseOrder must include desktop-cm-session-layout-conflict-summary');
+requireCondition(phases.includes('desktop-cm-session-layout-conflict-keyboard'), 'phaseOrder must include desktop-cm-session-layout-conflict-keyboard');
 
 await validateBuildPrerequisites(spec);
 await validateDesktopDistributionPolicy(spec);
@@ -135,6 +137,7 @@ if (
     'desktop-cm-session-layout-conflict-preview',
     'desktop-cm-session-layout-row-conflicts',
     'desktop-cm-session-layout-conflict-summary',
+    'desktop-cm-session-layout-conflict-keyboard',
   ].includes(spec.status)
 ) {
   await validateTauriScaffold(spec.tauri || {});
@@ -751,6 +754,7 @@ async function validateCmSshSessionManager(spec) {
       'session-layout-conflict-preview',
       'session-layout-row-conflicts',
       'session-layout-conflict-summary',
+      'session-layout-conflict-keyboard',
     ].includes(manager.status),
     'cmSshSessionManager.status must be a known CM/SSH session manager milestone'
   );
@@ -1090,6 +1094,42 @@ async function validateCmSshSessionManager(spec) {
   ]) {
     requireCondition(sessionLayoutConflictSummary[flag] === true, `cmSshSessionManager.sessionLayoutConflictSummary.${flag} must be true`);
   }
+  const sessionLayoutConflictKeyboard = manager.sessionLayoutConflictKeyboard || {};
+  requireCondition(sessionLayoutConflictKeyboard.desktopOnly === true, 'cmSshSessionManager.sessionLayoutConflictKeyboard.desktopOnly must be true');
+  requireCondition(sessionLayoutConflictKeyboard.uiOnly === true, 'cmSshSessionManager.sessionLayoutConflictKeyboard.uiOnly must be true');
+  requireCondition(sessionLayoutConflictKeyboard.stateStorage === 'memory-only', 'cmSshSessionManager.sessionLayoutConflictKeyboard.stateStorage must be memory-only');
+  requireCondition(sessionLayoutConflictKeyboard.activeRowState === 'memory-only', 'cmSshSessionManager.sessionLayoutConflictKeyboard.activeRowState must be memory-only');
+  requireCondition(sessionLayoutConflictKeyboard.initialActiveRow === 'first-conflict', 'cmSshSessionManager.sessionLayoutConflictKeyboard.initialActiveRow must be first-conflict');
+  requireCondition(sessionLayoutConflictKeyboard.enterAction === 'incoming', 'cmSshSessionManager.sessionLayoutConflictKeyboard.enterAction must be incoming');
+  requireCondition(sessionLayoutConflictKeyboard.kAction === 'keep-current', 'cmSshSessionManager.sessionLayoutConflictKeyboard.kAction must be keep-current');
+  requireCondition(sessionLayoutConflictKeyboard.rAction === 'rename-incoming', 'cmSshSessionManager.sessionLayoutConflictKeyboard.rAction must be rename-incoming');
+  requireCondition(sessionLayoutConflictKeyboard.escapeAction === 'clear-active-row', 'cmSshSessionManager.sessionLayoutConflictKeyboard.escapeAction must be clear-active-row');
+  const layoutConflictKeys = new Set(Array.isArray(sessionLayoutConflictKeyboard.keys) ? sessionLayoutConflictKeyboard.keys : []);
+  for (const key of ['ArrowUp', 'ArrowDown', 'Home', 'End', 'Enter', 'K', 'R', 'Escape']) {
+    requireCondition(layoutConflictKeys.has(key), `cmSshSessionManager.sessionLayoutConflictKeyboard.keys must include ${key}`);
+  }
+  for (const flag of [
+    'activeRowAccessible',
+    'ignoresEditableTargets',
+    'rowButtonsUpdateActiveRow',
+    'resolvedRowMovesToNextRemaining',
+    'lastConflictClosesPreview',
+    'noSessionExportImportSchemaChange',
+    'noLayoutExportImportSchemaChange',
+    'noTauriSchemaChange',
+    'noSessionSearch',
+    'noDiagnosticFilters',
+    'noEndpointMetadata',
+    'noCredentialPayload',
+    'noRuntimeProfile',
+    'noDiagnosticHistory',
+    'noToken',
+    'noKubeconfig',
+    'noSecretValues',
+    'noEventsOrLogs',
+  ]) {
+    requireCondition(sessionLayoutConflictKeyboard[flag] === true, `cmSshSessionManager.sessionLayoutConflictKeyboard.${flag} must be true`);
+  }
   const hiddenPrototypeUi = new Set(Array.isArray(manager.hiddenPrototypeUi) ? manager.hiddenPrototypeUi : []);
   for (const marker of ['DesktopConnectionProfilePanel', 'DesktopKubernetesProfilePanel', 'desktop-use-sidecar-profile']) {
     requireCondition(hiddenPrototypeUi.has(marker), `cmSshSessionManager.hiddenPrototypeUi must include ${marker}`);
@@ -1126,6 +1166,16 @@ async function validateCmSshSessionManager(spec) {
     'desktop-cm-session-layout-conflict-row-use-incoming-',
     'desktop-cm-session-layout-conflict-row-keep-current-',
     'desktop-cm-session-layout-conflict-row-rename-incoming-',
+    'activeSessionLayoutConflictName',
+    'handleSessionLayoutConflictKeyDown',
+    'handleMoveActiveSessionLayoutConflict',
+    'handleResolveActiveSessionLayoutConflict',
+    'isDesktopCmKeyboardIgnoredTarget',
+    'aria-current',
+    'ArrowUp',
+    'ArrowDown',
+    'Home',
+    'End',
     'kuviewer.desktop.cmSessionLayouts',
   ]) {
     requireCondition(desktopCmSessionPanel.includes(marker), `DesktopCmSessionPanel must include ${marker}`);
@@ -1283,6 +1333,16 @@ async function validateCmSshSessionManager(spec) {
     'desktop-cm-session-layout-conflict-row-use-incoming-',
     'desktop-cm-session-layout-conflict-row-keep-current-',
     'desktop-cm-session-layout-conflict-row-rename-incoming-',
+    'activeSessionLayoutConflictName',
+    'handleSessionLayoutConflictKeyDown',
+    'handleMoveActiveSessionLayoutConflict',
+    'handleResolveActiveSessionLayoutConflict',
+    'isDesktopCmKeyboardIgnoredTarget',
+    'aria-current',
+    'ArrowUp',
+    'ArrowDown',
+    'Home',
+    'End',
     'kuviewer.desktop.cmSessions',
     'kuviewer.desktop.cmSessionLayouts',
   ]) {

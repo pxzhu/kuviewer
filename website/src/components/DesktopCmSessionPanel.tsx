@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { type KeyboardEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { Activity, Bookmark, CheckCircle2, ChevronDown, ChevronRight, Copy, Download, Filter, Folder, KeyRound, Pencil, Play, Plus, RotateCcw, Search, ServerCog, ShieldCheck, Square, Star, Trash2, Unplug, Upload, XCircle } from 'lucide-react';
 import {
   createDesktopCmSessionExportBundle,
@@ -164,6 +164,7 @@ export function DesktopCmSessionPanel({
   const [importSummary, setImportSummary] = useState<DesktopCmSessionImportSummary | null>(null);
   const [sessionLayoutImportSummary, setSessionLayoutImportSummary] = useState<DesktopCmSessionLayoutImportSummary | null>(null);
   const [sessionLayoutImportConflicts, setSessionLayoutImportConflicts] = useState<DesktopCmSessionLayoutImportConflictPreview | null>(null);
+  const [activeSessionLayoutConflictName, setActiveSessionLayoutConflictName] = useState('');
   const [cloneDraftSourceName, setCloneDraftSourceName] = useState('');
   const importInputRef = useRef<HTMLInputElement | null>(null);
   const sessionLayoutImportInputRef = useRef<HTMLInputElement | null>(null);
@@ -216,6 +217,7 @@ export function DesktopCmSessionPanel({
       renamedResolved: sessionLayoutImportConflicts.renamedResolved,
     };
   }, [sessionLayoutImportConflicts]);
+  const sessionLayoutConflictNames = useMemo(() => sessionLayoutImportConflicts?.conflicts.map((conflict) => conflict.name) ?? [], [sessionLayoutImportConflicts]);
   const connectionPreview = `${form.user || 'user'}@${form.host || 'host'}:${form.port || 22} -> ${form.remoteApiHost || desktopCmDefaultRemoteApiHost}:${form.remoteApiPort || desktopCmDefaultRemoteApiPort}`;
   const selectedRuntimeActive = Boolean(selectedSession && runtimeProfile?.sessionId === selectedSession.id);
   const selectedRuntimeStatus = selectedRuntimeActive ? runtimeProfile?.status || selectedSession?.runtimeStatus || 'runtime-active' : selectedSession?.runtimeStatus || 'stopped';
@@ -226,6 +228,21 @@ export function DesktopCmSessionPanel({
       setCloneDraftSourceName('');
     }
   }, [form.id, sessions]);
+
+  useEffect(() => {
+    if (!sessionLayoutImportConflicts) {
+      if (activeSessionLayoutConflictName) {
+        setActiveSessionLayoutConflictName('');
+      }
+      return;
+    }
+    if (
+      activeSessionLayoutConflictName &&
+      !sessionLayoutImportConflicts.conflicts.some((conflict) => conflict.name.toLowerCase() === activeSessionLayoutConflictName.toLowerCase())
+    ) {
+      setActiveSessionLayoutConflictName(sessionLayoutImportConflicts.conflicts[0]?.name || '');
+    }
+  }, [activeSessionLayoutConflictName, sessionLayoutImportConflicts]);
 
   useEffect(() => {
     if (sessions.length === 0) {
@@ -569,6 +586,7 @@ export function DesktopCmSessionPanel({
     }
     setError('');
     setSessionLayoutImportConflicts(null);
+    setActiveSessionLayoutConflictName('');
     setBusyAction('import-session-layouts');
     try {
       const parsed = parseDesktopCmSessionLayoutImportBundle(JSON.parse(await file.text()), sessions);
@@ -595,6 +613,7 @@ export function DesktopCmSessionPanel({
       }
       setSessionLayoutImportSummary({ fileName: file.name, imported, updated: 0, skipped, invalid: parsed.invalid });
       if (conflicts.length > 0) {
+        setActiveSessionLayoutConflictName(conflicts[0].name);
         setSessionLayoutImportConflicts({
           fileName: file.name,
           imported,
@@ -628,7 +647,9 @@ export function DesktopCmSessionPanel({
       return;
     }
     const selectedConflictNames = new Set(selectedConflicts.map((conflict) => conflict.name.toLowerCase()));
+    const firstSelectedConflictIndex = sessionLayoutImportConflicts.conflicts.findIndex((conflict) => selectedConflictNames.has(conflict.name.toLowerCase()));
     const remainingConflicts = sessionLayoutImportConflicts.conflicts.filter((conflict) => !selectedConflictNames.has(conflict.name.toLowerCase()));
+    const nextActiveConflictName = remainingConflicts[Math.min(Math.max(firstSelectedConflictIndex, 0), Math.max(remainingConflicts.length - 1, 0))]?.name || '';
     let imported = sessionLayoutImportConflicts.imported;
     let updated = sessionLayoutImportConflicts.updated;
     let skipped = sessionLayoutImportConflicts.skipped;
@@ -669,20 +690,97 @@ export function DesktopCmSessionPanel({
       skipped,
       invalid: sessionLayoutImportConflicts.invalid,
     });
-    setSessionLayoutImportConflicts(
-      remainingConflicts.length > 0
-        ? {
-            ...sessionLayoutImportConflicts,
-            imported,
-            updated,
-            skipped,
-            incomingResolved,
-            currentResolved,
-            renamedResolved,
-            conflicts: remainingConflicts,
-          }
-        : null,
-    );
+    if (remainingConflicts.length > 0) {
+      setActiveSessionLayoutConflictName(nextActiveConflictName);
+      setSessionLayoutImportConflicts({
+        ...sessionLayoutImportConflicts,
+        imported,
+        updated,
+        skipped,
+        incomingResolved,
+        currentResolved,
+        renamedResolved,
+        conflicts: remainingConflicts,
+      });
+    } else {
+      setActiveSessionLayoutConflictName('');
+      setSessionLayoutImportConflicts(null);
+    }
+  };
+
+  const handleMoveActiveSessionLayoutConflict = (direction: 'previous' | 'next' | 'first' | 'last') => {
+    if (sessionLayoutConflictNames.length === 0) {
+      return;
+    }
+    const activeIndex = sessionLayoutConflictNames.findIndex((name) => name.toLowerCase() === activeSessionLayoutConflictName.toLowerCase());
+    if (direction === 'first') {
+      setActiveSessionLayoutConflictName(sessionLayoutConflictNames[0]);
+      return;
+    }
+    if (direction === 'last') {
+      setActiveSessionLayoutConflictName(sessionLayoutConflictNames[sessionLayoutConflictNames.length - 1]);
+      return;
+    }
+    if (activeIndex < 0) {
+      setActiveSessionLayoutConflictName(direction === 'previous' ? sessionLayoutConflictNames[sessionLayoutConflictNames.length - 1] : sessionLayoutConflictNames[0]);
+      return;
+    }
+    const nextIndex =
+      direction === 'previous'
+        ? Math.max(0, activeIndex - 1)
+        : Math.min(sessionLayoutConflictNames.length - 1, activeIndex + 1);
+    setActiveSessionLayoutConflictName(sessionLayoutConflictNames[nextIndex]);
+  };
+
+  const handleResolveActiveSessionLayoutConflict = (mode: 'incoming' | 'current' | 'rename') => {
+    if (!activeSessionLayoutConflictName) {
+      return;
+    }
+    handleResolveSessionLayoutImportConflicts(mode, activeSessionLayoutConflictName);
+  };
+
+  const handleSessionLayoutConflictKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (!sessionLayoutImportConflicts || isDesktopCmKeyboardIgnoredTarget(event.target)) {
+      return;
+    }
+    if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      handleMoveActiveSessionLayoutConflict('previous');
+      return;
+    }
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      handleMoveActiveSessionLayoutConflict('next');
+      return;
+    }
+    if (event.key === 'Home') {
+      event.preventDefault();
+      handleMoveActiveSessionLayoutConflict('first');
+      return;
+    }
+    if (event.key === 'End') {
+      event.preventDefault();
+      handleMoveActiveSessionLayoutConflict('last');
+      return;
+    }
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      handleResolveActiveSessionLayoutConflict('incoming');
+      return;
+    }
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      setActiveSessionLayoutConflictName('');
+      return;
+    }
+    const key = event.key.toLowerCase();
+    if (key === 'k') {
+      event.preventDefault();
+      handleResolveActiveSessionLayoutConflict('current');
+    } else if (key === 'r') {
+      event.preventDefault();
+      handleResolveActiveSessionLayoutConflict('rename');
+    }
   };
 
   const handleSetSessionGroup = (sessionId: string, group: string) => {
@@ -1325,8 +1423,12 @@ export function DesktopCmSessionPanel({
             </div>
             {sessionLayoutImportConflicts ? (
               <div
-                className="grid gap-2 rounded-[10px] border border-[rgba(255,149,0,0.22)] bg-[rgba(255,149,0,0.08)] px-3 py-2"
+                aria-label="Desktop CM session layout conflict preview"
+                className="grid gap-2 rounded-[10px] border border-[rgba(255,149,0,0.22)] bg-[rgba(255,149,0,0.08)] px-3 py-2 outline-none focus-visible:ring-2 focus-visible:ring-[rgba(255,149,0,0.28)]"
                 data-testid="desktop-cm-session-layout-conflict-preview"
+                onKeyDown={handleSessionLayoutConflictKeyDown}
+                role="group"
+                tabIndex={0}
               >
                 <div className="flex min-w-0 flex-wrap items-center gap-2">
                   <span className="ku-chip border-[rgba(255,149,0,0.24)] bg-white/65 text-[#9a5a00]">
@@ -1385,43 +1487,64 @@ export function DesktopCmSessionPanel({
                   </div>
                 ) : null}
                 <div className="grid gap-1">
-                  {sessionLayoutImportConflicts.conflicts.map((conflict) => (
-                    <div
-                      key={conflict.name}
-                      className="grid gap-1 rounded-[8px] border border-[rgba(60,60,67,0.08)] bg-white/64 px-2 py-1 text-xs font-semibold text-[rgba(60,60,67,0.72)]"
-                      data-testid={`desktop-cm-session-layout-conflict-${slugifyTestId(conflict.name)}`}
-                    >
-                      <span className="truncate text-[rgba(60,60,67,0.86)]">{conflict.name}</span>
-                      <span className="font-mono">현재 · {formatDesktopCmSessionLayoutSummary(conflict.current.viewPreferences)}</span>
-                      <span className="font-mono">incoming · {formatDesktopCmSessionLayoutSummary(conflict.incoming.viewPreferences)}</span>
-                      <span className="flex min-w-0 flex-wrap items-center gap-1">
-                        <button
-                          className="ku-control h-7 text-[11px]"
-                          data-testid={`desktop-cm-session-layout-conflict-row-use-incoming-${slugifyTestId(conflict.name)}`}
-                          type="button"
-                          onClick={() => handleResolveSessionLayoutImportConflicts('incoming', conflict.name)}
-                        >
-                          incoming
-                        </button>
-                        <button
-                          className="ku-control h-7 text-[11px]"
-                          data-testid={`desktop-cm-session-layout-conflict-row-keep-current-${slugifyTestId(conflict.name)}`}
-                          type="button"
-                          onClick={() => handleResolveSessionLayoutImportConflicts('current', conflict.name)}
-                        >
-                          현재 유지
-                        </button>
-                        <button
-                          className="ku-control h-7 text-[11px]"
-                          data-testid={`desktop-cm-session-layout-conflict-row-rename-incoming-${slugifyTestId(conflict.name)}`}
-                          type="button"
-                          onClick={() => handleResolveSessionLayoutImportConflicts('rename', conflict.name)}
-                        >
-                          rename
-                        </button>
-                      </span>
-                    </div>
-                  ))}
+                  {sessionLayoutImportConflicts.conflicts.map((conflict) => {
+                    const active = activeSessionLayoutConflictName.toLowerCase() === conflict.name.toLowerCase();
+                    return (
+                      <div
+                        key={conflict.name}
+                        aria-current={active ? 'true' : undefined}
+                        className={`grid gap-1 rounded-[8px] border px-2 py-1 text-xs font-semibold text-[rgba(60,60,67,0.72)] transition ${
+                          active
+                            ? 'border-[rgba(255,149,0,0.42)] bg-white/86 shadow-[0_0_0_2px_rgba(255,149,0,0.14)]'
+                            : 'border-[rgba(60,60,67,0.08)] bg-white/64'
+                        }`}
+                        data-testid={`desktop-cm-session-layout-conflict-${slugifyTestId(conflict.name)}`}
+                        onClick={() => setActiveSessionLayoutConflictName(conflict.name)}
+                      >
+                        <span className="truncate text-[rgba(60,60,67,0.86)]">{conflict.name}</span>
+                        <span className="font-mono">현재 · {formatDesktopCmSessionLayoutSummary(conflict.current.viewPreferences)}</span>
+                        <span className="font-mono">incoming · {formatDesktopCmSessionLayoutSummary(conflict.incoming.viewPreferences)}</span>
+                        <span className="flex min-w-0 flex-wrap items-center gap-1">
+                          <button
+                            className="ku-control h-7 text-[11px]"
+                            data-testid={`desktop-cm-session-layout-conflict-row-use-incoming-${slugifyTestId(conflict.name)}`}
+                            type="button"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              setActiveSessionLayoutConflictName(conflict.name);
+                              handleResolveSessionLayoutImportConflicts('incoming', conflict.name);
+                            }}
+                          >
+                            incoming
+                          </button>
+                          <button
+                            className="ku-control h-7 text-[11px]"
+                            data-testid={`desktop-cm-session-layout-conflict-row-keep-current-${slugifyTestId(conflict.name)}`}
+                            type="button"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              setActiveSessionLayoutConflictName(conflict.name);
+                              handleResolveSessionLayoutImportConflicts('current', conflict.name);
+                            }}
+                          >
+                            현재 유지
+                          </button>
+                          <button
+                            className="ku-control h-7 text-[11px]"
+                            data-testid={`desktop-cm-session-layout-conflict-row-rename-incoming-${slugifyTestId(conflict.name)}`}
+                            type="button"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              setActiveSessionLayoutConflictName(conflict.name);
+                              handleResolveSessionLayoutImportConflicts('rename', conflict.name);
+                            }}
+                          >
+                            rename
+                          </button>
+                        </span>
+                      </div>
+                    );
+                  })}
                 </div>
                 <p className="text-xs font-semibold text-[rgba(60,60,67,0.58)]">
                   same-name layout은 선택 전까지 덮어쓰지 않음 · conflict preview는 브라우저 메모리에만 유지
@@ -2531,6 +2654,14 @@ function normalizeCmDiagnosticStageFilter(value: unknown): CmDiagnosticStageFilt
 
 function normalizeCmDiagnosticSeverityFilter(value: unknown): CmDiagnosticSeverityFilter {
   return typeof value === 'string' && cmDiagnosticSeverityFilterOptions.includes(value as CmDiagnosticSeverityFilter) ? (value as CmDiagnosticSeverityFilter) : 'all';
+}
+
+function isDesktopCmKeyboardIgnoredTarget(target: EventTarget | null) {
+  if (!(target instanceof HTMLElement)) {
+    return false;
+  }
+  const tagName = target.tagName.toLowerCase();
+  return target.isContentEditable || tagName === 'input' || tagName === 'textarea' || tagName === 'select' || tagName === 'button' || tagName === 'label';
 }
 
 function slugifyTestId(value: string) {
