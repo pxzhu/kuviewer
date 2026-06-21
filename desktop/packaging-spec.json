@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "name": "Kuviewer Desktop CM Session Explorer",
   "goal": "desktop-cm-session-prototype",
-  "status": "desktop-cm-session-layout-preset-folder-reorder-status-wording-polish",
+  "status": "desktop-cm-session-layout-preset-folder-reorder-status-history-polish",
   "recommendedPackager": "tauri",
   "fallbackPackager": "electron",
   "tauri": {
@@ -897,6 +897,46 @@
       "noSecretValues": true,
       "noEventsOrLogs": true
     },
+    "sessionLayoutPresetFolderReorderStatusHistory": {
+      "desktopOnly": true,
+      "uiOnly": true,
+      "stateStorage": "memory-only",
+      "usesExistingLayoutStorage": "kuviewer_desktop_cm_session_layout_presets",
+      "orderStorage": "existing-preset-array-order",
+      "addsOrderField": false,
+      "addsStorageKey": false,
+      "maxEntries": 5,
+      "newestFirst": true,
+      "recordsReorderStatus": true,
+      "recordsFocusStatus": true,
+      "showsLatestSummary": true,
+      "clearAction": true,
+      "scopeLabels": ["Folder", "Preset", "Focus", "System"],
+      "humanReadableOnly": true,
+      "noInternalTestIdInStatus": true,
+      "preservesPresetNames": true,
+      "preservesFolders": true,
+      "preservesViewPreferences": true,
+      "preservesSelection": true,
+      "preservesCollapseState": true,
+      "folderCollapseExported": false,
+      "folderMetadataExported": true,
+      "folderMetadataImported": true,
+      "sameNameGlobalUnique": true,
+      "noSessionExportImportSchemaChange": true,
+      "noLayoutExportImportSchemaChange": true,
+      "noTauriSchemaChange": true,
+      "noSessionSearch": true,
+      "noDiagnosticFilters": true,
+      "noEndpointMetadata": true,
+      "noCredentialPayload": true,
+      "noRuntimeProfile": true,
+      "noDiagnosticHistory": true,
+      "noToken": true,
+      "noKubeconfig": true,
+      "noSecretValues": true,
+      "noEventsOrLogs": true
+    },
     "sessionLayoutImportExport": {
       "desktopOnly": true,
       "uiOnly": true,
@@ -1066,7 +1106,7 @@
       "desktop-use-sidecar-profile"
     ],
     "next": [
-      "Desktop CM session layout preset folder reorder status history polish"
+      "Desktop CM session layout preset folder reorder status history filter polish"
     ]
   },
   "remoteConnectionProfile": {
@@ -1348,6 +1388,7 @@
     "desktop-cm-session-layout-preset-folder-reorder-focus-polish",
     "desktop-cm-session-layout-preset-folder-reorder-focus-accessibility-polish",
     "desktop-cm-session-layout-preset-folder-reorder-disabled-state-polish",
-    "desktop-cm-session-layout-preset-folder-reorder-status-wording-polish"
+    "desktop-cm-session-layout-preset-folder-reorder-status-wording-polish",
+    "desktop-cm-session-layout-preset-folder-reorder-status-history-polish"
   ]
 }
