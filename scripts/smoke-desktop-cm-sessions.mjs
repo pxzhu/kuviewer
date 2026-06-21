@@ -424,11 +424,42 @@ async function smokeDesktopRuntime(browser, url) {
     for (const forbiddenField of ['host', 'remoteApiHost', 'credentialAvailable', 'runtimeStatus', 'diagnosticMessage', 'serverUrl', 'adminToken', 'BEGIN OPENSSH PRIVATE KEY']) {
       requireCondition(!sessionLayoutStorage.includes(forbiddenField), `desktop CM session layout duplicate must not include ${forbiddenField}`);
     }
+    await page.getByTestId('desktop-cm-session-layout-bulk-select-input-ops-view-copy').check();
+    await page.getByTestId('desktop-cm-session-layout-bulk-toolbar').waitFor({ state: 'visible', timeout: 10_000 });
+    let layoutBulkCount = await page.getByTestId('desktop-cm-session-layout-bulk-count').textContent();
+    requireCondition(layoutBulkCount?.includes('선택 1개'), 'desktop CM session layout bulk row select must select one saved layout');
+    const selectedLayoutDownloadPromise = page.waitForEvent('download');
+    await page.getByTestId('desktop-cm-session-layout-bulk-export').click();
+    const selectedLayoutDownload = await selectedLayoutDownloadPromise;
+    const selectedLayoutExportPath = await selectedLayoutDownload.path();
+    requireCondition(typeof selectedLayoutExportPath === 'string', 'desktop CM session layout selected export must create a downloadable JSON file');
+    const selectedLayoutExportBundle = JSON.parse(await readFile(selectedLayoutExportPath, 'utf8'));
+    requireCondition(
+      selectedLayoutExportBundle.kind === 'kuviewer.desktop.cmSessionLayouts' &&
+        Array.isArray(selectedLayoutExportBundle.items) &&
+        selectedLayoutExportBundle.items.length === 1 &&
+        selectedLayoutExportBundle.items[0].name === 'Ops View copy',
+      'desktop CM session layout selected export must include only selected layout presets'
+    );
+    const selectedLayoutExportJson = JSON.stringify(selectedLayoutExportBundle);
+    requireCondition(!selectedLayoutExportJson.includes('cm.example.internal'), 'desktop CM session layout selected export must not include session endpoint metadata');
+    sessionLayoutStorage = await page.evaluate(() => window.localStorage.getItem('kuviewer_desktop_cm_session_layout_presets') || '');
+    requireCondition(
+      !sessionLayoutStorage.includes('selectedSessionLayoutPresetNames') && !sessionLayoutStorage.includes('sessionLayoutBulkDeleteConfirm'),
+      'desktop CM session layout bulk selection must stay memory-only'
+    );
+    await page.getByTestId('desktop-cm-session-layout-bulk-clear-toolbar').click();
     await page.getByTestId('desktop-cm-session-layout-search').fill('copy');
     sessionLayoutSearchCount = await page.getByTestId('desktop-cm-session-layout-search-count').textContent();
     requireCondition(sessionLayoutSearchCount?.includes('1 / 전체 2'), 'desktop CM session layout search must match duplicated layout metadata');
+    await page.getByTestId('desktop-cm-session-layout-bulk-select-visible').click();
+    layoutBulkCount = await page.getByTestId('desktop-cm-session-layout-bulk-count').textContent();
+    requireCondition(layoutBulkCount?.includes('선택 1개') && layoutBulkCount.includes('현재 결과 1개'), 'desktop CM session layout bulk select visible must select matching layout results');
     await page.getByTestId('desktop-cm-session-layout-search-clear').click();
-    await page.getByTestId('desktop-cm-session-layout-delete-ops-view-copy').click();
+    await page.getByTestId('desktop-cm-session-layout-bulk-delete').click();
+    const layoutBulkDeleteConfirmText = await page.getByTestId('desktop-cm-session-layout-bulk-delete').textContent();
+    requireCondition(layoutBulkDeleteConfirmText?.includes('확인'), 'desktop CM session layout bulk delete must require inline confirmation');
+    await page.getByTestId('desktop-cm-session-layout-bulk-delete').click();
     await page.getByTestId('desktop-cm-session-layout-ops-view-copy').waitFor({ state: 'hidden', timeout: 10_000 });
     const layoutDownloadPromise = page.waitForEvent('download');
     await page.getByTestId('desktop-cm-session-layout-export').click();

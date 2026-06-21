@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "name": "Kuviewer Desktop CM Session Explorer",
   "goal": "desktop-cm-session-prototype",
-  "status": "desktop-cm-session-layout-preset-duplicate",
+  "status": "desktop-cm-session-layout-preset-bulk-management",
   "recommendedPackager": "tauri",
   "fallbackPackager": "electron",
   "tauri": {
@@ -100,7 +100,7 @@
     "noOperationalActions": true
   },
   "cmSshSessionManager": {
-    "status": "session-layout-preset-duplicate",
+    "status": "session-layout-preset-bulk-management",
     "desktopOnly": true,
     "webExposed": false,
     "storage": "tauri-state-safe-metadata-with-os-credential-store-and-session-runtime",
@@ -382,6 +382,32 @@
       "noSecretValues": true,
       "noEventsOrLogs": true
     },
+    "sessionLayoutPresetBulkManagement": {
+      "desktopOnly": true,
+      "uiOnly": true,
+      "selectionStorage": "memory-only",
+      "selectionPersisted": false,
+      "selectionExported": false,
+      "usesExistingLayoutStorage": "kuviewer_desktop_cm_session_layout_presets",
+      "actions": ["select-visible", "selected-export", "delete-confirm", "clear-selection"],
+      "selectedExportKind": "kuviewer.desktop.cmSessionLayouts",
+      "deleteConfirmation": "inline-two-step",
+      "preservesSearchQuery": true,
+      "visibleSelectionUsesSearchResults": true,
+      "noSessionExportImportSchemaChange": true,
+      "noLayoutExportImportSchemaChange": true,
+      "noTauriSchemaChange": true,
+      "noSessionSearch": true,
+      "noDiagnosticFilters": true,
+      "noEndpointMetadata": true,
+      "noCredentialPayload": true,
+      "noRuntimeProfile": true,
+      "noDiagnosticHistory": true,
+      "noToken": true,
+      "noKubeconfig": true,
+      "noSecretValues": true,
+      "noEventsOrLogs": true
+    },
     "sessionLayoutImportExport": {
       "desktopOnly": true,
       "uiOnly": true,
@@ -551,7 +577,7 @@
       "desktop-use-sidecar-profile"
     ],
     "next": [
-      "Desktop CM session layout preset bulk management"
+      "Desktop CM session layout preset folder polish"
     ]
   },
   "remoteConnectionProfile": {
@@ -819,6 +845,7 @@
     "desktop-cm-session-layout-conflict-accessibility",
     "desktop-cm-session-layout-preset-search",
     "desktop-cm-session-layout-preset-rename",
-    "desktop-cm-session-layout-preset-duplicate"
+    "desktop-cm-session-layout-preset-duplicate",
+    "desktop-cm-session-layout-preset-bulk-management"
   ]
 }
