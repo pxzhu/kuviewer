@@ -131,6 +131,8 @@ Desktop CM saved layout folder reorder status history timestamp filter preset he
 
 Desktop CM saved layout folder reorder status history timestamp filter preset help tooltip focus-visible visual regression screenshot artifact manifest retention policy polish makes the manifest's retention contract machine-readable. The disposable manifest declares `retentionPolicy: delete-before-smoke-exit`, `retentionScope: single-smoke-run`, `retentionUntil: explicit-hygiene-cleanup`, and `retentionEnforcedBy: cleanDesktopSmokeArtifactHygieneFiles`, with repo/browser/export/Tauri persistence all set to `none`. The desktop smoke validates those fields before cleanup and still removes the manifest before the smoke exits.
 
+Desktop CM saved layout folder reorder status history timestamp filter preset help tooltip focus-visible visual regression screenshot artifact manifest retention policy documentation polish keeps the retention contract visible in docs and spec checks. The documented persistence fields are `repoPersistence`, `browserPersistence`, `exportPersistence`, and `tauriPayloadPersistence`, and each remains `none` for the disposable smoke manifest.
+
 Existing remote API profile, local sidecar, and direct Kubernetes/keychain paths remain prototype-only scaffolds. The local sidecar no longer starts by default in the desktop product path; it requires `KUVIEWER_DESKTOP_ENABLE_PROTOTYPE_SIDECAR=1` for explicit prototype work. The web app must not expose SSH.
 
 The Flow view is intended to feel closer to real request movement than a generic resource graph. It derives paths such as:
