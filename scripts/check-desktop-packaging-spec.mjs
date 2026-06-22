@@ -98,6 +98,7 @@ requireCondition(
     'desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-visual-regression-screenshot-artifact-manifest-retention-policy-polish',
     'desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-visual-regression-screenshot-artifact-manifest-retention-policy-documentation-polish',
     'desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-visual-regression-screenshot-artifact-manifest-retention-policy-example-polish',
+    'desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-visual-regression-screenshot-artifact-manifest-retention-policy-example-smoke-polish',
   ].includes(spec.status),
   'status must be a known desktop packaging milestone'
 );
@@ -311,6 +312,10 @@ requireCondition(
   phases.includes('desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-visual-regression-screenshot-artifact-manifest-retention-policy-example-polish'),
   'phaseOrder must include desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-visual-regression-screenshot-artifact-manifest-retention-policy-example-polish'
 );
+requireCondition(
+  phases.includes('desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-visual-regression-screenshot-artifact-manifest-retention-policy-example-smoke-polish'),
+  'phaseOrder must include desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-visual-regression-screenshot-artifact-manifest-retention-policy-example-smoke-polish'
+);
 
 await validateBuildPrerequisites(spec);
 await validateDesktopDistributionPolicy(spec);
@@ -399,6 +404,7 @@ if (
     'desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-visual-regression-screenshot-artifact-manifest-retention-policy-polish',
     'desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-visual-regression-screenshot-artifact-manifest-retention-policy-documentation-polish',
     'desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-visual-regression-screenshot-artifact-manifest-retention-policy-example-polish',
+    'desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-visual-regression-screenshot-artifact-manifest-retention-policy-example-smoke-polish',
   ].includes(spec.status)
 ) {
   await validateTauriScaffold(spec.tauri || {});
@@ -3323,6 +3329,37 @@ async function validateCmSshSessionManager(spec) {
     );
   }
   requireCondition(
+    sessionLayoutPresetFolderReorderStatusHistoryTimestampFilterPresetHelpTooltip.screenshotArtifactManifestRetentionExampleSmokeCoverage ===
+      true,
+    'cmSshSessionManager.sessionLayoutPresetFolderReorderStatusHistoryTimestampFilterPresetHelpTooltip.screenshotArtifactManifestRetentionExampleSmokeCoverage must be true'
+  );
+  requireCondition(
+    sessionLayoutPresetFolderReorderStatusHistoryTimestampFilterPresetHelpTooltip.screenshotArtifactManifestRetentionExampleSmokeSpecReadback ===
+      true,
+    'cmSshSessionManager.sessionLayoutPresetFolderReorderStatusHistoryTimestampFilterPresetHelpTooltip.screenshotArtifactManifestRetentionExampleSmokeSpecReadback must be true'
+  );
+  requireCondition(
+    sessionLayoutPresetFolderReorderStatusHistoryTimestampFilterPresetHelpTooltip.screenshotArtifactManifestRetentionExampleSmokeComparison ===
+      'manifest-readback-normalized-to-spec-example',
+    'cmSshSessionManager.sessionLayoutPresetFolderReorderStatusHistoryTimestampFilterPresetHelpTooltip.screenshotArtifactManifestRetentionExampleSmokeComparison must be manifest-readback-normalized-to-spec-example'
+  );
+  requireCondition(
+    sessionLayoutPresetFolderReorderStatusHistoryTimestampFilterPresetHelpTooltip.screenshotArtifactManifestRetentionExampleSmokeGeneratedAtPlaceholder ===
+      '<iso8601-smoke-time>',
+    'cmSshSessionManager.sessionLayoutPresetFolderReorderStatusHistoryTimestampFilterPresetHelpTooltip.screenshotArtifactManifestRetentionExampleSmokeGeneratedAtPlaceholder must be <iso8601-smoke-time>'
+  );
+  requireCondition(
+    JSON.stringify(
+      sessionLayoutPresetFolderReorderStatusHistoryTimestampFilterPresetHelpTooltip.screenshotArtifactManifestRetentionExampleSmokeDynamicArtifactFields
+    ) === JSON.stringify(['byteLength', 'width', 'height', 'schemaVersion']),
+    'cmSshSessionManager.sessionLayoutPresetFolderReorderStatusHistoryTimestampFilterPresetHelpTooltip.screenshotArtifactManifestRetentionExampleSmokeDynamicArtifactFields must list dynamic artifact fields'
+  );
+  requireCondition(
+    sessionLayoutPresetFolderReorderStatusHistoryTimestampFilterPresetHelpTooltip.screenshotArtifactManifestRetentionExampleSmokeForbiddenFieldCheck ===
+      true,
+    'cmSshSessionManager.sessionLayoutPresetFolderReorderStatusHistoryTimestampFilterPresetHelpTooltip.screenshotArtifactManifestRetentionExampleSmokeForbiddenFieldCheck must be true'
+  );
+  requireCondition(
     sessionLayoutPresetFolderReorderStatusHistoryTimestampFilterPresetHelpTooltip.folderCollapseExported === false,
     'cmSshSessionManager.sessionLayoutPresetFolderReorderStatusHistoryTimestampFilterPresetHelpTooltip.folderCollapseExported must be false'
   );
@@ -4270,6 +4307,13 @@ async function validateCmSshSessionManager(spec) {
     'desktop CM session layout reorder history timestamp filter preset help focus-visible visual regression screenshot artifact manifest polish must write safe disposable manifest without credentials',
     'desktop CM session layout reorder history timestamp filter preset help focus-visible visual regression screenshot artifact manifest cleanup polish must remove safe disposable manifest with explicit hygiene cleanup without persistence',
     'desktop CM session layout reorder history timestamp filter preset help focus-visible visual regression screenshot artifact manifest no-persistence polish must keep disposable manifest markers out of browser storage',
+    'desktop CM session layout reorder history timestamp filter preset help focus-visible visual regression screenshot artifact manifest retention policy example smoke polish must compare smoke manifest readback to the spec example',
+    'desktopPackagingSpec',
+    'desktopSmokeArtifactManifestRetentionExample',
+    'buildRetentionExampleFromManifestReadback',
+    'desktopSmokeArtifactManifestRetentionExampleFromReadback',
+    'desktopSmokeArtifactManifestForbiddenFieldMatches',
+    'screenshotArtifactManifestRetentionExampleSmokeComparison',
     'retentionPolicy',
     'delete-before-smoke-exit',
     'retentionScope',
@@ -4421,8 +4465,10 @@ async function validateCmSshSessionManager(spec) {
     requireCondition(text.includes('reorder status history timestamp filter preset help tooltip focus-visible visual regression screenshot artifact manifest no-persistence'), `${label} must document desktop CM session layout folder reorder status history timestamp filter preset help tooltip focus-visible visual regression screenshot artifact manifest no-persistence polish`);
     requireCondition(text.includes('reorder status history timestamp filter preset help tooltip focus-visible visual regression screenshot artifact manifest retention policy'), `${label} must document desktop CM session layout folder reorder status history timestamp filter preset help tooltip focus-visible visual regression screenshot artifact manifest retention policy polish`);
     requireCondition(text.includes('retention policy example'), `${label} must document desktop CM session layout folder reorder status history timestamp filter preset help tooltip focus-visible visual regression screenshot artifact manifest retention policy example polish`);
+    requireCondition(text.includes('retention policy example smoke'), `${label} must document desktop CM session layout folder reorder status history timestamp filter preset help tooltip focus-visible visual regression screenshot artifact manifest retention policy example smoke polish`);
     requireCondition(text.includes('screenshotArtifactManifestRetentionExample'), `${label} must document screenshotArtifactManifestRetentionExample`);
     requireCondition(text.includes('screenshotArtifactManifestRetentionExampleForbiddenFields'), `${label} must document screenshotArtifactManifestRetentionExampleForbiddenFields`);
+    requireCondition(text.includes('buildRetentionExampleFromManifestReadback'), `${label} must document buildRetentionExampleFromManifestReadback`);
     requireCondition(text.includes('<iso8601-smoke-time>'), `${label} must document the retention example generatedAt placeholder`);
     for (const field of retentionDocumentationFields) {
       requireCondition(text.includes(field), `${label} must document retention policy field ${field}`);
