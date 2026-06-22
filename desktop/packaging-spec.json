@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "name": "Kuviewer Desktop CM Session Explorer",
   "goal": "desktop-cm-session-prototype",
-  "status": "desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-visual-regression-screenshot-artifact-manifest-retention-policy-example-smoke-documentation-checker-failure-message-polish",
+  "status": "desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-visual-regression-screenshot-artifact-manifest-retention-policy-example-smoke-documentation-checker-failure-message-documentation-polish",
   "recommendedPackager": "tauri",
   "fallbackPackager": "electron",
   "tauri": {
@@ -1690,6 +1690,30 @@
         "README.md missing required documentation marker for retention example smoke documentation checker persistence guard localStorage"
       ],
       "screenshotArtifactManifestRetentionExampleSmokeDocumentationCheckerFailureMessageNoPersistence": true,
+      "screenshotArtifactManifestRetentionExampleSmokeDocumentationCheckerFailureMessageDocumentationMachineReadable": true,
+      "screenshotArtifactManifestRetentionExampleSmokeDocumentationCheckerFailureMessageDocumentationSurfaces": [
+        "README.md",
+        "desktop/README.md",
+        "desktop/BUILD_PREREQUISITES.md",
+        "CODEX_HANDOFF.md"
+      ],
+      "screenshotArtifactManifestRetentionExampleSmokeDocumentationCheckerFailureMessageDocumentedFields": [
+        "screenshotArtifactManifestRetentionExampleSmokeDocumentationCheckerFailureMessagePolish",
+        "screenshotArtifactManifestRetentionExampleSmokeDocumentationCheckerFailureMessageMachineReadable",
+        "screenshotArtifactManifestRetentionExampleSmokeDocumentationCheckerFailureMessageNeedles",
+        "screenshotArtifactManifestRetentionExampleSmokeDocumentationCheckerFailureMessageExamples",
+        "screenshotArtifactManifestRetentionExampleSmokeDocumentationCheckerFailureMessageNoPersistence"
+      ],
+      "screenshotArtifactManifestRetentionExampleSmokeDocumentationCheckerFailureMessageDocumentedValues": [
+        "missing required documentation marker",
+        "retention example smoke documentation checker needle",
+        "retention example smoke documentation checker persistence guard",
+        "surface",
+        "needle",
+        "README.md missing required documentation marker for retention example smoke documentation checker needle retentionExampleSmokeDocumentationSurfaces",
+        "README.md missing required documentation marker for retention example smoke documentation checker persistence guard localStorage",
+        "requireDocumentationMarker"
+      ],
       "screenshotArtifactOnly": true,
       "screenshotCleanupKnownFilesOnly": true,
       "smokeCoversNoPersistence": true,
@@ -1901,7 +1925,7 @@
       "desktop-use-sidecar-profile"
     ],
     "next": [
-      "Desktop CM session layout preset folder reorder status history timestamp filter preset help tooltip focus-visible visual regression screenshot artifact manifest retention policy example smoke documentation checker failure message documentation polish"
+      "Desktop CM session layout preset folder reorder status history timestamp filter preset help tooltip focus-visible visual regression screenshot artifact manifest retention policy example smoke documentation checker failure message documentation checker polish"
     ]
   },
   "remoteConnectionProfile": {
@@ -2219,6 +2243,7 @@
     "desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-visual-regression-screenshot-artifact-manifest-retention-policy-example-smoke-polish",
     "desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-visual-regression-screenshot-artifact-manifest-retention-policy-example-smoke-documentation-polish",
     "desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-visual-regression-screenshot-artifact-manifest-retention-policy-example-smoke-documentation-checker-polish",
-    "desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-visual-regression-screenshot-artifact-manifest-retention-policy-example-smoke-documentation-checker-failure-message-polish"
+    "desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-visual-regression-screenshot-artifact-manifest-retention-policy-example-smoke-documentation-checker-failure-message-polish",
+    "desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-visual-regression-screenshot-artifact-manifest-retention-policy-example-smoke-documentation-checker-failure-message-documentation-polish"
   ]
 }
