@@ -88,6 +88,7 @@ requireCondition(
     'desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-visual-polish',
     'desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-visual-regression-polish',
     'desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-visual-regression-screenshot-polish',
+    'desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-visual-regression-screenshot-cleanup-polish',
   ].includes(spec.status),
   'status must be a known desktop packaging milestone'
 );
@@ -261,6 +262,10 @@ requireCondition(
   phases.includes('desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-visual-regression-screenshot-polish'),
   'phaseOrder must include desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-visual-regression-screenshot-polish'
 );
+requireCondition(
+  phases.includes('desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-visual-regression-screenshot-cleanup-polish'),
+  'phaseOrder must include desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-visual-regression-screenshot-cleanup-polish'
+);
 
 await validateBuildPrerequisites(spec);
 await validateDesktopDistributionPolicy(spec);
@@ -339,6 +344,7 @@ if (
     'desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-visual-polish',
     'desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-visual-regression-polish',
     'desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-visual-regression-screenshot-polish',
+    'desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-visual-regression-screenshot-cleanup-polish',
   ].includes(spec.status)
 ) {
   await validateTauriScaffold(spec.tauri || {});
@@ -3058,7 +3064,9 @@ async function validateCmSshSessionManager(spec) {
     'smokeCoversFocusVisibleVisualRegression',
     'smokeComparesFocusVisibleIdleHoverFocus',
     'smokeCoversFocusVisibleVisualRegressionScreenshot',
+    'smokeCleansFocusVisibleVisualRegressionScreenshot',
     'screenshotArtifactOnly',
+    'screenshotCleanupKnownFilesOnly',
     'smokeCoversNoPersistence',
     'noPresetPersistence',
     'hiddenShortcutHintPreserved',
@@ -4048,7 +4056,11 @@ async function validateCmSshSessionManager(spec) {
     'desktop CM session layout reorder history timestamp filter preset help focus-visible visual polish must verify Tab focus color scale and tooltip without persistence',
     'desktop CM session layout reorder history timestamp filter preset help focus-visible visual regression polish must compare idle hover focus states without storage',
     'desktop CM session layout reorder history timestamp filter preset help focus-visible visual regression screenshot polish must capture focused help and tooltip PNG artifact without persistence',
+    'desktop CM session layout reorder history timestamp filter preset help focus-visible visual regression screenshot cleanup polish must remove stale focused help PNG before capture without persistence',
     'desktop-cm-focus-visible-help-tooltip.png',
+    'desktopSmokeScreenshotFileNames',
+    'cleanDesktopSmokeScreenshotArtifacts',
+    'fileExists',
     'desktopSmokeOutputDir',
     'buildScreenshotClip',
     'readPngMetadata',
@@ -4163,6 +4175,7 @@ async function validateCmSshSessionManager(spec) {
     requireCondition(text.includes('reorder status history timestamp filter preset help tooltip focus-visible visual'), `${label} must document desktop CM session layout folder reorder status history timestamp filter preset help tooltip focus-visible visual polish`);
     requireCondition(text.includes('reorder status history timestamp filter preset help tooltip focus-visible visual regression'), `${label} must document desktop CM session layout folder reorder status history timestamp filter preset help tooltip focus-visible visual regression polish`);
     requireCondition(text.includes('reorder status history timestamp filter preset help tooltip focus-visible visual regression screenshot'), `${label} must document desktop CM session layout folder reorder status history timestamp filter preset help tooltip focus-visible visual regression screenshot polish`);
+    requireCondition(text.includes('reorder status history timestamp filter preset help tooltip focus-visible visual regression screenshot cleanup'), `${label} must document desktop CM session layout folder reorder status history timestamp filter preset help tooltip focus-visible visual regression screenshot cleanup polish`);
     requireCondition(text.includes('export/import') || text.includes('session export'), `${label} must document desktop CM session export/import`);
     requireCondition(text.includes('web app must not expose SSH'), `${label} must document that the web app must not expose SSH`);
   }
