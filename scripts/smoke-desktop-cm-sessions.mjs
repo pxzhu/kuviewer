@@ -1138,6 +1138,18 @@ async function smokeDesktopRuntime(browser, url) {
     const desktopSmokeArtifactFileNamesAfterFinalKnownCleanup = await listDesktopSmokeArtifactFileNames(desktopSmokeOutputDir);
     const cleanedDesktopSmokeArtifactHygienePaths = await cleanDesktopSmokeArtifactHygieneFiles(desktopSmokeOutputDir);
     const desktopSmokeArtifactFileNamesAfterHygieneCleanup = await listDesktopSmokeArtifactFileNames(desktopSmokeOutputDir);
+    const desktopSmokeArtifactManifestExistsAfterHygieneCleanup = await fileExists(desktopSmokeArtifactManifestPath);
+    const desktopSmokeArtifactManifestCleanupReceipt = {
+      cleanupPathIncluded: cleanedDesktopSmokeArtifactHygienePaths.includes(desktopSmokeArtifactManifestPath),
+      manifestFileName: path.basename(desktopSmokeArtifactManifestPath),
+      preservedByKnownCleanup: desktopSmokeArtifactManifestExistsAfterFinalKnownCleanup,
+      remainingFiles: desktopSmokeArtifactFileNamesAfterHygieneCleanup.length,
+      removedByHygieneCleanup: !desktopSmokeArtifactManifestExistsAfterHygieneCleanup,
+      storage: 'memory-only',
+    };
+    const desktopSmokeArtifactManifestCleanupReceiptText = JSON.stringify(
+      desktopSmokeArtifactManifestCleanupReceipt,
+    );
     requireCondition(
       finalCleanedDesktopSmokeScreenshotPaths.includes(layoutReorderHistoryPresetHelpScreenshotPath) &&
         finalCleanedDesktopSmokeScreenshotPaths.includes(layoutReorderHistoryPresetHelpScreenshotMetadataPath) &&
@@ -1152,6 +1164,7 @@ async function smokeDesktopRuntime(browser, url) {
         desktopSmokeArtifactManifestExistsAfterFinalKnownCleanup &&
         cleanedDesktopSmokeArtifactHygienePaths.includes(desktopSmokeArtifactHygieneSentinelPath) &&
         cleanedDesktopSmokeArtifactHygienePaths.includes(desktopSmokeArtifactManifestPath) &&
+        !desktopSmokeArtifactManifestExistsAfterHygieneCleanup &&
         desktopSmokeArtifactFileNamesAfterFinalKnownCleanup.length === 2 &&
         desktopSmokeArtifactFileNamesAfterFinalKnownCleanup[0] === 'desktop-cm-artifact-hygiene-sentinel.keep' &&
         desktopSmokeArtifactFileNamesAfterFinalKnownCleanup[1] === 'desktop-cm-artifact-manifest.json' &&
@@ -1159,6 +1172,18 @@ async function smokeDesktopRuntime(browser, url) {
         desktopSmokeArtifactHygieneFileNames.includes('desktop-cm-artifact-hygiene-sentinel.keep') &&
         desktopSmokeArtifactManifestFileNames.includes('desktop-cm-artifact-manifest.json'),
       'desktop CM session layout reorder history timestamp filter preset help focus-visible visual regression screenshot artifact directory hygiene polish must preserve sentinel during known cleanup and leave output directory empty after explicit hygiene cleanup'
+    );
+    requireCondition(
+      desktopSmokeArtifactManifestCleanupReceipt.manifestFileName === 'desktop-cm-artifact-manifest.json' &&
+        desktopSmokeArtifactManifestCleanupReceipt.preservedByKnownCleanup &&
+        desktopSmokeArtifactManifestCleanupReceipt.removedByHygieneCleanup &&
+        desktopSmokeArtifactManifestCleanupReceipt.cleanupPathIncluded &&
+        desktopSmokeArtifactManifestCleanupReceipt.remainingFiles === 0 &&
+        desktopSmokeArtifactManifestCleanupReceipt.storage === 'memory-only' &&
+        !/(https?:|admin_token|access_token|refresh_token|bearer|credential|private|secret|kubeconfig|BEGIN )/i.test(
+          desktopSmokeArtifactManifestCleanupReceiptText,
+        ),
+      'desktop CM session layout reorder history timestamp filter preset help focus-visible visual regression screenshot artifact manifest cleanup polish must remove safe disposable manifest with explicit hygiene cleanup without persistence'
     );
     requireCondition(
       desktopSmokeArtifactManifestReadback.schemaVersion === 1 &&

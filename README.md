@@ -125,6 +125,8 @@ Desktop CM saved layout folder reorder status history timestamp filter preset he
 
 Desktop CM saved layout folder reorder status history timestamp filter preset help tooltip focus-visible visual regression screenshot artifact manifest polish adds a disposable manifest for that smoke artifact set. The manifest lists only known file names, media types, roles, transient cleanup policy, and safe PNG dimensions/byte length for the focused-help screenshot. It does not include URLs, credentials, kubeconfigs, Secret values, runtime profiles, diagnostics, Events, logs, or raw app data, and hygiene cleanup removes it before the smoke exits.
 
+Desktop CM saved layout folder reorder status history timestamp filter preset help tooltip focus-visible visual regression screenshot artifact manifest cleanup polish verifies that cleanup contract directly. The desktop smoke proves the disposable manifest survives known screenshot cleanup, is listed in the explicit hygiene cleanup paths, is absent after hygiene cleanup, and records the cleanup receipt in memory only. No cleanup receipt, manifest content, URL, credential, kubeconfig, Secret value, runtime profile, diagnostic history, Event, log, or raw app data is persisted, exported, sent through Tauri, or stored in browser storage.
+
 Existing remote API profile, local sidecar, and direct Kubernetes/keychain paths remain prototype-only scaffolds. The local sidecar no longer starts by default in the desktop product path; it requires `KUVIEWER_DESKTOP_ENABLE_PROTOTYPE_SIDECAR=1` for explicit prototype work. The web app must not expose SSH.
 
 The Flow view is intended to feel closer to real request movement than a generic resource graph. It derives paths such as:
