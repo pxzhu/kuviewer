@@ -99,6 +99,7 @@ requireCondition(
     'desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-visual-regression-screenshot-artifact-manifest-retention-policy-documentation-polish',
     'desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-visual-regression-screenshot-artifact-manifest-retention-policy-example-polish',
     'desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-visual-regression-screenshot-artifact-manifest-retention-policy-example-smoke-polish',
+    'desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-visual-regression-screenshot-artifact-manifest-retention-policy-example-smoke-documentation-polish',
   ].includes(spec.status),
   'status must be a known desktop packaging milestone'
 );
@@ -316,6 +317,10 @@ requireCondition(
   phases.includes('desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-visual-regression-screenshot-artifact-manifest-retention-policy-example-smoke-polish'),
   'phaseOrder must include desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-visual-regression-screenshot-artifact-manifest-retention-policy-example-smoke-polish'
 );
+requireCondition(
+  phases.includes('desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-visual-regression-screenshot-artifact-manifest-retention-policy-example-smoke-documentation-polish'),
+  'phaseOrder must include desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-visual-regression-screenshot-artifact-manifest-retention-policy-example-smoke-documentation-polish'
+);
 
 await validateBuildPrerequisites(spec);
 await validateDesktopDistributionPolicy(spec);
@@ -405,6 +410,7 @@ if (
     'desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-visual-regression-screenshot-artifact-manifest-retention-policy-documentation-polish',
     'desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-visual-regression-screenshot-artifact-manifest-retention-policy-example-polish',
     'desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-visual-regression-screenshot-artifact-manifest-retention-policy-example-smoke-polish',
+    'desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-visual-regression-screenshot-artifact-manifest-retention-policy-example-smoke-documentation-polish',
   ].includes(spec.status)
 ) {
   await validateTauriScaffold(spec.tauri || {});
@@ -3359,6 +3365,51 @@ async function validateCmSshSessionManager(spec) {
       true,
     'cmSshSessionManager.sessionLayoutPresetFolderReorderStatusHistoryTimestampFilterPresetHelpTooltip.screenshotArtifactManifestRetentionExampleSmokeForbiddenFieldCheck must be true'
   );
+  const retentionExampleSmokeDocumentationSurfaces = [
+    'README.md',
+    'desktop/README.md',
+    'desktop/BUILD_PREREQUISITES.md',
+    'CODEX_HANDOFF.md',
+  ];
+  const retentionExampleSmokeDocumentedFields = [
+    'screenshotArtifactManifestRetentionExampleSmokeSpecReadback',
+    'screenshotArtifactManifestRetentionExampleSmokeComparison',
+    'screenshotArtifactManifestRetentionExampleSmokeGeneratedAtPlaceholder',
+    'screenshotArtifactManifestRetentionExampleSmokeDynamicArtifactFields',
+    'screenshotArtifactManifestRetentionExampleSmokeForbiddenFieldCheck',
+  ];
+  const retentionExampleSmokeDocumentedValues = [
+    'manifest-readback-normalized-to-spec-example',
+    '<iso8601-smoke-time>',
+    'byteLength',
+    'width',
+    'height',
+    'schemaVersion',
+    'buildRetentionExampleFromManifestReadback',
+  ];
+  requireCondition(
+    sessionLayoutPresetFolderReorderStatusHistoryTimestampFilterPresetHelpTooltip.screenshotArtifactManifestRetentionExampleSmokeDocumentationMachineReadable ===
+      true,
+    'cmSshSessionManager.sessionLayoutPresetFolderReorderStatusHistoryTimestampFilterPresetHelpTooltip.screenshotArtifactManifestRetentionExampleSmokeDocumentationMachineReadable must be true'
+  );
+  requireCondition(
+    JSON.stringify(
+      sessionLayoutPresetFolderReorderStatusHistoryTimestampFilterPresetHelpTooltip.screenshotArtifactManifestRetentionExampleSmokeDocumentationSurfaces
+    ) === JSON.stringify(retentionExampleSmokeDocumentationSurfaces),
+    'cmSshSessionManager.sessionLayoutPresetFolderReorderStatusHistoryTimestampFilterPresetHelpTooltip.screenshotArtifactManifestRetentionExampleSmokeDocumentationSurfaces must list required docs'
+  );
+  requireCondition(
+    JSON.stringify(
+      sessionLayoutPresetFolderReorderStatusHistoryTimestampFilterPresetHelpTooltip.screenshotArtifactManifestRetentionExampleSmokeDocumentedFields
+    ) === JSON.stringify(retentionExampleSmokeDocumentedFields),
+    'cmSshSessionManager.sessionLayoutPresetFolderReorderStatusHistoryTimestampFilterPresetHelpTooltip.screenshotArtifactManifestRetentionExampleSmokeDocumentedFields must list smoke documentation fields'
+  );
+  requireCondition(
+    JSON.stringify(
+      sessionLayoutPresetFolderReorderStatusHistoryTimestampFilterPresetHelpTooltip.screenshotArtifactManifestRetentionExampleSmokeDocumentedValues
+    ) === JSON.stringify(retentionExampleSmokeDocumentedValues),
+    'cmSshSessionManager.sessionLayoutPresetFolderReorderStatusHistoryTimestampFilterPresetHelpTooltip.screenshotArtifactManifestRetentionExampleSmokeDocumentedValues must list smoke documentation values'
+  );
   requireCondition(
     sessionLayoutPresetFolderReorderStatusHistoryTimestampFilterPresetHelpTooltip.folderCollapseExported === false,
     'cmSshSessionManager.sessionLayoutPresetFolderReorderStatusHistoryTimestampFilterPresetHelpTooltip.folderCollapseExported must be false'
@@ -4470,6 +4521,12 @@ async function validateCmSshSessionManager(spec) {
     requireCondition(text.includes('screenshotArtifactManifestRetentionExampleForbiddenFields'), `${label} must document screenshotArtifactManifestRetentionExampleForbiddenFields`);
     requireCondition(text.includes('buildRetentionExampleFromManifestReadback'), `${label} must document buildRetentionExampleFromManifestReadback`);
     requireCondition(text.includes('<iso8601-smoke-time>'), `${label} must document the retention example generatedAt placeholder`);
+    for (const field of retentionExampleSmokeDocumentedFields) {
+      requireCondition(text.includes(field), `${label} must document retention example smoke field ${field}`);
+    }
+    for (const value of retentionExampleSmokeDocumentedValues) {
+      requireCondition(text.includes(value), `${label} must document retention example smoke value ${value}`);
+    }
     for (const field of retentionDocumentationFields) {
       requireCondition(text.includes(field), `${label} must document retention policy field ${field}`);
     }
