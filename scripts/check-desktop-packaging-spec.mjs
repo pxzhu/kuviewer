@@ -91,6 +91,7 @@ requireCondition(
     'desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-visual-regression-screenshot-cleanup-polish',
     'desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-visual-regression-screenshot-metadata-polish',
     'desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-visual-regression-screenshot-metadata-cleanup-polish',
+    'desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-visual-regression-screenshot-artifact-directory-hygiene-polish',
   ].includes(spec.status),
   'status must be a known desktop packaging milestone'
 );
@@ -276,6 +277,10 @@ requireCondition(
   phases.includes('desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-visual-regression-screenshot-metadata-cleanup-polish'),
   'phaseOrder must include desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-visual-regression-screenshot-metadata-cleanup-polish'
 );
+requireCondition(
+  phases.includes('desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-visual-regression-screenshot-artifact-directory-hygiene-polish'),
+  'phaseOrder must include desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-visual-regression-screenshot-artifact-directory-hygiene-polish'
+);
 
 await validateBuildPrerequisites(spec);
 await validateDesktopDistributionPolicy(spec);
@@ -357,6 +362,7 @@ if (
     'desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-visual-regression-screenshot-cleanup-polish',
     'desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-visual-regression-screenshot-metadata-polish',
     'desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-visual-regression-screenshot-metadata-cleanup-polish',
+    'desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-visual-regression-screenshot-artifact-directory-hygiene-polish',
   ].includes(spec.status)
 ) {
   await validateTauriScaffold(spec.tauri || {});
@@ -3081,6 +3087,9 @@ async function validateCmSshSessionManager(spec) {
     'screenshotMetadataSafeSidecar',
     'smokeCleansFocusVisibleVisualRegressionScreenshotMetadata',
     'screenshotMetadataCleanupKnownFilesOnly',
+    'smokeCoversFocusVisibleVisualRegressionScreenshotArtifactDirectoryHygiene',
+    'screenshotArtifactDirectoryHygieneSentinelPreserved',
+    'screenshotArtifactDirectoryEmptyAfterHygieneCleanup',
     'screenshotArtifactOnly',
     'screenshotCleanupKnownFilesOnly',
     'smokeCoversNoPersistence',
@@ -4075,8 +4084,13 @@ async function validateCmSshSessionManager(spec) {
     'desktop CM session layout reorder history timestamp filter preset help focus-visible visual regression screenshot cleanup polish must remove stale focused help PNG before capture without persistence',
     'desktop CM session layout reorder history timestamp filter preset help focus-visible visual regression screenshot metadata polish must write safe artifact sidecar without secrets',
     'desktop CM session layout reorder history timestamp filter preset help focus-visible visual regression screenshot metadata cleanup polish must remove focused help PNG and safe sidecar after verification without persistence',
+    'desktop CM session layout reorder history timestamp filter preset help focus-visible visual regression screenshot artifact directory hygiene polish must preserve sentinel during known cleanup and leave output directory empty after explicit hygiene cleanup',
     'desktop-cm-focus-visible-help-tooltip.png',
     'desktop-cm-focus-visible-help-tooltip.metadata.json',
+    'desktop-cm-artifact-hygiene-sentinel.keep',
+    'desktopSmokeArtifactHygieneFileNames',
+    'cleanDesktopSmokeArtifactHygieneSentinels',
+    'listDesktopSmokeArtifactFileNames',
     'desktopSmokeScreenshotMetadataFileNames',
     'buildScreenshotMetadata',
     'kuviewer.desktopCm.visualRegressionScreenshot',
@@ -4200,6 +4214,7 @@ async function validateCmSshSessionManager(spec) {
     requireCondition(text.includes('reorder status history timestamp filter preset help tooltip focus-visible visual regression screenshot cleanup'), `${label} must document desktop CM session layout folder reorder status history timestamp filter preset help tooltip focus-visible visual regression screenshot cleanup polish`);
     requireCondition(text.includes('reorder status history timestamp filter preset help tooltip focus-visible visual regression screenshot metadata'), `${label} must document desktop CM session layout folder reorder status history timestamp filter preset help tooltip focus-visible visual regression screenshot metadata polish`);
     requireCondition(text.includes('reorder status history timestamp filter preset help tooltip focus-visible visual regression screenshot metadata cleanup'), `${label} must document desktop CM session layout folder reorder status history timestamp filter preset help tooltip focus-visible visual regression screenshot metadata cleanup polish`);
+    requireCondition(text.includes('reorder status history timestamp filter preset help tooltip focus-visible visual regression screenshot artifact directory hygiene'), `${label} must document desktop CM session layout folder reorder status history timestamp filter preset help tooltip focus-visible visual regression screenshot artifact directory hygiene polish`);
     requireCondition(text.includes('export/import') || text.includes('session export'), `${label} must document desktop CM session export/import`);
     requireCondition(text.includes('web app must not expose SSH'), `${label} must document that the web app must not expose SSH`);
   }

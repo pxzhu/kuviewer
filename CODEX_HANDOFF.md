@@ -231,7 +231,8 @@ https://kuviewer.example.com/
    - Desktop CM session layout preset folder reorder status history timestamp filter preset help tooltip focus-visible visual regression screenshot cleanup polish는 완료됐다. Desktop smoke는 캡처 전 known focused-help PNG filename만 삭제하고 path가 비어 있음을 확인한 뒤 fresh PNG를 쓰며 cleanup metadata는 rendered DOM/test artifact-only이고 저장/내보내기/Tauri payload에는 포함하지 않는다.
    - Desktop CM session layout preset folder reorder status history timestamp filter preset help tooltip focus-visible visual regression screenshot metadata polish는 완료됐다. Desktop smoke는 PNG 옆에 safe JSON sidecar를 쓰고 schema/kind/file/marker/token/timestamp/byte/dimensions/clip만 담으며 URL/token/credential/kubeconfig/Secret/logs는 포함하지 않는다.
    - Desktop CM session layout preset folder reorder status history timestamp filter preset help tooltip focus-visible visual regression screenshot metadata cleanup polish는 완료됐다. Desktop smoke는 focused-help PNG와 safe sidecar를 검증한 뒤 known filename 둘 다 삭제하고 더 이상 존재하지 않음을 확인한다. cleanup은 arbitrary directory scan 없이 smoke output의 known artifacts에만 적용된다.
-   - 다음 확장 후보는 Desktop CM session layout preset folder reorder status history timestamp filter preset help tooltip focus-visible visual regression screenshot artifact directory hygiene polish다.
+   - Desktop CM session layout preset folder reorder status history timestamp filter preset help tooltip focus-visible visual regression screenshot artifact directory hygiene polish는 완료됐다. Desktop smoke는 known sentinel을 써서 screenshot cleanup이 unrelated file을 보존하는지 확인하고, 명시적 hygiene cleanup 뒤 output directory에 file이 남지 않는지 검증한다.
+   - 다음 확장 후보는 Desktop CM session layout preset folder reorder status history timestamp filter preset help tooltip focus-visible visual regression screenshot artifact manifest polish다.
 
 4. 실제 Kubernetes 연결 설계
    - 브라우저에 kube credential을 직접 넣지 않는 방향 유지.
