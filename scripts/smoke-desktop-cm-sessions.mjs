@@ -1,7 +1,7 @@
 import { pathToFileURL } from 'node:url';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
@@ -15,6 +15,7 @@ const desktopSmokeOutputDir =
   args.output || process.env.KUVIEWER_DESKTOP_SMOKE_OUTPUT || path.join(repoRoot, 'website', 'artifacts', 'visual-smoke', 'desktop-cm-sessions');
 const desktopSmokeScreenshotFileNames = ['desktop-cm-focus-visible-help-tooltip.png'];
 const desktopSmokeScreenshotMetadataFileNames = ['desktop-cm-focus-visible-help-tooltip.metadata.json'];
+const desktopSmokeArtifactHygieneFileNames = ['desktop-cm-artifact-hygiene-sentinel.keep'];
 
 await waitForPreview(baseUrl);
 
@@ -865,10 +866,24 @@ async function smokeDesktopRuntime(browser, url) {
       desktopSmokeOutputDir,
       'desktop-cm-focus-visible-help-tooltip.metadata.json',
     );
+    const desktopSmokeArtifactHygieneSentinelPath = path.join(
+      desktopSmokeOutputDir,
+      'desktop-cm-artifact-hygiene-sentinel.keep',
+    );
+    await mkdir(desktopSmokeOutputDir, { recursive: true });
+    await writeFile(
+      desktopSmokeArtifactHygieneSentinelPath,
+      'kuviewer desktop smoke artifact hygiene sentinel\n',
+      'utf8',
+    );
+    const desktopSmokeArtifactFileNamesBeforeKnownCleanup = await listDesktopSmokeArtifactFileNames(desktopSmokeOutputDir);
     const cleanedDesktopSmokeScreenshotPaths = await cleanDesktopSmokeScreenshotArtifacts(desktopSmokeOutputDir);
     const layoutReorderHistoryPresetHelpScreenshotExistsAfterCleanup = await fileExists(layoutReorderHistoryPresetHelpScreenshotPath);
     const layoutReorderHistoryPresetHelpScreenshotMetadataExistsAfterCleanup = await fileExists(
       layoutReorderHistoryPresetHelpScreenshotMetadataPath,
+    );
+    const desktopSmokeArtifactHygieneSentinelExistsAfterInitialCleanup = await fileExists(
+      desktopSmokeArtifactHygieneSentinelPath,
     );
     await page.screenshot({
       animations: 'disabled',
@@ -1088,12 +1103,29 @@ async function smokeDesktopRuntime(browser, url) {
     const layoutReorderHistoryPresetHelpScreenshotMetadataExistsAfterFinalCleanup = await fileExists(
       layoutReorderHistoryPresetHelpScreenshotMetadataPath,
     );
+    const desktopSmokeArtifactHygieneSentinelExistsAfterFinalKnownCleanup = await fileExists(
+      desktopSmokeArtifactHygieneSentinelPath,
+    );
+    const desktopSmokeArtifactFileNamesAfterFinalKnownCleanup = await listDesktopSmokeArtifactFileNames(desktopSmokeOutputDir);
+    const cleanedDesktopSmokeArtifactHygienePaths = await cleanDesktopSmokeArtifactHygieneSentinels(desktopSmokeOutputDir);
+    const desktopSmokeArtifactFileNamesAfterHygieneCleanup = await listDesktopSmokeArtifactFileNames(desktopSmokeOutputDir);
     requireCondition(
       finalCleanedDesktopSmokeScreenshotPaths.includes(layoutReorderHistoryPresetHelpScreenshotPath) &&
         finalCleanedDesktopSmokeScreenshotPaths.includes(layoutReorderHistoryPresetHelpScreenshotMetadataPath) &&
         !layoutReorderHistoryPresetHelpScreenshotExistsAfterFinalCleanup &&
         !layoutReorderHistoryPresetHelpScreenshotMetadataExistsAfterFinalCleanup,
       'desktop CM session layout reorder history timestamp filter preset help focus-visible visual regression screenshot metadata cleanup polish must remove focused help PNG and safe sidecar after verification without persistence'
+    );
+    requireCondition(
+      desktopSmokeArtifactFileNamesBeforeKnownCleanup.includes('desktop-cm-artifact-hygiene-sentinel.keep') &&
+        desktopSmokeArtifactHygieneSentinelExistsAfterInitialCleanup &&
+        desktopSmokeArtifactHygieneSentinelExistsAfterFinalKnownCleanup &&
+        cleanedDesktopSmokeArtifactHygienePaths.includes(desktopSmokeArtifactHygieneSentinelPath) &&
+        desktopSmokeArtifactFileNamesAfterFinalKnownCleanup.length === 1 &&
+        desktopSmokeArtifactFileNamesAfterFinalKnownCleanup[0] === 'desktop-cm-artifact-hygiene-sentinel.keep' &&
+        desktopSmokeArtifactFileNamesAfterHygieneCleanup.length === 0 &&
+        desktopSmokeArtifactHygieneFileNames.includes('desktop-cm-artifact-hygiene-sentinel.keep'),
+      'desktop CM session layout reorder history timestamp filter preset help focus-visible visual regression screenshot artifact directory hygiene polish must preserve sentinel during known cleanup and leave output directory empty after explicit hygiene cleanup'
     );
     requireCondition(
       layoutReorderHistoryPresetHelpTooltipRole === 'tooltip' &&
@@ -2353,6 +2385,28 @@ async function cleanDesktopSmokeScreenshotArtifacts(outputDir) {
   const artifactPaths = [...desktopSmokeScreenshotFileNames, ...desktopSmokeScreenshotMetadataFileNames].map((fileName) => path.join(outputDir, fileName));
   await Promise.all(artifactPaths.map((filePath) => rm(filePath, { force: true })));
   return artifactPaths;
+}
+
+async function cleanDesktopSmokeArtifactHygieneSentinels(outputDir) {
+  await mkdir(outputDir, { recursive: true });
+  const artifactPaths = desktopSmokeArtifactHygieneFileNames.map((fileName) => path.join(outputDir, fileName));
+  await Promise.all(artifactPaths.map((filePath) => rm(filePath, { force: true })));
+  return artifactPaths;
+}
+
+async function listDesktopSmokeArtifactFileNames(outputDir) {
+  try {
+    const entries = await readdir(outputDir, { withFileTypes: true });
+    return entries
+      .filter((entry) => entry.isFile())
+      .map((entry) => entry.name)
+      .sort();
+  } catch (error) {
+    if (error && typeof error === 'object' && 'code' in error && error.code === 'ENOENT') {
+      return [];
+    }
+    throw error;
+  }
 }
 
 async function fileExists(filePath) {
