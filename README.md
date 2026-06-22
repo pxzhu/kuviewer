@@ -123,6 +123,8 @@ Desktop CM saved layout folder reorder status history timestamp filter preset he
 
 Desktop CM saved layout folder reorder status history timestamp filter preset help tooltip focus-visible visual regression screenshot artifact directory hygiene polish verifies the smoke output directory itself stays tidy. The desktop smoke writes a known sentinel file before screenshot cleanup, proves screenshot cleanup preserves that unrelated sentinel, then explicitly removes the sentinel and verifies the directory has no remaining files. This checks scoped cleanup behavior without storing app data or deleting arbitrary paths.
 
+Desktop CM saved layout folder reorder status history timestamp filter preset help tooltip focus-visible visual regression screenshot artifact manifest polish adds a disposable manifest for that smoke artifact set. The manifest lists only known file names, media types, roles, transient cleanup policy, and safe PNG dimensions/byte length for the focused-help screenshot. It does not include URLs, credentials, kubeconfigs, Secret values, runtime profiles, diagnostics, Events, logs, or raw app data, and hygiene cleanup removes it before the smoke exits.
+
 Existing remote API profile, local sidecar, and direct Kubernetes/keychain paths remain prototype-only scaffolds. The local sidecar no longer starts by default in the desktop product path; it requires `KUVIEWER_DESKTOP_ENABLE_PROTOTYPE_SIDECAR=1` for explicit prototype work. The web app must not expose SSH.
 
 The Flow view is intended to feel closer to real request movement than a generic resource graph. It derives paths such as:
