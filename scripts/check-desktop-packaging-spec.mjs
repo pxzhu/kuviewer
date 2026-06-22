@@ -15,6 +15,13 @@ function requireCondition(condition, message) {
   }
 }
 
+function requireDocumentationMarker(text, needle, label, category) {
+  requireCondition(
+    text.includes(needle),
+    `${label} missing required documentation marker for ${category} ${needle} (surface=${label}; needle=${needle})`
+  );
+}
+
 requireCondition(spec.schemaVersion === 1, 'schemaVersion must be 1');
 requireCondition(spec.goal === 'desktop-cm-session-prototype', 'goal must describe the desktop CM/SSH session prototype');
 requireCondition(
@@ -101,6 +108,7 @@ requireCondition(
     'desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-visual-regression-screenshot-artifact-manifest-retention-policy-example-smoke-polish',
     'desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-visual-regression-screenshot-artifact-manifest-retention-policy-example-smoke-documentation-polish',
     'desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-visual-regression-screenshot-artifact-manifest-retention-policy-example-smoke-documentation-checker-polish',
+    'desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-visual-regression-screenshot-artifact-manifest-retention-policy-example-smoke-documentation-checker-failure-message-polish',
   ].includes(spec.status),
   'status must be a known desktop packaging milestone'
 );
@@ -326,6 +334,10 @@ requireCondition(
   phases.includes('desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-visual-regression-screenshot-artifact-manifest-retention-policy-example-smoke-documentation-checker-polish'),
   'phaseOrder must include desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-visual-regression-screenshot-artifact-manifest-retention-policy-example-smoke-documentation-checker-polish'
 );
+requireCondition(
+  phases.includes('desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-visual-regression-screenshot-artifact-manifest-retention-policy-example-smoke-documentation-checker-failure-message-polish'),
+  'phaseOrder must include desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-visual-regression-screenshot-artifact-manifest-retention-policy-example-smoke-documentation-checker-failure-message-polish'
+);
 
 await validateBuildPrerequisites(spec);
 await validateDesktopDistributionPolicy(spec);
@@ -417,6 +429,7 @@ if (
     'desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-visual-regression-screenshot-artifact-manifest-retention-policy-example-smoke-polish',
     'desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-visual-regression-screenshot-artifact-manifest-retention-policy-example-smoke-documentation-polish',
     'desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-visual-regression-screenshot-artifact-manifest-retention-policy-example-smoke-documentation-checker-polish',
+    'desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-visual-regression-screenshot-artifact-manifest-retention-policy-example-smoke-documentation-checker-failure-message-polish',
   ].includes(spec.status)
 ) {
   await validateTauriScaffold(spec.tauri || {});
@@ -3415,6 +3428,17 @@ async function validateCmSshSessionManager(spec) {
     'export/import',
     'Tauri payload',
   ];
+  const retentionExampleSmokeDocumentationCheckerFailureMessageNeedles = [
+    'missing required documentation marker',
+    'retention example smoke documentation checker needle',
+    'retention example smoke documentation checker persistence guard',
+    'surface',
+    'needle',
+  ];
+  const retentionExampleSmokeDocumentationCheckerFailureMessageExamples = [
+    'README.md missing required documentation marker for retention example smoke documentation checker needle retentionExampleSmokeDocumentationSurfaces',
+    'README.md missing required documentation marker for retention example smoke documentation checker persistence guard localStorage',
+  ];
   requireCondition(
     sessionLayoutPresetFolderReorderStatusHistoryTimestampFilterPresetHelpTooltip.screenshotArtifactManifestRetentionExampleSmokeDocumentationMachineReadable ===
       true,
@@ -3466,9 +3490,39 @@ async function validateCmSshSessionManager(spec) {
     ) === JSON.stringify(retentionExampleSmokeDocumentationCheckerForbiddenPersistence),
     'cmSshSessionManager.sessionLayoutPresetFolderReorderStatusHistoryTimestampFilterPresetHelpTooltip.screenshotArtifactManifestRetentionExampleSmokeDocumentationCheckerForbiddenPersistence must list forbidden persistence surfaces'
   );
+  requireCondition(
+    sessionLayoutPresetFolderReorderStatusHistoryTimestampFilterPresetHelpTooltip.screenshotArtifactManifestRetentionExampleSmokeDocumentationCheckerFailureMessagePolish ===
+      true,
+    'cmSshSessionManager.sessionLayoutPresetFolderReorderStatusHistoryTimestampFilterPresetHelpTooltip.screenshotArtifactManifestRetentionExampleSmokeDocumentationCheckerFailureMessagePolish must be true'
+  );
+  requireCondition(
+    sessionLayoutPresetFolderReorderStatusHistoryTimestampFilterPresetHelpTooltip.screenshotArtifactManifestRetentionExampleSmokeDocumentationCheckerFailureMessageMachineReadable ===
+      true,
+    'cmSshSessionManager.sessionLayoutPresetFolderReorderStatusHistoryTimestampFilterPresetHelpTooltip.screenshotArtifactManifestRetentionExampleSmokeDocumentationCheckerFailureMessageMachineReadable must be true'
+  );
+  requireCondition(
+    JSON.stringify(
+      sessionLayoutPresetFolderReorderStatusHistoryTimestampFilterPresetHelpTooltip.screenshotArtifactManifestRetentionExampleSmokeDocumentationCheckerFailureMessageNeedles
+    ) === JSON.stringify(retentionExampleSmokeDocumentationCheckerFailureMessageNeedles),
+    'cmSshSessionManager.sessionLayoutPresetFolderReorderStatusHistoryTimestampFilterPresetHelpTooltip.screenshotArtifactManifestRetentionExampleSmokeDocumentationCheckerFailureMessageNeedles must list failure message markers'
+  );
+  requireCondition(
+    JSON.stringify(
+      sessionLayoutPresetFolderReorderStatusHistoryTimestampFilterPresetHelpTooltip.screenshotArtifactManifestRetentionExampleSmokeDocumentationCheckerFailureMessageExamples
+    ) === JSON.stringify(retentionExampleSmokeDocumentationCheckerFailureMessageExamples),
+    'cmSshSessionManager.sessionLayoutPresetFolderReorderStatusHistoryTimestampFilterPresetHelpTooltip.screenshotArtifactManifestRetentionExampleSmokeDocumentationCheckerFailureMessageExamples must list safe failure message examples'
+  );
+  requireCondition(
+    sessionLayoutPresetFolderReorderStatusHistoryTimestampFilterPresetHelpTooltip.screenshotArtifactManifestRetentionExampleSmokeDocumentationCheckerFailureMessageNoPersistence ===
+      true,
+    'cmSshSessionManager.sessionLayoutPresetFolderReorderStatusHistoryTimestampFilterPresetHelpTooltip.screenshotArtifactManifestRetentionExampleSmokeDocumentationCheckerFailureMessageNoPersistence must be true'
+  );
   const checkerText = await readTextFile('scripts/check-desktop-packaging-spec.mjs', 'desktop packaging spec checker');
   for (const needle of retentionExampleSmokeDocumentationCheckerNeedles) {
     requireCondition(checkerText.includes(needle), `desktop packaging spec checker must include retention documentation checker needle ${needle}`);
+  }
+  for (const needle of retentionExampleSmokeDocumentationCheckerFailureMessageNeedles) {
+    requireCondition(checkerText.includes(needle), `desktop packaging spec checker must include retention documentation checker failure message needle ${needle}`);
   }
   requireCondition(
     sessionLayoutPresetFolderReorderStatusHistoryTimestampFilterPresetHelpTooltip.folderCollapseExported === false,
@@ -4588,10 +4642,16 @@ async function validateCmSshSessionManager(spec) {
       requireCondition(text.includes(value), `${label} must document retention example smoke value ${value}`);
     }
     for (const needle of retentionExampleSmokeDocumentationCheckerNeedles) {
-      requireCondition(text.includes(needle), `${label} must document retention example smoke documentation checker needle ${needle}`);
+      requireDocumentationMarker(text, needle, label, 'retention example smoke documentation checker needle');
     }
     for (const persistence of retentionExampleSmokeDocumentationCheckerForbiddenPersistence) {
-      requireCondition(text.includes(persistence), `${label} must document retention example smoke documentation checker persistence guard ${persistence}`);
+      requireDocumentationMarker(text, persistence, label, 'retention example smoke documentation checker persistence guard');
+    }
+    for (const needle of retentionExampleSmokeDocumentationCheckerFailureMessageNeedles) {
+      requireDocumentationMarker(text, needle, label, 'retention example smoke documentation checker failure message needle');
+    }
+    for (const example of retentionExampleSmokeDocumentationCheckerFailureMessageExamples) {
+      requireDocumentationMarker(text, example, label, 'retention example smoke documentation checker failure message example');
     }
     for (const field of retentionDocumentationFields) {
       requireCondition(text.includes(field), `${label} must document retention policy field ${field}`);
