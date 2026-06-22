@@ -1156,6 +1156,8 @@ async function smokeDesktopRuntime(browser, url) {
       'desktopSmokeArtifactManifestCleanupReceipt',
       'disposable-smoke-output',
       'known-files-only-then-explicit-hygiene-cleanup',
+      'delete-before-smoke-exit',
+      'single-smoke-run',
     ].join('|');
     const desktopSmokeArtifactManifestStorageMatches = await page.evaluate((needleSource) => {
       const needle = new RegExp(needleSource, 'i');
@@ -1221,6 +1223,14 @@ async function smokeDesktopRuntime(browser, url) {
         desktopSmokeArtifactManifestReadback.marker === 'desktop-cm-session-layout-reorder-history-filter-preset-help-focus-visible' &&
         desktopSmokeArtifactManifestReadback.token === 'solid-highlight-v1' &&
         desktopSmokeArtifactManifestReadback.cleanupPolicy === 'known-files-only-then-explicit-hygiene-cleanup' &&
+        desktopSmokeArtifactManifestReadback.retentionPolicy === 'delete-before-smoke-exit' &&
+        desktopSmokeArtifactManifestReadback.retentionScope === 'single-smoke-run' &&
+        desktopSmokeArtifactManifestReadback.retentionUntil === 'explicit-hygiene-cleanup' &&
+        desktopSmokeArtifactManifestReadback.retentionEnforcedBy === 'cleanDesktopSmokeArtifactHygieneFiles' &&
+        desktopSmokeArtifactManifestReadback.repoPersistence === 'none' &&
+        desktopSmokeArtifactManifestReadback.browserPersistence === 'none' &&
+        desktopSmokeArtifactManifestReadback.exportPersistence === 'none' &&
+        desktopSmokeArtifactManifestReadback.tauriPayloadPersistence === 'none' &&
         desktopSmokeArtifactManifestReadback.storage === 'disposable-smoke-output' &&
         typeof desktopSmokeArtifactManifestReadback.generatedAt === 'string' &&
         Array.isArray(desktopSmokeArtifactManifestReadback.artifacts) &&
@@ -1772,6 +1782,8 @@ async function smokeDesktopRuntime(browser, url) {
       'desktopSmokeArtifactManifestCleanupReceipt',
       'disposable-smoke-output',
       'known-files-only-then-explicit-hygiene-cleanup',
+      'delete-before-smoke-exit',
+      'single-smoke-run',
     ]) {
       requireCondition(!layoutExportJson.includes(forbiddenField), `desktop CM session layout export must not include ${forbiddenField}`);
     }
@@ -2144,6 +2156,8 @@ async function smokeDesktopRuntime(browser, url) {
       'desktopSmokeArtifactManifestCleanupReceipt',
       'disposable-smoke-output',
       'known-files-only-then-explicit-hygiene-cleanup',
+      'delete-before-smoke-exit',
+      'single-smoke-run',
     ]) {
       requireCondition(!exportedJson.includes(forbiddenField), `desktop CM export must not include ${forbiddenField}`);
     }
@@ -2599,6 +2613,14 @@ function buildScreenshotArtifactManifest({
     token,
     generatedAt: new Date().toISOString(),
     cleanupPolicy: 'known-files-only-then-explicit-hygiene-cleanup',
+    retentionPolicy: 'delete-before-smoke-exit',
+    retentionScope: 'single-smoke-run',
+    retentionUntil: 'explicit-hygiene-cleanup',
+    retentionEnforcedBy: 'cleanDesktopSmokeArtifactHygieneFiles',
+    repoPersistence: 'none',
+    browserPersistence: 'none',
+    exportPersistence: 'none',
+    tauriPayloadPersistence: 'none',
     storage: 'disposable-smoke-output',
     artifacts: [
       {
