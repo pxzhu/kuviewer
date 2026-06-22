@@ -13,6 +13,7 @@ const args = parseArgs(process.argv.slice(2));
 const baseUrl = args.url || process.env.KUVIEWER_DESKTOP_SMOKE_URL || 'http://127.0.0.1:4174/kuviewer/';
 const desktopSmokeOutputDir =
   args.output || process.env.KUVIEWER_DESKTOP_SMOKE_OUTPUT || path.join(repoRoot, 'website', 'artifacts', 'visual-smoke', 'desktop-cm-sessions');
+const desktopSmokeScreenshotFileNames = ['desktop-cm-focus-visible-help-tooltip.png'];
 
 await waitForPreview(baseUrl);
 
@@ -859,7 +860,8 @@ async function smokeDesktopRuntime(browser, url) {
       desktopSmokeOutputDir,
       'desktop-cm-focus-visible-help-tooltip.png',
     );
-    await mkdir(desktopSmokeOutputDir, { recursive: true });
+    const cleanedDesktopSmokeScreenshotPaths = await cleanDesktopSmokeScreenshotArtifacts(desktopSmokeOutputDir);
+    const layoutReorderHistoryPresetHelpScreenshotExistsAfterCleanup = await fileExists(layoutReorderHistoryPresetHelpScreenshotPath);
     await page.screenshot({
       animations: 'disabled',
       clip: layoutReorderHistoryPresetHelpScreenshotClip,
@@ -1025,6 +1027,13 @@ async function smokeDesktopRuntime(browser, url) {
         layoutReorderHistoryPresetHelpScreenshotClip.width > layoutReorderHistoryPresetHelpIdleStyles.width &&
         layoutReorderHistoryPresetHelpScreenshotClip.height > layoutReorderHistoryPresetHelpIdleStyles.height,
       'desktop CM session layout reorder history timestamp filter preset help focus-visible visual regression screenshot polish must capture focused help and tooltip PNG artifact without persistence'
+    );
+    requireCondition(
+      cleanedDesktopSmokeScreenshotPaths.includes(layoutReorderHistoryPresetHelpScreenshotPath) &&
+        !layoutReorderHistoryPresetHelpScreenshotExistsAfterCleanup &&
+        desktopSmokeScreenshotFileNames.includes('desktop-cm-focus-visible-help-tooltip.png') &&
+        layoutReorderHistoryPresetHelpScreenshot.isPng,
+      'desktop CM session layout reorder history timestamp filter preset help focus-visible visual regression screenshot cleanup polish must remove stale focused help PNG before capture without persistence'
     );
     requireCondition(
       layoutReorderHistoryPresetHelpTooltipRole === 'tooltip' &&
@@ -2277,6 +2286,25 @@ function buildScreenshotClip(boxes, viewport, padding = 0) {
     width: Math.max(1, maxRight - x),
     height: Math.max(1, maxBottom - y),
   };
+}
+
+async function cleanDesktopSmokeScreenshotArtifacts(outputDir) {
+  await mkdir(outputDir, { recursive: true });
+  const artifactPaths = desktopSmokeScreenshotFileNames.map((fileName) => path.join(outputDir, fileName));
+  await Promise.all(artifactPaths.map((filePath) => rm(filePath, { force: true })));
+  return artifactPaths;
+}
+
+async function fileExists(filePath) {
+  try {
+    await readFile(filePath);
+    return true;
+  } catch (error) {
+    if (error && typeof error === 'object' && 'code' in error && error.code === 'ENOENT') {
+      return false;
+    }
+    throw error;
+  }
 }
 
 async function readPngMetadata(filePath) {
