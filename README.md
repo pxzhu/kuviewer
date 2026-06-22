@@ -117,6 +117,8 @@ Desktop CM saved layout folder reorder status history timestamp filter preset he
 
 Desktop CM saved layout folder reorder status history timestamp filter preset help tooltip focus-visible visual regression screenshot cleanup polish is desktop-only verification metadata. Before capture, the desktop smoke removes only its known focused-help PNG filename from the smoke output directory so stale screenshots cannot satisfy the check, then verifies the path is empty before writing a fresh PNG. Screenshot cleanup state stays in rendered DOM/test artifacts only and is not stored, exported, sent through Tauri, or mixed with credentials, runtime profiles, diagnostics, Events, or logs.
 
+Desktop CM saved layout folder reorder status history timestamp filter preset help tooltip focus-visible visual regression screenshot metadata polish is desktop-only verification metadata. The desktop smoke writes a same-directory JSON sidecar with safe artifact facts only: schema/kind, file name, visual marker/token, capture timestamp, PNG byte length, dimensions, and clip dimensions. The sidecar deliberately excludes URLs, tokens, credentials, kubeconfigs, Secret values, runtime profiles, diagnostics, Events, and logs, and remains disposable test output only.
+
 Existing remote API profile, local sidecar, and direct Kubernetes/keychain paths remain prototype-only scaffolds. The local sidecar no longer starts by default in the desktop product path; it requires `KUVIEWER_DESKTOP_ENABLE_PROTOTYPE_SIDECAR=1` for explicit prototype work. The web app must not expose SSH.
 
 The Flow view is intended to feel closer to real request movement than a generic resource graph. It derives paths such as:
