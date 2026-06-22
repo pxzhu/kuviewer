@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "name": "Kuviewer Desktop CM Session Explorer",
   "goal": "desktop-cm-session-prototype",
-  "status": "desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-visual-regression-screenshot-artifact-manifest-retention-policy-example-smoke-polish",
+  "status": "desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-visual-regression-screenshot-artifact-manifest-retention-policy-example-smoke-documentation-polish",
   "recommendedPackager": "tauri",
   "fallbackPackager": "electron",
   "tauri": {
@@ -1629,6 +1629,29 @@
         "schemaVersion"
       ],
       "screenshotArtifactManifestRetentionExampleSmokeForbiddenFieldCheck": true,
+      "screenshotArtifactManifestRetentionExampleSmokeDocumentationMachineReadable": true,
+      "screenshotArtifactManifestRetentionExampleSmokeDocumentationSurfaces": [
+        "README.md",
+        "desktop/README.md",
+        "desktop/BUILD_PREREQUISITES.md",
+        "CODEX_HANDOFF.md"
+      ],
+      "screenshotArtifactManifestRetentionExampleSmokeDocumentedFields": [
+        "screenshotArtifactManifestRetentionExampleSmokeSpecReadback",
+        "screenshotArtifactManifestRetentionExampleSmokeComparison",
+        "screenshotArtifactManifestRetentionExampleSmokeGeneratedAtPlaceholder",
+        "screenshotArtifactManifestRetentionExampleSmokeDynamicArtifactFields",
+        "screenshotArtifactManifestRetentionExampleSmokeForbiddenFieldCheck"
+      ],
+      "screenshotArtifactManifestRetentionExampleSmokeDocumentedValues": [
+        "manifest-readback-normalized-to-spec-example",
+        "<iso8601-smoke-time>",
+        "byteLength",
+        "width",
+        "height",
+        "schemaVersion",
+        "buildRetentionExampleFromManifestReadback"
+      ],
       "screenshotArtifactOnly": true,
       "screenshotCleanupKnownFilesOnly": true,
       "smokeCoversNoPersistence": true,
@@ -1840,7 +1863,7 @@
       "desktop-use-sidecar-profile"
     ],
     "next": [
-      "Desktop CM session layout preset folder reorder status history timestamp filter preset help tooltip focus-visible visual regression screenshot artifact manifest retention policy example smoke documentation polish"
+      "Desktop CM session layout preset folder reorder status history timestamp filter preset help tooltip focus-visible visual regression screenshot artifact manifest retention policy example smoke documentation checker polish"
     ]
   },
   "remoteConnectionProfile": {
@@ -2155,6 +2178,7 @@
     "desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-visual-regression-screenshot-artifact-manifest-retention-policy-polish",
     "desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-visual-regression-screenshot-artifact-manifest-retention-policy-documentation-polish",
     "desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-visual-regression-screenshot-artifact-manifest-retention-policy-example-polish",
-    "desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-visual-regression-screenshot-artifact-manifest-retention-policy-example-smoke-polish"
+    "desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-visual-regression-screenshot-artifact-manifest-retention-policy-example-smoke-polish",
+    "desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-visual-regression-screenshot-artifact-manifest-retention-policy-example-smoke-documentation-polish"
   ]
 }
