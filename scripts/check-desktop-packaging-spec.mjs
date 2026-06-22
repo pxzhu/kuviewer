@@ -112,6 +112,7 @@ requireCondition(
     'desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-visual-regression-screenshot-artifact-manifest-retention-policy-example-smoke-documentation-checker-failure-message-documentation-polish',
     'desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-visual-regression-screenshot-artifact-manifest-retention-policy-example-smoke-documentation-checker-failure-message-documentation-checker-polish',
     'desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-visual-regression-screenshot-artifact-manifest-retention-policy-example-smoke-documentation-checker-failure-message-documentation-checker-failure-message-polish',
+    'desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-visual-regression-screenshot-artifact-manifest-retention-policy-example-smoke-documentation-checker-failure-message-documentation-checker-failure-message-documentation-polish',
   ].includes(spec.status),
   'status must be a known desktop packaging milestone'
 );
@@ -3513,6 +3514,29 @@ async function validateCmSshSessionManager(spec) {
     'README.md missing required documentation marker for retention example smoke documentation checker failure message documentation checker needle retentionExampleSmokeDocumentationCheckerFailureMessageDocumentationSurfaces',
     'README.md missing required documentation marker for retention example smoke documentation checker failure message documentation checker persistence guard localStorage',
   ];
+  const retentionExampleSmokeDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationSurfaces = [
+    'README.md',
+    'desktop/README.md',
+    'desktop/BUILD_PREREQUISITES.md',
+    'CODEX_HANDOFF.md',
+  ];
+  const retentionExampleSmokeDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentedFields = [
+    'screenshotArtifactManifestRetentionExampleSmokeDocumentationCheckerFailureMessageDocumentationCheckerFailureMessagePolish',
+    'screenshotArtifactManifestRetentionExampleSmokeDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageMachineReadable',
+    'screenshotArtifactManifestRetentionExampleSmokeDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageNeedles',
+    'screenshotArtifactManifestRetentionExampleSmokeDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageExamples',
+    'screenshotArtifactManifestRetentionExampleSmokeDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageNoPersistence',
+  ];
+  const retentionExampleSmokeDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentedValues = [
+    'missing required documentation marker',
+    'retention example smoke documentation checker failure message documentation checker needle',
+    'retention example smoke documentation checker failure message documentation checker persistence guard',
+    'surface',
+    'needle',
+    'README.md missing required documentation marker for retention example smoke documentation checker failure message documentation checker needle retentionExampleSmokeDocumentationCheckerFailureMessageDocumentationSurfaces',
+    'README.md missing required documentation marker for retention example smoke documentation checker failure message documentation checker persistence guard localStorage',
+    'requireDocumentationMarker',
+  ];
   requireCondition(
     sessionLayoutPresetFolderReorderStatusHistoryTimestampFilterPresetHelpTooltip.screenshotArtifactManifestRetentionExampleSmokeDocumentationMachineReadable ===
       true,
@@ -3668,6 +3692,29 @@ async function validateCmSshSessionManager(spec) {
     sessionLayoutPresetFolderReorderStatusHistoryTimestampFilterPresetHelpTooltip.screenshotArtifactManifestRetentionExampleSmokeDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageNoPersistence ===
       true,
     'cmSshSessionManager.sessionLayoutPresetFolderReorderStatusHistoryTimestampFilterPresetHelpTooltip.screenshotArtifactManifestRetentionExampleSmokeDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageNoPersistence must be true'
+  );
+  requireCondition(
+    sessionLayoutPresetFolderReorderStatusHistoryTimestampFilterPresetHelpTooltip.screenshotArtifactManifestRetentionExampleSmokeDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationMachineReadable ===
+      true,
+    'cmSshSessionManager.sessionLayoutPresetFolderReorderStatusHistoryTimestampFilterPresetHelpTooltip.screenshotArtifactManifestRetentionExampleSmokeDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationMachineReadable must be true'
+  );
+  requireCondition(
+    JSON.stringify(
+      sessionLayoutPresetFolderReorderStatusHistoryTimestampFilterPresetHelpTooltip.screenshotArtifactManifestRetentionExampleSmokeDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationSurfaces
+    ) === JSON.stringify(retentionExampleSmokeDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationSurfaces),
+    'cmSshSessionManager.sessionLayoutPresetFolderReorderStatusHistoryTimestampFilterPresetHelpTooltip.screenshotArtifactManifestRetentionExampleSmokeDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationSurfaces must list failure-message documentation surfaces'
+  );
+  requireCondition(
+    JSON.stringify(
+      sessionLayoutPresetFolderReorderStatusHistoryTimestampFilterPresetHelpTooltip.screenshotArtifactManifestRetentionExampleSmokeDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentedFields
+    ) === JSON.stringify(retentionExampleSmokeDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentedFields),
+    'cmSshSessionManager.sessionLayoutPresetFolderReorderStatusHistoryTimestampFilterPresetHelpTooltip.screenshotArtifactManifestRetentionExampleSmokeDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentedFields must list failure-message documented fields'
+  );
+  requireCondition(
+    JSON.stringify(
+      sessionLayoutPresetFolderReorderStatusHistoryTimestampFilterPresetHelpTooltip.screenshotArtifactManifestRetentionExampleSmokeDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentedValues
+    ) === JSON.stringify(retentionExampleSmokeDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentedValues),
+    'cmSshSessionManager.sessionLayoutPresetFolderReorderStatusHistoryTimestampFilterPresetHelpTooltip.screenshotArtifactManifestRetentionExampleSmokeDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentedValues must list failure-message documented values'
   );
   const checkerText = await readTextFile('scripts/check-desktop-packaging-spec.mjs', 'desktop packaging spec checker');
   for (const needle of retentionExampleSmokeDocumentationCheckerNeedles) {
@@ -4828,6 +4875,22 @@ async function validateCmSshSessionManager(spec) {
     }
     for (const example of retentionExampleSmokeDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageExamples) {
       requireDocumentationMarker(text, example, label, 'retention example smoke documentation checker failure message documentation checker failure message example');
+    }
+    for (const field of retentionExampleSmokeDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentedFields) {
+      requireDocumentationMarker(
+        text,
+        field,
+        label,
+        'retention example smoke documentation checker failure message documentation checker failure message documented field'
+      );
+    }
+    for (const value of retentionExampleSmokeDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentedValues) {
+      requireDocumentationMarker(
+        text,
+        value,
+        label,
+        'retention example smoke documentation checker failure message documentation checker failure message documented value'
+      );
     }
     for (const field of retentionDocumentationFields) {
       requireCondition(text.includes(field), `${label} must document retention policy field ${field}`);
