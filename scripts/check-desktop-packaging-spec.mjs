@@ -96,6 +96,7 @@ requireCondition(
     'desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-visual-regression-screenshot-artifact-manifest-cleanup-polish',
     'desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-visual-regression-screenshot-artifact-manifest-no-persistence-polish',
     'desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-visual-regression-screenshot-artifact-manifest-retention-policy-polish',
+    'desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-visual-regression-screenshot-artifact-manifest-retention-policy-documentation-polish',
   ].includes(spec.status),
   'status must be a known desktop packaging milestone'
 );
@@ -301,6 +302,10 @@ requireCondition(
   phases.includes('desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-visual-regression-screenshot-artifact-manifest-retention-policy-polish'),
   'phaseOrder must include desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-visual-regression-screenshot-artifact-manifest-retention-policy-polish'
 );
+requireCondition(
+  phases.includes('desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-visual-regression-screenshot-artifact-manifest-retention-policy-documentation-polish'),
+  'phaseOrder must include desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-visual-regression-screenshot-artifact-manifest-retention-policy-documentation-polish'
+);
 
 await validateBuildPrerequisites(spec);
 await validateDesktopDistributionPolicy(spec);
@@ -387,6 +392,7 @@ if (
     'desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-visual-regression-screenshot-artifact-manifest-cleanup-polish',
     'desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-visual-regression-screenshot-artifact-manifest-no-persistence-polish',
     'desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-visual-regression-screenshot-artifact-manifest-retention-policy-polish',
+    'desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-visual-regression-screenshot-artifact-manifest-retention-policy-documentation-polish',
   ].includes(spec.status)
 ) {
   await validateTauriScaffold(spec.tauri || {});
@@ -3191,6 +3197,48 @@ async function validateCmSshSessionManager(spec) {
       `cmSshSessionManager.sessionLayoutPresetFolderReorderStatusHistoryTimestampFilterPresetHelpTooltip.${field} must be ${expected}`
     );
   }
+  const retentionDocumentationSurfaces = [
+    'README.md',
+    'desktop/README.md',
+    'desktop/BUILD_PREREQUISITES.md',
+    'CODEX_HANDOFF.md',
+  ];
+  const retentionDocumentationFields = [
+    'retentionPolicy',
+    'retentionScope',
+    'retentionUntil',
+    'retentionEnforcedBy',
+    'repoPersistence',
+    'browserPersistence',
+    'exportPersistence',
+    'tauriPayloadPersistence',
+  ];
+  const retentionDocumentationValues = [
+    'delete-before-smoke-exit',
+    'single-smoke-run',
+    'explicit-hygiene-cleanup',
+    'cleanDesktopSmokeArtifactHygieneFiles',
+    'none',
+  ];
+  requireCondition(
+    sessionLayoutPresetFolderReorderStatusHistoryTimestampFilterPresetHelpTooltip.screenshotArtifactManifestRetentionDocumentationMachineReadable === true,
+    'cmSshSessionManager.sessionLayoutPresetFolderReorderStatusHistoryTimestampFilterPresetHelpTooltip.screenshotArtifactManifestRetentionDocumentationMachineReadable must be true'
+  );
+  requireCondition(
+    JSON.stringify(sessionLayoutPresetFolderReorderStatusHistoryTimestampFilterPresetHelpTooltip.screenshotArtifactManifestRetentionDocumentationSurfaces) ===
+      JSON.stringify(retentionDocumentationSurfaces),
+    'cmSshSessionManager.sessionLayoutPresetFolderReorderStatusHistoryTimestampFilterPresetHelpTooltip.screenshotArtifactManifestRetentionDocumentationSurfaces must list required docs'
+  );
+  requireCondition(
+    JSON.stringify(sessionLayoutPresetFolderReorderStatusHistoryTimestampFilterPresetHelpTooltip.screenshotArtifactManifestRetentionDocumentedFields) ===
+      JSON.stringify(retentionDocumentationFields),
+    'cmSshSessionManager.sessionLayoutPresetFolderReorderStatusHistoryTimestampFilterPresetHelpTooltip.screenshotArtifactManifestRetentionDocumentedFields must list retention fields'
+  );
+  requireCondition(
+    JSON.stringify(sessionLayoutPresetFolderReorderStatusHistoryTimestampFilterPresetHelpTooltip.screenshotArtifactManifestRetentionDocumentedValues) ===
+      JSON.stringify(retentionDocumentationValues),
+    'cmSshSessionManager.sessionLayoutPresetFolderReorderStatusHistoryTimestampFilterPresetHelpTooltip.screenshotArtifactManifestRetentionDocumentedValues must list retention values'
+  );
   requireCondition(
     sessionLayoutPresetFolderReorderStatusHistoryTimestampFilterPresetHelpTooltip.folderCollapseExported === false,
     'cmSshSessionManager.sessionLayoutPresetFolderReorderStatusHistoryTimestampFilterPresetHelpTooltip.folderCollapseExported must be false'
@@ -4289,6 +4337,15 @@ async function validateCmSshSessionManager(spec) {
     requireCondition(text.includes('reorder status history timestamp filter preset help tooltip focus-visible visual regression screenshot artifact manifest cleanup'), `${label} must document desktop CM session layout folder reorder status history timestamp filter preset help tooltip focus-visible visual regression screenshot artifact manifest cleanup polish`);
     requireCondition(text.includes('reorder status history timestamp filter preset help tooltip focus-visible visual regression screenshot artifact manifest no-persistence'), `${label} must document desktop CM session layout folder reorder status history timestamp filter preset help tooltip focus-visible visual regression screenshot artifact manifest no-persistence polish`);
     requireCondition(text.includes('reorder status history timestamp filter preset help tooltip focus-visible visual regression screenshot artifact manifest retention policy'), `${label} must document desktop CM session layout folder reorder status history timestamp filter preset help tooltip focus-visible visual regression screenshot artifact manifest retention policy polish`);
+    for (const field of retentionDocumentationFields) {
+      requireCondition(text.includes(field), `${label} must document retention policy field ${field}`);
+    }
+    for (const value of retentionDocumentationValues) {
+      requireCondition(text.includes(value), `${label} must document retention policy value ${value}`);
+    }
+    for (const surface of ['repo', 'browser', 'export', 'Tauri']) {
+      requireCondition(text.includes(surface), `${label} must document retention policy persistence surface ${surface}`);
+    }
     requireCondition(text.includes('export/import') || text.includes('session export'), `${label} must document desktop CM session export/import`);
     requireCondition(text.includes('web app must not expose SSH'), `${label} must document that the web app must not expose SSH`);
   }
