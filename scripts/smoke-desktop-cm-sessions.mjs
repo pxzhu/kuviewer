@@ -1,7 +1,7 @@
 import { pathToFileURL } from 'node:url';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
@@ -11,6 +11,8 @@ const { chromium } = await import(playwrightUrl);
 
 const args = parseArgs(process.argv.slice(2));
 const baseUrl = args.url || process.env.KUVIEWER_DESKTOP_SMOKE_URL || 'http://127.0.0.1:4174/kuviewer/';
+const desktopSmokeOutputDir =
+  args.output || process.env.KUVIEWER_DESKTOP_SMOKE_OUTPUT || path.join(repoRoot, 'website', 'artifacts', 'visual-smoke', 'desktop-cm-sessions');
 
 await waitForPreview(baseUrl);
 
@@ -19,7 +21,7 @@ const browser = await chromium.launch();
 try {
   await smokeDesktopRuntime(browser, baseUrl);
   await smokeWebRuntime(browser, baseUrl);
-  console.log(JSON.stringify({ ok: true, url: baseUrl, smoke: 'desktop-cm-sessions' }, null, 2));
+  console.log(JSON.stringify({ ok: true, url: baseUrl, smoke: 'desktop-cm-sessions', screenshots: desktopSmokeOutputDir }, null, 2));
 } finally {
   await browser.close();
 }
@@ -842,6 +844,28 @@ async function smokeDesktopRuntime(browser, url) {
     const layoutReorderHistoryPresetHelpTooltipVisibleAfterKeyboardTab = await page
       .getByTestId('desktop-cm-session-layout-reorder-history-filter-preset-help-tooltip')
       .isVisible();
+    const layoutReorderHistoryPresetHelpButtonBox = await page
+      .getByTestId('desktop-cm-session-layout-reorder-history-filter-preset-discoverability-hint')
+      .boundingBox();
+    const layoutReorderHistoryPresetHelpTooltipFocusedBox = await page
+      .getByTestId('desktop-cm-session-layout-reorder-history-filter-preset-help-tooltip')
+      .boundingBox();
+    const layoutReorderHistoryPresetHelpScreenshotClip = buildScreenshotClip(
+      [layoutReorderHistoryPresetHelpButtonBox, layoutReorderHistoryPresetHelpTooltipFocusedBox],
+      page.viewportSize(),
+      8,
+    );
+    const layoutReorderHistoryPresetHelpScreenshotPath = path.join(
+      desktopSmokeOutputDir,
+      'desktop-cm-focus-visible-help-tooltip.png',
+    );
+    await mkdir(desktopSmokeOutputDir, { recursive: true });
+    await page.screenshot({
+      animations: 'disabled',
+      clip: layoutReorderHistoryPresetHelpScreenshotClip,
+      path: layoutReorderHistoryPresetHelpScreenshotPath,
+    });
+    const layoutReorderHistoryPresetHelpScreenshot = await readPngMetadata(layoutReorderHistoryPresetHelpScreenshotPath);
     const layoutReorderHistoryPresetHelpKeyboardFocusStatus = await page
       .getByTestId('desktop-cm-session-layout-reorder-history-filter-preset-keyboard-status')
       .textContent();
@@ -988,6 +1012,19 @@ async function smokeDesktopRuntime(browser, url) {
         layoutReorderHistoryPresetHelpHoverStyles.boxShadow !== layoutReorderHistoryPresetHelpKeyboardFocusStyles.boxShadow &&
         sessionLayoutStorageVisualRegressionLeakCount === 0,
       'desktop CM session layout reorder history timestamp filter preset help focus-visible visual regression polish must compare idle hover focus states without storage'
+    );
+    requireCondition(
+      Boolean(layoutReorderHistoryPresetHelpButtonBox) &&
+        Boolean(layoutReorderHistoryPresetHelpTooltipFocusedBox) &&
+        layoutReorderHistoryPresetHelpScreenshot.isPng &&
+        layoutReorderHistoryPresetHelpScreenshot.byteLength > 1500 &&
+        layoutReorderHistoryPresetHelpScreenshot.width >= layoutReorderHistoryPresetHelpKeyboardFocusStyles.width &&
+        layoutReorderHistoryPresetHelpScreenshot.height >= layoutReorderHistoryPresetHelpKeyboardFocusStyles.height &&
+        layoutReorderHistoryPresetHelpScreenshot.width === Math.round(layoutReorderHistoryPresetHelpScreenshotClip.width) &&
+        layoutReorderHistoryPresetHelpScreenshot.height === Math.round(layoutReorderHistoryPresetHelpScreenshotClip.height) &&
+        layoutReorderHistoryPresetHelpScreenshotClip.width > layoutReorderHistoryPresetHelpIdleStyles.width &&
+        layoutReorderHistoryPresetHelpScreenshotClip.height > layoutReorderHistoryPresetHelpIdleStyles.height,
+      'desktop CM session layout reorder history timestamp filter preset help focus-visible visual regression screenshot polish must capture focused help and tooltip PNG artifact without persistence'
     );
     requireCondition(
       layoutReorderHistoryPresetHelpTooltipRole === 'tooltip' &&
@@ -2189,6 +2226,9 @@ function parseArgs(argv) {
     if (argv[index] === '--url') {
       parsed.url = argv[index + 1];
       index += 1;
+    } else if (argv[index] === '--output') {
+      parsed.output = argv[index + 1];
+      index += 1;
     }
   }
   return parsed;
@@ -2216,6 +2256,47 @@ function requireCondition(condition, message) {
   if (!condition) {
     throw new Error(message);
   }
+}
+
+function buildScreenshotClip(boxes, viewport, padding = 0) {
+  const visibleBoxes = boxes.filter(Boolean);
+  requireCondition(visibleBoxes.length > 0, 'desktop CM session visual regression screenshot must have visible target boxes');
+  const left = Math.min(...visibleBoxes.map((box) => box.x));
+  const top = Math.min(...visibleBoxes.map((box) => box.y));
+  const right = Math.max(...visibleBoxes.map((box) => box.x + box.width));
+  const bottom = Math.max(...visibleBoxes.map((box) => box.y + box.height));
+  const viewportWidth = viewport?.width || Math.ceil(right + padding);
+  const viewportHeight = viewport?.height || Math.ceil(bottom + padding);
+  const x = Math.max(0, Math.floor(left - padding));
+  const y = Math.max(0, Math.floor(top - padding));
+  const maxRight = Math.min(viewportWidth, Math.ceil(right + padding));
+  const maxBottom = Math.min(viewportHeight, Math.ceil(bottom + padding));
+  return {
+    x,
+    y,
+    width: Math.max(1, maxRight - x),
+    height: Math.max(1, maxBottom - y),
+  };
+}
+
+async function readPngMetadata(filePath) {
+  const buffer = await readFile(filePath);
+  const isPng =
+    buffer.length >= 24 &&
+    buffer[0] === 0x89 &&
+    buffer[1] === 0x50 &&
+    buffer[2] === 0x4e &&
+    buffer[3] === 0x47 &&
+    buffer[4] === 0x0d &&
+    buffer[5] === 0x0a &&
+    buffer[6] === 0x1a &&
+    buffer[7] === 0x0a;
+  return {
+    byteLength: buffer.length,
+    height: isPng ? buffer.readUInt32BE(20) : 0,
+    isPng,
+    width: isPng ? buffer.readUInt32BE(16) : 0,
+  };
 }
 
 async function requireConflictActive(page, slug, expected, message) {
