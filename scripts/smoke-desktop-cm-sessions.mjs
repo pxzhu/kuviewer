@@ -1081,6 +1081,20 @@ async function smokeDesktopRuntime(browser, url) {
         ),
       'desktop CM session layout reorder history timestamp filter preset help focus-visible visual regression screenshot metadata polish must write safe artifact sidecar without secrets'
     );
+    const finalCleanedDesktopSmokeScreenshotPaths = await cleanDesktopSmokeScreenshotArtifacts(desktopSmokeOutputDir);
+    const layoutReorderHistoryPresetHelpScreenshotExistsAfterFinalCleanup = await fileExists(
+      layoutReorderHistoryPresetHelpScreenshotPath,
+    );
+    const layoutReorderHistoryPresetHelpScreenshotMetadataExistsAfterFinalCleanup = await fileExists(
+      layoutReorderHistoryPresetHelpScreenshotMetadataPath,
+    );
+    requireCondition(
+      finalCleanedDesktopSmokeScreenshotPaths.includes(layoutReorderHistoryPresetHelpScreenshotPath) &&
+        finalCleanedDesktopSmokeScreenshotPaths.includes(layoutReorderHistoryPresetHelpScreenshotMetadataPath) &&
+        !layoutReorderHistoryPresetHelpScreenshotExistsAfterFinalCleanup &&
+        !layoutReorderHistoryPresetHelpScreenshotMetadataExistsAfterFinalCleanup,
+      'desktop CM session layout reorder history timestamp filter preset help focus-visible visual regression screenshot metadata cleanup polish must remove focused help PNG and safe sidecar after verification without persistence'
+    );
     requireCondition(
       layoutReorderHistoryPresetHelpTooltipRole === 'tooltip' &&
         layoutReorderHistoryPresetDiscoverabilityHintDescribedBy?.includes('desktop-cm-session-layout-reorder-history-filter-preset-help-tooltip') &&
