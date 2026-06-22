@@ -94,6 +94,7 @@ requireCondition(
     'desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-visual-regression-screenshot-artifact-directory-hygiene-polish',
     'desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-visual-regression-screenshot-artifact-manifest-polish',
     'desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-visual-regression-screenshot-artifact-manifest-cleanup-polish',
+    'desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-visual-regression-screenshot-artifact-manifest-no-persistence-polish',
   ].includes(spec.status),
   'status must be a known desktop packaging milestone'
 );
@@ -291,6 +292,10 @@ requireCondition(
   phases.includes('desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-visual-regression-screenshot-artifact-manifest-cleanup-polish'),
   'phaseOrder must include desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-visual-regression-screenshot-artifact-manifest-cleanup-polish'
 );
+requireCondition(
+  phases.includes('desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-visual-regression-screenshot-artifact-manifest-no-persistence-polish'),
+  'phaseOrder must include desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-visual-regression-screenshot-artifact-manifest-no-persistence-polish'
+);
 
 await validateBuildPrerequisites(spec);
 await validateDesktopDistributionPolicy(spec);
@@ -375,6 +380,7 @@ if (
     'desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-visual-regression-screenshot-artifact-directory-hygiene-polish',
     'desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-visual-regression-screenshot-artifact-manifest-polish',
     'desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-visual-regression-screenshot-artifact-manifest-cleanup-polish',
+    'desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-visual-regression-screenshot-artifact-manifest-no-persistence-polish',
   ].includes(spec.status)
 ) {
   await validateTauriScaffold(spec.tauri || {});
@@ -3109,6 +3115,10 @@ async function validateCmSshSessionManager(spec) {
     'screenshotArtifactManifestCleanupExplicit',
     'screenshotArtifactManifestCleanupMemoryReceipt',
     'screenshotArtifactManifestCleanupNoPersistence',
+    'smokeChecksFocusVisibleVisualRegressionScreenshotArtifactManifestNoPersistence',
+    'screenshotArtifactManifestBrowserStorageNoPersistence',
+    'screenshotArtifactManifestExportNoPersistence',
+    'screenshotArtifactManifestTauriPayloadNoPersistence',
     'screenshotArtifactOnly',
     'screenshotCleanupKnownFilesOnly',
     'smokeCoversNoPersistence',
@@ -4106,6 +4116,7 @@ async function validateCmSshSessionManager(spec) {
     'desktop CM session layout reorder history timestamp filter preset help focus-visible visual regression screenshot artifact directory hygiene polish must preserve sentinel during known cleanup and leave output directory empty after explicit hygiene cleanup',
     'desktop CM session layout reorder history timestamp filter preset help focus-visible visual regression screenshot artifact manifest polish must write safe disposable manifest without credentials',
     'desktop CM session layout reorder history timestamp filter preset help focus-visible visual regression screenshot artifact manifest cleanup polish must remove safe disposable manifest with explicit hygiene cleanup without persistence',
+    'desktop CM session layout reorder history timestamp filter preset help focus-visible visual regression screenshot artifact manifest no-persistence polish must keep disposable manifest markers out of browser storage',
     'desktop-cm-focus-visible-help-tooltip.png',
     'desktop-cm-focus-visible-help-tooltip.metadata.json',
     'desktop-cm-artifact-hygiene-sentinel.keep',
@@ -4113,6 +4124,8 @@ async function validateCmSshSessionManager(spec) {
     'desktopSmokeArtifactManifestFileNames',
     'desktopSmokeArtifactManifestCleanupReceipt',
     'desktopSmokeArtifactManifestExistsAfterHygieneCleanup',
+    'desktopSmokeArtifactManifestStorageMatches',
+    'desktopSmokeArtifactManifestPersistenceNeedleSource',
     'buildScreenshotArtifactManifest',
     'kuviewer.desktopCm.visualRegressionArtifactManifest',
     'desktopSmokeArtifactHygieneFileNames',
@@ -4244,6 +4257,7 @@ async function validateCmSshSessionManager(spec) {
     requireCondition(text.includes('reorder status history timestamp filter preset help tooltip focus-visible visual regression screenshot artifact directory hygiene'), `${label} must document desktop CM session layout folder reorder status history timestamp filter preset help tooltip focus-visible visual regression screenshot artifact directory hygiene polish`);
     requireCondition(text.includes('reorder status history timestamp filter preset help tooltip focus-visible visual regression screenshot artifact manifest'), `${label} must document desktop CM session layout folder reorder status history timestamp filter preset help tooltip focus-visible visual regression screenshot artifact manifest polish`);
     requireCondition(text.includes('reorder status history timestamp filter preset help tooltip focus-visible visual regression screenshot artifact manifest cleanup'), `${label} must document desktop CM session layout folder reorder status history timestamp filter preset help tooltip focus-visible visual regression screenshot artifact manifest cleanup polish`);
+    requireCondition(text.includes('reorder status history timestamp filter preset help tooltip focus-visible visual regression screenshot artifact manifest no-persistence'), `${label} must document desktop CM session layout folder reorder status history timestamp filter preset help tooltip focus-visible visual regression screenshot artifact manifest no-persistence polish`);
     requireCondition(text.includes('export/import') || text.includes('session export'), `${label} must document desktop CM session export/import`);
     requireCondition(text.includes('web app must not expose SSH'), `${label} must document that the web app must not expose SSH`);
   }

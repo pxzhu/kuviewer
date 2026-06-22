@@ -1150,6 +1150,31 @@ async function smokeDesktopRuntime(browser, url) {
     const desktopSmokeArtifactManifestCleanupReceiptText = JSON.stringify(
       desktopSmokeArtifactManifestCleanupReceipt,
     );
+    const desktopSmokeArtifactManifestPersistenceNeedleSource = [
+      'desktop-cm-artifact-manifest',
+      'kuviewer\\.desktopCm\\.visualRegressionArtifactManifest',
+      'desktopSmokeArtifactManifestCleanupReceipt',
+      'disposable-smoke-output',
+      'known-files-only-then-explicit-hygiene-cleanup',
+    ].join('|');
+    const desktopSmokeArtifactManifestStorageMatches = await page.evaluate((needleSource) => {
+      const needle = new RegExp(needleSource, 'i');
+      const collectMatches = (storageName, storage) => {
+        const matches = [];
+        for (let index = 0; index < storage.length; index += 1) {
+          const key = storage.key(index);
+          const value = key ? storage.getItem(key) || '' : '';
+          if (key && needle.test(`${key} ${value}`)) {
+            matches.push(`${storageName}:${key}`);
+          }
+        }
+        return matches;
+      };
+      return [
+        ...collectMatches('localStorage', window.localStorage),
+        ...collectMatches('sessionStorage', window.sessionStorage),
+      ];
+    }, desktopSmokeArtifactManifestPersistenceNeedleSource);
     requireCondition(
       finalCleanedDesktopSmokeScreenshotPaths.includes(layoutReorderHistoryPresetHelpScreenshotPath) &&
         finalCleanedDesktopSmokeScreenshotPaths.includes(layoutReorderHistoryPresetHelpScreenshotMetadataPath) &&
@@ -1184,6 +1209,10 @@ async function smokeDesktopRuntime(browser, url) {
           desktopSmokeArtifactManifestCleanupReceiptText,
         ),
       'desktop CM session layout reorder history timestamp filter preset help focus-visible visual regression screenshot artifact manifest cleanup polish must remove safe disposable manifest with explicit hygiene cleanup without persistence'
+    );
+    requireCondition(
+      desktopSmokeArtifactManifestStorageMatches.length === 0,
+      'desktop CM session layout reorder history timestamp filter preset help focus-visible visual regression screenshot artifact manifest no-persistence polish must keep disposable manifest markers out of browser storage'
     );
     requireCondition(
       desktopSmokeArtifactManifestReadback.schemaVersion === 1 &&
@@ -1729,7 +1758,21 @@ async function smokeDesktopRuntime(browser, url) {
     const layoutExportJson = JSON.stringify(layoutExportBundle);
     requireCondition(!layoutExportJson.includes('kuviewer_desktop_cm_session_layout_collapsed_folders'), 'desktop CM session layout export must not include folder collapse preferences');
     requireCondition(!layoutExportJson.includes('cm.example.internal'), 'desktop CM session layout export must not include session endpoint metadata');
-    for (const forbiddenField of ['host', 'remoteApiHost', 'credentialAvailable', 'runtimeStatus', 'diagnosticMessage', 'serverUrl', 'adminToken', 'BEGIN OPENSSH PRIVATE KEY']) {
+    for (const forbiddenField of [
+      'host',
+      'remoteApiHost',
+      'credentialAvailable',
+      'runtimeStatus',
+      'diagnosticMessage',
+      'serverUrl',
+      'adminToken',
+      'BEGIN OPENSSH PRIVATE KEY',
+      'desktop-cm-artifact-manifest',
+      'kuviewer.desktopCm.visualRegressionArtifactManifest',
+      'desktopSmokeArtifactManifestCleanupReceipt',
+      'disposable-smoke-output',
+      'known-files-only-then-explicit-hygiene-cleanup',
+    ]) {
       requireCondition(!layoutExportJson.includes(forbiddenField), `desktop CM session layout export must not include ${forbiddenField}`);
     }
     await page.getByTestId('desktop-cm-session-group-toggle-production').click();
@@ -2096,6 +2139,11 @@ async function smokeDesktopRuntime(browser, url) {
       'adminToken',
       'private-key-imported',
       'BEGIN OPENSSH PRIVATE KEY',
+      'desktop-cm-artifact-manifest',
+      'kuviewer.desktopCm.visualRegressionArtifactManifest',
+      'desktopSmokeArtifactManifestCleanupReceipt',
+      'disposable-smoke-output',
+      'known-files-only-then-explicit-hygiene-cleanup',
     ]) {
       requireCondition(!exportedJson.includes(forbiddenField), `desktop CM export must not include ${forbiddenField}`);
     }
