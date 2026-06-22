@@ -14,6 +14,7 @@ const baseUrl = args.url || process.env.KUVIEWER_DESKTOP_SMOKE_URL || 'http://12
 const desktopSmokeOutputDir =
   args.output || process.env.KUVIEWER_DESKTOP_SMOKE_OUTPUT || path.join(repoRoot, 'website', 'artifacts', 'visual-smoke', 'desktop-cm-sessions');
 const desktopSmokeScreenshotFileNames = ['desktop-cm-focus-visible-help-tooltip.png'];
+const desktopSmokeScreenshotMetadataFileNames = ['desktop-cm-focus-visible-help-tooltip.metadata.json'];
 
 await waitForPreview(baseUrl);
 
@@ -860,14 +861,39 @@ async function smokeDesktopRuntime(browser, url) {
       desktopSmokeOutputDir,
       'desktop-cm-focus-visible-help-tooltip.png',
     );
+    const layoutReorderHistoryPresetHelpScreenshotMetadataPath = path.join(
+      desktopSmokeOutputDir,
+      'desktop-cm-focus-visible-help-tooltip.metadata.json',
+    );
     const cleanedDesktopSmokeScreenshotPaths = await cleanDesktopSmokeScreenshotArtifacts(desktopSmokeOutputDir);
     const layoutReorderHistoryPresetHelpScreenshotExistsAfterCleanup = await fileExists(layoutReorderHistoryPresetHelpScreenshotPath);
+    const layoutReorderHistoryPresetHelpScreenshotMetadataExistsAfterCleanup = await fileExists(
+      layoutReorderHistoryPresetHelpScreenshotMetadataPath,
+    );
     await page.screenshot({
       animations: 'disabled',
       clip: layoutReorderHistoryPresetHelpScreenshotClip,
       path: layoutReorderHistoryPresetHelpScreenshotPath,
     });
     const layoutReorderHistoryPresetHelpScreenshot = await readPngMetadata(layoutReorderHistoryPresetHelpScreenshotPath);
+    const layoutReorderHistoryPresetHelpScreenshotMetadata = buildScreenshotMetadata({
+      clip: layoutReorderHistoryPresetHelpScreenshotClip,
+      fileName: path.basename(layoutReorderHistoryPresetHelpScreenshotPath),
+      image: layoutReorderHistoryPresetHelpScreenshot,
+      marker: 'desktop-cm-session-layout-reorder-history-filter-preset-help-focus-visible',
+      token: 'solid-highlight-v1',
+    });
+    await writeFile(
+      layoutReorderHistoryPresetHelpScreenshotMetadataPath,
+      `${JSON.stringify(layoutReorderHistoryPresetHelpScreenshotMetadata, null, 2)}\n`,
+      'utf8',
+    );
+    const layoutReorderHistoryPresetHelpScreenshotMetadataReadback = JSON.parse(
+      await readFile(layoutReorderHistoryPresetHelpScreenshotMetadataPath, 'utf8'),
+    );
+    const layoutReorderHistoryPresetHelpScreenshotMetadataText = JSON.stringify(
+      layoutReorderHistoryPresetHelpScreenshotMetadataReadback,
+    );
     const layoutReorderHistoryPresetHelpKeyboardFocusStatus = await page
       .getByTestId('desktop-cm-session-layout-reorder-history-filter-preset-keyboard-status')
       .textContent();
@@ -1030,10 +1056,30 @@ async function smokeDesktopRuntime(browser, url) {
     );
     requireCondition(
       cleanedDesktopSmokeScreenshotPaths.includes(layoutReorderHistoryPresetHelpScreenshotPath) &&
+        cleanedDesktopSmokeScreenshotPaths.includes(layoutReorderHistoryPresetHelpScreenshotMetadataPath) &&
         !layoutReorderHistoryPresetHelpScreenshotExistsAfterCleanup &&
+        !layoutReorderHistoryPresetHelpScreenshotMetadataExistsAfterCleanup &&
         desktopSmokeScreenshotFileNames.includes('desktop-cm-focus-visible-help-tooltip.png') &&
+        desktopSmokeScreenshotMetadataFileNames.includes('desktop-cm-focus-visible-help-tooltip.metadata.json') &&
         layoutReorderHistoryPresetHelpScreenshot.isPng,
       'desktop CM session layout reorder history timestamp filter preset help focus-visible visual regression screenshot cleanup polish must remove stale focused help PNG before capture without persistence'
+    );
+    requireCondition(
+      layoutReorderHistoryPresetHelpScreenshotMetadataReadback.schemaVersion === 1 &&
+        layoutReorderHistoryPresetHelpScreenshotMetadataReadback.kind === 'kuviewer.desktopCm.visualRegressionScreenshot' &&
+        layoutReorderHistoryPresetHelpScreenshotMetadataReadback.fileName === 'desktop-cm-focus-visible-help-tooltip.png' &&
+        layoutReorderHistoryPresetHelpScreenshotMetadataReadback.marker === 'desktop-cm-session-layout-reorder-history-filter-preset-help-focus-visible' &&
+        layoutReorderHistoryPresetHelpScreenshotMetadataReadback.token === 'solid-highlight-v1' &&
+        layoutReorderHistoryPresetHelpScreenshotMetadataReadback.byteLength === layoutReorderHistoryPresetHelpScreenshot.byteLength &&
+        layoutReorderHistoryPresetHelpScreenshotMetadataReadback.width === layoutReorderHistoryPresetHelpScreenshot.width &&
+        layoutReorderHistoryPresetHelpScreenshotMetadataReadback.height === layoutReorderHistoryPresetHelpScreenshot.height &&
+        layoutReorderHistoryPresetHelpScreenshotMetadataReadback.clipWidth === Math.round(layoutReorderHistoryPresetHelpScreenshotClip.width) &&
+        layoutReorderHistoryPresetHelpScreenshotMetadataReadback.clipHeight === Math.round(layoutReorderHistoryPresetHelpScreenshotClip.height) &&
+        typeof layoutReorderHistoryPresetHelpScreenshotMetadataReadback.capturedAt === 'string' &&
+        !/(https?:|admin_token|access_token|refresh_token|bearer|credential|private|secret|kubeconfig|BEGIN )/i.test(
+          layoutReorderHistoryPresetHelpScreenshotMetadataText,
+        ),
+      'desktop CM session layout reorder history timestamp filter preset help focus-visible visual regression screenshot metadata polish must write safe artifact sidecar without secrets'
     );
     requireCondition(
       layoutReorderHistoryPresetHelpTooltipRole === 'tooltip' &&
@@ -2290,7 +2336,7 @@ function buildScreenshotClip(boxes, viewport, padding = 0) {
 
 async function cleanDesktopSmokeScreenshotArtifacts(outputDir) {
   await mkdir(outputDir, { recursive: true });
-  const artifactPaths = desktopSmokeScreenshotFileNames.map((fileName) => path.join(outputDir, fileName));
+  const artifactPaths = [...desktopSmokeScreenshotFileNames, ...desktopSmokeScreenshotMetadataFileNames].map((fileName) => path.join(outputDir, fileName));
   await Promise.all(artifactPaths.map((filePath) => rm(filePath, { force: true })));
   return artifactPaths;
 }
@@ -2305,6 +2351,22 @@ async function fileExists(filePath) {
     }
     throw error;
   }
+}
+
+function buildScreenshotMetadata({ clip, fileName, image, marker, token }) {
+  return {
+    schemaVersion: 1,
+    kind: 'kuviewer.desktopCm.visualRegressionScreenshot',
+    fileName,
+    marker,
+    token,
+    capturedAt: new Date().toISOString(),
+    byteLength: image.byteLength,
+    width: image.width,
+    height: image.height,
+    clipWidth: Math.round(clip.width),
+    clipHeight: Math.round(clip.height),
+  };
 }
 
 async function readPngMetadata(filePath) {
