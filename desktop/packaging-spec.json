@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "name": "Kuviewer Desktop CM Session Explorer",
   "goal": "desktop-cm-session-prototype",
-  "status": "desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-visual-regression-screenshot-artifact-manifest-retention-policy-example-smoke-documentation-checker-failure-message-documentation-checker-failure-message-documentation-checker-failure-message-documentation-checker-polish",
+  "status": "desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-visual-regression-screenshot-artifact-manifest-retention-policy-example-smoke-documentation-checker-failure-message-documentation-checker-failure-message-documentation-checker-failure-message-documentation-checker-failure-message-polish",
   "recommendedPackager": "tauri",
   "fallbackPackager": "electron",
   "tauri": {
@@ -1856,6 +1856,20 @@
         "export/import",
         "Tauri payload"
       ],
+      "screenshotArtifactManifestRetentionExampleSmokeDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessagePolish": true,
+      "screenshotArtifactManifestRetentionExampleSmokeDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageMachineReadable": true,
+      "screenshotArtifactManifestRetentionExampleSmokeDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageNeedles": [
+        "missing required documentation marker",
+        "retention example smoke documentation checker failure message documentation checker failure message documentation checker failure message documentation checker needle",
+        "retention example smoke documentation checker failure message documentation checker failure message documentation checker failure message documentation checker persistence guard",
+        "surface",
+        "needle"
+      ],
+      "screenshotArtifactManifestRetentionExampleSmokeDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageExamples": [
+        "README.md missing required documentation marker for retention example smoke documentation checker failure message documentation checker failure message documentation checker failure message documentation checker needle retentionExampleSmokeDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationSurfaces",
+        "README.md missing required documentation marker for retention example smoke documentation checker failure message documentation checker failure message documentation checker failure message documentation checker persistence guard localStorage"
+      ],
+      "screenshotArtifactManifestRetentionExampleSmokeDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageNoPersistence": true,
       "screenshotArtifactOnly": true,
       "screenshotCleanupKnownFilesOnly": true,
       "smokeCoversNoPersistence": true,
@@ -2067,7 +2081,7 @@
       "desktop-use-sidecar-profile"
     ],
     "next": [
-      "Desktop CM session layout preset folder reorder status history timestamp filter preset help tooltip focus-visible visual regression screenshot artifact manifest retention policy example smoke documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message polish"
+      "Desktop CM session layout preset folder reorder status history timestamp filter preset help tooltip focus-visible visual regression screenshot artifact manifest retention policy example smoke documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message documentation polish"
     ]
   },
   "remoteConnectionProfile": {
@@ -2393,6 +2407,7 @@
     "desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-visual-regression-screenshot-artifact-manifest-retention-policy-example-smoke-documentation-checker-failure-message-documentation-checker-failure-message-documentation-checker-polish",
     "desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-visual-regression-screenshot-artifact-manifest-retention-policy-example-smoke-documentation-checker-failure-message-documentation-checker-failure-message-documentation-checker-failure-message-polish",
     "desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-visual-regression-screenshot-artifact-manifest-retention-policy-example-smoke-documentation-checker-failure-message-documentation-checker-failure-message-documentation-checker-failure-message-documentation-polish",
-    "desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-visual-regression-screenshot-artifact-manifest-retention-policy-example-smoke-documentation-checker-failure-message-documentation-checker-failure-message-documentation-checker-failure-message-documentation-checker-polish"
+    "desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-visual-regression-screenshot-artifact-manifest-retention-policy-example-smoke-documentation-checker-failure-message-documentation-checker-failure-message-documentation-checker-failure-message-documentation-checker-polish",
+    "desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-visual-regression-screenshot-artifact-manifest-retention-policy-example-smoke-documentation-checker-failure-message-documentation-checker-failure-message-documentation-checker-failure-message-documentation-checker-failure-message-polish"
   ]
 }
