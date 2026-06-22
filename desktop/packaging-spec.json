@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "name": "Kuviewer Desktop CM Session Explorer",
   "goal": "desktop-cm-session-prototype",
-  "status": "desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-visual-regression-screenshot-artifact-manifest-retention-policy-documentation-polish",
+  "status": "desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-visual-regression-screenshot-artifact-manifest-retention-policy-example-polish",
   "recommendedPackager": "tauri",
   "fallbackPackager": "electron",
   "tauri": {
@@ -1566,6 +1566,58 @@
         "cleanDesktopSmokeArtifactHygieneFiles",
         "none"
       ],
+      "screenshotArtifactManifestRetentionExampleMachineReadable": true,
+      "screenshotArtifactManifestRetentionExample": {
+        "schemaVersion": 1,
+        "kind": "kuviewer.desktopCm.visualRegressionArtifactManifest",
+        "artifactSet": "desktop-cm-session-layout-reorder-history-filter-preset-help-focus-visible",
+        "marker": "desktop-cm-session-layout-reorder-history-filter-preset-help-focus-visible",
+        "token": "solid-highlight-v1",
+        "generatedAt": "<iso8601-smoke-time>",
+        "cleanupPolicy": "known-files-only-then-explicit-hygiene-cleanup",
+        "retentionPolicy": "delete-before-smoke-exit",
+        "retentionScope": "single-smoke-run",
+        "retentionUntil": "explicit-hygiene-cleanup",
+        "retentionEnforcedBy": "cleanDesktopSmokeArtifactHygieneFiles",
+        "repoPersistence": "none",
+        "browserPersistence": "none",
+        "exportPersistence": "none",
+        "tauriPayloadPersistence": "none",
+        "storage": "disposable-smoke-output",
+        "artifacts": [
+          {
+            "fileName": "desktop-cm-focus-visible-help-tooltip.png",
+            "role": "focused-help-tooltip-screenshot",
+            "mediaType": "image/png",
+            "transient": true
+          },
+          {
+            "fileName": "desktop-cm-focus-visible-help-tooltip.metadata.json",
+            "role": "safe-metadata-sidecar",
+            "mediaType": "application/json",
+            "transient": true
+          },
+          {
+            "fileName": "desktop-cm-artifact-hygiene-sentinel.keep",
+            "role": "hygiene-sentinel",
+            "mediaType": "text/plain",
+            "transient": true
+          }
+        ]
+      },
+      "screenshotArtifactManifestRetentionExampleForbiddenFields": [
+        "url",
+        "tokenValue",
+        "credential",
+        "privateKey",
+        "kubeconfig",
+        "secretValue",
+        "runtimeProfile",
+        "diagnosticHistory",
+        "events",
+        "logs",
+        "tauriPayload"
+      ],
       "screenshotArtifactOnly": true,
       "screenshotCleanupKnownFilesOnly": true,
       "smokeCoversNoPersistence": true,
@@ -1777,7 +1829,7 @@
       "desktop-use-sidecar-profile"
     ],
     "next": [
-      "Desktop CM session layout preset folder reorder status history timestamp filter preset help tooltip focus-visible visual regression screenshot artifact manifest retention policy example polish"
+      "Desktop CM session layout preset folder reorder status history timestamp filter preset help tooltip focus-visible visual regression screenshot artifact manifest retention policy example smoke polish"
     ]
   },
   "remoteConnectionProfile": {
@@ -2090,6 +2142,7 @@
     "desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-visual-regression-screenshot-artifact-manifest-cleanup-polish",
     "desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-visual-regression-screenshot-artifact-manifest-no-persistence-polish",
     "desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-visual-regression-screenshot-artifact-manifest-retention-policy-polish",
-    "desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-visual-regression-screenshot-artifact-manifest-retention-policy-documentation-polish"
+    "desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-visual-regression-screenshot-artifact-manifest-retention-policy-documentation-polish",
+    "desktop-cm-session-layout-preset-folder-reorder-status-history-timestamp-filter-preset-help-tooltip-focus-visible-visual-regression-screenshot-artifact-manifest-retention-policy-example-polish"
   ]
 }
