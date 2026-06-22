@@ -8,6 +8,9 @@ const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(scriptDir, '..');
 const playwrightUrl = pathToFileURL(path.join(repoRoot, 'website', 'node_modules', 'playwright', 'index.mjs')).href;
 const { chromium } = await import(playwrightUrl);
+const desktopPackagingSpec = JSON.parse(
+  await readFile(path.join(repoRoot, 'desktop', 'packaging-spec.json'), 'utf8'),
+);
 
 const args = parseArgs(process.argv.slice(2));
 const baseUrl = args.url || process.env.KUVIEWER_DESKTOP_SMOKE_URL || 'http://127.0.0.1:4174/kuviewer/';
@@ -932,6 +935,21 @@ async function smokeDesktopRuntime(browser, url) {
       await readFile(desktopSmokeArtifactManifestPath, 'utf8'),
     );
     const desktopSmokeArtifactManifestText = JSON.stringify(desktopSmokeArtifactManifestReadback);
+    const desktopSmokeArtifactManifestPolicy =
+      desktopPackagingSpec.cmSshSessionManager
+        ?.sessionLayoutPresetFolderReorderStatusHistoryTimestampFilterPresetHelpTooltip || {};
+    const desktopSmokeArtifactManifestRetentionExample =
+      desktopSmokeArtifactManifestPolicy.screenshotArtifactManifestRetentionExample || {};
+    const desktopSmokeArtifactManifestRetentionExampleFromReadback =
+      buildRetentionExampleFromManifestReadback({
+        generatedAtPlaceholder:
+          desktopSmokeArtifactManifestPolicy.screenshotArtifactManifestRetentionExampleSmokeGeneratedAtPlaceholder ||
+          '<iso8601-smoke-time>',
+        manifest: desktopSmokeArtifactManifestReadback,
+      });
+    const desktopSmokeArtifactManifestForbiddenFieldMatches = (
+      desktopSmokeArtifactManifestPolicy.screenshotArtifactManifestRetentionExampleForbiddenFields || []
+    ).filter((fieldName) => desktopSmokeArtifactManifestText.includes(`"${fieldName}"`));
     const desktopSmokeArtifactManifestListedFileNames = desktopSmokeArtifactManifestReadback.artifacts
       ?.map((artifact) => artifact.fileName)
       .sort();
@@ -1215,6 +1233,15 @@ async function smokeDesktopRuntime(browser, url) {
     requireCondition(
       desktopSmokeArtifactManifestStorageMatches.length === 0,
       'desktop CM session layout reorder history timestamp filter preset help focus-visible visual regression screenshot artifact manifest no-persistence polish must keep disposable manifest markers out of browser storage'
+    );
+    requireCondition(
+      desktopSmokeArtifactManifestPolicy.screenshotArtifactManifestRetentionExampleSmokeSpecReadback === true &&
+        desktopSmokeArtifactManifestPolicy.screenshotArtifactManifestRetentionExampleSmokeComparison ===
+          'manifest-readback-normalized-to-spec-example' &&
+        JSON.stringify(desktopSmokeArtifactManifestRetentionExampleFromReadback) ===
+          JSON.stringify(desktopSmokeArtifactManifestRetentionExample) &&
+        desktopSmokeArtifactManifestForbiddenFieldMatches.length === 0,
+      'desktop CM session layout reorder history timestamp filter preset help focus-visible visual regression screenshot artifact manifest retention policy example smoke polish must compare smoke manifest readback to the spec example'
     );
     requireCondition(
       desktopSmokeArtifactManifestReadback.schemaVersion === 1 &&
@@ -2646,6 +2673,35 @@ function buildScreenshotArtifactManifest({
         transient: true,
       },
     ],
+  };
+}
+
+function buildRetentionExampleFromManifestReadback({ generatedAtPlaceholder, manifest }) {
+  return {
+    schemaVersion: manifest.schemaVersion,
+    kind: manifest.kind,
+    artifactSet: manifest.artifactSet,
+    marker: manifest.marker,
+    token: manifest.token,
+    generatedAt: generatedAtPlaceholder,
+    cleanupPolicy: manifest.cleanupPolicy,
+    retentionPolicy: manifest.retentionPolicy,
+    retentionScope: manifest.retentionScope,
+    retentionUntil: manifest.retentionUntil,
+    retentionEnforcedBy: manifest.retentionEnforcedBy,
+    repoPersistence: manifest.repoPersistence,
+    browserPersistence: manifest.browserPersistence,
+    exportPersistence: manifest.exportPersistence,
+    tauriPayloadPersistence: manifest.tauriPayloadPersistence,
+    storage: manifest.storage,
+    artifacts: Array.isArray(manifest.artifacts)
+      ? manifest.artifacts.map((artifact) => ({
+          fileName: artifact.fileName,
+          role: artifact.role,
+          mediaType: artifact.mediaType,
+          transient: artifact.transient,
+        }))
+      : [],
   };
 }
 
