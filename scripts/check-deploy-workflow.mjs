@@ -2,356 +2,125 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const scriptDir = path.dirname(fileURLToPath(import.meta.url));
-const repoRoot = path.resolve(scriptDir, '..');
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const failures = [];
 
-const deployWorkflow = await readTextFile('.github/workflows/deploy.yml');
-const deployPreflightWorkflow = await readTextFile('.github/workflows/deploy-preflight.yml');
-const deployKnownHostsBootstrapWorkflow = await readTextFile('.github/workflows/deploy-known-hosts-bootstrap.yml');
-const deploySshEndpointDiagnosticsWorkflow = await readTextFile('.github/workflows/deploy-ssh-endpoint-diagnostics.yml');
-const deploySelfHostedWorkflow = await readTextFile('.github/workflows/deploy-self-hosted.yml');
-const ciWorkflow = await readTextFile('.github/workflows/ci.yml');
-const knownHostsHelper = await readTextFile('scripts/prepare-deploy-known-hosts.mjs');
-const sshBannerHelper = await readTextFile('scripts/check-ssh-banner.mjs');
-const sshEndpointDiagnosticsHelper = await readTextFile('scripts/diagnose-ssh-endpoint.mjs');
-const packagingSpec = JSON.parse(await readTextFile('desktop/packaging-spec.json'));
+const read = (file) => readFile(path.join(repoRoot, file), 'utf8');
+const deploy = await read('.github/workflows/deploy.yml');
+const preflight = await read('.github/workflows/deploy-preflight.yml');
+const knownHostsBootstrap = await read('.github/workflows/deploy-known-hosts-bootstrap.yml');
+const endpointDiagnostics = await read('.github/workflows/deploy-ssh-endpoint-diagnostics.yml');
+const selfHosted = await read('.github/workflows/deploy-self-hosted.yml');
+const ci = await read('.github/workflows/ci.yml');
+const compose = await read('deploy/standalone/docker-compose.yml');
+const envExample = await read('deploy/standalone/.env.example');
+const packagingSpec = JSON.parse(await read('desktop/packaging-spec.json'));
 
-requireIncludes(deployWorkflow, 'Validate required secrets', 'deploy workflow must validate required secrets');
-requireIncludes(deployWorkflow, 'SERVER_PORT must be numeric', 'deploy workflow must validate numeric SERVER_PORT');
-requireIncludes(deployWorkflow, 'SERVER_PORT must be between 1 and 65535', 'deploy workflow must validate SERVER_PORT range');
-requireIncludes(deployWorkflow, 'Prepare SSH key', 'deploy workflow must prepare SSH key before preflight');
-requireIncludes(deployWorkflow, 'SERVER_SSH_KEY_VALUE: ${{ secrets.SERVER_SSH_KEY }}', 'deploy workflow must pass SSH key through step env to avoid multiline command echo');
-requireIncludes(deployWorkflow, 'printf \'%s\\n\' "$SERVER_SSH_KEY_VALUE"', 'deploy workflow must write SSH key from step env');
-requireNotIncludes(deployWorkflow, 'printf \'%s\\n\' "${{ secrets.SERVER_SSH_KEY }}"', 'deploy workflow must not interpolate multiline SSH key directly in the shell command');
-requireIncludes(deployWorkflow, 'secrets.SERVER_SSH_KNOWN_HOSTS', 'deploy workflow must support optional pinned known_hosts secret');
-requireIncludes(deployWorkflow, 'vars.SERVER_SSH_KNOWN_HOSTS', 'deploy workflow must support optional pinned known_hosts repository variable');
-requireIncludes(deployWorkflow, 'ssh-tcp-reachable', 'deploy workflow must report safe SSH TCP reachability');
-requireIncludes(deployWorkflow, 'ssh-tcp-unreachable; verify SERVER_FHOST/SERVER_PORT firewall and SSH service', 'deploy workflow must fail fast on SSH TCP reachability errors');
-requireIncludes(deployWorkflow, ':</dev/tcp/"$0"/"$1"', 'deploy workflow must use a TCP socket probe before keyscan');
-requireIncludes(deployWorkflow, 'ssh-banner-received', 'deploy workflow must report safe SSH banner success');
-requireIncludes(deployWorkflow, 'ssh-banner-timeout; TCP opened but SSH banner was not received', 'deploy workflow must fail fast when TCP opens but SSH banner is unavailable');
-requireIncludes(deployWorkflow, 'ssh-banner-action; verify SERVER_PORT points to SSH', 'deploy workflow must explain SSH banner timeout remediation safely');
-requireIncludes(deployWorkflow, 'case "$banner" in SSH-*)', 'deploy workflow must verify SSH banner before keyscan');
-requireIncludes(deployWorkflow, 'SERVER_SSH_KNOWN_HOSTS variable present', 'deploy workflow must report known_hosts variable presence safely');
-requireIncludes(deployWorkflow, 'KNOWN_HOSTS_PIN="${{ secrets.SERVER_SSH_KNOWN_HOSTS || vars.SERVER_SSH_KNOWN_HOSTS }}"', 'deploy workflow must prefer known_hosts secret and fall back to variable');
-requireIncludes(deployWorkflow, 'Using pinned SSH known_hosts input', 'deploy workflow must report pinned known_hosts use without printing values');
-requireIncludes(deployWorkflow, 'ssh-keyscan -T 10 -t "${key_type}"', 'deploy workflow must scan host keys by key type');
-requireIncludes(deployWorkflow, 'SSH host key scan attempt ${attempt}/6', 'deploy workflow must retry host key scans six times');
-requireIncludes(deployWorkflow, 'for key_type in ed25519 ecdsa rsa', 'deploy workflow must scan key types sequentially');
-requireIncludes(deployWorkflow, 'ssh-keyscan -4 -T 10 -t "${key_type}"', 'deploy workflow must include IPv4 host key scan fallback');
-requireIncludes(deployWorkflow, 'if test -s ~/.ssh/known_hosts.tmp; then', 'deploy workflow must accept non-empty keyscan output even if a scan command exits non-zero');
-requireIncludes(deployWorkflow, 'SSH host key scan failed; set SERVER_SSH_KNOWN_HOSTS or verify SERVER_FHOST/SERVER_PORT reachability', 'deploy workflow must explain keyscan failures safely');
-requireIncludes(deployWorkflow, 'Remote SSH preflight', 'deploy workflow must include remote SSH preflight');
-requireIncludes(deployWorkflow, 'remote-preflight-ok', 'deploy workflow must report safe preflight success');
-requireIncludes(deployWorkflow, 'compose version >/dev/null', 'deploy preflight must verify docker compose availability');
-requireIncludes(deployWorkflow, 'DEPLOY_PATH must be absolute', 'deploy preflight must validate DEPLOY_PATH');
-requireIncludes(deployWorkflow, 'test -f "$DEPLOY_PATH/deploy/standalone/.env"', 'deploy preflight must verify existing standalone .env');
-requireIncludes(deployWorkflow, 'UPLOAD_ATTEMPT_TIMEOUT_SECONDS: 90', 'deploy workflow must define bounded SCP upload attempt timeout');
-requireIncludes(deployWorkflow, 'UPLOAD_RETRY_ATTEMPTS: 2', 'deploy workflow must define bounded upload retry attempts');
-requireIncludes(deployWorkflow, 'timeout-minutes: 8', 'deploy workflow must bound the full SCP upload step');
-requireIncludes(deployWorkflow, 'SCP upload attempt ${attempt}/${UPLOAD_RETRY_ATTEMPTS} timeout=${UPLOAD_ATTEMPT_TIMEOUT_SECONDS}s', 'deploy workflow must report bounded SCP upload attempts safely');
-requireIncludes(deployWorkflow, 'timeout "${UPLOAD_ATTEMPT_TIMEOUT_SECONDS}" scp', 'deploy workflow must bound each SCP upload attempt');
-requireIncludes(deployWorkflow, 'SSH stream upload fallback attempt ${attempt}/${UPLOAD_RETRY_ATTEMPTS} timeout=${UPLOAD_ATTEMPT_TIMEOUT_SECONDS}s', 'deploy workflow must report bounded SSH stream upload fallback attempts safely');
-requireIncludes(deployWorkflow, 'timeout "${UPLOAD_ATTEMPT_TIMEOUT_SECONDS}" ssh "${SSH_COMMON_OPTS[@]}"', 'deploy workflow must bound each SSH stream upload fallback attempt');
-requireIncludes(deployWorkflow, '"cat > \\"${REMOTE_IMAGE_TAR}\\"" < "${IMAGE_TAR}"', 'deploy workflow must provide SSH stream upload fallback without SCP/SFTP');
-requireIncludes(deployWorkflow, 'upload-remote-image-unavailable; remote docker build fallback will run', 'deploy workflow must continue to safe remote build fallback after repeated upload timeouts');
-requireIncludes(deployWorkflow, 'KUVIEWER_IMAGE_UPLOAD_OK=false', 'deploy workflow must pass upload failure state to deploy step safely');
-requireIncludes(deployWorkflow, 'remote-build-fallback-start', 'deploy workflow must report remote build fallback start safely');
-requireIncludes(deployWorkflow, 'Remote Docker build attempt ${attempt}/3', 'deploy workflow must retry remote fallback Docker builds');
-requireIncludes(deployWorkflow, 'remote-build-fallback-ok', 'deploy workflow must report remote build fallback success safely');
-requireIncludes(deployWorkflow, 'cleanup_remote_image()', 'deploy workflow must define remote partial image cleanup');
-requireIncludes(deployWorkflow, 'verify_remote_image()', 'deploy workflow must verify remote image uploads');
-requireIncludes(deployWorkflow, 'gzip -t \\"${REMOTE_IMAGE_TAR}\\"', 'deploy workflow must verify uploaded gzip image before deploy');
-requireIncludes(deployWorkflow, 'upload-remote-image-verified method=${upload_method} attempt=${attempt}/${UPLOAD_RETRY_ATTEMPTS}', 'deploy workflow must report safe upload verification marker');
-requireIncludes(deployWorkflow, 'rm -f \\"${REMOTE_IMAGE_TAR}\\"', 'deploy workflow must cleanup partial remote image uploads safely');
-requireIncludes(deployWorkflow, 'scp-upload-timeout attempt=${attempt}/${UPLOAD_RETRY_ATTEMPTS} seconds=${UPLOAD_ATTEMPT_TIMEOUT_SECONDS}', 'deploy workflow must report SCP upload timeout safely');
-requireIncludes(deployWorkflow, 'scp-upload-failed attempt=${attempt}/${UPLOAD_RETRY_ATTEMPTS} status=${upload_status}', 'deploy workflow must report SCP upload failure safely');
-requireIncludes(deployWorkflow, 'ssh-stream-upload-timeout attempt=${attempt}/${UPLOAD_RETRY_ATTEMPTS} seconds=${UPLOAD_ATTEMPT_TIMEOUT_SECONDS}', 'deploy workflow must report SSH stream upload timeout safely');
-requireIncludes(deployWorkflow, 'ssh-stream-upload-failed attempt=${attempt}/${UPLOAD_RETRY_ATTEMPTS} status=${upload_status}', 'deploy workflow must report SSH stream upload failure safely');
-requireIncludes(deployWorkflow, 'ROLLBACK_IMAGE="kuviewer:rollback-${GITHUB_RUN_ID}"', 'deploy workflow must define a per-run rollback image tag');
-requireIncludes(deployWorkflow, 'deploy-rollback-image-ready', 'deploy workflow must preserve the previous image for rollback');
-requireIncludes(deployWorkflow, 'deploy-rollback-start', 'deploy workflow must attempt rollback after failed health checks');
-requireIncludes(deployWorkflow, 'deploy-rollback-ok', 'deploy workflow must report safe rollback success');
-requireIncludes(deployWorkflow, 'check_health()', 'deploy workflow must use a bounded health retry function');
-requireIncludes(deployWorkflow, 'deploy-health-wait', 'deploy workflow must report safe health retry markers');
-requireIncludes(deployWorkflow, 'deploy-health-failed', 'deploy workflow must report safe health failure markers');
-requireIncludes(deployWorkflow, '$DEPLOY_PATH/.kuviewer/deploy-state.json', 'deploy workflow must write safe deploy-state metadata');
-requireIncludes(deployWorkflow, 'deploy-state-written', 'deploy workflow must report safe deploy-state writes');
-requireIncludes(deployWorkflow, 'Cleanup deploy runner secrets and artifacts', 'deploy workflow must clean runner secrets and artifacts');
-requireIncludes(deployWorkflow, 'if: always()', 'deploy cleanup must run even after failures');
-requireIncludes(deployWorkflow, 'rm -f "${IMAGE_TAR}" ~/.ssh/deploy_key.pem ~/.ssh/known_hosts', 'deploy cleanup must remove image tar and SSH material');
-requireNotIncludes(deployWorkflow, 'docker compose logs', 'deploy workflow must not dump raw compose logs');
-requireNotIncludes(deployWorkflow, 'cat deploy/standalone/.env', 'deploy workflow must not print standalone env files');
-requireNotIncludes(deployWorkflow, 'cat .env', 'deploy workflow must not print env files');
-
-for (const marker of [
-  'BatchMode=yes',
-  'IdentitiesOnly=yes',
-  'StrictHostKeyChecking=yes',
-  'UserKnownHostsFile="$HOME/.ssh/known_hosts"',
-  'ConnectTimeout=20',
-  'ServerAliveInterval=30',
-  'ServerAliveCountMax=20',
-  'TCPKeepAlive=yes',
-]) {
-  requireIncludes(deployWorkflow, marker, `deploy workflow must include SSH option ${marker}`);
+function requireIncludes(source, value, message) {
+  if (!source.includes(value)) failures.push(message);
 }
 
-requireNotIncludes(deployWorkflow, 'StrictHostKeyChecking=no', 'deploy workflow must not disable strict host key checking');
-requireOrder(deployWorkflow, ['Prepare SSH key', 'Remote SSH preflight', 'Build deployment image', 'Save deployment image', 'Upload image to server', 'Deploy on server']);
-requireOrder(deployWorkflow, ['Deploy on server', 'Cleanup deploy runner secrets and artifacts']);
-
-requireIncludes(ciWorkflow, 'Deploy workflow preflight check', 'CI must run deploy workflow preflight check');
-requireIncludes(ciWorkflow, 'node scripts/check-deploy-workflow.mjs', 'CI must execute deploy workflow checker');
-
-requireIncludes(deployPreflightWorkflow, 'name: deploy-preflight', 'deploy preflight workflow must be named deploy-preflight');
-requireIncludes(deployPreflightWorkflow, 'workflow_dispatch:', 'deploy preflight workflow must be manual-only');
-requireIncludes(deployPreflightWorkflow, 'deploy-preflight-only', 'deploy preflight workflow must report preflight-only scope');
-requireIncludes(deployPreflightWorkflow, 'no image build, upload, compose rollout, or rollback will run', 'deploy preflight workflow must document no deploy side effects');
-requireIncludes(deployPreflightWorkflow, 'SERVER_SSH_KNOWN_HOSTS secret present', 'deploy preflight workflow must report known_hosts secret presence safely');
-requireIncludes(deployPreflightWorkflow, 'SERVER_SSH_KNOWN_HOSTS variable present', 'deploy preflight workflow must report known_hosts variable presence safely');
-requireIncludes(deployPreflightWorkflow, 'SERVER_SSH_KNOWN_HOSTS not set; keyscan fallback will be used', 'deploy preflight workflow must report known_hosts fallback safely');
-requireIncludes(deployPreflightWorkflow, 'ssh-tcp-reachable', 'deploy preflight workflow must report safe SSH TCP reachability');
-requireIncludes(deployPreflightWorkflow, 'SERVER_SSH_KEY_VALUE: ${{ secrets.SERVER_SSH_KEY }}', 'deploy preflight workflow must pass SSH key through step env to avoid multiline command echo');
-requireIncludes(deployPreflightWorkflow, 'printf \'%s\\n\' "$SERVER_SSH_KEY_VALUE"', 'deploy preflight workflow must write SSH key from step env');
-requireNotIncludes(deployPreflightWorkflow, 'printf \'%s\\n\' "${{ secrets.SERVER_SSH_KEY }}"', 'deploy preflight workflow must not interpolate multiline SSH key directly in the shell command');
-requireIncludes(deployPreflightWorkflow, 'ssh-tcp-unreachable; verify SERVER_FHOST/SERVER_PORT firewall and SSH service', 'deploy preflight workflow must fail fast on SSH TCP reachability errors');
-requireIncludes(deployPreflightWorkflow, ':</dev/tcp/"$0"/"$1"', 'deploy preflight workflow must use a TCP socket probe before keyscan');
-requireIncludes(deployPreflightWorkflow, 'ssh-banner-received', 'deploy preflight workflow must report safe SSH banner success');
-requireIncludes(deployPreflightWorkflow, 'ssh-banner-timeout; TCP opened but SSH banner was not received', 'deploy preflight workflow must fail fast when TCP opens but SSH banner is unavailable');
-requireIncludes(deployPreflightWorkflow, 'ssh-banner-action; verify SERVER_PORT points to SSH', 'deploy preflight workflow must explain SSH banner timeout remediation safely');
-requireIncludes(deployPreflightWorkflow, 'case "$banner" in SSH-*)', 'deploy preflight workflow must verify SSH banner before keyscan');
-requireIncludes(deployPreflightWorkflow, 'KNOWN_HOSTS_PIN="${{ secrets.SERVER_SSH_KNOWN_HOSTS || vars.SERVER_SSH_KNOWN_HOSTS }}"', 'deploy preflight workflow must prefer known_hosts secret and fall back to variable');
-requireIncludes(deployPreflightWorkflow, 'Using pinned SSH known_hosts input', 'deploy preflight workflow must use pinned known_hosts when present');
-requireIncludes(deployPreflightWorkflow, 'SSH host key scan failed; set SERVER_SSH_KNOWN_HOSTS or verify SERVER_FHOST/SERVER_PORT reachability', 'deploy preflight workflow must explain keyscan failures safely');
-requireIncludes(deployPreflightWorkflow, 'Remote SSH preflight', 'deploy preflight workflow must verify remote SSH prerequisites');
-requireIncludes(deployPreflightWorkflow, 'remote-preflight-ok', 'deploy preflight workflow must report safe remote preflight success');
-requireIncludes(deployPreflightWorkflow, 'Cleanup deploy preflight secrets', 'deploy preflight workflow must clean runner SSH material');
-requireNotIncludes(deployPreflightWorkflow, 'docker build', 'deploy preflight workflow must not build images');
-requireNotIncludes(deployPreflightWorkflow, 'docker save', 'deploy preflight workflow must not save images');
-requireNotIncludes(deployPreflightWorkflow, 'scp ', 'deploy preflight workflow must not upload files');
-requireNotIncludes(deployPreflightWorkflow, 'Deploy on server', 'deploy preflight workflow must not deploy on server');
-requireNotIncludes(deployPreflightWorkflow, 'compose --env-file', 'deploy preflight workflow must not run compose rollout');
-requireNotIncludes(deployPreflightWorkflow, 'docker compose logs', 'deploy preflight workflow must not dump raw compose logs');
-requireNotIncludes(deployPreflightWorkflow, 'StrictHostKeyChecking=no', 'deploy preflight workflow must not disable strict host key checking');
-
-requireIncludes(deployKnownHostsBootstrapWorkflow, 'name: deploy-known-hosts-bootstrap', 'known_hosts bootstrap workflow must be named deploy-known-hosts-bootstrap');
-requireIncludes(deployKnownHostsBootstrapWorkflow, 'workflow_dispatch:', 'known_hosts bootstrap workflow must be manual-only');
-requireIncludes(deployKnownHostsBootstrapWorkflow, 'I_UNDERSTAND_TOFU', 'known_hosts bootstrap workflow must require explicit TOFU acknowledgement');
-requireIncludes(deployKnownHostsBootstrapWorkflow, 'actions: write', 'known_hosts bootstrap workflow must be able to store repository variable');
-requireIncludes(deployKnownHostsBootstrapWorkflow, 'deploy-known-hosts-bootstrap-only', 'known_hosts bootstrap workflow must report bootstrap-only scope');
-requireIncludes(deployKnownHostsBootstrapWorkflow, 'no image build, upload, compose rollout, rollback, or server mutation will run', 'known_hosts bootstrap workflow must document no deploy side effects');
-requireIncludes(deployKnownHostsBootstrapWorkflow, 'SERVER_PORT must be numeric', 'known_hosts bootstrap workflow must validate SERVER_PORT');
-requireIncludes(deployKnownHostsBootstrapWorkflow, 'SERVER_SSH_KEY_VALUE: ${{ secrets.SERVER_SSH_KEY }}', 'known_hosts bootstrap workflow must pass SSH key through step env to avoid multiline command echo');
-requireIncludes(deployKnownHostsBootstrapWorkflow, 'printf \'%s\\n\' "$SERVER_SSH_KEY_VALUE"', 'known_hosts bootstrap workflow must write SSH key from step env');
-requireNotIncludes(deployKnownHostsBootstrapWorkflow, 'printf \'%s\\n\' "${{ secrets.SERVER_SSH_KEY }}"', 'known_hosts bootstrap workflow must not interpolate multiline SSH key directly in the shell command');
-requireIncludes(deployKnownHostsBootstrapWorkflow, 'ssh-tcp-reachable', 'known_hosts bootstrap workflow must probe SSH TCP reachability');
-requireIncludes(deployKnownHostsBootstrapWorkflow, 'ssh-banner-received', 'known_hosts bootstrap workflow must report safe SSH banner success');
-requireIncludes(deployKnownHostsBootstrapWorkflow, 'ssh-banner-timeout; TCP opened but SSH banner was not received', 'known_hosts bootstrap workflow must fail fast when TCP opens but SSH banner is unavailable');
-requireIncludes(deployKnownHostsBootstrapWorkflow, 'ssh-banner-action; verify SERVER_PORT points to SSH', 'known_hosts bootstrap workflow must explain SSH banner timeout remediation safely');
-requireIncludes(deployKnownHostsBootstrapWorkflow, 'case "$banner" in SSH-*)', 'known_hosts bootstrap workflow must verify SSH banner before key capture');
-requireIncludes(deployKnownHostsBootstrapWorkflow, 'ssh-keyscan -4 -T 10 -t "${key_type}"', 'known_hosts bootstrap workflow must try IPv4 ssh-keyscan first');
-requireIncludes(deployKnownHostsBootstrapWorkflow, 'ssh-keyscan -T 10 -t "${key_type}"', 'known_hosts bootstrap workflow must try normal ssh-keyscan fallback');
-requireIncludes(deployKnownHostsBootstrapWorkflow, 'StrictHostKeyChecking=accept-new', 'known_hosts bootstrap workflow must keep TOFU fallback explicit and scoped');
-requireIncludes(deployKnownHostsBootstrapWorkflow, 'gh variable set "$KNOWN_HOSTS_VARIABLE" < ~/.ssh/known_hosts', 'known_hosts bootstrap workflow must store repository variable without printing key body');
-requireIncludes(deployKnownHostsBootstrapWorkflow, 'updated repository variable: $KNOWN_HOSTS_VARIABLE', 'known_hosts bootstrap workflow must report variable update safely');
-requireIncludes(deployKnownHostsBootstrapWorkflow, 'known-hosts-ready', 'known_hosts bootstrap workflow must report safe capture success');
-requireIncludes(deployKnownHostsBootstrapWorkflow, 'Cleanup bootstrap SSH material', 'known_hosts bootstrap workflow must clean runner SSH material');
-requireNotIncludes(deployKnownHostsBootstrapWorkflow, 'docker build', 'known_hosts bootstrap workflow must not build images');
-requireNotIncludes(deployKnownHostsBootstrapWorkflow, 'docker save', 'known_hosts bootstrap workflow must not save images');
-requireNotIncludes(deployKnownHostsBootstrapWorkflow, 'scp ', 'known_hosts bootstrap workflow must not upload files');
-requireNotIncludes(deployKnownHostsBootstrapWorkflow, 'compose --env-file', 'known_hosts bootstrap workflow must not run compose');
-requireNotIncludes(deployKnownHostsBootstrapWorkflow, 'cat ~/.ssh/known_hosts', 'known_hosts bootstrap workflow must not print known_hosts body');
-requireNotIncludes(deployKnownHostsBootstrapWorkflow, 'StrictHostKeyChecking=no', 'known_hosts bootstrap workflow must not disable strict host key checking');
-
-requireIncludes(deploySshEndpointDiagnosticsWorkflow, 'name: deploy-ssh-endpoint-diagnostics', 'SSH endpoint diagnostics workflow must be named deploy-ssh-endpoint-diagnostics');
-requireIncludes(deploySshEndpointDiagnosticsWorkflow, 'workflow_dispatch:', 'SSH endpoint diagnostics workflow must be manual-only');
-requireIncludes(deploySshEndpointDiagnosticsWorkflow, 'deploy-ssh-endpoint-diagnostics-only', 'SSH endpoint diagnostics workflow must report diagnostics-only scope');
-requireIncludes(deploySshEndpointDiagnosticsWorkflow, 'no SSH key, host key pin, image build, upload, compose rollout, rollback, or server mutation will run', 'SSH endpoint diagnostics workflow must document no deploy side effects');
-requireIncludes(deploySshEndpointDiagnosticsWorkflow, 'node scripts/diagnose-ssh-endpoint.mjs', 'SSH endpoint diagnostics workflow must run the endpoint diagnostics helper');
-requireIncludes(deploySshEndpointDiagnosticsWorkflow, 'SERVER_PORT must be numeric', 'SSH endpoint diagnostics workflow must validate SERVER_PORT');
-requireNotIncludes(deploySshEndpointDiagnosticsWorkflow, 'SERVER_SSH_KEY', 'SSH endpoint diagnostics workflow must not use deploy private keys');
-requireNotIncludes(deploySshEndpointDiagnosticsWorkflow, 'gh variable set', 'SSH endpoint diagnostics workflow must not mutate repository variables');
-requireNotIncludes(deploySshEndpointDiagnosticsWorkflow, 'docker build', 'SSH endpoint diagnostics workflow must not build images');
-requireNotIncludes(deploySshEndpointDiagnosticsWorkflow, 'scp ', 'SSH endpoint diagnostics workflow must not upload files');
-requireNotIncludes(deploySshEndpointDiagnosticsWorkflow, 'compose --env-file', 'SSH endpoint diagnostics workflow must not run compose');
-
-requireIncludes(deploySelfHostedWorkflow, 'name: deploy-self-hosted', 'self-hosted deploy workflow must be named deploy-self-hosted');
-requireIncludes(deploySelfHostedWorkflow, 'workflow_dispatch:', 'self-hosted deploy workflow must be manual-only');
-requireIncludes(deploySelfHostedWorkflow, 'runs-on: [self-hosted, kuviewer-deploy]', 'self-hosted deploy workflow must require the kuviewer-deploy self-hosted runner label');
-requireIncludes(deploySelfHostedWorkflow, 'deploy-self-hosted-only', 'self-hosted deploy workflow must report self-hosted-only scope');
-requireIncludes(deploySelfHostedWorkflow, 'no SSH, SCP, host key, or external network deploy path will run', 'self-hosted deploy workflow must document SSH-free deploy scope');
-requireIncludes(deploySelfHostedWorkflow, 'standalone .env must already exist under DEPLOY_PATH and is never printed', 'self-hosted deploy workflow must require an existing standalone env without printing it');
-requireIncludes(deploySelfHostedWorkflow, 'DEPLOY_PATH must be absolute', 'self-hosted deploy workflow must validate DEPLOY_PATH');
-requireIncludes(deploySelfHostedWorkflow, 'compose version >/dev/null', 'self-hosted deploy workflow must verify docker compose availability');
-requireIncludes(deploySelfHostedWorkflow, 'deploy/standalone/.env must remain untracked', 'self-hosted deploy workflow must reject tracked standalone env files');
-requireIncludes(deploySelfHostedWorkflow, 'test -f "$DEPLOY_PATH/deploy/standalone/.env"', 'self-hosted deploy workflow must verify existing standalone .env');
-requireIncludes(deploySelfHostedWorkflow, 'self-hosted-preflight-ok', 'self-hosted deploy workflow must report safe preflight success');
-requireIncludes(deploySelfHostedWorkflow, 'build --build-arg VITE_BASE_PATH=/ -t "$CANDIDATE_IMAGE" .', 'self-hosted deploy workflow must build a candidate image with root static assets');
-requireIncludes(deploySelfHostedWorkflow, 'git archive --format=tar HEAD | tar -x -C "$DEPLOY_PATH"', 'self-hosted deploy workflow must update DEPLOY_PATH from the checked-out ref without requiring SSH');
-requireIncludes(deploySelfHostedWorkflow, 'ROLLBACK_IMAGE="kuviewer:rollback-${GITHUB_RUN_ID}"', 'self-hosted deploy workflow must define a per-run rollback image tag');
-requireIncludes(deploySelfHostedWorkflow, 'deploy-rollback-image-ready', 'self-hosted deploy workflow must preserve the previous image for rollback');
-requireIncludes(deploySelfHostedWorkflow, 'deploy-rollback-start', 'self-hosted deploy workflow must attempt rollback after failed health checks');
-requireIncludes(deploySelfHostedWorkflow, 'deploy-rollback-ok', 'self-hosted deploy workflow must report safe rollback success');
-requireIncludes(deploySelfHostedWorkflow, 'check_health()', 'self-hosted deploy workflow must use a bounded health retry function');
-requireIncludes(deploySelfHostedWorkflow, 'deploy-health-wait', 'self-hosted deploy workflow must report safe health retry markers');
-requireIncludes(deploySelfHostedWorkflow, 'deploy-health-failed', 'self-hosted deploy workflow must report safe health failure markers');
-requireIncludes(deploySelfHostedWorkflow, '$DEPLOY_PATH/.kuviewer/deploy-state.json', 'self-hosted deploy workflow must write safe deploy-state metadata');
-requireIncludes(deploySelfHostedWorkflow, 'deploy-state-written', 'self-hosted deploy workflow must report safe deploy-state writes');
-requireNotIncludes(deploySelfHostedWorkflow, 'SERVER_SSH_KEY', 'self-hosted deploy workflow must not use deploy SSH keys');
-requireNotIncludes(deploySelfHostedWorkflow, 'SERVER_SSH_KNOWN_HOSTS', 'self-hosted deploy workflow must not use SSH host key pins');
-requireNotIncludes(deploySelfHostedWorkflow, 'ssh-keyscan', 'self-hosted deploy workflow must not scan SSH host keys');
-requireNotIncludes(deploySelfHostedWorkflow, 'StrictHostKeyChecking', 'self-hosted deploy workflow must not perform SSH connections');
-requireNotIncludes(deploySelfHostedWorkflow, 'scp ', 'self-hosted deploy workflow must not upload files through SCP');
-requireNotIncludes(deploySelfHostedWorkflow, 'docker save', 'self-hosted deploy workflow must not create remote-upload image archives');
-requireNotIncludes(deploySelfHostedWorkflow, 'docker compose logs', 'self-hosted deploy workflow must not dump raw compose logs');
-requireNotIncludes(deploySelfHostedWorkflow, 'cat deploy/standalone/.env', 'self-hosted deploy workflow must not print standalone env files');
-requireNotIncludes(deploySelfHostedWorkflow, 'cat .env', 'self-hosted deploy workflow must not print env files');
-requireOrder(deploySelfHostedWorkflow, ['Validate local deployment prerequisites', 'Build deployment image', 'Deploy on self-hosted runner']);
-
-requireIncludes(knownHostsHelper, 'SERVER_SSH_KNOWN_HOSTS', 'known_hosts helper must target SERVER_SSH_KNOWN_HOSTS');
-requireIncludes(knownHostsHelper, 'ssh-keyscan', 'known_hosts helper must generate host keys with ssh-keyscan');
-requireIncludes(knownHostsHelper, '--from-file', 'known_hosts helper must support validating an existing file');
-requireIncludes(knownHostsHelper, '--from-public-key', 'known_hosts helper must support rendering known_hosts from server public host keys');
-requireIncludes(knownHostsHelper, '--set-secret', 'known_hosts helper must support optional gh secret set');
-requireIncludes(knownHostsHelper, '--set-variable', 'known_hosts helper must support optional gh variable set');
-requireIncludes(knownHostsHelper, 'gh variable set', 'known_hosts helper must describe storing public host keys as a variable');
-requireIncludes(knownHostsHelper, 'known_hosts content must not contain private key material', 'known_hosts helper must reject private key material');
-requireIncludes(knownHostsHelper, 'public host key input must not contain private key material', 'known_hosts helper must reject private key material in public key mode');
-requireIncludes(knownHostsHelper, 'renderKnownHostsFromPublicKeys', 'known_hosts helper must render public host key files into known_hosts lines');
-requireIncludes(knownHostsHelper, 'console.log(`known_hosts entries:', 'known_hosts helper must print safe summary counts');
-requireNotIncludes(knownHostsHelper, 'console.log(knownHosts', 'known_hosts helper must not print known_hosts body');
-
-requireIncludes(sshBannerHelper, 'ssh-banner-received', 'SSH banner helper must report successful SSH banner receipt');
-requireIncludes(sshBannerHelper, 'ssh-banner-timeout; TCP opened but SSH banner was not received', 'SSH banner helper must report banner timeout safely');
-requireIncludes(sshBannerHelper, 'ssh-tcp-unreachable', 'SSH banner helper must report TCP errors safely');
-requireIncludes(sshBannerHelper, '--host <host>', 'SSH banner helper must document host usage');
-requireNotIncludes(sshBannerHelper, 'SERVER_SSH_KEY', 'SSH banner helper must not use deploy private keys');
-
-requireIncludes(sshEndpointDiagnosticsHelper, 'diagnostics-scope: tcp, ssh-banner, http-head, tls-clienthello', 'SSH endpoint diagnostics helper must report diagnostic scope');
-requireIncludes(sshEndpointDiagnosticsHelper, 'diagnostics-credentials: none', 'SSH endpoint diagnostics helper must not use credentials');
-requireIncludes(sshEndpointDiagnosticsHelper, 'ssh-banner-detected', 'SSH endpoint diagnostics helper must detect SSH banners');
-requireIncludes(sshEndpointDiagnosticsHelper, 'http-response-detected', 'SSH endpoint diagnostics helper must detect HTTP responses');
-requireIncludes(sshEndpointDiagnosticsHelper, 'tls-handshake-detected', 'SSH endpoint diagnostics helper must detect TLS handshakes');
-requireIncludes(sshEndpointDiagnosticsHelper, 'net.isIP(host) === 0', 'SSH endpoint diagnostics helper must avoid TLS SNI warnings for IP hosts');
-requireIncludes(sshEndpointDiagnosticsHelper, '--host <host>', 'SSH endpoint diagnostics helper must document host usage');
-requireNotIncludes(sshEndpointDiagnosticsHelper, 'SERVER_SSH_KEY', 'SSH endpoint diagnostics helper must not use deploy private keys');
-
-const deployWorkflowPolicy = packagingSpec.deployWorkflowPolicy || {};
-requireCondition(deployWorkflowPolicy.status === 'remote-build-upload-fallback', 'deployWorkflowPolicy.status must be remote-build-upload-fallback');
-requireCondition(deployWorkflowPolicy.workflowPath === '.github/workflows/deploy.yml', 'deployWorkflowPolicy.workflowPath must point to deploy workflow');
-requireCondition(deployWorkflowPolicy.preflightWorkflowPath === '.github/workflows/deploy-preflight.yml', 'deployWorkflowPolicy.preflightWorkflowPath must point to preflight workflow');
-requireCondition(deployWorkflowPolicy.knownHostsBootstrapWorkflowPath === '.github/workflows/deploy-known-hosts-bootstrap.yml', 'deployWorkflowPolicy.knownHostsBootstrapWorkflowPath must point to known_hosts bootstrap workflow');
-requireCondition(deployWorkflowPolicy.sshEndpointDiagnosticsWorkflowPath === '.github/workflows/deploy-ssh-endpoint-diagnostics.yml', 'deployWorkflowPolicy.sshEndpointDiagnosticsWorkflowPath must point to endpoint diagnostics workflow');
-requireCondition(deployWorkflowPolicy.selfHostedWorkflowPath === '.github/workflows/deploy-self-hosted.yml', 'deployWorkflowPolicy.selfHostedWorkflowPath must point to self-hosted deploy workflow');
-requireCondition(deployWorkflowPolicy.staticCheck === 'scripts/check-deploy-workflow.mjs', 'deployWorkflowPolicy.staticCheck must point to this script');
-requireCondition(deployWorkflowPolicy.preflightBeforeBuild === true, 'deployWorkflowPolicy.preflightBeforeBuild must be true');
-requireCondition(deployWorkflowPolicy.strictHostKeyChecking === true, 'deployWorkflowPolicy.strictHostKeyChecking must be true');
-requireCondition(deployWorkflowPolicy.optionalPinnedKnownHostsSecret === 'SERVER_SSH_KNOWN_HOSTS', 'deployWorkflowPolicy.optionalPinnedKnownHostsSecret must document SERVER_SSH_KNOWN_HOSTS');
-requireCondition(deployWorkflowPolicy.optionalPinnedKnownHostsVariable === 'SERVER_SSH_KNOWN_HOSTS', 'deployWorkflowPolicy.optionalPinnedKnownHostsVariable must document SERVER_SSH_KNOWN_HOSTS');
-requireCondition(deployWorkflowPolicy.knownHostsHelper === 'scripts/prepare-deploy-known-hosts.mjs', 'deployWorkflowPolicy.knownHostsHelper must document helper script');
-requireCondition(deployWorkflowPolicy.knownHostsHelperSupportsPublicKeyFiles === true, 'deployWorkflowPolicy.knownHostsHelperSupportsPublicKeyFiles must be true');
-requireCondition(deployWorkflowPolicy.sshTcpReachabilityProbe === true, 'deployWorkflowPolicy.sshTcpReachabilityProbe must be true');
-requireCondition(deployWorkflowPolicy.sshBannerProbe === true, 'deployWorkflowPolicy.sshBannerProbe must be true');
-requireCondition(deployWorkflowPolicy.sshBannerDiagnosticHelper === 'scripts/check-ssh-banner.mjs', 'deployWorkflowPolicy.sshBannerDiagnosticHelper must document the helper script');
-requireCondition(deployWorkflowPolicy.sshEndpointDiagnosticsHelper === 'scripts/diagnose-ssh-endpoint.mjs', 'deployWorkflowPolicy.sshEndpointDiagnosticsHelper must document the endpoint diagnostics helper script');
-requireCondition(deployWorkflowPolicy.sshBannerTimeoutGuidance === true, 'deployWorkflowPolicy.sshBannerTimeoutGuidance must be true');
-requireCondition(deployWorkflowPolicy.sshEndpointDiagnosticsManualOnly === true, 'deployWorkflowPolicy.sshEndpointDiagnosticsManualOnly must be true');
-requireCondition(deployWorkflowPolicy.selfHostedDeployManualOnly === true, 'deployWorkflowPolicy.selfHostedDeployManualOnly must be true');
-requireCondition(deployWorkflowPolicy.selfHostedDeployNoSsh === true, 'deployWorkflowPolicy.selfHostedDeployNoSsh must be true');
-requireCondition(deployWorkflowPolicy.selfHostedDeployPreservesStandaloneEnv === true, 'deployWorkflowPolicy.selfHostedDeployPreservesStandaloneEnv must be true');
-requireCondition(deployWorkflowPolicy.selfHostedDeployUsesWorkspaceArchive === true, 'deployWorkflowPolicy.selfHostedDeployUsesWorkspaceArchive must be true');
-requireCondition(deployWorkflowPolicy.selfHostedCandidateImageTag === 'kuviewer:candidate-${GITHUB_RUN_ID}', 'deployWorkflowPolicy.selfHostedCandidateImageTag must document the candidate image tag');
-const selfHostedRunnerLabels = new Set(Array.isArray(deployWorkflowPolicy.selfHostedRunnerLabels) ? deployWorkflowPolicy.selfHostedRunnerLabels : []);
-for (const label of ['self-hosted', 'kuviewer-deploy']) {
-  requireCondition(selfHostedRunnerLabels.has(label), `deployWorkflowPolicy.selfHostedRunnerLabels must include ${label}`);
-}
-requireCondition(deployWorkflowPolicy.hostKeyScanAttempts === 6, 'deployWorkflowPolicy.hostKeyScanAttempts must be 6');
-requireCondition(deployWorkflowPolicy.keyscanTimeoutSeconds === 10, 'deployWorkflowPolicy.keyscanTimeoutSeconds must be 10');
-requireCondition(deployWorkflowPolicy.acceptNonEmptyKeyscanOutput === true, 'deployWorkflowPolicy.acceptNonEmptyKeyscanOutput must be true');
-requireCondition(deployWorkflowPolicy.ipv4KeyscanFallback === true, 'deployWorkflowPolicy.ipv4KeyscanFallback must be true');
-requireCondition(deployWorkflowPolicy.serverPortRangeValidation === true, 'deployWorkflowPolicy.serverPortRangeValidation must be true');
-requireCondition(deployWorkflowPolicy.uploadRetryAttempts === 2, 'deployWorkflowPolicy.uploadRetryAttempts must be 2');
-requireCondition(deployWorkflowPolicy.uploadAttemptTimeoutSeconds === 90, 'deployWorkflowPolicy.uploadAttemptTimeoutSeconds must be 90');
-requireCondition(deployWorkflowPolicy.uploadStepTimeoutMinutes === 8, 'deployWorkflowPolicy.uploadStepTimeoutMinutes must be 8');
-requireCondition(deployWorkflowPolicy.uploadPartialCleanup === true, 'deployWorkflowPolicy.uploadPartialCleanup must be true');
-requireCondition(deployWorkflowPolicy.uploadTimeoutSafeMarker === 'scp-upload-timeout', 'deployWorkflowPolicy.uploadTimeoutSafeMarker must document scp-upload-timeout');
-requireCondition(deployWorkflowPolicy.uploadFailureSafeMarker === 'scp-upload-failed', 'deployWorkflowPolicy.uploadFailureSafeMarker must document scp-upload-failed');
-requireCondition(deployWorkflowPolicy.uploadFallbackMethod === 'ssh-stream-cat', 'deployWorkflowPolicy.uploadFallbackMethod must document ssh-stream-cat');
-requireCondition(deployWorkflowPolicy.uploadFallbackTimeoutSafeMarker === 'ssh-stream-upload-timeout', 'deployWorkflowPolicy.uploadFallbackTimeoutSafeMarker must document ssh-stream-upload-timeout');
-requireCondition(deployWorkflowPolicy.uploadFallbackFailureSafeMarker === 'ssh-stream-upload-failed', 'deployWorkflowPolicy.uploadFallbackFailureSafeMarker must document ssh-stream-upload-failed');
-requireCondition(deployWorkflowPolicy.uploadVerificationSafeMarker === 'upload-remote-image-verified', 'deployWorkflowPolicy.uploadVerificationSafeMarker must document upload-remote-image-verified');
-requireCondition(deployWorkflowPolicy.remoteUploadGzipVerification === true, 'deployWorkflowPolicy.remoteUploadGzipVerification must be true');
-requireCondition(deployWorkflowPolicy.remoteBuildFallback === true, 'deployWorkflowPolicy.remoteBuildFallback must be true');
-requireCondition(deployWorkflowPolicy.remoteBuildFallbackStartMarker === 'remote-build-fallback-start', 'deployWorkflowPolicy.remoteBuildFallbackStartMarker must document remote-build-fallback-start');
-requireCondition(deployWorkflowPolicy.remoteBuildFallbackSuccessMarker === 'remote-build-fallback-ok', 'deployWorkflowPolicy.remoteBuildFallbackSuccessMarker must document remote-build-fallback-ok');
-requireCondition(deployWorkflowPolicy.rollbackImageTag === 'kuviewer:rollback-${GITHUB_RUN_ID}', 'deployWorkflowPolicy.rollbackImageTag must document the per-run rollback tag');
-requireCondition(deployWorkflowPolicy.healthRetryAttempts === 12, 'deployWorkflowPolicy.healthRetryAttempts must be 12');
-requireCondition(deployWorkflowPolicy.safeDeployStatePath === '$DEPLOY_PATH/.kuviewer/deploy-state.json', 'deployWorkflowPolicy.safeDeployStatePath must document the safe deploy-state path');
-requireCondition(deployWorkflowPolicy.rollbackOnHealthFailure === true, 'deployWorkflowPolicy.rollbackOnHealthFailure must be true');
-requireCondition(deployWorkflowPolicy.rollbackFailureKeepsWorkflowFailed === true, 'deployWorkflowPolicy.rollbackFailureKeepsWorkflowFailed must be true');
-requireCondition(deployWorkflowPolicy.noRawLogDump === true, 'deployWorkflowPolicy.noRawLogDump must be true');
-requireCondition(deployWorkflowPolicy.runnerCleanupAlways === true, 'deployWorkflowPolicy.runnerCleanupAlways must be true');
-requireCondition(deployWorkflowPolicy.noNewRequiredSecrets === true, 'deployWorkflowPolicy.noNewRequiredSecrets must be true');
-requireCondition(deployWorkflowPolicy.optionalPinnedKnownHostsOnly === true, 'deployWorkflowPolicy.optionalPinnedKnownHostsOnly must be true');
-requireCondition(deployWorkflowPolicy.noSecretValueLogging === true, 'deployWorkflowPolicy.noSecretValueLogging must be true');
-requireCondition(deployWorkflowPolicy.sshKeyViaStepEnv === true, 'deployWorkflowPolicy.sshKeyViaStepEnv must be true');
-requireCondition(deployWorkflowPolicy.knownHostsBootstrapManualOnly === true, 'deployWorkflowPolicy.knownHostsBootstrapManualOnly must be true');
-requireCondition(deployWorkflowPolicy.knownHostsBootstrapTofuRequiresAcknowledgement === true, 'deployWorkflowPolicy.knownHostsBootstrapTofuRequiresAcknowledgement must be true');
-const keyscanTypes = new Set(Array.isArray(deployWorkflowPolicy.keyscanTypes) ? deployWorkflowPolicy.keyscanTypes : []);
-for (const keyType of ['ed25519', 'ecdsa', 'rsa']) {
-  requireCondition(keyscanTypes.has(keyType), `deployWorkflowPolicy.keyscanTypes must include ${keyType}`);
-}
-const remoteChecks = new Set(Array.isArray(deployWorkflowPolicy.remoteCapabilityChecks) ? deployWorkflowPolicy.remoteCapabilityChecks : []);
-for (const check of ['git', 'curl', 'gzip', 'docker', 'docker-compose', 'deploy-path', 'standalone-env', 'tmp-write']) {
-  requireCondition(remoteChecks.has(check), `deployWorkflowPolicy.remoteCapabilityChecks must include ${check}`);
-}
-
-if (failures.length > 0) {
-  console.error('deploy workflow check failed');
-  for (const failure of failures) {
-    console.error(`- ${failure}`);
-  }
-  process.exit(1);
-}
-
-console.log('deploy workflow check passed: .github/workflows/deploy.yml');
-
-async function readTextFile(relativePath) {
-  return readFile(path.join(repoRoot, relativePath), 'utf8');
-}
-
-function requireIncludes(text, marker, message) {
-  if (!text.includes(marker)) {
-    failures.push(message);
-  }
+function requireNotIncludes(source, value, message) {
+  if (source.includes(value)) failures.push(message);
 }
 
 function requireCondition(condition, message) {
-  if (!condition) {
-    failures.push(message);
-  }
+  if (!condition) failures.push(message);
 }
 
-function requireNotIncludes(text, marker, message) {
-  if (text.includes(marker)) {
-    failures.push(message);
-  }
-}
-
-function requireOrder(text, markers) {
-  let cursor = -1;
+function requireOrder(source, markers) {
+  let position = -1;
   for (const marker of markers) {
-    const nextIndex = text.indexOf(marker, cursor + 1);
-    if (nextIndex === -1) {
-      failures.push(`deploy workflow must include ordered marker ${marker}`);
+    const next = source.indexOf(marker, position + 1);
+    if (next < 0 || next < position) {
+      failures.push(`deploy workflow marker order is invalid: ${marker}`);
       return;
     }
-    if (nextIndex <= cursor) {
-      failures.push(`deploy workflow marker ${marker} must appear after previous ordered marker`);
-      return;
-    }
-    cursor = nextIndex;
+    position = next;
   }
 }
+
+requireIncludes(deploy, '- "v[0-9]+.[0-9]+.[0-9]+"', 'deploy must run on semantic release tags');
+requireNotIncludes(deploy, 'workflow_dispatch:', 'production deploy must not accept arbitrary manual refs');
+requireNotIncludes(deploy, 'branches:', 'production deploy must not run on branch pushes');
+requireIncludes(deploy, 'runs-on: ubuntu-latest', 'release build must use a GitHub-hosted runner');
+requireIncludes(deploy, 'git merge-base --is-ancestor "$GITHUB_SHA" origin/main', 'release tag must belong to main');
+
+for (const secret of ['NCR_REGISTRY', 'NCR_USERNAME', 'NCR_PASSWORD']) {
+  requireIncludes(deploy, `secrets.${secret}`, `deploy must use ${secret}`);
+}
+requireIncludes(deploy, 'docker/login-action@v4', 'runner must authenticate to NasCR');
+requireIncludes(deploy, 'docker/build-push-action@v7', 'runner must build the release image');
+requireIncludes(deploy, '${{ secrets.NCR_REGISTRY }}/${{ env.IMAGE_NAME }}:latest', 'release must publish latest');
+requireIncludes(deploy, '${{ secrets.NCR_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.ref_name }}', 'release must publish the version tag');
+requireIncludes(deploy, 'docker push "${IMAGE}:latest"', 'host Docker must push latest');
+requireIncludes(deploy, 'docker push "${IMAGE}:${GITHUB_REF_NAME}"', 'host Docker must push the version tag');
+requireIncludes(deploy, 'TARGET_IMAGE=', 'server deploy must identify the immutable NasCR image');
+requireIncludes(deploy, '"${DOCKER[@]}" pull "$TARGET_IMAGE"', 'server must pull the NasCR image');
+requireNotIncludes(deploy, 'docker save', 'release must not create an image archive');
+requireNotIncludes(deploy, 'IMAGE_TAR', 'release must not use image tar transfer');
+requireNotIncludes(deploy, 'remote-build-fallback', 'server must not rebuild the image');
+
+requireIncludes(deploy, 'SERVER_PORT must be numeric', 'deploy must validate numeric server port');
+requireIncludes(deploy, 'SERVER_PORT must be between 1 and 65535', 'deploy must validate server port range');
+requireIncludes(deploy, 'SERVER_SSH_KEY_VALUE: ${{ secrets.SERVER_SSH_KEY }}', 'SSH key must be passed through step env');
+requireNotIncludes(deploy, 'printf \'%s\\n\' "${{ secrets.SERVER_SSH_KEY }}"', 'SSH key must not be interpolated directly');
+requireIncludes(deploy, 'ssh-tcp-reachable', 'deploy must probe SSH TCP reachability');
+requireIncludes(deploy, 'ssh-banner-received', 'deploy must verify the SSH banner');
+requireIncludes(deploy, 'secrets.SERVER_SSH_KNOWN_HOSTS', 'deploy must support a pinned known_hosts secret');
+requireIncludes(deploy, 'vars.SERVER_SSH_KNOWN_HOSTS', 'deploy must support a pinned known_hosts variable');
+requireIncludes(deploy, 'SSH host key scan attempt ${attempt}/6', 'host key scan must be bounded and retried');
+requireIncludes(deploy, 'for key_type in ed25519 ecdsa rsa', 'host key types must be scanned explicitly');
+for (const option of ['BatchMode=yes', 'IdentitiesOnly=yes', 'StrictHostKeyChecking=yes', 'ConnectTimeout=20', 'TCPKeepAlive=yes']) {
+  requireIncludes(deploy, option, `deploy must use SSH option ${option}`);
+}
+requireNotIncludes(deploy, 'StrictHostKeyChecking=no', 'strict host checking must never be disabled');
+requireIncludes(deploy, 'Remote SSH preflight', 'remote prerequisites must be checked before rollout');
+requireIncludes(deploy, 'remote-preflight-ok', 'remote preflight must emit a safe marker');
+requireIncludes(deploy, 'DEPLOY_PATH must be absolute', 'remote deploy path must be absolute');
+requireIncludes(deploy, 'test -f "$DEPLOY_PATH/deploy/standalone/.env"', 'existing deployment env must be preserved');
+
+requireIncludes(deploy, 'ROLLBACK_IMAGE="kuviewer:rollback-${GITHUB_RUN_ID}"', 'deploy must retain a per-run rollback image');
+requireIncludes(deploy, 'deploy-rollback-image-ready', 'deploy must preserve the previous image');
+requireIncludes(deploy, 'deploy-rollback-start', 'failed health checks must trigger rollback');
+requireIncludes(deploy, 'deploy-rollback-ok', 'successful rollback must be reported');
+requireIncludes(deploy, 'deploy-health-wait', 'health retries must be visible');
+requireIncludes(deploy, 'deploy-health-failed', 'health failure must be visible');
+requireIncludes(deploy, 'if: always()', 'runner cleanup must run after failures');
+requireIncludes(deploy, 'rm -f ~/.ssh/deploy_key.pem', 'runner SSH material must be removed');
+requireNotIncludes(deploy, 'docker compose logs', 'deploy must not dump raw logs');
+requireNotIncludes(deploy, 'cat deploy/standalone/.env', 'deploy must not print deployment secrets');
+
+requireOrder(deploy, ['Validate required secrets', 'Build release image', 'Prepare SSH key', 'Remote SSH preflight', 'Authenticate deployment host to NasCR', 'Pull from NasCR and deploy', 'Cleanup SSH material']);
+requireIncludes(ci, 'node scripts/check-deploy-workflow.mjs', 'CI must execute this deploy contract');
+
+requireIncludes(compose, 'image: ${KUVIEWER_IMAGE:-kuviewer:local}', 'compose must accept an explicit release image');
+requireIncludes(envExample, 'KUVIEWER_IMAGE=ncr.nebbixh.com/kuviewer:latest', 'env example must document the NasCR image');
+
+for (const [source, name] of [[preflight, 'deploy-preflight'], [knownHostsBootstrap, 'deploy-known-hosts-bootstrap'], [endpointDiagnostics, 'deploy-ssh-endpoint-diagnostics'], [selfHosted, 'deploy-self-hosted']]) {
+  requireIncludes(source, 'workflow_dispatch:', `${name} must remain manual-only`);
+}
+requireNotIncludes(preflight, 'docker build', 'manual preflight must not build images');
+requireNotIncludes(endpointDiagnostics, 'SERVER_SSH_KEY', 'endpoint diagnostics must not use private keys');
+requireIncludes(selfHosted, 'runs-on: [self-hosted, kuviewer-deploy]', 'manual self-hosted fallback must retain its dedicated label');
+
+const policy = packagingSpec.deployWorkflowPolicy || {};
+requireCondition(policy.status === 'nascr-release-pull', 'deploy policy status must be nascr-release-pull');
+requireCondition(policy.tagOnly === true, 'deploy policy must be tag-only');
+requireCondition(policy.serverPullsReleaseImage === true, 'deploy policy must require server registry pull');
+requireCondition(policy.noImageArchiveUpload === true, 'deploy policy must forbid image archive upload');
+requireCondition(policy.noRemoteBuildFallback === true, 'deploy policy must forbid remote image builds');
+for (const name of ['NCR_REGISTRY', 'NCR_USERNAME', 'NCR_PASSWORD']) {
+  requireCondition(policy.registrySecretNames?.includes(name), `deploy policy must list ${name}`);
+}
+requireCondition(policy.rollbackOnHealthFailure === true, 'deploy policy must retain rollback');
+requireCondition(policy.healthRetryAttempts === 12, 'deploy policy must document 12 health attempts');
+requireCondition(policy.strictHostKeyChecking === true, 'deploy policy must require strict host checking');
+
+if (failures.length) {
+  console.error('deploy workflow check failed');
+  for (const failure of failures) console.error(`- ${failure}`);
+  process.exit(1);
+}
+
+console.log('deploy workflow check passed: NasCR release pull');

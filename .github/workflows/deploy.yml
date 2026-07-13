@@ -33,7 +33,13 @@ jobs:
           test -n "${{ secrets.NCR_REGISTRY }}"
           test -n "${{ secrets.NCR_USERNAME }}"
           test -n "${{ secrets.NCR_PASSWORD }}"
-          case "${{ secrets.SERVER_PORT }}" in ''|*[!0-9]*) exit 1 ;; esac
+          case "${{ secrets.SERVER_PORT }}" in
+            ''|*[!0-9]*) echo "SERVER_PORT must be numeric"; exit 1 ;;
+          esac
+          if [ "${{ secrets.SERVER_PORT }}" -lt 1 ] || [ "${{ secrets.SERVER_PORT }}" -gt 65535 ]; then
+            echo "SERVER_PORT must be between 1 and 65535"
+            exit 1
+          fi
 
       - name: Checkout
         uses: actions/checkout@v5
@@ -99,28 +105,86 @@ jobs:
           printf '%s\n' "$SERVER_SSH_KEY_VALUE" > ~/.ssh/deploy_key.pem
           chmod 600 ~/.ssh/deploy_key.pem
           : > ~/.ssh/known_hosts
+          if timeout 10 bash -c ':</dev/tcp/"$0"/"$1"' "${{ secrets.SERVER_FHOST }}" "${{ secrets.SERVER_PORT }}" 2>/dev/null; then
+            echo "ssh-tcp-reachable"
+          else
+            echo "ssh-tcp-unreachable; verify SERVER_FHOST/SERVER_PORT firewall and SSH service"
+            exit 1
+          fi
+          if timeout 12 bash -c 'exec 3<>/dev/tcp/"$0"/"$1"; IFS= read -r -t 10 banner <&3; case "$banner" in SSH-*) exit 0 ;; *) exit 1 ;; esac' "${{ secrets.SERVER_FHOST }}" "${{ secrets.SERVER_PORT }}" 2>/dev/null; then
+            echo "ssh-banner-received"
+          else
+            echo "ssh-banner-timeout; TCP opened but SSH banner was not received"
+            echo "ssh-banner-action; verify SERVER_PORT points to SSH and allows GitHub runners"
+            exit 1
+          fi
           KNOWN_HOSTS_PIN="${{ secrets.SERVER_SSH_KNOWN_HOSTS || vars.SERVER_SSH_KNOWN_HOSTS }}"
           if [ -n "$KNOWN_HOSTS_PIN" ]; then
+            echo "Using pinned SSH known_hosts input"
             printf '%s\n' "$KNOWN_HOSTS_PIN" > ~/.ssh/known_hosts
           else
-            ssh-keyscan -T 15 -p "${{ secrets.SERVER_PORT }}" "${{ secrets.SERVER_FHOST }}" >> ~/.ssh/known_hosts
+            scanned=false
+            for attempt in 1 2 3 4 5 6; do
+              echo "SSH host key scan attempt ${attempt}/6"
+              : > ~/.ssh/known_hosts.tmp
+              for key_type in ed25519 ecdsa rsa; do
+                ssh-keyscan -4 -T 10 -t "$key_type" -p "${{ secrets.SERVER_PORT }}" "${{ secrets.SERVER_FHOST }}" >> ~/.ssh/known_hosts.tmp 2>/dev/null || true
+                test -s ~/.ssh/known_hosts.tmp && break
+              done
+              if ! test -s ~/.ssh/known_hosts.tmp; then
+                for key_type in ed25519 ecdsa rsa; do
+                  ssh-keyscan -T 10 -t "$key_type" -p "${{ secrets.SERVER_PORT }}" "${{ secrets.SERVER_FHOST }}" >> ~/.ssh/known_hosts.tmp 2>/dev/null || true
+                  test -s ~/.ssh/known_hosts.tmp && break
+                done
+              fi
+              if test -s ~/.ssh/known_hosts.tmp; then
+                cat ~/.ssh/known_hosts.tmp >> ~/.ssh/known_hosts
+                rm -f ~/.ssh/known_hosts.tmp
+                sort -u ~/.ssh/known_hosts -o ~/.ssh/known_hosts
+                scanned=true
+                break
+              fi
+              sleep 5
+            done
+            if [ "$scanned" != true ]; then
+              echo "SSH host key scan failed; set SERVER_SSH_KNOWN_HOSTS or verify reachability"
+              exit 1
+            fi
           fi
           test -s ~/.ssh/known_hosts
 
-      - name: Validate deployment host
+      - name: Remote SSH preflight
         shell: bash
         run: |
           ssh -i ~/.ssh/deploy_key.pem -o BatchMode=yes -o IdentitiesOnly=yes \
-            -o StrictHostKeyChecking=yes -o UserKnownHostsFile=~/.ssh/known_hosts \
+            -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$HOME/.ssh/known_hosts" \
+            -o ConnectTimeout=20 -o ServerAliveInterval=30 -o ServerAliveCountMax=20 -o TCPKeepAlive=yes \
             -p "${{ secrets.SERVER_PORT }}" \
             "${{ secrets.SERVER_FUSER }}@${{ secrets.SERVER_FHOST }}" \
-            "set -e; command -v git; command -v curl; mkdir -p '${{ env.DEPLOY_PATH }}'; test -w '${{ env.DEPLOY_PATH }}'; if docker info >/dev/null 2>&1; then docker compose version; else sudo -n docker compose version; fi"
+            "DEPLOY_PATH='${{ env.DEPLOY_PATH }}' bash -se" <<'REMOTE_PREFLIGHT'
+          set -euo pipefail
+          case "$DEPLOY_PATH" in /*) ;; *) echo "DEPLOY_PATH must be absolute"; exit 1 ;; esac
+          command -v git >/dev/null
+          command -v curl >/dev/null
+          mkdir -p "$DEPLOY_PATH"
+          test -w "$DEPLOY_PATH"
+          if docker info >/dev/null 2>&1; then
+            docker compose version >/dev/null
+          else
+            sudo -n docker compose version >/dev/null
+          fi
+          if [ -d "$DEPLOY_PATH/.git" ]; then
+            test -f "$DEPLOY_PATH/deploy/standalone/.env"
+          fi
+          echo "remote-preflight-ok"
+          REMOTE_PREFLIGHT
 
       - name: Authenticate deployment host to NasCR
         run: |
           printf '%s' "${{ secrets.NCR_PASSWORD }}" | \
           ssh -i ~/.ssh/deploy_key.pem -o BatchMode=yes -o IdentitiesOnly=yes \
-            -o StrictHostKeyChecking=yes -o UserKnownHostsFile=~/.ssh/known_hosts \
+            -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$HOME/.ssh/known_hosts" \
+            -o ConnectTimeout=20 -o ServerAliveInterval=30 -o ServerAliveCountMax=20 -o TCPKeepAlive=yes \
             -p "${{ secrets.SERVER_PORT }}" \
             "${{ secrets.SERVER_FUSER }}@${{ secrets.SERVER_FHOST }}" \
             "set -e; if docker info >/dev/null 2>&1; then DOCKER='docker'; else DOCKER='sudo -n docker'; fi; sh -c \"\$DOCKER login '${{ secrets.NCR_REGISTRY }}' -u '${{ secrets.NCR_USERNAME }}' --password-stdin\""
@@ -129,8 +193,8 @@ jobs:
         shell: bash
         run: |
           ssh -i ~/.ssh/deploy_key.pem -o BatchMode=yes -o IdentitiesOnly=yes \
-            -o StrictHostKeyChecking=yes -o UserKnownHostsFile=~/.ssh/known_hosts \
-            -o ServerAliveInterval=30 -o ServerAliveCountMax=20 \
+            -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$HOME/.ssh/known_hosts" \
+            -o ConnectTimeout=20 -o ServerAliveInterval=30 -o ServerAliveCountMax=20 -o TCPKeepAlive=yes \
             -p "${{ secrets.SERVER_PORT }}" \
             "${{ secrets.SERVER_FUSER }}@${{ secrets.SERVER_FHOST }}" \
             "bash -se" <<'REMOTE_DEPLOY'
@@ -159,8 +223,10 @@ jobs:
                 echo "deploy-health-ok attempt=${attempt}/12"
                 return 0
               fi
+              echo "deploy-health-wait attempt=${attempt}/12"
               sleep 5
             done
+            echo "deploy-health-failed"
             return 1
           }
 
@@ -177,6 +243,7 @@ jobs:
           if [ -n "$PREVIOUS_IMAGE_ID" ]; then
             "${DOCKER[@]}" image tag "$PREVIOUS_IMAGE_ID" "$ROLLBACK_IMAGE"
             ROLLBACK_RESULT=available
+            echo "deploy-rollback-image-ready"
           else
             ROLLBACK_RESULT=unavailable
           fi
@@ -193,10 +260,12 @@ jobs:
           fi
 
           if [ -n "$PREVIOUS_IMAGE_ID" ]; then
+            echo "deploy-rollback-start"
             printf 'KUVIEWER_IMAGE=%s\n' "$ROLLBACK_IMAGE" > deploy/standalone/.release.env
             "${DOCKER[@]}" compose --env-file deploy/standalone/.env --env-file deploy/standalone/.release.env -f deploy/standalone/docker-compose.yml up -d --force-recreate --remove-orphans
             if check_health; then
               ROLLBACK_RESULT=success
+              echo "deploy-rollback-ok"
             else
               ROLLBACK_RESULT=failed
             fi
@@ -209,4 +278,4 @@ jobs:
 
       - name: Cleanup SSH material
         if: always()
-        run: rm -f ~/.ssh/deploy_key.pem ~/.ssh/known_hosts
+        run: rm -f ~/.ssh/deploy_key.pem ~/.ssh/known_hosts ~/.ssh/known_hosts.tmp
