@@ -58,6 +58,21 @@ async function runViewport({ name, viewport, isMobile, hasTouch }) {
     window.sessionStorage.setItem('kuviewer_admin_token', token);
   }, adminToken);
   const page = await context.newPage();
+  const browserIssues = [];
+  const failedResponses = [];
+  page.on('console', (message) => {
+    if (['error', 'warning'].includes(message.type()) && !/^Failed to load resource:/i.test(message.text())) {
+      browserIssues.push(`${message.type()}: ${message.text()}`);
+    }
+  });
+  page.on('pageerror', (error) => {
+    browserIssues.push(`pageerror: ${error.message}`);
+  });
+  page.on('response', (response) => {
+    if (response.status() >= 400) {
+      failedResponses.push(`${response.status()}: ${response.url()}`);
+    }
+  });
 
   try {
     await page.goto(baseUrl, { waitUntil: 'networkidle' });
@@ -78,13 +93,7 @@ async function runViewport({ name, viewport, isMobile, hasTouch }) {
 
     await verifyNodeDrag(page, name);
 
-    const overflow = await page.evaluate(() => ({
-      documentWidth: document.documentElement.scrollWidth,
-      viewportWidth: window.innerWidth,
-    }));
-    if (overflow.documentWidth > overflow.viewportWidth + 4) {
-      throw new Error(`page overflows horizontally: ${overflow.documentWidth} > ${overflow.viewportWidth}`);
-    }
+    await assertNoHorizontalOverflow(page, `${name} topology`);
 
     await page.screenshot({ path: path.join(outputDir, `${name}-topology.png`), fullPage: true });
     await verifyResourceExplorer(page);
@@ -92,6 +101,7 @@ async function runViewport({ name, viewport, isMobile, hasTouch }) {
     await expect(page.getByRole('heading', { name: '트래픽 흐름' })).toBeVisible({ timeout: 10_000 });
     await expect(page.getByText(/현재 필터에 맞는 트래픽 흐름이 없습니다/)).toHaveCount(0);
     await page.screenshot({ path: path.join(outputDir, `${name}-flow.png`), fullPage: true });
+    assertNoBrowserIssues(browserIssues, failedResponses, name);
   } finally {
     await browser.close();
   }
@@ -321,6 +331,7 @@ async function verifyResourceDetailSectionControls(page) {
   await page.keyboard.press('3');
   await expect(page.getByTestId('resource-detail-active-section')).toContainText('현재 Safe Preview', { timeout: 10_000 });
   await expect(page.getByTestId('resource-detail-section-safe')).toBeFocused({ timeout: 10_000 });
+  await expect(page.getByTestId('resource-detail-section-nav-item-safe')).toHaveAttribute('aria-current', 'true');
   const safePreviewSearchInput = page.getByTestId('safe-preview-search-input');
   await safePreviewSearchInput.focus();
   await expect(safePreviewSearchInput).toBeFocused({ timeout: 10_000 });
@@ -334,6 +345,24 @@ async function verifyResourceDetailSectionControls(page) {
   await expect(safePreviewSearchInput).toHaveValue('joecr1');
   await page.getByTestId('safe-preview-search-clear').click();
   await expect(page.getByTestId('resource-key-value-row-safe').first()).toBeVisible({ timeout: 10_000 });
+
+  await verifyResourceDetailEmptyFilterRecovery(page);
+}
+
+async function verifyResourceDetailEmptyFilterRecovery(page) {
+  await page.getByTestId('resource-view-query').fill('zz-resource-detail-keyboard-empty');
+  await expect(page.getByTestId('resource-result-count')).toContainText(/결과 0 \/ 전체 \d+/, { timeout: 10_000 });
+  await expect(page.getByTestId('resource-detail-panel')).toHaveCount(0);
+  await expect(page.getByText('필터와 일치하는 리소스가 없습니다.')).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByText('선택된 리소스가 없습니다.')).toBeVisible({ timeout: 10_000 });
+
+  await page.getByTestId('resource-active-filter-clear-all').click();
+  await expect(page.getByTestId('resource-view-query')).toHaveValue('');
+  await expect(page.getByTestId('resource-result-count')).toContainText(/결과 [1-9]\d* \/ 전체 \d+/, { timeout: 10_000 });
+  await expect(page.getByTestId('resource-detail-panel')).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByTestId('resource-detail-active-section')).toContainText('현재 Metadata', { timeout: 10_000 });
+  await expect(page.getByTestId('resource-detail-open-section-count')).toContainText('열린 섹션 5 / 9', { timeout: 10_000 });
+  await assertNoHorizontalOverflow(page, 'resource detail keyboard empty filter recovery');
 }
 
 async function verifyResourceViewConflictImport(page) {
@@ -370,6 +399,9 @@ async function verifyResourceViewTeamSyncPolish(page) {
   });
   await page.route('**/api/resources', async (route) => {
     await route.fulfill({ contentType: 'application/json', body: JSON.stringify(getTeamSyncResources()) });
+  });
+  await page.route('**/api/resources/**/events', async (route) => {
+    await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ items: [], warning: '' }) });
   });
   await page.route('**/api/resource-views', async (route) => {
     if (route.request().method() === 'PUT') {
@@ -850,6 +882,23 @@ async function visibleResourceNames(page) {
 
 function savedViewDomId(name) {
   return name.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 80) || 'view';
+}
+
+function assertNoBrowserIssues(browserIssues, failedResponses, viewportName) {
+  const issues = [...browserIssues, ...failedResponses];
+  if (issues.length > 0) {
+    throw new Error(`unexpected browser warning/error in ${viewportName}: ${issues.slice(0, 5).join(' | ')}`);
+  }
+}
+
+async function assertNoHorizontalOverflow(page, label) {
+  const overflow = await page.evaluate(() => ({
+    documentWidth: document.documentElement.scrollWidth,
+    viewportWidth: window.innerWidth,
+  }));
+  if (overflow.documentWidth > overflow.viewportWidth + 4) {
+    throw new Error(`${label} overflows horizontally: ${overflow.documentWidth} > ${overflow.viewportWidth}`);
+  }
 }
 
 function getTeamSyncSnapshot() {

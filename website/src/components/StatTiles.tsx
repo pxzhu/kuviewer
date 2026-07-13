@@ -46,15 +46,15 @@ export function StatTiles({ clusters, selectedClusterId }: StatTilesProps) {
         const Icon = stat.icon;
 
         return (
-          <article key={stat.label} className="ku-panel overflow-hidden p-4">
+          <article key={stat.label} className="ku-panel overflow-hidden p-4 transition-[transform,box-shadow,border-color] duration-150 ease-out hover:-translate-y-0.5">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <p className="ku-meta">{stat.label}</p>
-                <p className="mt-2 truncate text-[26px] font-semibold leading-none tracking-[-0.03em] text-[#1d1d1f]">{stat.value}</p>
-                <p className="mt-2 text-sm font-medium text-[rgba(60,60,67,0.66)]">{stat.detail}</p>
+                <p className="ku-metric mt-2 truncate text-[26px] font-semibold leading-none tracking-[0] text-[#1d1d1f]">{stat.value}</p>
+                <p className="ku-copy mt-2 text-sm font-medium">{stat.detail}</p>
               </div>
               <div
-                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[11px] border bg-white/80 shadow-[0_2px_10px_rgba(0,0,0,0.04)]"
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[11px] border bg-white/80 shadow-[inset_0_1px_0_rgba(255,255,255,0.7),0_2px_10px_rgba(0,0,0,0.04)]"
                 style={{ borderColor: `${stat.accent}26`, color: stat.accent, backgroundColor: `${stat.accent}10` }}
               >
                 <Icon size={19} aria-hidden="true" />

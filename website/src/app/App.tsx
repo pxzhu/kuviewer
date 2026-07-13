@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Boxes, GitBranch, LockKeyhole, Palette, Pause, Play, RefreshCw, SearchCode, SlidersHorizontal, Workflow } from 'lucide-react';
+import { Boxes, GitBranch, LockKeyhole, Palette, Pause, Play, RefreshCw, SearchCode, SlidersHorizontal, Workflow, type LucideIcon } from 'lucide-react';
 import { clearAdminToken, getStoredAdminToken, isValidAdminToken } from '../features/auth/adminToken';
 import {
   checkDesktopCmSession,
@@ -44,6 +44,7 @@ import { StatTiles } from '../components/StatTiles';
 import { TopologyCanvas } from '../components/TopologyCanvas';
 import { TrafficFlowView } from '../components/TrafficFlowView';
 import type { ConnectorStatus } from '../types/status';
+import { formatLastSync } from '../utils/formatTime';
 
 const initialFilters: TopologyFilters = {
   query: '',
@@ -58,6 +59,17 @@ const brandThemeStorageKey = 'kuviewer_brand_theme';
 type BrandTheme = 'yaml-flow' | 'radar';
 type ViewMode = 'topology' | 'traffic' | 'resources';
 
+const brandThemeOptions: Array<{ value: BrandTheme; label: string }> = [
+  { value: 'yaml-flow', label: 'D' },
+  { value: 'radar', label: 'B' },
+];
+
+const viewModeOptions: Array<{ value: ViewMode; label: string; icon: LucideIcon }> = [
+  { value: 'topology', label: '토폴로지', icon: GitBranch },
+  { value: 'traffic', label: '트래픽 흐름', icon: Workflow },
+  { value: 'resources', label: '리소스 탐색', icon: SearchCode },
+];
+
 interface AppUrlState {
   viewMode: ViewMode;
   sourceMode: TopologySourceMode;
@@ -66,6 +78,20 @@ interface AppUrlState {
 
 export function App() {
   return <Dashboard />;
+}
+
+function HeaderSegmentButton({ active, icon: Icon, label, onClick }: { active: boolean; icon: LucideIcon; label: string; onClick: () => void }) {
+  return (
+    <button
+      className={`ku-segmented-button ${active ? 'ku-segmented-button-active' : ''}`}
+      type="button"
+      aria-pressed={active}
+      onClick={onClick}
+    >
+      <Icon size={15} aria-hidden="true" />
+      {label}
+    </button>
+  );
 }
 
 function Dashboard() {
@@ -534,87 +560,61 @@ function Dashboard() {
 
   return (
     <main className="ku-app-shell text-[#1e2b3c]" data-brand-theme={brandTheme}>
-      <header className="sticky top-0 z-50 border-b border-[rgba(137,158,186,0.18)] bg-white/82 shadow-[0_16px_46px_rgba(73,104,143,0.12)] backdrop-blur-2xl">
+      <header className="ku-header sticky top-0 z-50">
         <div className="mx-auto flex max-w-[1760px] flex-col gap-3 px-3 py-3 sm:px-4 lg:flex-row lg:items-center lg:justify-between lg:px-6">
           <div className="flex min-w-0 gap-3">
             <img
-              className="mt-0.5 h-11 w-11 shrink-0 rounded-[13px] border border-[rgba(137,158,186,0.22)] shadow-[0_12px_28px_rgba(73,104,143,0.16)]"
+              className="ku-brand-mark mt-0.5 h-11 w-11 shrink-0"
               src={brandIconSrc}
               alt=""
               aria-hidden="true"
             />
             <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="ku-chip border-[rgba(0,122,255,0.18)] bg-[rgba(0,122,255,0.08)] text-[#0066cc]">
-                <Boxes size={13} aria-hidden="true" />
-                {providerLabel} 소스
-              </span>
-              <span className="ku-chip">
-                {loading ? '동기화 중' : `동기화 ${formatLastSync(lastUpdatedAt)}`}
-              </span>
-              <span className="ku-chip max-w-full truncate">
-                {formatConnectorStatus(connectorStatus, connectorLoading, connectorError, sourceMode, liveUnlocked, uploadedState)}
-              </span>
-            </div>
-            <div className="mt-2 flex flex-wrap items-baseline gap-x-3 gap-y-1">
-              <h1 className="text-[22px] font-semibold tracking-[0] text-[#1d1d1f]">Kuviewer</h1>
-              <p className="font-mono text-xs font-semibold text-[rgba(60,60,67,0.62)]">
-                Kubernetes 리소스 맵 · 관계 · YAML 기반 트래픽 흐름
-              </p>
-            </div>
-            {error ? <p className="mt-1 text-sm font-semibold text-[#b26a00]">API 오류: {formatUiError(error)}</p> : null}
-            {uploadError ? <p className="mt-1 text-sm font-semibold text-[#b26a00]">업로드 오류: {formatUiError(uploadError)}</p> : null}
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="ku-chip border-[rgba(0,122,255,0.18)] bg-[rgba(0,122,255,0.08)] text-[#0066cc]">
+                  <Boxes size={13} aria-hidden="true" />
+                  {providerLabel} 소스
+                </span>
+                <span className="ku-chip">
+                  {loading ? '동기화 중' : `동기화 ${formatLastSync(lastUpdatedAt, '안 됨')}`}
+                </span>
+                <span className="ku-chip max-w-full truncate">
+                  {formatConnectorStatus(connectorStatus, connectorLoading, connectorError, sourceMode, liveUnlocked, uploadedState)}
+                </span>
+              </div>
+              <div className="mt-2 flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                <h1 className="ku-title text-[22px] font-semibold tracking-[0]">Kuviewer</h1>
+                <p className="ku-copy font-mono text-xs font-semibold">
+                  Kubernetes 리소스 맵 · 관계 · YAML 기반 트래픽 흐름
+                </p>
+              </div>
+              {error ? <p className="mt-1 text-sm font-semibold text-[#b26a00]">API 오류: {formatUiError(error)}</p> : null}
+              {uploadError ? <p className="mt-1 text-sm font-semibold text-[#b26a00]">업로드 오류: {formatUiError(uploadError)}</p> : null}
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="grid grid-cols-2 rounded-[11px] border border-[rgba(60,60,67,0.16)] bg-white/70 p-1 shadow-[0_2px_10px_rgba(0,0,0,0.04)] backdrop-blur-xl" aria-label="브랜드 테마">
-              {(['yaml-flow', 'radar'] as BrandTheme[]).map((theme) => (
-                <button
-                  key={theme}
-                  className={`inline-flex h-8 items-center justify-center gap-1.5 rounded-[8px] px-3 text-sm font-semibold transition ${
-                    brandTheme === theme ? 'bg-[#1d1d1f] text-white shadow-sm' : 'text-[rgba(60,60,67,0.72)] hover:bg-white/80'
-                  }`}
-                  type="button"
-                  aria-pressed={brandTheme === theme}
-                  onClick={() => handleBrandThemeChange(theme)}
-                >
-                  <Palette size={14} aria-hidden="true" />
-                  {theme === 'yaml-flow' ? 'D' : 'B'}
-                </button>
+          <div className="ku-header-actions">
+            <div className="ku-segmented grid-cols-2" aria-label="브랜드 테마">
+              {brandThemeOptions.map((option) => (
+                <HeaderSegmentButton
+                  key={option.value}
+                  active={brandTheme === option.value}
+                  icon={Palette}
+                  label={option.label}
+                  onClick={() => handleBrandThemeChange(option.value)}
+                />
               ))}
             </div>
-            <div className="grid grid-cols-3 rounded-[11px] border border-[rgba(60,60,67,0.16)] bg-white/70 p-1 shadow-[0_2px_10px_rgba(0,0,0,0.04)] backdrop-blur-xl">
-              <button
-                className={`inline-flex h-8 items-center justify-center gap-2 rounded-[8px] px-3 text-sm font-semibold transition ${
-                  viewMode === 'topology' ? 'bg-[#1d1d1f] text-white shadow-sm' : 'text-[rgba(60,60,67,0.72)] hover:bg-white/80'
-                }`}
-                type="button"
-                onClick={() => handleViewModeChange('topology')}
-              >
-                <GitBranch size={15} aria-hidden="true" />
-                토폴로지
-              </button>
-              <button
-                className={`inline-flex h-8 items-center justify-center gap-2 rounded-[8px] px-3 text-sm font-semibold transition ${
-                  viewMode === 'traffic' ? 'bg-[#1d1d1f] text-white shadow-sm' : 'text-[rgba(60,60,67,0.72)] hover:bg-white/80'
-                }`}
-                type="button"
-                onClick={() => handleViewModeChange('traffic')}
-              >
-                <Workflow size={15} aria-hidden="true" />
-                트래픽 흐름
-              </button>
-              <button
-                className={`inline-flex h-8 items-center justify-center gap-2 rounded-[8px] px-3 text-sm font-semibold transition ${
-                  viewMode === 'resources' ? 'bg-[#1d1d1f] text-white shadow-sm' : 'text-[rgba(60,60,67,0.72)] hover:bg-white/80'
-                }`}
-                type="button"
-                onClick={() => handleViewModeChange('resources')}
-              >
-                <SearchCode size={15} aria-hidden="true" />
-                리소스 탐색
-              </button>
+            <div className="ku-segmented grid-cols-3" aria-label="주요 보기">
+              {viewModeOptions.map((option) => (
+                <HeaderSegmentButton
+                  key={option.value}
+                  active={viewMode === option.value}
+                  icon={option.icon}
+                  label={option.label}
+                  onClick={() => handleViewModeChange(option.value)}
+                />
+              ))}
             </div>
             <button
               className="ku-control"
@@ -872,18 +872,6 @@ function elementCanScroll(element: Element, deltaY: number) {
   const canScrollUp = element.scrollTop > 1;
   const canScrollDown = element.scrollTop + element.clientHeight < element.scrollHeight - 1;
   return (deltaY > 0 && canScrollUp) || (deltaY < 0 && canScrollDown);
-}
-
-function formatLastSync(lastUpdatedAt: number | null) {
-  if (!lastUpdatedAt) {
-    return '안 됨';
-  }
-
-  return new Intl.DateTimeFormat(undefined, {
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-  }).format(new Date(lastUpdatedAt));
 }
 
 function initialSourceMode(): TopologySourceMode {

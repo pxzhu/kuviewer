@@ -1,5 +1,7 @@
 # Kuviewer Codex Handoff
 
+> 빠른 다음 작업 판단은 `docs/NEXT_WORK.md`를 먼저 본다. 이 파일은 장기 상태와 완료 로그를 보존하는 handoff 문서다.
+
 ## 작업 경로
 
 - 프로젝트 루트는 이 저장소 checkout 경로다.
@@ -91,6 +93,8 @@ https://kuviewer.example.com/
 ```
 
 ## 다음 할 일
+
+현재 추천 순서는 `docs/NEXT_WORK.md`에 별도로 요약한다. 아래 항목은 기존 handoff 기록과 장기 후보를 보존하기 위한 상세 로그다.
 
 1. Git/브랜치 관리
    - 현재 저장소는 독립 Git repo다.

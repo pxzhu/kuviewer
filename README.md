@@ -12,7 +12,18 @@ Kuviewer is a Kubernetes topology viewer focused on visualizing clusters, namesp
 - Future desktop-local idea: read-only CM/SSH session exploration can stay as a prototype, but it is not a downloadable product path
 - Frontend: React, TypeScript, Vite, Tailwind CSS
 
+## Local Task Notifications
+
+- `scripts/notify-telegram.mjs` can send a local task summary and optional screenshot through Telegram.
+- It requires `TELEGRAM_BOT_TOKEN_TWO` or fallback `TELEGRAM_BOT_TOKEN`, and accepts `--chat-id`, `TELEGRAM_CHAT_ID`, `TELEGRAM_TO`, or `TELEGRAM_CHAT_ID_KUVIEWER`; if no chat id is set, it tries to infer the latest chat from Telegram `getUpdates`.
+- Use `--preflight` to verify local readiness without sending; add `--resolve-chat` when the check should call `getUpdates` and report only whether chat inference is available, or `--require-explicit-chat` when chat inference should be disabled.
+- Use `--require-token-source TELEGRAM_BOT_TOKEN_TWO` when the notification must fail instead of silently falling back to `TELEGRAM_BOT_TOKEN`.
+- The CLI entrypoint stays in `scripts/notify-telegram.mjs`; reusable parsing, token resolution, and send helpers live in `scripts/lib/telegram-notify.mjs`.
+- The script never prints the bot token or chat id and is intended for local agent/task reporting, not product runtime behavior.
+
 ## Current UI
+
+- Next work is summarized in `docs/NEXT_WORK.md`; `CODEX_HANDOFF.md` keeps the longer archival state.
 
 - Source modes: `Upload YAML`, `Live Cluster`, and `Mock Demo`
 - `Topology`: draggable React Flow resource relationship map with cluster and namespace zones

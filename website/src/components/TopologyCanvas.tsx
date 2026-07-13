@@ -253,7 +253,7 @@ function TopologyCanvasInner({ nodes, edges, selectedNodeId, colorMode, brandThe
             />
             <Controls showInteractive={false} />
             <Panel position="top-left" className="!m-3">
-              <div className="flex flex-wrap gap-2 rounded-[14px] border border-[rgba(60,60,67,0.14)] bg-white/85 p-2 shadow-[0_12px_30px_rgba(0,0,0,0.08)] backdrop-blur-xl">
+              <div className="ku-map-toolbar flex flex-wrap gap-2 p-2">
                 <button className="ku-flow-button" type="button" onClick={() => reactFlow.fitView({ padding: 0.18, duration: 260 })}>
                   <Focus size={14} aria-hidden="true" />
                   맞춤
@@ -428,7 +428,7 @@ function MobileTopologyCanvas({ nodes, edges, selectedNodeId, colorMode, brandTh
             onTouchStart={handleTouchStart}
             onWheel={handleWheel}
           >
-            <div className="absolute left-2 top-2 z-10 flex flex-wrap gap-1.5 rounded-[12px] border border-[rgba(60,60,67,0.14)] bg-white/85 p-1.5 shadow-[0_10px_24px_rgba(0,0,0,0.08)] backdrop-blur-xl">
+            <div className="ku-map-toolbar absolute left-2 top-2 z-10 flex flex-wrap gap-1.5 p-1.5">
               <button className="ku-flow-button" data-testid="mobile-zoom-in" type="button" onClick={() => zoomAt(camera.scale * 1.18)}>
                 <Plus size={14} aria-hidden="true" />
               </button>
@@ -696,7 +696,7 @@ function ResourceNode({ data }: NodeProps<Node<ResourceNodeData>>) {
 
   return (
     <div
-      className={`relative h-[106px] w-[220px] rounded-[13px] border bg-white/92 px-3 py-2 text-left backdrop-blur-xl transition ${
+      className={`ku-topology-node relative h-[106px] w-[220px] rounded-[13px] border bg-white/92 px-3 py-2 text-left backdrop-blur-xl transition-[box-shadow,opacity,transform,border-color] ${
         isRadar ? 'shadow-[0_16px_34px_rgba(0,0,0,0.32)]' : 'shadow-[0_16px_34px_rgba(73,104,143,0.14)]'
       } ${selected ? (isRadar ? 'ring-[3px] ring-[rgba(47,140,255,0.42)]' : 'ring-[3px] ring-[rgba(38,122,255,0.24)]') : related ? (isRadar ? 'ring-2 ring-[rgba(125,173,220,0.2)]' : 'ring-2 ring-[rgba(137,158,186,0.2)]') : ''
       } ${muted ? 'opacity-35' : 'opacity-100'}`}
@@ -804,8 +804,15 @@ function buildFlowLayout(nodes: TopologyNode[], edges: TopologyEdge[], savedPosi
     const clusterNodes = nodes.filter((node) => node.clusterId === clusterId);
     const clusterResources: PositionedResource[] = [];
     const clusterStartY = cursorY;
-    const scopedNodes = sortResources(clusterNodes.filter((node) => !node.namespace));
-    const namespaceNames = uniqueStrings(clusterNodes.map((node) => node.namespace).filter(Boolean) as string[]);
+    const scopedNodes = sortResources(clusterNodes.filter((node) => !node.namespace && node.kind !== 'Namespace'));
+    const namespaceNames = uniqueStrings(
+      clusterNodes.flatMap((node) => {
+        if (node.kind === 'Namespace') {
+          return [node.name];
+        }
+        return node.namespace ? [node.namespace] : [];
+      }),
+    );
     const clusterLabel = clusterNodes.find((node) => node.kind === 'Cluster')?.name || clusterId;
     let clusterCursorY = clusterStartY + 74;
 
