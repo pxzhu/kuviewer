@@ -3,35 +3,25 @@ name: deploy
 on:
   push:
     tags:
-      - 'v*.*.*'
-  workflow_dispatch:
-    inputs:
-      ref:
-        description: Branch, tag, or SHA to deploy
-        required: false
-        default: ''
-
-env:
-  DEPLOY_PATH: ${{ vars.DEPLOY_PATH || '/home/ubuntu/kuviewer' }}
-  HEALTH_URL: ${{ vars.HEALTH_URL || 'http://127.0.0.1:18085/healthz' }}
-  IMAGE_TAR: kuviewer-image-${{ github.run_id }}.tar.gz
-  REMOTE_IMAGE_TAR: /tmp/kuviewer-image-${{ github.run_id }}.tar.gz
-  UPLOAD_ATTEMPT_TIMEOUT_SECONDS: 90
-  UPLOAD_RETRY_ATTEMPTS: 2
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+      - "v[0-9]+.[0-9]+.[0-9]+"
 
 permissions:
   contents: read
 
 concurrency:
-  group: kuviewer-production-image-deploy
+  group: kuviewer-production-deploy
   cancel-in-progress: true
+
+env:
+  DEPLOY_PATH: ${{ vars.DEPLOY_PATH || '/home/ubuntu/kuviewer' }}
+  HEALTH_URL: ${{ vars.HEALTH_URL || 'http://127.0.0.1:18085/healthz' }}
+  IMAGE_NAME: kuviewer
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
     timeout-minutes: 30
-
     steps:
       - name: Validate required secrets
         shell: bash
@@ -40,44 +30,63 @@ jobs:
           test -n "${{ secrets.SERVER_FUSER }}"
           test -n "${{ secrets.SERVER_PORT }}"
           test -n "${{ secrets.SERVER_SSH_KEY }}"
-          case "${{ secrets.SERVER_PORT }}" in
-            ''|*[!0-9]*)
-              echo "SERVER_PORT must be numeric"
-              exit 1
-              ;;
-          esac
-          if [ "${{ secrets.SERVER_PORT }}" -lt 1 ] || [ "${{ secrets.SERVER_PORT }}" -gt 65535 ]; then
-            echo "SERVER_PORT must be between 1 and 65535"
-            exit 1
-          fi
-          if [ -n "${{ secrets.SERVER_SSH_KNOWN_HOSTS }}" ]; then
-            echo "SERVER_SSH_KNOWN_HOSTS secret present"
-          elif [ -n "${{ vars.SERVER_SSH_KNOWN_HOSTS }}" ]; then
-            echo "SERVER_SSH_KNOWN_HOSTS variable present"
-          else
-            echo "SERVER_SSH_KNOWN_HOSTS not set; keyscan fallback will be used"
-          fi
-
-      - name: Resolve deploy ref
-        id: ref
-        run: |
-          if [ -n "${{ inputs.ref }}" ]; then
-            printf 'ref=%s\n' "${{ inputs.ref }}" >> "$GITHUB_OUTPUT"
-          else
-            printf 'ref=%s\n' "${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
-          fi
+          test -n "${{ secrets.NCR_REGISTRY }}"
+          test -n "${{ secrets.NCR_USERNAME }}"
+          test -n "${{ secrets.NCR_PASSWORD }}"
+          case "${{ secrets.SERVER_PORT }}" in ''|*[!0-9]*) exit 1 ;; esac
 
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
-          ref: ${{ steps.ref.outputs.ref }}
           fetch-depth: 0
 
-      - name: Validate release tag ancestry
-        if: github.event_name == 'push' && github.ref_type == 'tag'
+      - name: Verify tagged commit is on main
         run: |
-          git fetch origin main:refs/remotes/origin/main
-          git merge-base --is-ancestor "${GITHUB_SHA}" origin/main
+          git fetch origin main --no-tags
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main
+          [[ "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+
+      - name: Resolve registry host
+        env:
+          REGISTRY: ${{ secrets.NCR_REGISTRY }}
+        run: |
+          set -euo pipefail
+          [[ "$REGISTRY" =~ ^[A-Za-z0-9.-]+(:[0-9]{1,5})?$ ]]
+          getent ahostsv4 "${REGISTRY%%:*}" >/dev/null
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Log in to NasCR
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ secrets.NCR_REGISTRY }}
+          username: ${{ secrets.NCR_USERNAME }}
+          password: ${{ secrets.NCR_PASSWORD }}
+
+      - name: Build release image
+        uses: docker/build-push-action@v7
+        env:
+          DOCKER_BUILD_RECORD_UPLOAD: false
+        with:
+          context: .
+          file: ./Dockerfile
+          load: true
+          push: false
+          build-args: |
+            VITE_BASE_PATH=/
+          tags: |
+            ${{ secrets.NCR_REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+            ${{ secrets.NCR_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.ref_name }}
+          cache-from: type=gha,scope=nascr-kuviewer
+          cache-to: type=gha,mode=max,scope=nascr-kuviewer
+
+      - name: Push release tags
+        env:
+          IMAGE: ${{ secrets.NCR_REGISTRY }}/${{ env.IMAGE_NAME }}
+        run: |
+          docker push "${IMAGE}:latest"
+          docker push "${IMAGE}:${GITHUB_REF_NAME}"
 
       - name: Prepare SSH key
         shell: bash
@@ -90,296 +99,52 @@ jobs:
           printf '%s\n' "$SERVER_SSH_KEY_VALUE" > ~/.ssh/deploy_key.pem
           chmod 600 ~/.ssh/deploy_key.pem
           : > ~/.ssh/known_hosts
-          if timeout 10 bash -c ':</dev/tcp/"$0"/"$1"' "${{ secrets.SERVER_FHOST }}" "${{ secrets.SERVER_PORT }}" 2>/dev/null; then
-            echo "ssh-tcp-reachable"
-          else
-            echo "ssh-tcp-unreachable; verify SERVER_FHOST/SERVER_PORT firewall and SSH service"
-            exit 1
-          fi
-          if timeout 12 bash -c 'exec 3<>/dev/tcp/"$0"/"$1"; IFS= read -r -t 10 banner <&3; case "$banner" in SSH-*) exit 0 ;; *) exit 1 ;; esac' "${{ secrets.SERVER_FHOST }}" "${{ secrets.SERVER_PORT }}" 2>/dev/null; then
-            echo "ssh-banner-received"
-          else
-            echo "ssh-banner-timeout; TCP opened but SSH banner was not received"
-            echo "ssh-banner-action; verify SERVER_PORT points to SSH, sshd is listening, network security rules allow GitHub runners, and no proxy/tarpit delays the SSH banner"
-            exit 1
-          fi
           KNOWN_HOSTS_PIN="${{ secrets.SERVER_SSH_KNOWN_HOSTS || vars.SERVER_SSH_KNOWN_HOSTS }}"
           if [ -n "$KNOWN_HOSTS_PIN" ]; then
-            echo "Using pinned SSH known_hosts input"
             printf '%s\n' "$KNOWN_HOSTS_PIN" > ~/.ssh/known_hosts
-            sort -u ~/.ssh/known_hosts -o ~/.ssh/known_hosts
           else
-            scanned=false
-            for attempt in 1 2 3 4 5 6; do
-              echo "SSH host key scan attempt ${attempt}/6"
-              : > ~/.ssh/known_hosts.tmp
-              for key_type in ed25519 ecdsa rsa; do
-                ssh-keyscan -4 -T 10 -t "${key_type}" -p "${{ secrets.SERVER_PORT }}" "${{ secrets.SERVER_FHOST }}" >> ~/.ssh/known_hosts.tmp 2>/dev/null || true
-                test -s ~/.ssh/known_hosts.tmp && break
-              done
-              if ! test -s ~/.ssh/known_hosts.tmp; then
-                for key_type in ed25519 ecdsa rsa; do
-                  ssh-keyscan -T 10 -t "${key_type}" -p "${{ secrets.SERVER_PORT }}" "${{ secrets.SERVER_FHOST }}" >> ~/.ssh/known_hosts.tmp 2>/dev/null || true
-                  test -s ~/.ssh/known_hosts.tmp && break
-                done
-              fi
-              if test -s ~/.ssh/known_hosts.tmp; then
-                cat ~/.ssh/known_hosts.tmp >> ~/.ssh/known_hosts
-                rm -f ~/.ssh/known_hosts.tmp
-                sort -u ~/.ssh/known_hosts -o ~/.ssh/known_hosts
-                scanned=true
-                break
-              fi
-              sleep 5
-            done
-            rm -f ~/.ssh/known_hosts.tmp
-            if [ "$scanned" != true ]; then
-              echo "SSH host key scan failed; set SERVER_SSH_KNOWN_HOSTS or verify SERVER_FHOST/SERVER_PORT reachability"
-              exit 1
-            fi
+            ssh-keyscan -T 15 -p "${{ secrets.SERVER_PORT }}" "${{ secrets.SERVER_FHOST }}" >> ~/.ssh/known_hosts
           fi
           test -s ~/.ssh/known_hosts
 
-      - name: Remote SSH preflight
+      - name: Validate deployment host
         shell: bash
         run: |
-          set -euo pipefail
-          SSH_COMMON_OPTS=(
-            -i "$HOME/.ssh/deploy_key.pem"
-            -o BatchMode=yes
-            -o IdentitiesOnly=yes
-            -o StrictHostKeyChecking=yes
-            -o UserKnownHostsFile="$HOME/.ssh/known_hosts"
-            -o ConnectTimeout=20
-            -o ServerAliveInterval=30
-            -o ServerAliveCountMax=20
-            -o TCPKeepAlive=yes
-          )
-          ssh "${SSH_COMMON_OPTS[@]}" \
+          ssh -i ~/.ssh/deploy_key.pem -o BatchMode=yes -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes -o UserKnownHostsFile=~/.ssh/known_hosts \
             -p "${{ secrets.SERVER_PORT }}" \
             "${{ secrets.SERVER_FUSER }}@${{ secrets.SERVER_FHOST }}" \
-            "bash -se" <<'REMOTE_PREFLIGHT'
-          set -euo pipefail
-          DEPLOY_PATH='${{ env.DEPLOY_PATH }}'
-          REMOTE_IMAGE_TAR='${{ env.REMOTE_IMAGE_TAR }}'
+            "set -e; command -v git; command -v curl; mkdir -p '${{ env.DEPLOY_PATH }}'; test -w '${{ env.DEPLOY_PATH }}'; if docker info >/dev/null 2>&1; then docker compose version; else sudo -n docker compose version; fi"
 
-          case "$DEPLOY_PATH" in
-            /*) ;;
-            *)
-              echo "DEPLOY_PATH must be absolute"
-              exit 1
-              ;;
-          esac
-
-          command -v git >/dev/null
-          command -v curl >/dev/null
-          command -v gzip >/dev/null
-
-          if docker info >/dev/null 2>&1; then
-            DOCKER='docker'
-          elif sudo -n docker info >/dev/null 2>&1; then
-            DOCKER='sudo -n docker'
-          else
-            echo "Docker is not available for deploy user"
-            exit 1
-          fi
-          sh -c "$DOCKER compose version >/dev/null"
-
-          mkdir -p "$DEPLOY_PATH"
-          test -d "$DEPLOY_PATH"
-          test -w "$DEPLOY_PATH"
-
-          if [ -d "$DEPLOY_PATH/.git" ]; then
-            test -f "$DEPLOY_PATH/deploy/standalone/.env"
-          fi
-
-          TMP_TEST="${REMOTE_IMAGE_TAR}.preflight.$$"
-          : > "$TMP_TEST"
-          rm -f "$TMP_TEST"
-          echo "remote-preflight-ok"
-          REMOTE_PREFLIGHT
-
-      - name: Build deployment image
+      - name: Authenticate deployment host to NasCR
         run: |
-          build_ok=false
-          for attempt in 1 2 3; do
-            echo "Docker build attempt ${attempt}/3"
-            if docker build --build-arg VITE_BASE_PATH=/ -t kuviewer:local .; then
-              build_ok=true
-              break
-            fi
-            sleep 20
-          done
-          test "$build_ok" = true
-
-      - name: Save deployment image
-        run: |
-          docker save kuviewer:local | gzip > "${IMAGE_TAR}"
-          ls -lh "${IMAGE_TAR}"
-
-      - name: Upload image to server
-        timeout-minutes: 8
-        shell: bash
-        run: |
-          set -euo pipefail
-          SSH_COMMON_OPTS=(
-            -i "$HOME/.ssh/deploy_key.pem"
-            -o BatchMode=yes
-            -o IdentitiesOnly=yes
-            -o StrictHostKeyChecking=yes
-            -o UserKnownHostsFile="$HOME/.ssh/known_hosts"
-            -o ConnectTimeout=20
-            -o ServerAliveInterval=30
-            -o ServerAliveCountMax=20
-            -o TCPKeepAlive=yes
-          )
-          cleanup_remote_image() {
-            timeout 30 ssh "${SSH_COMMON_OPTS[@]}" \
-              -p "${{ secrets.SERVER_PORT }}" \
-              "${{ secrets.SERVER_FUSER }}@${{ secrets.SERVER_FHOST }}" \
-              "rm -f \"${REMOTE_IMAGE_TAR}\"" >/dev/null 2>&1 || true
-          }
-          verify_remote_image() {
-            timeout 60 ssh "${SSH_COMMON_OPTS[@]}" \
-              -p "${{ secrets.SERVER_PORT }}" \
-              "${{ secrets.SERVER_FUSER }}@${{ secrets.SERVER_FHOST }}" \
-              "test -s \"${REMOTE_IMAGE_TAR}\" && gzip -t \"${REMOTE_IMAGE_TAR}\"" >/dev/null
-          }
-          upload_ok=false
-          for attempt in 1 2; do
-            cleanup_remote_image
-            set +e
-            if [ "$attempt" -eq 1 ]; then
-              echo "SCP upload attempt ${attempt}/${UPLOAD_RETRY_ATTEMPTS} timeout=${UPLOAD_ATTEMPT_TIMEOUT_SECONDS}s"
-              timeout "${UPLOAD_ATTEMPT_TIMEOUT_SECONDS}" scp "${SSH_COMMON_OPTS[@]}" \
-                -P "${{ secrets.SERVER_PORT }}" \
-                "${IMAGE_TAR}" \
-                "${{ secrets.SERVER_FUSER }}@${{ secrets.SERVER_FHOST }}:${REMOTE_IMAGE_TAR}"
-              upload_status=$?
-              upload_method="scp"
-            else
-              echo "SSH stream upload fallback attempt ${attempt}/${UPLOAD_RETRY_ATTEMPTS} timeout=${UPLOAD_ATTEMPT_TIMEOUT_SECONDS}s"
-              timeout "${UPLOAD_ATTEMPT_TIMEOUT_SECONDS}" ssh "${SSH_COMMON_OPTS[@]}" \
-                -p "${{ secrets.SERVER_PORT }}" \
-                "${{ secrets.SERVER_FUSER }}@${{ secrets.SERVER_FHOST }}" \
-                "cat > \"${REMOTE_IMAGE_TAR}\"" < "${IMAGE_TAR}"
-              upload_status=$?
-              upload_method="ssh-stream"
-            fi
-            set -e
-            if [ "$upload_status" -eq 0 ] && verify_remote_image; then
-              echo "upload-remote-image-verified method=${upload_method} attempt=${attempt}/${UPLOAD_RETRY_ATTEMPTS}"
-              upload_ok=true
-              break
-            fi
-            if [ "$upload_method" = "scp" ]; then
-              if [ "$upload_status" -eq 124 ]; then
-                echo "scp-upload-timeout attempt=${attempt}/${UPLOAD_RETRY_ATTEMPTS} seconds=${UPLOAD_ATTEMPT_TIMEOUT_SECONDS}"
-              else
-                echo "scp-upload-failed attempt=${attempt}/${UPLOAD_RETRY_ATTEMPTS} status=${upload_status}"
-              fi
-            elif [ "$upload_status" -eq 124 ]; then
-              echo "ssh-stream-upload-timeout attempt=${attempt}/${UPLOAD_RETRY_ATTEMPTS} seconds=${UPLOAD_ATTEMPT_TIMEOUT_SECONDS}"
-            else
-              echo "ssh-stream-upload-failed attempt=${attempt}/${UPLOAD_RETRY_ATTEMPTS} status=${upload_status}"
-            fi
-            cleanup_remote_image
-            if [ "$attempt" -lt "$UPLOAD_RETRY_ATTEMPTS" ]; then
-              sleep 10
-            fi
-          done
-          if [ "$upload_ok" = true ]; then
-            echo "KUVIEWER_IMAGE_UPLOAD_OK=true" >> "$GITHUB_ENV"
-          else
-            echo "upload-remote-image-unavailable; remote docker build fallback will run"
-            echo "KUVIEWER_IMAGE_UPLOAD_OK=false" >> "$GITHUB_ENV"
-          fi
-
-      - name: Deploy on server
-        shell: bash
-        run: |
-          set -euo pipefail
-          SSH_COMMON_OPTS=(
-            -i "$HOME/.ssh/deploy_key.pem"
-            -o BatchMode=yes
-            -o IdentitiesOnly=yes
-            -o StrictHostKeyChecking=yes
-            -o UserKnownHostsFile="$HOME/.ssh/known_hosts"
-            -o ConnectTimeout=20
-            -o ServerAliveInterval=30
-            -o ServerAliveCountMax=20
-            -o TCPKeepAlive=yes
-          )
-          ssh "${SSH_COMMON_OPTS[@]}" \
+          printf '%s' "${{ secrets.NCR_PASSWORD }}" | \
+          ssh -i ~/.ssh/deploy_key.pem -o BatchMode=yes -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes -o UserKnownHostsFile=~/.ssh/known_hosts \
             -p "${{ secrets.SERVER_PORT }}" \
             "${{ secrets.SERVER_FUSER }}@${{ secrets.SERVER_FHOST }}" \
-            "KUVIEWER_IMAGE_UPLOAD_OK=${KUVIEWER_IMAGE_UPLOAD_OK:-false} bash -se" <<'REMOTE_DEPLOY'
+            "set -e; if docker info >/dev/null 2>&1; then DOCKER='docker'; else DOCKER='sudo -n docker'; fi; sh -c \"\$DOCKER login '${{ secrets.NCR_REGISTRY }}' -u '${{ secrets.NCR_USERNAME }}' --password-stdin\""
+
+      - name: Pull from NasCR and deploy
+        shell: bash
+        run: |
+          ssh -i ~/.ssh/deploy_key.pem -o BatchMode=yes -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes -o UserKnownHostsFile=~/.ssh/known_hosts \
+            -o ServerAliveInterval=30 -o ServerAliveCountMax=20 \
+            -p "${{ secrets.SERVER_PORT }}" \
+            "${{ secrets.SERVER_FUSER }}@${{ secrets.SERVER_FHOST }}" \
+            "bash -se" <<'REMOTE_DEPLOY'
           set -euo pipefail
           DEPLOY_PATH='${{ env.DEPLOY_PATH }}'
-          REPO_URL='https://github.com/${{ github.repository }}.git'
-          DEPLOY_REF='${{ steps.ref.outputs.ref }}'
+          DEPLOY_REF='${{ github.ref_name }}'
           DEPLOY_SHA='${{ github.sha }}'
           GITHUB_RUN_ID='${{ github.run_id }}'
           HEALTH_URL='${{ env.HEALTH_URL }}'
-          IMAGE_TAR='${{ env.REMOTE_IMAGE_TAR }}'
-          IMAGE_UPLOAD_OK="${KUVIEWER_IMAGE_UPLOAD_OK:-false}"
+          TARGET_IMAGE='${{ secrets.NCR_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.ref_name }}'
+          REPO_URL='https://github.com/${{ github.repository }}.git'
           ROLLBACK_IMAGE="kuviewer:rollback-${GITHUB_RUN_ID}"
-          STARTED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          DEPLOY_RESULT="failed"
-          ROLLBACK_ATTEMPTED="false"
-          ROLLBACK_RESULT="not-attempted"
-          PREVIOUS_IMAGE_ID=""
-          NEW_IMAGE_ID=""
-
-          json_escape() {
-            local value="$1"
-            value="${value//\\/\\\\}"
-            value="${value//\"/\\\"}"
-            value="${value//$'\n'/ }"
-            value="${value//$'\r'/ }"
-            printf '%s' "$value"
-          }
-
-          write_deploy_state() {
-            local finished_at
-            finished_at="$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || true)"
-            mkdir -p "$DEPLOY_PATH/.kuviewer" 2>/dev/null || return 0
-            cat > "$DEPLOY_PATH/.kuviewer/deploy-state.json" <<STATE || return 0
-          {
-            "runId": "$(json_escape "$GITHUB_RUN_ID")",
-            "ref": "$(json_escape "$DEPLOY_REF")",
-            "sha": "$(json_escape "$DEPLOY_SHA")",
-            "startedAt": "$(json_escape "$STARTED_AT")",
-            "finishedAt": "$(json_escape "$finished_at")",
-            "previousImageId": "$(json_escape "$PREVIOUS_IMAGE_ID")",
-            "newImageId": "$(json_escape "$NEW_IMAGE_ID")",
-            "result": "$(json_escape "$DEPLOY_RESULT")",
-            "rollbackAttempted": $ROLLBACK_ATTEMPTED,
-            "rollbackResult": "$(json_escape "$ROLLBACK_RESULT")"
-          }
-          STATE
-            echo "deploy-state-written result=${DEPLOY_RESULT} rollback=${ROLLBACK_RESULT}"
-          }
-
-          cleanup() {
-            rm -f "$IMAGE_TAR"
-            write_deploy_state
-          }
-
-          check_health() {
-            local attempt status
-            for attempt in 1 2 3 4 5 6 7 8 9 10 11 12; do
-              status="$(curl -fsS -o /dev/null -w '%{http_code}' "$HEALTH_URL" 2>/dev/null || true)"
-              if [ "$status" = "200" ]; then
-                echo "deploy-health-ok attempt=${attempt}/12"
-                return 0
-              fi
-              echo "deploy-health-wait attempt=${attempt}/12 status=${status:-curl-failed}"
-              sleep 5
-            done
-            echo "deploy-health-failed"
-            return 1
-          }
+          DEPLOY_RESULT=failed
+          ROLLBACK_RESULT=not-attempted
 
           if docker info >/dev/null 2>&1; then
             DOCKER=(docker)
@@ -387,80 +152,61 @@ jobs:
             DOCKER=(sudo -n docker)
           fi
 
-          trap cleanup EXIT
-          echo "deploy-start run=${GITHUB_RUN_ID} ref=${DEPLOY_REF}"
+          check_health() {
+            local attempt
+            for attempt in 1 2 3 4 5 6 7 8 9 10 11 12; do
+              if curl -fsS "$HEALTH_URL" >/dev/null 2>&1; then
+                echo "deploy-health-ok attempt=${attempt}/12"
+                return 0
+              fi
+              sleep 5
+            done
+            return 1
+          }
 
           if [ ! -d "$DEPLOY_PATH/.git" ]; then
-            mkdir -p "$DEPLOY_PATH"
             git clone "$REPO_URL" "$DEPLOY_PATH"
           fi
-
           cd "$DEPLOY_PATH"
           git fetch --prune --tags origin
           git checkout --force "$DEPLOY_REF"
-          git reset --hard "origin/$DEPLOY_REF" 2>/dev/null || git reset --hard "$DEPLOY_REF"
-
+          git reset --hard "$DEPLOY_SHA"
           test -f deploy/standalone/.env
 
-          if PREVIOUS_IMAGE_ID="$("${DOCKER[@]}" image inspect kuviewer:local --format '{{.Id}}' 2>/dev/null)"; then
-            "${DOCKER[@]}" image tag kuviewer:local "$ROLLBACK_IMAGE"
-            ROLLBACK_RESULT="available"
-            echo "deploy-rollback-image-ready"
+          PREVIOUS_IMAGE_ID="$("${DOCKER[@]}" inspect -f '{{.Image}}' kuviewer 2>/dev/null || true)"
+          if [ -n "$PREVIOUS_IMAGE_ID" ]; then
+            "${DOCKER[@]}" image tag "$PREVIOUS_IMAGE_ID" "$ROLLBACK_IMAGE"
+            ROLLBACK_RESULT=available
           else
-            PREVIOUS_IMAGE_ID=""
-            ROLLBACK_RESULT="unavailable"
-            echo "deploy-rollback-image-unavailable"
+            ROLLBACK_RESULT=unavailable
           fi
 
-          if [ "$IMAGE_UPLOAD_OK" = "true" ]; then
-            test -f "$IMAGE_TAR"
-            gzip -dc "$IMAGE_TAR" | "${DOCKER[@]}" load
-          else
-            echo "remote-build-fallback-start"
-            build_ok=false
-            for attempt in 1 2 3; do
-              echo "Remote Docker build attempt ${attempt}/3"
-              if "${DOCKER[@]}" build --build-arg VITE_BASE_PATH=/ -t kuviewer:local .; then
-                build_ok=true
-                break
-              fi
-              sleep 20
-            done
-            test "$build_ok" = true
-            echo "remote-build-fallback-ok"
-          fi
-          NEW_IMAGE_ID="$("${DOCKER[@]}" image inspect kuviewer:local --format '{{.Id}}' 2>/dev/null || true)"
-          "${DOCKER[@]}" compose --env-file deploy/standalone/.env -f deploy/standalone/docker-compose.yml up -d --force-recreate --remove-orphans
+          "${DOCKER[@]}" pull "$TARGET_IMAGE"
+          printf 'KUVIEWER_IMAGE=%s\n' "$TARGET_IMAGE" > deploy/standalone/.release.env
+          "${DOCKER[@]}" compose --env-file deploy/standalone/.env --env-file deploy/standalone/.release.env -f deploy/standalone/docker-compose.yml up -d --force-recreate --remove-orphans
 
           if check_health; then
-            DEPLOY_RESULT="success"
-            ROLLBACK_RESULT="not-needed"
+            DEPLOY_RESULT=success
+            ROLLBACK_RESULT=not-needed
+            "${DOCKER[@]}" image prune -af >/dev/null 2>&1 || true
             exit 0
           fi
 
-          DEPLOY_RESULT="failed"
           if [ -n "$PREVIOUS_IMAGE_ID" ]; then
-            ROLLBACK_ATTEMPTED="true"
-            ROLLBACK_RESULT="failed"
-            echo "deploy-rollback-start"
-            "${DOCKER[@]}" image tag "$ROLLBACK_IMAGE" kuviewer:local
-            "${DOCKER[@]}" compose --env-file deploy/standalone/.env -f deploy/standalone/docker-compose.yml up -d --force-recreate --remove-orphans
+            printf 'KUVIEWER_IMAGE=%s\n' "$ROLLBACK_IMAGE" > deploy/standalone/.release.env
+            "${DOCKER[@]}" compose --env-file deploy/standalone/.env --env-file deploy/standalone/.release.env -f deploy/standalone/docker-compose.yml up -d --force-recreate --remove-orphans
             if check_health; then
-              ROLLBACK_RESULT="success"
-              echo "deploy-rollback-ok"
+              ROLLBACK_RESULT=success
             else
-              echo "deploy-rollback-failed"
+              ROLLBACK_RESULT=failed
             fi
           else
-            ROLLBACK_RESULT="skipped"
-            echo "deploy-rollback-skipped"
+            ROLLBACK_RESULT=skipped
           fi
-
+          echo "deploy-result=${DEPLOY_RESULT} rollback=${ROLLBACK_RESULT}"
           exit 1
           REMOTE_DEPLOY
 
-      - name: Cleanup deploy runner secrets and artifacts
+      - name: Cleanup SSH material
         if: always()
-        shell: bash
-        run: |
-          rm -f "${IMAGE_TAR}" ~/.ssh/deploy_key.pem ~/.ssh/known_hosts ~/.ssh/known_hosts.tmp
+        run: rm -f ~/.ssh/deploy_key.pem ~/.ssh/known_hosts
