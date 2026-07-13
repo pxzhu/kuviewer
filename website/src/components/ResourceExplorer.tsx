@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties, Dispatch, DragEvent as ReactDragEvent, KeyboardEvent as ReactKeyboardEvent, ReactNode, SetStateAction } from 'react';
 import { Activity, AlertTriangle, ArrowDown, ArrowUp, Bookmark, Boxes, CheckCircle2, ChevronDown, Copy, Download, FileText, Folder, FolderOpen, GitBranch, GripVertical, Link2, Pencil, RefreshCw, RotateCcw, Search, Tags, Trash2, Upload, X } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
@@ -338,6 +338,7 @@ export function ResourceExplorer({
   const [kind, setKind] = useState(resourceFilters.kind);
   const [status, setStatus] = useState(resourceFilters.status);
   const [resources, setResources] = useState<ResourceExplorerItem[]>(() => resourcesFromSnapshot(snapshot).items);
+  const [liveResourceApiReady, setLiveResourceApiReady] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [viewPresets, setViewPresets] = useState<ResourceViewPreset[]>(() => readResourceViewPresets());
@@ -370,20 +371,26 @@ export function ResourceExplorer({
   useEffect(() => {
     if (sourceMode !== 'live' || !liveEnabled) {
       setResources(resourcesFromSnapshot(snapshot).items);
+      setLiveResourceApiReady(false);
       setLoading(false);
       setError('');
       return;
     }
 
     const controller = new AbortController();
+    setLiveResourceApiReady(false);
     setLoading(true);
     setError('');
     fetchResources(controller.signal)
-      .then((list) => setResources(list.items))
+      .then((list) => {
+        setResources(list.items);
+        setLiveResourceApiReady(true);
+      })
       .catch((requestError: unknown) => {
         if (!controller.signal.aborted) {
           setError(requestError instanceof Error ? requestError.message : 'resources_request_failed');
           setResources(resourcesFromSnapshot(snapshot).items);
+          setLiveResourceApiReady(false);
         }
       })
       .finally(() => {
@@ -464,7 +471,7 @@ export function ResourceExplorer({
     });
   }, [cluster, kind, namespace, query, resources, status]);
   const sortedResources = useMemo(() => sortResourceList(filteredResources, resourceListSort), [filteredResources, resourceListSort]);
-  const selectedResource = sortedResources.find((resource) => resource.id === selectedNodeId) || sortedResources[0] || resources.find((resource) => resource.id === selectedNodeId) || resources[0];
+  const selectedResource = sortedResources.find((resource) => resource.id === selectedNodeId) || sortedResources[0];
   const selectedResourceIndex = selectedResource ? sortedResources.findIndex((resource) => resource.id === selectedResource.id) : -1;
   const selectedResources = useMemo(() => sortedResources.filter((resource) => selectedResourceIds.has(resource.id)), [selectedResourceIds, sortedResources]);
   const selectedResourceCount = selectedResources.length;
@@ -497,6 +504,8 @@ export function ResourceExplorer({
   useEffect(() => {
     if (selectedResource && selectedNodeId !== selectedResource.id) {
       onSelectNode(selectedResource.id);
+    } else if (!selectedResource && selectedNodeId) {
+      onSelectNode('');
     }
   }, [onSelectNode, selectedNodeId, selectedResource]);
 
@@ -2496,13 +2505,21 @@ export function ResourceExplorer({
       </div>
 
       <ResourceExplorerDetail
-        liveEnabled={liveEnabled && sourceMode === 'live'}
+        liveEnabled={liveEnabled && sourceMode === 'live' && liveResourceApiReady}
         resource={selectedResource}
         focusRequest={detailFocusRequest}
         onOpenTopologyNode={onOpenTopologyNode}
         onSelectNode={onSelectNode}
       />
     </section>
+  );
+}
+
+function EmptyResourceDetail() {
+  return (
+    <div className="ku-panel p-6 text-center">
+      <p className="text-sm font-semibold text-[#1d1d1f]">선택된 리소스가 없습니다.</p>
+    </div>
   );
 }
 
@@ -2515,6 +2532,34 @@ function ResourceExplorerDetail({
 }: {
   liveEnabled: boolean;
   resource?: ResourceExplorerItem;
+  focusRequest: number;
+  onOpenTopologyNode: (nodeId: string) => void;
+  onSelectNode: (nodeId: string) => void;
+}) {
+  if (!resource) {
+    return <EmptyResourceDetail />;
+  }
+
+  return (
+    <ResourceExplorerDetailBody
+      liveEnabled={liveEnabled}
+      resource={resource}
+      focusRequest={focusRequest}
+      onOpenTopologyNode={onOpenTopologyNode}
+      onSelectNode={onSelectNode}
+    />
+  );
+}
+
+function ResourceExplorerDetailBody({
+  liveEnabled,
+  resource,
+  focusRequest,
+  onOpenTopologyNode,
+  onSelectNode,
+}: {
+  liveEnabled: boolean;
+  resource: ResourceExplorerItem;
   focusRequest: number;
   onOpenTopologyNode: (nodeId: string) => void;
   onSelectNode: (nodeId: string) => void;
@@ -2671,16 +2716,34 @@ function ResourceExplorerDetail({
     return () => window.clearInterval(intervalId);
   }, [eventsAutoRefreshEnabled, liveEnabled, resourceEventsKey]);
 
-  const resetLogPauseState = () => {
+  const resetLogPauseState = useCallback(() => {
     logsPausedRef.current = false;
     pendingLogLinesRef.current = [];
     setLogsPaused(false);
     setPendingLogLines([]);
-  };
+  }, []);
 
-  useEffect(() => {
+  const resetEventMarkerState = useCallback(() => {
+    setEventNotificationNotice(null);
+    setNewEventKeys(new Set());
+    setShowNewEventsOnly(false);
+    knownEventKeysRef.current = new Set();
+    knownEventKeysInitializedRef.current = false;
+  }, []);
+
+  const abortLogStream = useCallback(() => {
     logsStreamControllerRef.current?.abort();
     logsStreamControllerRef.current = null;
+  }, []);
+
+  const stopLogStream = useCallback(() => {
+    abortLogStream();
+    setLogsStreaming(false);
+    resetLogPauseState();
+  }, [abortLogStream, resetLogPauseState]);
+
+  const resetResourceLogState = useCallback(() => {
+    abortLogStream();
     setLogLines([]);
     setLogsError('');
     setLogsWarning('');
@@ -2694,6 +2757,9 @@ function ResourceExplorerDetail({
     setLogTimeRangeFilter('all');
     setLogSortOrder('received');
     setLogCopyStatus(null);
+  }, [abortLogStream, resetLogPauseState]);
+
+  const resetResourceDetailUiState = useCallback(() => {
     setSafePreviewFilter('');
     setActiveSafePreviewMatchIndex(0);
     setRelationFilter('');
@@ -2704,14 +2770,15 @@ function ResourceExplorerDetail({
     setEventSortOrder('newest');
     setPinnedEventKeys(new Set());
     setEventsLastUpdatedAt(null);
-    setEventNotificationNotice(null);
-    setNewEventKeys(new Set());
-    setShowNewEventsOnly(false);
-    knownEventKeysRef.current = new Set();
-    knownEventKeysInitializedRef.current = false;
+    resetEventMarkerState();
     setActiveDetailSectionId('metadata');
     setOpenSections(new Set(defaultOpenDetailSections));
-  }, [resource?.id]);
+  }, [resetEventMarkerState]);
+
+  useEffect(() => {
+    resetResourceLogState();
+    resetResourceDetailUiState();
+  }, [resetResourceDetailUiState, resetResourceLogState, resource.id]);
 
   useEffect(() => {
     return () => {
@@ -2827,14 +2894,6 @@ function ResourceExplorerDetail({
     });
   }, [safePreviewMatches.length]);
 
-  if (!resource) {
-    return (
-      <div className="ku-panel p-6 text-center">
-        <p className="text-sm font-semibold text-[#1d1d1f]">선택된 리소스가 없습니다.</p>
-      </div>
-    );
-  }
-
   const healthSignals = resourceHealthSignals(resource, statusPreview, summaryPreview);
   const healthSectionTone = healthSignalSectionTone(resource, healthSignals);
   const canFetchLogs = liveEnabled && resource.kind === 'Pod';
@@ -2898,8 +2957,8 @@ function ResourceExplorerDetail({
   const defaultDetailSectionsOpen = openDetailSectionCount === defaultOpenDetailSections.length && defaultOpenDetailSections.every((id) => openSections.has(id));
   const activeDetailSectionLabel = detailNavigatorSections.find((section) => section.id === activeDetailSectionId)?.label || 'Metadata';
   const resourceIdentityName = resource.namespace ? `${resource.namespace}/${resource.name}` : resource.name;
-  const isSectionOpen = (id: DetailSectionId) => openSections.has(id);
-  const toggleSection = (id: DetailSectionId) => {
+  const isSectionOpen = useCallback((id: DetailSectionId) => openSections.has(id), [openSections]);
+  const toggleSection = useCallback((id: DetailSectionId) => {
     setOpenSections((current) => {
       const next = new Set(current);
       if (next.has(id)) {
@@ -2909,8 +2968,8 @@ function ResourceExplorerDetail({
       }
       return next;
     });
-  };
-  const openSection = (id: DetailSectionId) => {
+  }, []);
+  const openSection = useCallback((id: DetailSectionId) => {
     setOpenSections((current) => {
       if (current.has(id)) {
         return current;
@@ -2919,8 +2978,8 @@ function ResourceExplorerDetail({
       next.add(id);
       return next;
     });
-  };
-  const focusDetailSection = (id: DetailSectionId) => {
+  }, []);
+  const focusDetailSection = useCallback((id: DetailSectionId) => {
     setActiveDetailSectionId(id);
     openSection(id);
     window.requestAnimationFrame(() => {
@@ -2928,13 +2987,22 @@ function ResourceExplorerDetail({
       section?.scrollIntoView({ block: 'start', behavior: 'smooth' });
       section?.focus({ preventScroll: true });
     });
-  };
-  const moveDetailSection = (offset: number) => {
+  }, [openSection]);
+  const moveDetailSection = useCallback((offset: number) => {
     const currentIndex = detailKeyboardSections.indexOf(activeDetailSectionId);
     const nextIndex = currentIndex >= 0 ? (currentIndex + offset + detailKeyboardSections.length) % detailKeyboardSections.length : 0;
     focusDetailSection(detailKeyboardSections[nextIndex]);
-  };
-  const handleDetailShortcut = (event: globalThis.KeyboardEvent) => {
+  }, [activeDetailSectionId, focusDetailSection]);
+  const handleExpandAllDetailSections = useCallback(() => {
+    setOpenSections(new Set(detailKeyboardSections));
+  }, []);
+  const handleCollapseAllDetailSections = useCallback(() => {
+    setOpenSections(new Set());
+  }, []);
+  const handleResetDetailSections = useCallback(() => {
+    setOpenSections(new Set(defaultOpenDetailSections));
+  }, []);
+  const handleDetailShortcut = useCallback((event: globalThis.KeyboardEvent) => {
     const eventPath = event.composedPath();
     const editableTargetHasFocus = Boolean(detailPanelRef.current?.querySelector('input:focus, select:focus, textarea:focus, button:focus, [contenteditable="true"]:focus'));
     if (
@@ -2974,40 +3042,31 @@ function ResourceExplorerDetail({
         focusDetailSection(targetSection);
       }
     }
-  };
-  const setDetailSectionRef = (id: DetailSectionId) => (node: HTMLElement | null) => {
+  }, [activeDetailSectionId, focusDetailSection, handleCollapseAllDetailSections, handleExpandAllDetailSections, handleResetDetailSections, moveDetailSection, toggleSection]);
+  const setDetailSectionRef = useCallback((id: DetailSectionId) => (node: HTMLElement | null) => {
     detailSectionRefs.current[id] = node;
-  };
-  const handleExpandAllDetailSections = () => {
-    setOpenSections(new Set(detailKeyboardSections));
-  };
-  const handleCollapseAllDetailSections = () => {
-    setOpenSections(new Set());
-  };
-  const handleResetDetailSections = () => {
-    setOpenSections(new Set(defaultOpenDetailSections));
-  };
-  const handleSafePreviewFilterChange = (value: string) => {
+  }, []);
+  const handleSafePreviewFilterChange = useCallback((value: string) => {
     setSafePreviewFilter(value);
     setActiveSafePreviewMatchIndex(0);
     if (value.trim()) {
       openSection('safe');
     }
-  };
-  const moveActiveSafePreviewMatch = (offset: number) => {
+  }, [openSection]);
+  const moveActiveSafePreviewMatch = useCallback((offset: number) => {
     if (safePreviewMatches.length === 0) {
       return;
     }
     openSection('safe');
     setActiveSafePreviewMatchIndex((current) => (current + offset + safePreviewMatches.length) % safePreviewMatches.length);
-  };
-  const handleSafePreviewSearchKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
+  }, [openSection, safePreviewMatches.length]);
+  const handleSafePreviewSearchKeyDown = useCallback((event: ReactKeyboardEvent<HTMLInputElement>) => {
     if (event.key !== 'Enter') {
       return;
     }
     event.preventDefault();
     moveActiveSafePreviewMatch(event.shiftKey ? -1 : 1);
-  };
+  }, [moveActiveSafePreviewMatch]);
 
   useEffect(() => {
     const handleDocumentPointerDown = (event: MouseEvent | TouchEvent) => {
@@ -3031,7 +3090,7 @@ function ResourceExplorerDetail({
       document.removeEventListener('focusin', handleDocumentFocusIn);
       document.removeEventListener('keydown', handleDocumentKeyDown);
     };
-  }, [activeDetailSectionId]);
+  }, [handleDetailShortcut]);
 
   const handleFetchLogs = async () => {
     if (!canFetchLogs) {
@@ -3111,13 +3170,6 @@ function ResourceExplorerDetail({
     const content = format === 'csv' ? eventExportCsv(filteredEvents) : eventExportJson(filteredEvents);
     const mimeType = format === 'csv' ? 'text/csv;charset=utf-8' : 'application/json;charset=utf-8';
     downloadTextFile(content, mimeType, eventExportFileName(resource, format));
-  };
-
-  const stopLogStream = () => {
-    logsStreamControllerRef.current?.abort();
-    logsStreamControllerRef.current = null;
-    setLogsStreaming(false);
-    resetLogPauseState();
   };
 
   const appendVisibleLogLine = (line: string) => {

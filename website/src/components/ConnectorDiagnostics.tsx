@@ -1,4 +1,5 @@
 import { AlertTriangle, CheckCircle2, Clock3, Database, EyeOff, LockKeyhole, RotateCw, ServerCog, type LucideIcon } from 'lucide-react';
+import { formatClockTime, formatLastSync } from '../utils/formatTime';
 import type { ConnectorStatus } from '../types/status';
 
 interface ConnectorDiagnosticsProps {
@@ -124,33 +125,12 @@ function formatSecrets(secrets: string) {
   return secrets || '알 수 없음';
 }
 
-function formatLastSync(lastUpdatedAt: number | null) {
-  if (!lastUpdatedAt) {
-    return '동기화 안 됨';
-  }
-
-  return new Intl.DateTimeFormat(undefined, {
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-  }).format(new Date(lastUpdatedAt));
-}
-
 function formatServerTime(serverTime?: string) {
   if (!serverTime) {
     return '확인 불가';
   }
 
-  const parsedTime = new Date(serverTime);
-  if (Number.isNaN(parsedTime.getTime())) {
-    return serverTime;
-  }
-
-  return new Intl.DateTimeFormat(undefined, {
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-  }).format(parsedTime);
+  return formatClockTime(serverTime) || serverTime;
 }
 
 function sourceValueLabel(source: string) {
