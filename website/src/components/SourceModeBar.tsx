@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import {
   AlertTriangle,
   Boxes,
@@ -17,7 +17,11 @@ import type { DesktopCmSession, DesktopCmSessionInput, DesktopCmSessionRuntimePr
 import type { TopologySourceMode } from '../features/topology/useTopology';
 import type { UploadedTopologyState } from '../features/upload/parseKubernetesFiles';
 import { fetchConnectorStatusWithToken } from '../services/statusApi';
-import { DesktopCmSessionPanel } from './DesktopCmSessionPanel';
+
+const DesktopCmSessionPanel = lazy(async () => {
+  const module = await import('./DesktopCmSessionPanel');
+  return { default: module.DesktopCmSessionPanel };
+});
 
 interface SourceModeBarProps {
   desktopConnectionAvailable: boolean;
@@ -174,7 +178,7 @@ export function SourceModeBar({
           {liveUnlocked ? (
             <span className="ku-chip border-[rgba(52,199,89,0.22)] bg-[rgba(52,199,89,0.1)] text-[#248a3d]">
               <CheckCircle2 size={13} aria-hidden="true" />
-              실시간 연결됨
+              {mode === 'live' ? '실시간 연결됨' : '실시간 인증 준비됨'}
             </span>
           ) : (
             <label className="relative min-w-0 sm:w-[260px]">
@@ -251,20 +255,22 @@ export function SourceModeBar({
       ) : null}
 
       {desktopConnectionAvailable ? (
-        <DesktopCmSessionPanel
-          message={desktopCmSessionMessage}
-          runtimeProfile={desktopCmRuntimeProfile}
-          sessions={desktopCmSessions}
-          onDeleteSession={onDesktopCmSessionDelete}
-          onDeleteSessionCredential={onDesktopCmSessionCredentialDelete}
-          onCheckSession={onDesktopCmSessionCheck}
-          onImportPrivateKey={onDesktopCmSessionPrivateKeyImport}
-          onCheckSessionRuntime={onDesktopCmSessionRuntimeCheck}
-          onStartSessionRuntime={onDesktopCmSessionRuntimeStart}
-          onStopSessionRuntime={onDesktopCmSessionRuntimeStop}
-          onSaveSession={onDesktopCmSessionSave}
-          onSelectSession={onDesktopCmSessionSelect}
-        />
+        <Suspense fallback={<div className="border-t border-[rgba(60,60,67,0.12)] px-4 py-3 text-sm font-semibold">Desktop CM session UI 불러오는 중</div>}>
+          <DesktopCmSessionPanel
+            message={desktopCmSessionMessage}
+            runtimeProfile={desktopCmRuntimeProfile}
+            sessions={desktopCmSessions}
+            onDeleteSession={onDesktopCmSessionDelete}
+            onDeleteSessionCredential={onDesktopCmSessionCredentialDelete}
+            onCheckSession={onDesktopCmSessionCheck}
+            onImportPrivateKey={onDesktopCmSessionPrivateKeyImport}
+            onCheckSessionRuntime={onDesktopCmSessionRuntimeCheck}
+            onStartSessionRuntime={onDesktopCmSessionRuntimeStart}
+            onStopSessionRuntime={onDesktopCmSessionRuntimeStop}
+            onSaveSession={onDesktopCmSessionSave}
+            onSelectSession={onDesktopCmSessionSelect}
+          />
+        </Suspense>
       ) : null}
 
       <input

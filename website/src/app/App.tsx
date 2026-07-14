@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Boxes, GitBranch, LockKeyhole, Palette, Pause, Play, RefreshCw, SearchCode, SlidersHorizontal, Workflow, type LucideIcon } from 'lucide-react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Boxes, GitBranch, GitCompareArrows, LockKeyhole, Palette, Pause, Play, RefreshCw, SearchCode, SlidersHorizontal, Workflow, type LucideIcon } from 'lucide-react';
 import { clearAdminToken, getStoredAdminToken, isValidAdminToken } from '../features/auth/adminToken';
 import {
   checkDesktopCmSession,
@@ -24,25 +24,24 @@ import {
   type DesktopCmSessionRuntimeProfile,
 } from '../features/desktop/desktopConnectionProfile';
 import { useConnectorStatus } from '../features/status/useConnectorStatus';
+import { describeConnectorError } from '../features/status/connectorDiagnostics';
 import { type ColorMode, type TopologyFilters, type TopologySourceMode, useTopology } from '../features/topology/useTopology';
 import { importTopologySnapshot, parseKubernetesFiles, type UploadedTopologyState } from '../features/upload/parseKubernetesFiles';
+import { captureSnapshotBaseline, type SnapshotBaseline } from '../features/snapshot/compareSnapshots';
 import { ConnectorDiagnostics } from '../components/ConnectorDiagnostics';
 import { DetailPanel } from '../components/DetailPanel';
 import { FilterBar } from '../components/FilterBar';
 import { ResourceList } from '../components/ResourceList';
 import {
-  ResourceExplorer,
   appSearchHasResourceViewState,
   appendResourceViewFilterSearchParams,
   defaultResourceViewFilters,
   readResourceViewFiltersFromSearch,
   resourceViewFiltersEqual,
   type ResourceViewFilters,
-} from '../components/ResourceExplorer';
+} from '../features/resources/resourceViewState';
 import { SourceModeBar } from '../components/SourceModeBar';
 import { StatTiles } from '../components/StatTiles';
-import { TopologyCanvas } from '../components/TopologyCanvas';
-import { TrafficFlowView } from '../components/TrafficFlowView';
 import type { ConnectorStatus } from '../types/status';
 import { formatLastSync } from '../utils/formatTime';
 
@@ -57,7 +56,27 @@ const initialFilters: TopologyFilters = {
 const sourceModeStorageKey = 'kuviewer_source_mode';
 const brandThemeStorageKey = 'kuviewer_brand_theme';
 type BrandTheme = 'yaml-flow' | 'radar';
-type ViewMode = 'topology' | 'traffic' | 'resources';
+type ViewMode = 'topology' | 'traffic' | 'resources' | 'compare';
+
+const ResourceExplorer = lazy(async () => {
+  const module = await import('../components/ResourceExplorer');
+  return { default: module.ResourceExplorer };
+});
+
+const SnapshotComparePanel = lazy(async () => {
+  const module = await import('../components/SnapshotComparePanel');
+  return { default: module.SnapshotComparePanel };
+});
+
+const TrafficFlowView = lazy(async () => {
+  const module = await import('../components/TrafficFlowView');
+  return { default: module.TrafficFlowView };
+});
+
+const TopologyCanvas = lazy(async () => {
+  const module = await import('../components/TopologyCanvas');
+  return { default: module.TopologyCanvas };
+});
 
 const brandThemeOptions: Array<{ value: BrandTheme; label: string }> = [
   { value: 'yaml-flow', label: 'D' },
@@ -68,6 +87,7 @@ const viewModeOptions: Array<{ value: ViewMode; label: string; icon: LucideIcon 
   { value: 'topology', label: '토폴로지', icon: GitBranch },
   { value: 'traffic', label: '트래픽 흐름', icon: Workflow },
   { value: 'resources', label: '리소스 탐색', icon: SearchCode },
+  { value: 'compare', label: '스냅샷 비교', icon: GitCompareArrows },
 ];
 
 interface AppUrlState {
@@ -114,6 +134,7 @@ function Dashboard() {
   const [uploadError, setUploadError] = useState('');
   const [liveSessionMessage, setLiveSessionMessage] = useState('');
   const [selectedNodeId, setSelectedNodeId] = useState('');
+  const [snapshotBaseline, setSnapshotBaseline] = useState<SnapshotBaseline | null>(null);
   const liveActive = sourceMode === 'live' && liveUnlocked;
   const appUrlStateRef = useRef<AppUrlState>({
     viewMode,
@@ -365,6 +386,15 @@ function Dashboard() {
     window.URL.revokeObjectURL(url);
   }, [snapshot, sourceMode, uploadedState]);
 
+  const handleCaptureSnapshotBaseline = useCallback(() => {
+    setSnapshotBaseline(captureSnapshotBaseline(snapshot, providerLabel));
+  }, [providerLabel, snapshot]);
+
+  const handleImportSnapshotBaseline = useCallback(async (file: File) => {
+    const importedSnapshot = importTopologySnapshot(JSON.parse(await file.text()));
+    setSnapshotBaseline(captureSnapshotBaseline(importedSnapshot, file.name));
+  }, []);
+
   const handleLiveLock = useCallback(() => {
     clearAdminToken();
     setLiveUnlocked(false);
@@ -605,7 +635,7 @@ function Dashboard() {
                 />
               ))}
             </div>
-            <div className="ku-segmented grid-cols-3" aria-label="주요 보기">
+            <div className="ku-segmented grid-cols-4" aria-label="주요 보기">
               {viewModeOptions.map((option) => (
                 <HeaderSegmentButton
                   key={option.value}
@@ -716,59 +746,88 @@ function Dashboard() {
         />
 
         {viewMode === 'resources' ? (
-          <ResourceExplorer
-            liveEnabled={liveActive}
-            resourceFilters={resourceUrlFilters}
-            selectedNodeId={selectedNode?.id || ''}
-            snapshot={snapshot}
-            sourceMode={sourceMode}
-            onOpenTopologyNode={handleOpenTopologyNode}
-            onResourceFiltersChange={handleResourceFiltersChange}
-            onSelectNode={setSelectedNodeId}
-          />
+          <Suspense fallback={<ViewLoading label="리소스 탐색" />}>
+            <ResourceExplorer
+              liveEnabled={liveActive}
+              resourceFilters={resourceUrlFilters}
+              selectedNodeId={selectedNode?.id || ''}
+              snapshot={snapshot}
+              sourceMode={sourceMode}
+              onOpenTopologyNode={handleOpenTopologyNode}
+              onResourceFiltersChange={handleResourceFiltersChange}
+              onSelectNode={setSelectedNodeId}
+            />
+          </Suspense>
+        ) : viewMode === 'compare' ? (
+          <Suspense fallback={<ViewLoading label="스냅샷 비교" />}>
+            <SnapshotComparePanel
+              baseline={snapshotBaseline}
+              currentLabel={providerLabel}
+              currentSnapshot={snapshot}
+              onCapture={handleCaptureSnapshotBaseline}
+              onClear={() => setSnapshotBaseline(null)}
+              onImport={handleImportSnapshotBaseline}
+              onOpenTopologyNode={handleOpenTopologyNode}
+            />
+          </Suspense>
         ) : (
           <div className="grid gap-3 lg:gap-4 xl:grid-cols-[minmax(0,1fr)_390px] 2xl:grid-cols-[minmax(0,1fr)_420px]">
             {viewMode === 'topology' ? (
-            <TopologyCanvas
-              brandTheme={brandTheme}
-              colorMode={colorMode}
-              edges={edges}
-              nodes={nodes}
-              selectedNodeId={selectedNode?.id || ''}
-              sourceKey={topologySourceKey}
-              onSelectNode={setSelectedNodeId}
-            />
+              <Suspense fallback={<ViewLoading label="토폴로지" />}>
+                <TopologyCanvas
+                  brandTheme={brandTheme}
+                  colorMode={colorMode}
+                  edges={edges}
+                  nodes={nodes}
+                  selectedNodeId={selectedNode?.id || ''}
+                  sourceKey={topologySourceKey}
+                  onSelectNode={setSelectedNodeId}
+                />
+              </Suspense>
             ) : (
-            <TrafficFlowView
-              edges={snapshot.edges}
-              nodes={snapshot.nodes}
-              selectedNodeId={selectedNode?.id || ''}
-              visibleNodeIds={visibleNodeIds}
-              onSelectNode={setSelectedNodeId}
-            />
+              <Suspense fallback={<ViewLoading label="트래픽 흐름" />}>
+                <TrafficFlowView
+                  edges={snapshot.edges}
+                  nodes={snapshot.nodes}
+                  selectedNodeId={selectedNode?.id || ''}
+                  visibleNodeIds={visibleNodeIds}
+                  onSelectNode={setSelectedNodeId}
+                />
+              </Suspense>
             )}
 
             <aside className="grid content-start gap-3 lg:gap-4 xl:sticky xl:top-[116px] xl:max-h-[calc(100vh-132px)] xl:overflow-auto xl:pr-1">
-            <ConnectorDiagnostics
-              lastUpdatedAt={lastUpdatedAt}
-              source={source}
-              status={connectorStatus}
-              statusError={connectorError}
-              statusLoading={connectorLoading}
-              topologyError={error}
-              topologyLoading={loading}
-              totalEdges={snapshot.edges.length}
-              totalNodes={snapshot.nodes.length}
-              visibleEdges={edges.length}
-              visibleNodes={nodes.length}
-            />
-            <ResourceList nodes={nodes} selectedNodeId={selectedNode?.id || ''} onSelectNode={setSelectedNodeId} />
-            <DetailPanel edges={snapshot.edges} node={selectedNode} nodeMap={snapshotNodeMap} />
+              <ConnectorDiagnostics
+                lastUpdatedAt={lastUpdatedAt}
+                source={source}
+                status={connectorStatus}
+                statusError={connectorError}
+                statusLoading={connectorLoading}
+                topologyError={error}
+                topologyLoading={loading}
+                totalEdges={snapshot.edges.length}
+                totalNodes={snapshot.nodes.length}
+                visibleEdges={edges.length}
+                visibleNodes={nodes.length}
+              />
+              <ResourceList nodes={nodes} selectedNodeId={selectedNode?.id || ''} onSelectNode={setSelectedNodeId} />
+              <DetailPanel edges={snapshot.edges} node={selectedNode} nodeMap={snapshotNodeMap} />
             </aside>
           </div>
         )}
       </div>
     </main>
+  );
+}
+
+function ViewLoading({ label }: { label: string }) {
+  return (
+    <section className="ku-panel flex min-h-[360px] items-center justify-center p-6" aria-busy="true" aria-live="polite">
+      <div className="text-center">
+        <RefreshCw className="mx-auto animate-spin text-[#007aff]" size={22} aria-hidden="true" />
+        <p className="mt-3 text-sm font-semibold text-[#1d1d1f]">{label}을 불러오는 중</p>
+      </div>
+    </section>
   );
 }
 
@@ -897,7 +956,7 @@ function initialResourceViewFilters(): ResourceViewFilters {
 
 function readViewModeFromSearch(search: string): ViewMode {
   const view = new URLSearchParams(search).get('view');
-  if (view === 'resources' || view === 'traffic') {
+  if (view === 'resources' || view === 'traffic' || view === 'compare') {
     return view;
   }
   return 'topology';
@@ -943,6 +1002,8 @@ function writeAppUrlState(state: AppUrlState, mode: 'push' | 'replace') {
     params.set('view', 'resources');
   } else if (state.viewMode === 'traffic') {
     params.set('view', 'traffic');
+  } else if (state.viewMode === 'compare') {
+    params.set('view', 'compare');
   }
   if (state.sourceMode !== 'upload') {
     params.set('source', state.sourceMode);
@@ -1103,22 +1164,13 @@ function formatConnectorStatus(
   }
 
   if (error) {
-    return `제공자 상태 오류: ${formatUiError(error)}`;
+    return `제공자 상태 오류: ${describeConnectorError(error).message}`;
   }
 
   return '제공자 상태 확인 불가';
 }
 
 function formatUiError(error: string) {
-  if (error.includes(':401')) {
-    return 'admin token 인증 실패(401)';
-  }
-  if (error.includes(':500')) {
-    return '서버에서 토폴로지 스냅샷 생성 실패(500)';
-  }
-  if (error.includes('api_base_url')) {
-    return 'API 주소가 설정되지 않았습니다.';
-  }
   if (error.includes('invalid_topology_json')) {
     return '토폴로지 JSON 형식이 올바르지 않습니다.';
   }
@@ -1129,8 +1181,10 @@ function formatUiError(error: string) {
     return '업로드 파일을 해석하지 못했습니다.';
   }
   if (error.includes('topology_request_failed')) {
-    return '토폴로지 API 요청에 실패했습니다.';
+    return describeConnectorError(error).message;
   }
-
-  return error;
+  if (error.includes('status_request_failed') || error.includes('api_base_url') || error.toLowerCase().includes('failed to fetch')) {
+    return describeConnectorError(error).message;
+  }
+  return '요청을 처리하지 못했습니다.';
 }

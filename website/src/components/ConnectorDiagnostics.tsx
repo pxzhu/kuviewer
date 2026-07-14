@@ -1,6 +1,7 @@
 import { AlertTriangle, CheckCircle2, Clock3, Database, EyeOff, LockKeyhole, RotateCw, ServerCog, type LucideIcon } from 'lucide-react';
 import { formatClockTime, formatLastSync } from '../utils/formatTime';
 import type { ConnectorStatus } from '../types/status';
+import { describeConnectorError, type ConnectorDiagnostic } from '../features/status/connectorDiagnostics';
 
 interface ConnectorDiagnosticsProps {
   status: ConnectorStatus | null;
@@ -83,8 +84,8 @@ export function ConnectorDiagnostics({
           <p className="mt-1 text-sm font-semibold text-[#1d1d1f]">{uiLabel}</p>
         </div>
 
-        {statusError ? <ErrorRow label="상태 API" message={formatError(statusError)} /> : null}
-        {topologyError ? <ErrorRow label="토폴로지 API" message={formatError(topologyError)} /> : null}
+        {statusError ? <ErrorRow label="상태 API" diagnostic={describeConnectorError(statusError)} /> : null}
+        {topologyError ? <ErrorRow label="토폴로지 API" diagnostic={describeConnectorError(topologyError)} /> : null}
       </div>
     </section>
   );
@@ -108,11 +109,15 @@ function DiagnosticItem({ icon: Icon, label, value }: DiagnosticItemProps) {
   );
 }
 
-function ErrorRow({ label, message }: { label: string; message: string }) {
+function ErrorRow({ label, diagnostic }: { label: string; diagnostic: ConnectorDiagnostic }) {
   return (
     <div className="rounded-[11px] border border-[rgba(255,149,0,0.24)] bg-[rgba(255,149,0,0.12)] px-3 py-2">
-      <p className="font-mono text-[11px] font-semibold uppercase tracking-[0.04em] text-[#b05f00]">{label}</p>
-      <p className="mt-1 break-words text-sm font-semibold text-[#6e4100]">{message}</p>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="font-mono text-[11px] font-semibold uppercase tracking-[0.04em] text-[#b05f00]">{label}</p>
+        <span className="font-mono text-[10px] font-semibold uppercase text-[#8a5200]">{diagnostic.stage} · {diagnostic.code}</span>
+      </div>
+      <p className="mt-1 break-words text-sm font-semibold text-[#6e4100]">{diagnostic.message}</p>
+      <p className="mt-1 text-xs font-medium text-[#8a5200]">{diagnostic.hint}</p>
     </div>
   );
 }
@@ -144,24 +149,4 @@ function sourceValueLabel(source: string) {
     return '실시간';
   }
   return source;
-}
-
-function formatError(error: string) {
-  if (error.includes(':401')) {
-    return 'admin token 인증 실패(401)';
-  }
-  if (error.includes(':500')) {
-    return '서버에서 토폴로지 스냅샷 생성 실패(500)';
-  }
-  if (error.includes('api_base_url')) {
-    return 'API 주소가 설정되지 않았습니다.';
-  }
-  if (error.includes('topology_request_failed')) {
-    return '토폴로지 API 요청에 실패했습니다.';
-  }
-  if (error.includes('status_request_failed')) {
-    return '상태 API 요청에 실패했습니다.';
-  }
-
-  return error;
 }

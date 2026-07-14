@@ -1,6 +1,7 @@
 import { getStoredAdminToken } from '../features/auth/adminToken';
 import type { ResourceEvents, ResourceExplorerItem, ResourceExplorerList, ResourceLogs } from '../types/resourceExplorer';
 import type { SummaryValue, TopologySnapshot } from '../types/topology';
+import { safeAnnotations, sensitiveField } from '../utils/safeMetadata';
 import { getTopologyApiBaseUrl } from './topologyApi';
 
 export interface ResourceViewPresetApiRecord {
@@ -258,15 +259,6 @@ function safeSummary(kind: string, summary: Record<string, SummaryValue>) {
   );
 }
 
-function safeAnnotations(values?: Record<string, string>) {
-  if (!values) {
-    return {};
-  }
-  return Object.fromEntries(
-    Object.entries(values).map(([key, value]) => [key, sensitiveField(key) || sensitiveField(value) ? 'redacted' : value]),
-  );
-}
-
 function hiddenAnnotationCount(values?: Record<string, string>) {
   if (!values) {
     return 0;
@@ -274,21 +266,6 @@ function hiddenAnnotationCount(values?: Record<string, string>) {
   return Object.entries(values).filter(([key, value]) => value === 'redacted' || sensitiveField(key) || sensitiveField(value)).length;
 }
 
-function sensitiveField(value: string) {
-  const normalized = value.toLowerCase();
-  return (
-    normalized.includes('token') ||
-    normalized.includes('password') ||
-    normalized.includes('secret') ||
-    normalized.includes('credential') ||
-    normalized.includes('apikey') ||
-    normalized.includes('api-key') ||
-    normalized.includes('accesskey') ||
-    normalized.includes('access-key') ||
-    normalized.includes('private-key') ||
-    normalized.includes('client-key')
-  );
-}
 
 function safeYamlPreview(node: TopologySnapshot['nodes'][number], annotations: Record<string, string>, summary: Record<string, SummaryValue>) {
   const lines = [
