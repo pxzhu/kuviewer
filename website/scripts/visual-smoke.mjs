@@ -9,6 +9,7 @@ const outputDir = process.env.KUVIEWER_VISUAL_OUTPUT || path.join(process.cwd(),
 const uploadManifestPath = path.join(outputDir, 'visual-upload.yaml');
 const conflictPresetPath = path.join(outputDir, 'visual-resource-view-conflict.json');
 const wrappedPresetPath = path.join(outputDir, 'visual-resource-view-items-wrapper.json');
+const unsafeTopologyPath = path.join(outputDir, 'visual-unsafe-topology.json');
 
 const viewports = [
   { name: 'desktop', viewport: { width: 1440, height: 980 }, isMobile: false, hasTouch: false },
@@ -45,6 +46,7 @@ await writeFile(wrappedPresetPath, JSON.stringify({
     },
   ],
 }, null, 2), 'utf8');
+await writeFile(unsafeTopologyPath, JSON.stringify(getUnsafeTopologyFixture(), null, 2), 'utf8');
 
 for (const target of viewports) {
   await runViewport(target);
@@ -96,15 +98,113 @@ async function runViewport({ name, viewport, isMobile, hasTouch }) {
     await assertNoHorizontalOverflow(page, `${name} topology`);
 
     await page.screenshot({ path: path.join(outputDir, `${name}-topology.png`), fullPage: true });
+    await verifySnapshotComparison(page, visualMode, name);
     await verifyResourceExplorer(page);
     await page.getByRole('button', { name: /트래픽 흐름/ }).click();
     await expect(page.getByRole('heading', { name: '트래픽 흐름' })).toBeVisible({ timeout: 10_000 });
     await expect(page.getByText(/현재 필터에 맞는 트래픽 흐름이 없습니다/)).toHaveCount(0);
     await page.screenshot({ path: path.join(outputDir, `${name}-flow.png`), fullPage: true });
+    await verifyImportedSnapshotRedaction(page);
     assertNoBrowserIssues(browserIssues, failedResponses, name);
   } finally {
     await browser.close();
   }
+}
+
+async function verifyImportedSnapshotRedaction(page) {
+  const sensitiveFixtureValue = ['redaction', 'fixture'].join('-');
+  await page.setInputFiles('[data-testid="import-topology-json"]', unsafeTopologyPath);
+  await page.getByRole('button', { name: /리소스 탐색/ }).click();
+  await expect(page.getByRole('heading', { name: '리소스 탐색' })).toBeVisible({ timeout: 10_000 });
+  await page.getByTestId('resource-view-query').fill('import-secret');
+  await expect(page.getByTestId('resource-result-count')).toContainText('결과 1 /', { timeout: 10_000 });
+  await expect(page.getByText(sensitiveFixtureValue, { exact: false })).toHaveCount(0);
+  if (!(await page.getByTestId('resource-detail-section-body-annotations').isVisible().catch(() => false))) {
+    await page.getByRole('button', { name: /Annotations 펼치기/ }).click();
+  }
+  await expect(page.getByText('redacted', { exact: true }).first()).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByText('hidden', { exact: true }).first()).toBeVisible({ timeout: 10_000 });
+}
+
+function getUnsafeTopologyFixture() {
+  const clusterId = 'import-security';
+  const clusterNodeId = `${clusterId}::Cluster:import-security`;
+  const secretNodeId = `${clusterId}:default:Secret:import-secret`;
+  const sensitiveFixtureValue = ['redaction', 'fixture'].join('-');
+  return {
+    clusters: [{
+      id: clusterId,
+      name: 'import-security',
+      provider: 'Import',
+      version: 'test',
+      nodeReady: 0,
+      nodeTotal: 0,
+      podRunning: 0,
+      podWarning: 0,
+      namespaces: 1,
+    }],
+    nodes: [
+      {
+        id: clusterNodeId,
+        clusterId,
+        kind: 'Cluster',
+        name: 'import-security',
+        status: 'healthy',
+        labels: {},
+        summary: { source: 'import' },
+        x: 0,
+        y: 0,
+      },
+      {
+        id: secretNodeId,
+        clusterId,
+        kind: 'Secret',
+        namespace: 'default',
+        name: 'import-secret',
+        status: 'unknown',
+        labels: { app: 'security-smoke' },
+        annotations: { 'example.com/token': sensitiveFixtureValue },
+        summary: { type: 'Opaque', keys: 1, values: sensitiveFixtureValue, token: sensitiveFixtureValue },
+        x: 0,
+        y: 0,
+      },
+    ],
+    edges: [{
+      id: `${clusterNodeId}->${secretNodeId}:owns:metadata.namespace`,
+      clusterId,
+      source: clusterNodeId,
+      target: secretNodeId,
+      type: 'owns',
+      confidence: 'observed',
+      sourceField: 'metadata.namespace',
+    }],
+  };
+}
+
+async function verifySnapshotComparison(page, initialMode, viewportName) {
+  await page.getByRole('button', { name: /스냅샷 비교/ }).click();
+  await expect(page.getByTestId('snapshot-compare-panel')).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByRole('heading', { name: '비교할 기준이 없습니다' })).toBeVisible({ timeout: 10_000 });
+  await page.getByTestId('snapshot-compare-capture').click();
+  await expect(page.getByTestId('snapshot-compare-changed-count')).toContainText('0', { timeout: 10_000 });
+  await expect(page.getByTestId('snapshot-compare-added-count')).toContainText('0');
+  await expect(page.getByTestId('snapshot-compare-removed-count')).toContainText('0');
+
+  const comparisonMode = initialMode === 'mock' ? 'upload' : 'mock';
+  await selectVisualMode(page, comparisonMode);
+  await expect(page.getByTestId('snapshot-compare-panel').locator('tbody tr').first()).toBeVisible({ timeout: 10_000 });
+  const totalChanges = await page.locator('[data-testid^="snapshot-compare-"][data-testid$="-count"] p:nth-child(2)').evaluateAll((values) =>
+    values.slice(2).reduce((total, value) => total + Number(value.textContent || 0), 0),
+  );
+  if (totalChanges < 1) {
+    throw new Error('snapshot comparison did not detect source changes');
+  }
+  await assertNoHorizontalOverflow(page, 'snapshot comparison');
+  await page.screenshot({ path: path.join(outputDir, `${viewportName}-snapshot-compare.png`), fullPage: true });
+
+  await selectVisualMode(page, initialMode);
+  await page.getByRole('button', { name: /토폴로지/ }).click();
+  await expect(page.getByRole('heading', { name: '토폴로지 맵' })).toBeVisible({ timeout: 10_000 });
 }
 
 async function selectVisualMode(page, mode) {

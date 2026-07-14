@@ -13,16 +13,16 @@
    - Desktop CM/SSH code는 public installer/download가 아닌 local prototype으로 유지하거나 별도 archive 범위로 줄인다.
    - Web app에는 SSH/CM controls를 노출하지 않는다.
 
-3. Live Kubernetes connection hardening
-   - Same-origin/API-base live mode, RBAC 부족 fallback, Events/Logs 권한 실패 UX를 실제 클러스터 기준으로 재검증한다.
+3. Live Kubernetes connection verification
+   - Same-origin/API-base live mode와 새 authentication/RBAC/reachability/server 진단을 실제 클러스터 기준으로 재검증한다.
    - Secret values, kubeconfig, cloud credential, private key는 계속 표시/저장/커밋하지 않는다.
 
-4. Frontend code splitting
-   - `ResourceExplorer.tsx`와 `DesktopCmSessionPanel.tsx`의 큰 UI state/helpers를 feature-local modules로 분리한다.
-   - 우선순위는 hook ordering, keyboard navigation, localStorage preference boundary, export/import safe payload helpers다.
+4. Snapshot comparison refinement
+   - Browser-memory baseline 비교 v1 이후 cluster summary와 관계 변경 drill-down, 대규모 diff virtualization을 검토한다.
+   - baseline은 저장하지 않고 Secret 값은 비교 결과에도 노출하지 않는다.
 
-5. Bundle size cleanup
-   - Vite build의 500 kB chunk warning을 줄이기 위해 Resource Explorer/Desktop prototype routes나 heavy panels의 lazy loading을 검토한다.
+5. Remaining bundle cleanup
+   - Resource Explorer/Snapshot Compare lazy loading 이후 Desktop prototype code를 web 초기 번들에서 더 분리할지 측정한다.
 
 6. Local automation hygiene
    - `scripts/notify-telegram.mjs`처럼 CLI entrypoint와 reusable helper를 분리하는 패턴을 다른 scripts에도 적용한다.
