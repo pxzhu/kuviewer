@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -21,6 +22,33 @@ type stubProvider struct {
 	err      error
 }
 
+type countingProvider struct {
+	mu       sync.Mutex
+	snapshot topology.Snapshot
+	delay    time.Duration
+	calls    int
+}
+
+func (p *countingProvider) Snapshot(ctx context.Context) (topology.Snapshot, error) {
+	if p.delay > 0 {
+		select {
+		case <-ctx.Done():
+			return topology.Snapshot{}, ctx.Err()
+		case <-time.After(p.delay):
+		}
+	}
+	p.mu.Lock()
+	p.calls++
+	p.mu.Unlock()
+	return p.snapshot, nil
+}
+
+func (p *countingProvider) callCount() int {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.calls
+}
+
 func (p stubProvider) Snapshot(context.Context) (topology.Snapshot, error) {
 	return p.snapshot, p.err
 }
@@ -29,6 +57,16 @@ type eventStubProvider struct {
 	stubProvider
 	events   topology.ResourceEvents
 	eventErr error
+}
+
+type capabilityStubProvider struct {
+	stubProvider
+	report topology.CapabilityReport
+	err    error
+}
+
+func (p capabilityStubProvider) Capabilities(context.Context) (topology.CapabilityReport, error) {
+	return p.report, p.err
 }
 
 func (p eventStubProvider) ResourceEvents(context.Context, provider.ResourceRef) (topology.ResourceEvents, error) {
@@ -214,6 +252,93 @@ func TestStatusReturnsProviderMetadata(t *testing.T) {
 	}
 }
 
+func TestCapabilitiesRequiresAdminBearerToken(t *testing.T) {
+	handler := NewServer(capabilityStubProvider{}, "secret-token", "", "")
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/api/capabilities", nil)
+
+	handler.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusUnauthorized)
+	}
+}
+
+func TestCapabilitiesReturnsSafeProviderReport(t *testing.T) {
+	handler := NewServerWithConfig(capabilityStubProvider{
+		report: topology.CapabilityReport{
+			Source:    "kubernetes",
+			CheckedAt: "2026-07-15T00:00:00Z",
+			Items: []topology.ResourceCapability{
+				{ID: "core/pods", Group: "Core", Resource: "Pods", Required: true, Status: "available", Reason: "read_allowed"},
+				{ID: "gateway/gateways", Group: "Gateway API", Resource: "Gateways", Status: "forbidden", Reason: "rbac_denied"},
+			},
+		},
+	}, ServerConfig{AdminToken: "secret-token", Source: "kubernetes"})
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/api/capabilities", nil)
+	request.Header.Set("Authorization", "Bearer secret-token")
+
+	handler.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusOK)
+	}
+	var report topology.CapabilityReport
+	if err := json.NewDecoder(recorder.Body).Decode(&report); err != nil {
+		t.Fatalf("decode capabilities: %v", err)
+	}
+	if report.Source != "kubernetes" || len(report.Items) != 2 {
+		t.Fatalf("unexpected report: %+v", report)
+	}
+	if report.Items[1].Reason != "rbac_denied" {
+		t.Fatalf("reason = %q, want rbac_denied", report.Items[1].Reason)
+	}
+}
+
+func TestCapabilitiesUnsupportedProviderFallsBack(t *testing.T) {
+	handler := NewServerWithConfig(stubProvider{snapshot: testSnapshot()}, ServerConfig{AdminToken: "secret-token", Source: "custom"})
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/api/capabilities", nil)
+	request.Header.Set("Authorization", "Bearer secret-token")
+
+	handler.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusOK)
+	}
+	var report topology.CapabilityReport
+	if err := json.NewDecoder(recorder.Body).Decode(&report); err != nil {
+		t.Fatalf("decode capabilities: %v", err)
+	}
+	if report.Warning != "capability_probe_unsupported" || len(report.Items) != 0 {
+		t.Fatalf("unexpected fallback: %+v", report)
+	}
+}
+
+func TestCapabilitiesProviderErrorReturnsSafeWarning(t *testing.T) {
+	handler := NewServerWithConfig(capabilityStubProvider{err: errors.New("sensitive provider detail")}, ServerConfig{AdminToken: "secret-token", Source: "kubernetes"})
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/api/capabilities", nil)
+	request.Header.Set("Authorization", "Bearer secret-token")
+
+	handler.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusOK)
+	}
+	if strings.Contains(recorder.Body.String(), "sensitive provider detail") {
+		t.Fatal("provider error leaked into capability response")
+	}
+	var report topology.CapabilityReport
+	if err := json.NewDecoder(recorder.Body).Decode(&report); err != nil {
+		t.Fatalf("decode capabilities: %v", err)
+	}
+	if report.Warning != "capability_probe_unavailable" || len(report.Items) != 0 {
+		t.Fatalf("unexpected fallback: %+v", report)
+	}
+}
+
 func TestTopologyProviderErrors(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -333,6 +458,153 @@ func TestResourcesReturnSafeResourceList(t *testing.T) {
 	if strings.Contains(string(mustMarshalJSON(t, secret)), "redaction-fixture") {
 		t.Fatalf("secret value leaked in resource response: %+v", secret)
 	}
+}
+
+func TestSnapshotCacheReusesSnapshotAcrossEndpointsAndSupportsRefresh(t *testing.T) {
+	provider := &countingProvider{snapshot: resourceTestSnapshot()}
+	handler := NewServerWithConfig(provider, ServerConfig{AdminToken: "secret-token", SnapshotCacheTTL: time.Minute})
+
+	first := authenticatedRequest(t, handler, "/api/topology")
+	if first.Code != http.StatusOK || first.Header().Get("X-Kuviewer-Snapshot-Cache") != "miss" {
+		t.Fatalf("first snapshot status=%d cache=%q", first.Code, first.Header().Get("X-Kuviewer-Snapshot-Cache"))
+	}
+	second := authenticatedRequest(t, handler, "/api/resources")
+	if second.Code != http.StatusOK || second.Header().Get("X-Kuviewer-Snapshot-Cache") != "hit" {
+		t.Fatalf("second snapshot status=%d cache=%q", second.Code, second.Header().Get("X-Kuviewer-Snapshot-Cache"))
+	}
+	if got := provider.callCount(); got != 1 {
+		t.Fatalf("provider calls=%d, want 1", got)
+	}
+
+	refreshed := authenticatedRequest(t, handler, "/api/topology?refresh=true")
+	if refreshed.Code != http.StatusOK || refreshed.Header().Get("X-Kuviewer-Snapshot-Cache") != "miss" {
+		t.Fatalf("refresh status=%d cache=%q", refreshed.Code, refreshed.Header().Get("X-Kuviewer-Snapshot-Cache"))
+	}
+	if got := provider.callCount(); got != 2 {
+		t.Fatalf("provider calls after refresh=%d, want 2", got)
+	}
+}
+
+func TestSnapshotCacheSharesConcurrentLoads(t *testing.T) {
+	provider := &countingProvider{snapshot: resourceTestSnapshot(), delay: 25 * time.Millisecond}
+	handler := NewServerWithConfig(provider, ServerConfig{AdminToken: "secret-token", SnapshotCacheTTL: time.Minute})
+
+	const requestCount = 8
+	var waitGroup sync.WaitGroup
+	statuses := make(chan int, requestCount)
+	cacheStatuses := make(chan string, requestCount)
+	for index := 0; index < requestCount; index++ {
+		waitGroup.Add(1)
+		go func() {
+			defer waitGroup.Done()
+			recorder := authenticatedRequest(t, handler, "/api/resources?limit=1")
+			statuses <- recorder.Code
+			cacheStatuses <- recorder.Header().Get("X-Kuviewer-Snapshot-Cache")
+		}()
+	}
+	waitGroup.Wait()
+	close(statuses)
+	close(cacheStatuses)
+	for status := range statuses {
+		if status != http.StatusOK {
+			t.Fatalf("concurrent request status=%d, want 200", status)
+		}
+	}
+	shared := 0
+	for cacheStatus := range cacheStatuses {
+		if cacheStatus == "shared" {
+			shared++
+		}
+	}
+	if shared == 0 {
+		t.Fatal("expected at least one concurrent request to share the in-flight snapshot")
+	}
+	if got := provider.callCount(); got != 1 {
+		t.Fatalf("provider calls=%d, want 1", got)
+	}
+}
+
+func TestSnapshotCacheExpires(t *testing.T) {
+	provider := &countingProvider{snapshot: resourceTestSnapshot()}
+	handler := NewServerWithConfig(provider, ServerConfig{AdminToken: "secret-token", SnapshotCacheTTL: 10 * time.Millisecond})
+
+	if recorder := authenticatedRequest(t, handler, "/api/topology"); recorder.Code != http.StatusOK {
+		t.Fatalf("first request status=%d", recorder.Code)
+	}
+	time.Sleep(30 * time.Millisecond)
+	if recorder := authenticatedRequest(t, handler, "/api/topology"); recorder.Code != http.StatusOK {
+		t.Fatalf("second request status=%d", recorder.Code)
+	}
+	if got := provider.callCount(); got != 2 {
+		t.Fatalf("provider calls=%d, want 2 after TTL expiry", got)
+	}
+}
+
+func TestResourcesSupportFilteringSortingAndCursorPagination(t *testing.T) {
+	handler := NewServerWithConfig(stubProvider{snapshot: resourceTestSnapshot()}, ServerConfig{AdminToken: "secret-token", SnapshotCacheTTL: time.Minute})
+
+	first := authenticatedRequest(t, handler, "/api/resources?limit=1&sort=name&direction=asc")
+	var firstPage topology.ResourceList
+	if err := json.NewDecoder(first.Body).Decode(&firstPage); err != nil {
+		t.Fatalf("decode first page: %v", err)
+	}
+	if len(firstPage.Items) != 1 || firstPage.Items[0].Name != "checkout" {
+		t.Fatalf("first page=%+v, want Namespace checkout", firstPage.Items)
+	}
+	if firstPage.Metadata == nil || firstPage.Metadata.Total != 3 || firstPage.Metadata.Filtered != 3 || firstPage.Metadata.Returned != 1 || firstPage.Metadata.NextCursor == "" {
+		t.Fatalf("first page metadata=%+v", firstPage.Metadata)
+	}
+	if len(firstPage.Metadata.Facets.Kinds) != 3 || len(firstPage.Metadata.Facets.Namespaces) != 1 {
+		t.Fatalf("facets=%+v", firstPage.Metadata.Facets)
+	}
+
+	second := authenticatedRequest(t, handler, "/api/resources?limit=1&sort=name&direction=asc&cursor="+firstPage.Metadata.NextCursor)
+	var secondPage topology.ResourceList
+	if err := json.NewDecoder(second.Body).Decode(&secondPage); err != nil {
+		t.Fatalf("decode second page: %v", err)
+	}
+	if len(secondPage.Items) != 1 || secondPage.Items[0].Name != "checkout-api" {
+		t.Fatalf("second page=%+v, want Pod checkout-api", secondPage.Items)
+	}
+	mismatchedCursor := authenticatedRequest(t, handler, "/api/resources?limit=1&sort=kind&direction=asc&cursor="+firstPage.Metadata.NextCursor)
+	if mismatchedCursor.Code != http.StatusBadRequest {
+		t.Fatalf("mismatched cursor status=%d, want 400", mismatchedCursor.Code)
+	}
+
+	filtered := authenticatedRequest(t, handler, "/api/resources?limit=20&kind=Pod&query=sidecar")
+	var filteredPage topology.ResourceList
+	if err := json.NewDecoder(filtered.Body).Decode(&filteredPage); err != nil {
+		t.Fatalf("decode filtered page: %v", err)
+	}
+	if len(filteredPage.Items) != 1 || filteredPage.Items[0].Kind != "Pod" || filteredPage.Metadata == nil || filteredPage.Metadata.Filtered != 1 {
+		t.Fatalf("filtered page=%+v metadata=%+v", filteredPage.Items, filteredPage.Metadata)
+	}
+}
+
+func TestResourcesRejectInvalidPaginationQueries(t *testing.T) {
+	handler := NewServer(stubProvider{snapshot: resourceTestSnapshot()}, "secret-token", "", "")
+	for _, path := range []string{
+		"/api/resources?limit=0",
+		"/api/resources?limit=201",
+		"/api/resources?limit=20&cursor=not-base64!",
+		"/api/resources?cursor=MA",
+		"/api/resources?sort=unknown",
+		"/api/resources?direction=sideways",
+	} {
+		recorder := authenticatedRequest(t, handler, path)
+		if recorder.Code != http.StatusBadRequest {
+			t.Fatalf("path=%q status=%d, want 400", path, recorder.Code)
+		}
+	}
+}
+
+func authenticatedRequest(t *testing.T, handler http.Handler, path string) *httptest.ResponseRecorder {
+	t.Helper()
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, path, nil)
+	request.Header.Set("Authorization", "Bearer secret-token")
+	handler.ServeHTTP(recorder, request)
+	return recorder
 }
 
 func TestResourceDetailAndEvents(t *testing.T) {
@@ -873,6 +1145,17 @@ func TestSecurityHeaders(t *testing.T) {
 		if !strings.Contains(csp, fragment) {
 			t.Fatalf("Content-Security-Policy missing %q: %q", fragment, csp)
 		}
+	}
+}
+
+func TestAuthenticatedAPIResponsesDisableBrowserCaching(t *testing.T) {
+	handler := NewServer(stubProvider{snapshot: testSnapshot()}, "secret-token", "", "")
+	recorder := authenticatedRequest(t, handler, "/api/status")
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status=%d, want 200", recorder.Code)
+	}
+	if got := recorder.Header().Get("Cache-Control"); got != "no-store" {
+		t.Fatalf("Cache-Control=%q, want no-store", got)
 	}
 }
 

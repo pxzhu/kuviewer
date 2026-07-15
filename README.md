@@ -29,13 +29,13 @@ Kuviewer is a Kubernetes topology viewer focused on visualizing clusters, namesp
 - `Topology`: draggable React Flow resource relationship map with cluster and namespace zones
 - `Flow`: YAML-derived traffic flow view
 - `Resource Explorer`: read-only Kubernetes resource list, safe YAML/detail preview, topology relations, and live Events
-- `Snapshot Compare`: captures an in-memory baseline or imports a topology JSON baseline, then shows safe resource/relation additions, removals, and changes without persisting cluster data
+- `Snapshot Compare`: keeps up to eight in-memory captures/imports for baseline/current selection, validates exported diff JSON for read-only preview, and shows safe resource/relation additions, removals, and changes without persisting cluster data
 - Purpose-built YAML Flow link preview, transparent favicon, and apple-touch icon assets for shared links and bookmarks
 - Brand theme toggle: `D` YAML Flow is the default UI theme, while `B` Radar can be selected as a dark app theme without changing shared-link metadata
 - Manual refresh, optional 30 second auto refresh, and last sync status for live mode
 - Backend provider/status line for source, read-only mode, Secret handling, and static UI mode
 - Connector diagnostics panel for backend source, safe authentication/RBAC/reachability/server failure guidance, sync time, and visible/total graph counts
-- Resource Explorer and Snapshot Compare are lazy-loaded so the initial topology bundle does not include their heavy UI code
+- Resource Explorer and Snapshot Compare are lazy-loaded so the initial topology bundle does not include their heavy UI code; Resource Explorer list/saved-view controls and the Events/Logs detail workspace are separate chunks, the detail workspace keeps its stateful orchestrator separate from health calculations, Event/Log/Relation activity helpers, shared types, and UI primitives, the mobile SVG and desktop React Flow topology renderers load independently, and desktop CM APIs load only inside the Tauri runtime
 - YAML/ZIP upload, topology JSON import/export, and Secret value hiding for uploaded manifests
 - Flow evidence rows show source/target resources, YAML field paths, and observed/inferred confidence
 - Broken Flow cards show routed Services with no visible backend Pod endpoints
@@ -275,6 +275,7 @@ KUVIEWER_ADMIN_TOKEN=kuviewer-admin
 KUVIEWER_CORS_ORIGIN=
 KUVIEWER_SOURCE=mock
 KUVIEWER_RESOURCE_VIEWS_FILE=
+KUVIEWER_SNAPSHOT_CACHE_TTL=10s
 ```
 
 Set `KUVIEWER_CORS_ORIGIN=http://127.0.0.1:5174` only when the Vite dev server calls a separately running local API server.
@@ -287,7 +288,8 @@ API endpoints:
 GET /healthz
 GET /api/status
 GET /api/topology
-GET /api/resources
+GET /api/capabilities
+GET /api/resources?query=&cluster=&namespace=&kind=&status=&sort=kind&direction=asc&limit=200&cursor=
 GET /api/resource-views
 PUT /api/resource-views
 GET /api/resources/{kind}/{namespace-or--}/{name}
@@ -297,9 +299,15 @@ GET /api/resources/{kind}/{namespace-or--}/{name}/logs/stream
 Authorization: Bearer <admin-token>
 ```
 
-The resource explorer endpoints are read-only. They expose metadata, labels, redacted annotations, age/owner/uid summary, status, safe summary/preview data, safe YAML preview, and topology relations derived from the current snapshot. The YAML preview is generated from Kuviewer safe metadata and summaries, not from raw Kubernetes manifests. Secret values, `data`, and `stringData` are not returned. The resource list supports local keyboard navigation with ArrowUp/ArrowDown, Home/End, and Enter-to-detail focus. It also supports memory-only bulk selection for the current filter results with checkbox selection, Space toggle, Shift+Arrow/Home/End range selection, Ctrl/Cmd+A select all, and Escape clear. User-click copy/export actions are limited to safe inventory fields such as cluster, namespace, kind, name, status, counts, summary keys, and relation count. The detail panel provides a compact scope/age/owner/signals overview, section jump badges, status health signals, and local keyboard navigation for scanning read-only sections without storing resource data.
+In live Kubernetes mode, `/api/capabilities` performs a bounded read-only probe of the resource APIs used by Kuviewer and reports only safe access metadata: readable, RBAC denied, authentication failed, API not installed, request unavailable, or policy protected. The connector diagnostics panel groups these results by API area and highlights unavailable required Core resources. Probe responses never include Kubernetes object bodies, raw provider errors, credentials, or Secret values; Secret values are always reported as protected and are not queried.
+
+The resource explorer endpoints are read-only. They expose metadata, labels, redacted annotations, age/owner/uid summary, status, safe summary/preview data, safe YAML preview, and topology relations derived from the current snapshot. The YAML preview is generated from Kuviewer safe metadata and summaries, not from raw Kubernetes manifests. Secret values, `data`, and `stringData` are not returned. Live resource lists use server-side search/exact filters, deterministic sorting, and an opaque cursor with a maximum page size of 200; omitting `limit` keeps the older full-list response compatible. The browser loads additional pages only after a user click and receives safe global filter facets in response metadata. The resource list supports local keyboard navigation with ArrowUp/ArrowDown, Home/End, and Enter-to-detail focus. It also supports memory-only bulk selection for the currently loaded filter results with checkbox selection, Space toggle, Shift+Arrow/Home/End range selection, Ctrl/Cmd+A select all, and Escape clear. User-click copy/export actions are limited to safe inventory fields such as cluster, namespace, kind, name, status, counts, summary keys, and relation count. The detail panel provides a compact scope/age/owner/signals overview, section jump badges, status health signals, and local keyboard navigation for scanning read-only sections without storing resource data.
+
+Successful topology snapshots are cached for `KUVIEWER_SNAPSHOT_CACHE_TTL` (`10s` by default), and concurrent topology/resource/detail requests share one in-flight Kubernetes collection. `GET /api/topology?refresh=true` bypasses a fresh cache entry for explicit refresh. Set the TTL to `0`, `off`, or `disabled` to disable caching. Authenticated API responses use `Cache-Control: no-store`; cache hit/miss/shared state is exposed only as safe response headers.
 
 Resource health signals are computed in the browser from the existing safe status and summary fields. They highlight common read-only causes such as Pod readiness, restarts, workload replica gaps, Service endpoint gaps, Job failures, PVC/PV phase, routing summaries, and NetworkPolicy intent. They do not expose raw manifests or Secret values.
+
+Snapshot comparison keeps up to eight topology captures/imports in browser memory and lets users select separate baseline and current entries; the live/current screen remains available as the default comparison target. History entries can be renamed or individually deleted with inline confirmation, and deleting a selected entry safely resets that selection. The selected history and topology data are never written to localStorage, sessionStorage, URLs, or server storage. Changes are separated into resource, relation, and cluster drill-down views. Resource changes compare safe status, label, annotation-key, owner, and safe summary fields. Relation changes show added/removed/changed relation type, source and target resource identity, confidence, and source field; they can be grouped by relation type, shown as a flat list, and filtered by multiple relation types. Cluster changes show provider/version, node readiness, running/warning Pod counts, and namespace-count changes. Large result tables keep the full filtered result set while rendering only the current scroll window plus overscan rows. Users can explicitly download the current filtered scope as safe JSON or CSV. Export files contain safe identities/status/evidence/cluster summary fields only, omit the UI search query and raw resource fields, and neutralize formula-leading CSV cells. Exported diff JSON can be re-opened as a read-only preview after strict schema, size, count, allowed-field, and string-length validation; import dispatches by explicit schema version and rejects unsupported versions instead of guessing. Diff JSON is not treated as a topology snapshot. Secret summary values are not included in comparison output, and history, grouping mode, filters, search, scroll state, imported preview, and generated files are never persisted or synchronized by Kuviewer.
 
 The Resource Explorer detail panel shows a compact resource identity header, active section indicator, open section count, and a section navigator for scanning `Metadata`, `Status`, `Safe Preview`, `YAML Preview`, `Labels`, `Annotations`, `Relations`, `Events`, and `Logs`. Users can jump to a section, expand every detail section, collapse every detail section, or restore the default detail sections (`Metadata`, `Status`, `Safe Preview`, `Relations`, `Events`) without changing resource data. When the detail panel has focus, keyboard shortcuts support `J/K` section navigation, `O` active-section toggle, `E` expand all, `C` collapse all, `R` default sections, and `1-9` direct section jumps; shortcuts are ignored inside editable controls. Safe Preview supports local key/value search with match highlighting and previous/next navigation for the selected resource. Detail section open state, navigator state, keyboard shortcut state, and Safe Preview search state are browser-memory UI state only and are not written to localStorage, URLs, saved views, team saved views, JSON export/import, or backend APIs.
 
@@ -389,6 +397,8 @@ Supported snapshot resources in the first provider:
 - live Pod logs and current-log follow for the selected Pod detail
 
 Secret list/read RBAC is intentionally not granted. Secret nodes are created from Pod references such as `envFrom`, `env.valueFrom`, `volumes.secret`, and `imagePullSecrets`, and values are never displayed. Events, Pod logs, and CustomResourceDefinition read RBAC are granted for read-only resource detail and CRD inventory context. Custom resource instance discovery uses the CRD storage version, falling back to the first served version, and stays optional: RBAC/API failures for a custom resource list do not break the topology. The default Kubernetes manifest does not grant wildcard custom-resource instance access; grant only the specific API groups/resources you want Kuviewer to inventory.
+
+The live connector capability probe uses small `limit=1` list requests with bounded concurrency and classifies only HTTP access outcomes. It does not grant permissions or replace cluster-specific validation. Pod log access remains an on-demand detail action and is not claimed by the general resource capability matrix.
 
 ### Real sample infrastructure
 

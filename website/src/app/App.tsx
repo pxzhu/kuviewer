@@ -1,33 +1,24 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Boxes, GitBranch, GitCompareArrows, LockKeyhole, Palette, Pause, Play, RefreshCw, SearchCode, SlidersHorizontal, Workflow, type LucideIcon } from 'lucide-react';
 import { clearAdminToken, getStoredAdminToken, isValidAdminToken } from '../features/auth/adminToken';
-import {
-  checkDesktopCmSession,
-  checkDesktopCmSessionRuntime,
-  clearDesktopCmRuntimeProfile,
-  clearDesktopConnectionProfile,
-  deleteDesktopCmSession,
-  deleteDesktopCmSessionCredential,
-  getDesktopCmRuntimeProfile,
-  getDesktopCmSessionRuntime,
-  getDesktopCmSessions,
-  importDesktopCmSessionPrivateKey,
-  isDesktopRuntime,
-  saveDesktopCmSession,
-  selectDesktopCmSession,
-  startDesktopCmSessionRuntime,
-  stopDesktopCmSessionRuntime,
-  storeDesktopCmRuntimeProfile,
-  subscribeDesktopCmRuntimeProfile,
-  type DesktopCmSession,
-  type DesktopCmSessionInput,
-  type DesktopCmSessionRuntimeProfile,
+import type {
+  DesktopCmSession,
+  DesktopCmSessionInput,
+  DesktopCmSessionRuntimeProfile,
 } from '../features/desktop/desktopConnectionProfile';
+import { isDesktopRuntime } from '../features/desktop/desktopRuntime';
 import { useConnectorStatus } from '../features/status/useConnectorStatus';
 import { describeConnectorError } from '../features/status/connectorDiagnostics';
+import { useConnectorCapabilities } from '../features/status/useConnectorCapabilities';
 import { type ColorMode, type TopologyFilters, type TopologySourceMode, useTopology } from '../features/topology/useTopology';
 import { importTopologySnapshot, parseKubernetesFiles, type UploadedTopologyState } from '../features/upload/parseKubernetesFiles';
-import { captureSnapshotBaseline, type SnapshotBaseline } from '../features/snapshot/compareSnapshots';
+import {
+  addSnapshotHistoryEntry,
+  createSnapshotHistoryEntry,
+  deleteSnapshotHistoryEntry,
+  renameSnapshotHistoryEntry,
+  type SnapshotHistoryEntry,
+} from '../features/snapshot/snapshotHistory';
 import { ConnectorDiagnostics } from '../components/ConnectorDiagnostics';
 import { DetailPanel } from '../components/DetailPanel';
 import { FilterBar } from '../components/FilterBar';
@@ -55,6 +46,7 @@ const initialFilters: TopologyFilters = {
 };
 const sourceModeStorageKey = 'kuviewer_source_mode';
 const brandThemeStorageKey = 'kuviewer_brand_theme';
+const loadDesktopConnectionApi = () => import('../features/desktop/desktopConnectionProfile');
 type BrandTheme = 'yaml-flow' | 'radar';
 type ViewMode = 'topology' | 'traffic' | 'resources' | 'compare';
 
@@ -134,7 +126,9 @@ function Dashboard() {
   const [uploadError, setUploadError] = useState('');
   const [liveSessionMessage, setLiveSessionMessage] = useState('');
   const [selectedNodeId, setSelectedNodeId] = useState('');
-  const [snapshotBaseline, setSnapshotBaseline] = useState<SnapshotBaseline | null>(null);
+  const [snapshotHistory, setSnapshotHistory] = useState<SnapshotHistoryEntry[]>([]);
+  const [snapshotBaselineId, setSnapshotBaselineId] = useState('');
+  const [snapshotCurrentId, setSnapshotCurrentId] = useState('');
   const liveActive = sourceMode === 'live' && liveUnlocked;
   const appUrlStateRef = useRef<AppUrlState>({
     viewMode,
@@ -143,6 +137,12 @@ function Dashboard() {
   });
 
   const { status: connectorStatus, loading: connectorLoading, error: connectorError } = useConnectorStatus(liveActive);
+  const {
+    report: capabilityReport,
+    loading: capabilityLoading,
+    error: capabilityError,
+    refresh: refreshCapabilities,
+  } = useConnectorCapabilities(liveActive);
   const {
     snapshot,
     nodes,
@@ -166,8 +166,10 @@ function Dashboard() {
     if (!desktopConnectionAvailable) {
       return;
     }
-    clearDesktopConnectionProfile();
-    clearDesktopCmRuntimeProfile();
+    void loadDesktopConnectionApi().then(({ clearDesktopCmRuntimeProfile, clearDesktopConnectionProfile }) => {
+      clearDesktopConnectionProfile();
+      clearDesktopCmRuntimeProfile();
+    });
     clearAdminToken();
     setLiveUnlocked(false);
     setAutoRefresh(false);
@@ -179,7 +181,8 @@ function Dashboard() {
     }
 
     let cancelled = false;
-    void getDesktopCmSessions()
+    void loadDesktopConnectionApi()
+      .then(({ getDesktopCmSessions }) => getDesktopCmSessions())
       .then((sessions) => {
         if (cancelled) {
           return;
@@ -205,29 +208,29 @@ function Dashboard() {
     }
 
     let cancelled = false;
-    void getDesktopCmSessionRuntime()
-      .then((profile) => {
+    let unsubscribe = () => {};
+    void loadDesktopConnectionApi()
+      .then(async (desktopApi) => {
+        const profile = await desktopApi.getDesktopCmSessionRuntime();
         if (cancelled) {
           return;
         }
         if (profile) {
-          storeDesktopCmRuntimeProfile(profile);
+          desktopApi.storeDesktopCmRuntimeProfile(profile);
           setDesktopCmRuntimeProfile(profile);
         } else {
-          clearDesktopCmRuntimeProfile();
+          desktopApi.clearDesktopCmRuntimeProfile();
           setDesktopCmRuntimeProfile(null);
         }
+        unsubscribe = desktopApi.subscribeDesktopCmRuntimeProfile(() => {
+          setDesktopCmRuntimeProfile(desktopApi.getDesktopCmRuntimeProfile());
+        });
       })
       .catch(() => {
         if (!cancelled) {
-          clearDesktopCmRuntimeProfile();
           setDesktopCmRuntimeProfile(null);
         }
       });
-
-    const unsubscribe = subscribeDesktopCmRuntimeProfile(() => {
-      setDesktopCmRuntimeProfile(getDesktopCmRuntimeProfile());
-    });
 
     return () => {
       cancelled = true;
@@ -259,10 +262,21 @@ function Dashboard() {
 
   const nodeMap = useMemo(() => new Map(nodes.map((node) => [node.id, node])), [nodes]);
   const snapshotNodeMap = useMemo(() => new Map(snapshot.nodes.map((node) => [node.id, node])), [snapshot.nodes]);
+  const snapshotNodeIds = useMemo(() => new Set(snapshot.nodes.map((node) => node.id)), [snapshot.nodes]);
   const visibleNodeIds = useMemo(() => new Set(nodes.map((node) => node.id)), [nodes]);
   const selectedNode = selectedNodeId ? nodeMap.get(selectedNodeId) || snapshotNodeMap.get(selectedNodeId) : nodes[0];
   const AutoRefreshIcon = autoRefresh ? Pause : Play;
   const providerLabel = sourceMode === 'live' ? connectorStatus?.source || '실시간' : sourceModeLabel(sourceMode);
+  const snapshotBaseline = useMemo(
+    () => snapshotHistory.find((entry) => entry.id === snapshotBaselineId) || null,
+    [snapshotBaselineId, snapshotHistory],
+  );
+  const snapshotComparisonCurrent = useMemo(
+    () => snapshotHistory.find((entry) => entry.id === snapshotCurrentId) || null,
+    [snapshotCurrentId, snapshotHistory],
+  );
+  const comparisonCurrentSnapshot = snapshotComparisonCurrent?.snapshot || snapshot;
+  const comparisonCurrentLabel = snapshotComparisonCurrent?.label || providerLabel;
   const brandIconSrc =
     brandTheme === 'radar'
       ? `${import.meta.env.BASE_URL}images/brand/kuviewer-icon-radar.svg?v=0.1.40`
@@ -387,13 +401,43 @@ function Dashboard() {
   }, [snapshot, sourceMode, uploadedState]);
 
   const handleCaptureSnapshotBaseline = useCallback(() => {
-    setSnapshotBaseline(captureSnapshotBaseline(snapshot, providerLabel));
-  }, [providerLabel, snapshot]);
+    const entry = createSnapshotHistoryEntry(snapshot, providerLabel, 'capture');
+    setSnapshotHistory((current) => addSnapshotHistoryEntry(current, entry, [snapshotBaselineId, snapshotCurrentId]));
+    setSnapshotBaselineId((current) => current || entry.id);
+  }, [providerLabel, snapshot, snapshotBaselineId, snapshotCurrentId]);
 
   const handleImportSnapshotBaseline = useCallback(async (file: File) => {
     const importedSnapshot = importTopologySnapshot(JSON.parse(await file.text()));
-    setSnapshotBaseline(captureSnapshotBaseline(importedSnapshot, file.name));
+    const entry = createSnapshotHistoryEntry(importedSnapshot, file.name, 'import');
+    setSnapshotHistory((current) => addSnapshotHistoryEntry(current, entry, [snapshotBaselineId, snapshotCurrentId]));
+    setSnapshotBaselineId(entry.id);
+  }, [snapshotBaselineId, snapshotCurrentId]);
+
+  const handleClearSnapshotHistory = useCallback(() => {
+    setSnapshotHistory([]);
+    setSnapshotBaselineId('');
+    setSnapshotCurrentId('');
   }, []);
+
+  const handleDeleteSnapshotHistory = useCallback((id: string) => {
+    setSnapshotHistory((current) => deleteSnapshotHistoryEntry(current, id));
+    setSnapshotBaselineId((current) => current === id ? '' : current);
+    setSnapshotCurrentId((current) => current === id ? '' : current);
+  }, []);
+
+  const handleRenameSnapshotHistory = useCallback((id: string, label: string) => {
+    setSnapshotHistory((current) => renameSnapshotHistoryEntry(current, id, label));
+  }, []);
+
+  useEffect(() => {
+    const historyIds = new Set(snapshotHistory.map((entry) => entry.id));
+    if (snapshotBaselineId && !historyIds.has(snapshotBaselineId)) {
+      setSnapshotBaselineId('');
+    }
+    if (snapshotCurrentId && (!historyIds.has(snapshotCurrentId) || snapshotCurrentId === snapshotBaselineId)) {
+      setSnapshotCurrentId('');
+    }
+  }, [snapshotBaselineId, snapshotCurrentId, snapshotHistory]);
 
   const handleLiveLock = useCallback(() => {
     clearAdminToken();
@@ -408,6 +452,7 @@ function Dashboard() {
   }, [resourceUrlFilters, setAutoRefresh, sourceMode, viewMode]);
 
   const handleDesktopCmSessionSave = useCallback(async (session: DesktopCmSessionInput) => {
+    const { saveDesktopCmSession } = await loadDesktopConnectionApi();
     const savedSession = await saveDesktopCmSession(session);
     if (!savedSession) {
       throw new Error('desktop_cm_session_save_failed');
@@ -417,6 +462,7 @@ function Dashboard() {
   }, []);
 
   const handleDesktopCmSessionSelect = useCallback(async (sessionId: string) => {
+    const { selectDesktopCmSession } = await loadDesktopConnectionApi();
     const selectedSession = await selectDesktopCmSession(sessionId);
     if (!selectedSession) {
       throw new Error('desktop_cm_session_not_found');
@@ -432,6 +478,7 @@ function Dashboard() {
   }, []);
 
   const handleDesktopCmSessionDelete = useCallback(async (sessionId: string) => {
+    const { clearDesktopCmRuntimeProfile, deleteDesktopCmSession } = await loadDesktopConnectionApi();
     const sessions = await deleteDesktopCmSession(sessionId);
     setDesktopCmSessions(sessions);
     if (desktopCmRuntimeProfile?.sessionId === sessionId) {
@@ -448,6 +495,7 @@ function Dashboard() {
   }, [desktopCmRuntimeProfile?.sessionId, resourceUrlFilters, setAutoRefresh, sourceMode, viewMode]);
 
   const handleDesktopCmSessionPrivateKeyImport = useCallback(async (sessionId: string, keyFilePath: string) => {
+    const { importDesktopCmSessionPrivateKey } = await loadDesktopConnectionApi();
     const updatedSession = await importDesktopCmSessionPrivateKey(sessionId, keyFilePath);
     if (!updatedSession) {
       throw new Error('desktop_cm_private_key_import_failed');
@@ -457,6 +505,7 @@ function Dashboard() {
   }, []);
 
   const handleDesktopCmSessionCredentialDelete = useCallback(async (sessionId: string) => {
+    const { clearDesktopCmRuntimeProfile, deleteDesktopCmSessionCredential } = await loadDesktopConnectionApi();
     const updatedSession = await deleteDesktopCmSessionCredential(sessionId);
     if (!updatedSession) {
       throw new Error('desktop_cm_credential_delete_failed');
@@ -476,6 +525,7 @@ function Dashboard() {
   }, [desktopCmRuntimeProfile?.sessionId, resourceUrlFilters, setAutoRefresh, sourceMode, viewMode]);
 
   const handleDesktopCmSessionCheck = useCallback(async (sessionId: string) => {
+    const { checkDesktopCmSession } = await loadDesktopConnectionApi();
     const updatedSession = await checkDesktopCmSession(sessionId);
     if (!updatedSession) {
       throw new Error('desktop_cm_session_check_failed');
@@ -485,6 +535,7 @@ function Dashboard() {
   }, []);
 
   const handleDesktopCmSessionRuntimeStart = useCallback(async (sessionId: string) => {
+    const { startDesktopCmSessionRuntime, storeDesktopCmRuntimeProfile } = await loadDesktopConnectionApi();
     const profile = await startDesktopCmSessionRuntime(sessionId);
     if (!profile) {
       throw new Error('desktop_cm_runtime_start_failed');
@@ -510,6 +561,7 @@ function Dashboard() {
   }, [resourceUrlFilters, viewMode]);
 
   const handleDesktopCmSessionRuntimeStop = useCallback(async () => {
+    const { clearDesktopCmRuntimeProfile, stopDesktopCmSessionRuntime } = await loadDesktopConnectionApi();
     await stopDesktopCmSessionRuntime();
     const stoppedSessionId = desktopCmRuntimeProfile?.sessionId;
     clearDesktopCmRuntimeProfile();
@@ -535,6 +587,7 @@ function Dashboard() {
   }, [desktopCmRuntimeProfile?.sessionId, resourceUrlFilters, setAutoRefresh, sourceMode, viewMode]);
 
   const handleDesktopCmSessionRuntimeCheck = useCallback(async () => {
+    const { checkDesktopCmSessionRuntime, clearDesktopCmRuntimeProfile, storeDesktopCmRuntimeProfile } = await loadDesktopConnectionApi();
     const previousSessionId = desktopCmRuntimeProfile?.sessionId;
     const profile = await checkDesktopCmSessionRuntime();
     if (!profile) {
@@ -762,12 +815,22 @@ function Dashboard() {
           <Suspense fallback={<ViewLoading label="스냅샷 비교" />}>
             <SnapshotComparePanel
               baseline={snapshotBaseline}
-              currentLabel={providerLabel}
-              currentSnapshot={snapshot}
+              baselineId={snapshotBaselineId}
+              canCaptureCurrent={snapshot.nodes.length > 0}
+              currentId={snapshotCurrentId}
+              currentLabel={comparisonCurrentLabel}
+              currentSnapshot={comparisonCurrentSnapshot}
+              history={snapshotHistory}
+              liveCurrentLabel={providerLabel}
+              liveNodeIds={snapshotNodeIds}
               onCapture={handleCaptureSnapshotBaseline}
-              onClear={() => setSnapshotBaseline(null)}
+              onClearHistory={handleClearSnapshotHistory}
+              onDeleteHistory={handleDeleteSnapshotHistory}
               onImport={handleImportSnapshotBaseline}
               onOpenTopologyNode={handleOpenTopologyNode}
+              onRenameHistory={handleRenameSnapshotHistory}
+              onSelectBaseline={setSnapshotBaselineId}
+              onSelectCurrent={setSnapshotCurrentId}
             />
           </Suspense>
         ) : (
@@ -798,6 +861,10 @@ function Dashboard() {
 
             <aside className="grid content-start gap-3 lg:gap-4 xl:sticky xl:top-[116px] xl:max-h-[calc(100vh-132px)] xl:overflow-auto xl:pr-1">
               <ConnectorDiagnostics
+                capabilityEnabled={liveActive}
+                capabilityError={capabilityError}
+                capabilityLoading={capabilityLoading}
+                capabilityReport={capabilityReport}
                 lastUpdatedAt={lastUpdatedAt}
                 source={source}
                 status={connectorStatus}
@@ -809,6 +876,7 @@ function Dashboard() {
                 totalNodes={snapshot.nodes.length}
                 visibleEdges={edges.length}
                 visibleNodes={nodes.length}
+                onRefreshCapabilities={refreshCapabilities}
               />
               <ResourceList nodes={nodes} selectedNodeId={selectedNode?.id || ''} onSelectNode={setSelectedNodeId} />
               <DetailPanel edges={snapshot.edges} node={selectedNode} nodeMap={snapshotNodeMap} />

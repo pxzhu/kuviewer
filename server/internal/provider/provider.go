@@ -33,6 +33,10 @@ type LogProvider interface {
 	StreamLogs(ctx context.Context, ref ResourceRef, onLine func(string) error) error
 }
 
+type CapabilityProvider interface {
+	Capabilities(ctx context.Context) (topology.CapabilityReport, error)
+}
+
 func New(source string) (TopologyProvider, error) {
 	if source == "kubernetes" {
 		return NewKubernetesProviderFromEnv()

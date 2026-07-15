@@ -1,3 +1,7 @@
+import { isDesktopRuntime } from './desktopRuntime';
+
+export { isDesktopRuntime } from './desktopRuntime';
+
 export interface DesktopConnectionProfile {
   serverUrl: string;
   updatedAt: number;
@@ -124,15 +128,6 @@ type DesktopWindow = Window & {
     invoke?: TauriInvoke;
   };
 };
-
-export function isDesktopRuntime() {
-  if (typeof window === 'undefined') {
-    return false;
-  }
-
-  const desktopWindow = window as DesktopWindow;
-  return Boolean(desktopWindow.__TAURI__ || desktopWindow.__TAURI_INTERNALS__) || window.location.protocol === 'tauri:' || window.location.hostname === 'tauri.localhost';
-}
 
 export function getDesktopConnectionProfile(): DesktopConnectionProfile | null {
   if (!isDesktopRuntime()) {

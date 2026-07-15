@@ -2305,6 +2305,11 @@ async function smokeDesktopRuntime(browser, url) {
     await page.getByTestId('desktop-cm-session-remote-api-port').fill('18085');
     await page.getByTestId('desktop-cm-session-description').fill('temporary bulk delete entry');
     await page.getByTestId('desktop-cm-session-save').click();
+    await page.waitForFunction(
+      () => window.__kuviewerCmSessions.some((session) => session.name === 'Bulk Delete CM'),
+      undefined,
+      { timeout: 10_000 },
+    );
     const bulkDeleteSessionId = await page.evaluate(() => window.__kuviewerCmSessions.find((session) => session.name === 'Bulk Delete CM')?.id);
     requireCondition(typeof bulkDeleteSessionId === 'string', 'desktop CM bulk delete setup must create a temporary session');
     await page.getByTestId(`desktop-cm-session-bulk-select-input-${bulkDeleteSessionId}`).check();
@@ -2442,9 +2447,19 @@ async function smokeDesktopRuntime(browser, url) {
     requireCondition(typeof stagingSessionId === 'string', 'desktop CM import must create a deletable staging session');
     await page.getByTestId(`desktop-cm-session-delete-${stagingSessionId}`).click();
     await page.getByTestId(`desktop-cm-session-delete-${stagingSessionId}`).click();
+    await page.waitForFunction(
+      (id) => !window.__kuviewerCmSessions.some((session) => session.id === id),
+      stagingSessionId,
+      { timeout: 10_000 },
+    );
     await page.getByText('CM/SSH session 삭제됨').waitFor({ state: 'visible', timeout: 10_000 });
     await page.getByTestId(`desktop-cm-session-delete-${sessionId}`).click();
     await page.getByTestId(`desktop-cm-session-delete-${sessionId}`).click();
+    await page.waitForFunction(
+      (id) => !window.__kuviewerCmSessions.some((session) => session.id === id),
+      sessionId,
+      { timeout: 10_000 },
+    );
     await page.getByText('CM/SSH session 삭제됨').waitFor({ state: 'visible', timeout: 10_000 });
 
     const state = await page.evaluate(() => ({
@@ -2475,9 +2490,10 @@ async function smokeDesktopRuntime(browser, url) {
       window.localStorage.removeItem('kuviewer_desktop_cm_session_layout_presets');
       window.localStorage.removeItem('kuviewer_desktop_cm_session_layout_presets_smoke_keep');
     });
+    const invocationCommands = state.invocations.map((item) => item.command);
+    requireCondition(invocationCommands.includes('desktop_cm_sessions'), 'desktop CM smoke must load saved sessions');
+    requireCondition(invocationCommands.includes('desktop_cm_session_runtime'), 'desktop CM smoke must load runtime state');
     requireCommandOrder(state.invocations, [
-      'desktop_cm_sessions',
-      'desktop_cm_session_runtime',
       'desktop_save_cm_session',
       'desktop_select_cm_session',
       'desktop_import_cm_session_private_key',

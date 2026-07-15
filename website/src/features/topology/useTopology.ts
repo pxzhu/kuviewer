@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { mockTopology } from '../../data/mockTopology';
 import { fetchTopologySnapshot, getTopologyApiBaseUrl } from '../../services/topologyApi';
 import type { ResourceKind, ResourceStatus, TopologyEdge, TopologyNode, TopologySnapshot } from '../../types/topology';
@@ -67,8 +67,10 @@ export function useTopology(
   const [lastUpdatedAt, setLastUpdatedAt] = useState<number | null>(() => (sourceMode === 'live' ? null : Date.now()));
   const [refreshTick, setRefreshTick] = useState(0);
   const [autoRefresh, setAutoRefresh] = useState(false);
+  const forceRefreshRef = useRef(false);
 
   const refresh = useCallback(() => {
+    forceRefreshRef.current = true;
     setRefreshTick((currentTick) => currentTick + 1);
   }, []);
 
@@ -106,10 +108,12 @@ export function useTopology(
     }
 
     const controller = new AbortController();
+    const forceRefresh = forceRefreshRef.current;
+    forceRefreshRef.current = false;
     setLoading(true);
     setError('');
 
-    fetchTopologySnapshot(controller.signal)
+    fetchTopologySnapshot({ refresh: forceRefresh, signal: controller.signal })
       .then((nextSnapshot) => {
         setSnapshot(nextSnapshot);
         setLastUpdatedAt(Date.now());

@@ -2,9 +2,21 @@ package provider
 
 import (
 	"context"
+	"time"
 
 	"kuviewer/server/internal/topology"
 )
+
+func (MockProvider) Capabilities(context.Context) (topology.CapabilityReport, error) {
+	return topology.CapabilityReport{
+		Source:    "mock",
+		CheckedAt: time.Now().UTC().Format(time.RFC3339),
+		Items: []topology.ResourceCapability{
+			{ID: "mock/resources", Group: "Mock", Resource: "Bundled resources", Required: true, Status: "available", Reason: "read_allowed"},
+			{ID: "policy/secrets", Group: "Security", Resource: "Secret values", Status: "protected", Reason: "secret_values_hidden"},
+		},
+	}, nil
+}
 
 const clusterID = "local-native"
 
