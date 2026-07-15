@@ -53,8 +53,11 @@ requireIncludes(deploy, 'docker/login-action@v4', 'runner must authenticate to N
 requireIncludes(deploy, 'docker/build-push-action@v7', 'runner must build the release image');
 requireIncludes(deploy, '${{ secrets.NCR_REGISTRY }}/${{ env.IMAGE_NAME }}:latest', 'release must publish latest');
 requireIncludes(deploy, '${{ secrets.NCR_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.ref_name }}', 'release must publish the version tag');
-requireIncludes(deploy, 'docker push "${IMAGE}:latest"', 'host Docker must push latest');
-requireIncludes(deploy, 'docker push "${IMAGE}:${GITHUB_REF_NAME}"', 'host Docker must push the version tag');
+requireIncludes(deploy, 'push: true', 'Buildx must push both release tags directly');
+requireNotIncludes(deploy, 'load: true', 'release image must not be loaded into host Docker');
+requireNotIncludes(deploy, 'push: false', 'release build must not defer registry upload');
+requireNotIncludes(deploy, 'docker push "${IMAGE}:latest"', 'release must not repeat latest push with host Docker');
+requireNotIncludes(deploy, 'docker push "${IMAGE}:${GITHUB_REF_NAME}"', 'release must not repeat version push with host Docker');
 requireIncludes(deploy, 'TARGET_IMAGE=', 'server deploy must identify the immutable NasCR image');
 requireIncludes(deploy, '"${DOCKER[@]}" pull "$TARGET_IMAGE"', 'server must pull the NasCR image');
 requireNotIncludes(deploy, 'docker save', 'release must not create an image archive');
