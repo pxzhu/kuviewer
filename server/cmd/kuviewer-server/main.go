@@ -29,6 +29,7 @@ func main() {
 		StaticDir:         staticDir,
 		Source:            source,
 		ResourceViewsFile: resourceViewsFile,
+		SnapshotCacheTTL:  snapshotCacheTTLFromEnv(),
 	})
 
 	log.Printf("kuviewer server listening on %s source=%s", addr, source)
@@ -44,6 +45,24 @@ func main() {
 	if err := httpServer.ListenAndServe(); err != nil {
 		log.Fatal(err)
 	}
+}
+
+func snapshotCacheTTLFromEnv() time.Duration {
+	raw := os.Getenv("KUVIEWER_SNAPSHOT_CACHE_TTL")
+	if raw == "" {
+		return 10 * time.Second
+	}
+	if raw == "off" || raw == "disabled" {
+		return -1
+	}
+	ttl, err := time.ParseDuration(raw)
+	if err != nil || ttl < 0 {
+		log.Fatalf("KUVIEWER_SNAPSHOT_CACHE_TTL must be a duration, 0, off, or disabled")
+	}
+	if ttl == 0 {
+		return -1
+	}
+	return ttl
 }
 
 func adminTokenFor(addr string) string {

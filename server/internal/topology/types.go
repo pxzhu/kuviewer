@@ -46,7 +46,24 @@ type Edge struct {
 }
 
 type ResourceList struct {
-	Items []Resource `json:"items"`
+	Items    []Resource            `json:"items"`
+	Metadata *ResourceListMetadata `json:"metadata,omitempty"`
+}
+
+type ResourceListMetadata struct {
+	Total      int                `json:"total"`
+	Filtered   int                `json:"filtered"`
+	Returned   int                `json:"returned"`
+	Limit      int                `json:"limit"`
+	NextCursor string             `json:"nextCursor,omitempty"`
+	Facets     ResourceListFacets `json:"facets"`
+}
+
+type ResourceListFacets struct {
+	Clusters   []string `json:"clusters"`
+	Namespaces []string `json:"namespaces"`
+	Kinds      []string `json:"kinds"`
+	Statuses   []string `json:"statuses"`
 }
 
 type Resource struct {
@@ -92,4 +109,20 @@ type ResourceLogs struct {
 	Container string   `json:"container,omitempty"`
 	Previous  bool     `json:"previous,omitempty"`
 	TailLines int      `json:"tailLines"`
+}
+
+type CapabilityReport struct {
+	Source    string               `json:"source"`
+	CheckedAt string               `json:"checkedAt"`
+	Items     []ResourceCapability `json:"items"`
+	Warning   string               `json:"warning,omitempty"`
+}
+
+type ResourceCapability struct {
+	ID       string `json:"id"`
+	Group    string `json:"group"`
+	Resource string `json:"resource"`
+	Required bool   `json:"required"`
+	Status   string `json:"status"`
+	Reason   string `json:"reason"`
 }

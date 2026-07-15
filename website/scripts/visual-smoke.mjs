@@ -79,6 +79,8 @@ async function runViewport({ name, viewport, isMobile, hasTouch }) {
   try {
     await page.goto(baseUrl, { waitUntil: 'networkidle' });
     await expect(page.getByRole('heading', { name: 'Kuviewer' })).toBeVisible({ timeout: 10_000 });
+    await assertLazyChunkState(page, 'ResourceExplorerDetail', false, `${name} initial resource detail`);
+    await assertLazyChunkState(page, 'desktopConnectionProfile', false, `${name} initial desktop runtime`);
     await selectVisualMode(page, visualMode);
     await expect(page.getByRole('heading', { name: '토폴로지 맵' })).toBeVisible({ timeout: 10_000 });
     await expect(page.getByText(/401|unauthorized/i)).toHaveCount(0);
@@ -93,13 +95,16 @@ async function runViewport({ name, viewport, isMobile, hasTouch }) {
       throw new Error(`unexpected graph count: ${graphCount}`);
     }
 
+    await assertTopologyRendererIsolation(page, isMobile, name);
     await verifyNodeDrag(page, name);
 
     await assertNoHorizontalOverflow(page, `${name} topology`);
 
     await page.screenshot({ path: path.join(outputDir, `${name}-topology.png`), fullPage: true });
     await verifySnapshotComparison(page, visualMode, name);
-    await verifyResourceExplorer(page);
+    await verifyResourceExplorer(page, name);
+    await assertLazyChunkState(page, 'ResourceExplorerDetail', true, `${name} resource detail`);
+    await assertLazyChunkState(page, 'desktopConnectionProfile', false, `${name} web desktop runtime`);
     await page.getByRole('button', { name: /트래픽 흐름/ }).click();
     await expect(page.getByRole('heading', { name: '트래픽 흐름' })).toBeVisible({ timeout: 10_000 });
     await expect(page.getByText(/현재 필터에 맞는 트래픽 흐름이 없습니다/)).toHaveCount(0);
@@ -109,6 +114,19 @@ async function runViewport({ name, viewport, isMobile, hasTouch }) {
   } finally {
     await browser.close();
   }
+}
+
+async function assertLazyChunkState(page, chunkName, expectedLoaded, context) {
+  const loaded = await page.evaluate((name) => performance.getEntriesByType('resource').some((entry) => entry.name.includes(name)), chunkName);
+  if (loaded !== expectedLoaded) {
+    throw new Error(`${context}: ${chunkName} expected loaded=${expectedLoaded}, received ${loaded}`);
+  }
+}
+
+async function assertTopologyRendererIsolation(page, isMobile, context) {
+  await assertLazyChunkState(page, 'topologyCanvasLayout', true, `${context} shared topology layout`);
+  await assertLazyChunkState(page, 'MobileTopologyCanvas', isMobile, `${context} mobile topology renderer`);
+  await assertLazyChunkState(page, 'DesktopTopologyCanvas', !isMobile, `${context} desktop topology renderer`);
 }
 
 async function verifyImportedSnapshotRedaction(page) {
@@ -182,6 +200,7 @@ function getUnsafeTopologyFixture() {
 }
 
 async function verifySnapshotComparison(page, initialMode, viewportName) {
+  const sensitiveFixtureValue = ['redaction', 'fixture'].join('-');
   await page.getByRole('button', { name: /스냅샷 비교/ }).click();
   await expect(page.getByTestId('snapshot-compare-panel')).toBeVisible({ timeout: 10_000 });
   await expect(page.getByRole('heading', { name: '비교할 기준이 없습니다' })).toBeVisible({ timeout: 10_000 });
@@ -189,28 +208,260 @@ async function verifySnapshotComparison(page, initialMode, viewportName) {
   await expect(page.getByTestId('snapshot-compare-changed-count')).toContainText('0', { timeout: 10_000 });
   await expect(page.getByTestId('snapshot-compare-added-count')).toContainText('0');
   await expect(page.getByTestId('snapshot-compare-removed-count')).toContainText('0');
+  await expect(page.getByTestId('snapshot-history-count')).toContainText('1 / 8');
+  const firstBaselineId = await page.getByTestId('snapshot-compare-baseline-select').inputValue();
+  if (!firstBaselineId) {
+    throw new Error('snapshot history did not select the first capture as baseline');
+  }
 
   const comparisonMode = initialMode === 'mock' ? 'upload' : 'mock';
   await selectVisualMode(page, comparisonMode);
   await expect(page.getByTestId('snapshot-compare-panel').locator('tbody tr').first()).toBeVisible({ timeout: 10_000 });
+  await page.getByTestId('snapshot-compare-capture').click();
+  await expect(page.getByTestId('snapshot-history-count')).toContainText('2 / 8');
+  const historicalCurrentId = await page.getByTestId('snapshot-compare-current-select').locator('option').evaluateAll(
+    (options, baselineId) => options.map((option) => option.value).find((value) => value && value !== baselineId) || '',
+    firstBaselineId,
+  );
+  if (!historicalCurrentId) {
+    throw new Error('snapshot history did not retain a selectable current capture');
+  }
+  await page.getByTestId('snapshot-compare-current-select').selectOption(historicalCurrentId);
+  await expect(page.getByTestId('snapshot-compare-current-count')).toContainText('resources');
+  await page.getByTestId('snapshot-compare-current-select').selectOption('');
+  for (let captureIndex = 0; captureIndex < 7; captureIndex += 1) {
+    await page.getByTestId('snapshot-compare-capture').click();
+  }
+  await expect(page.getByTestId('snapshot-history-count')).toContainText('8 / 8');
+  await expect(page.getByTestId('snapshot-compare-baseline-select').locator(`option[value="${firstBaselineId}"]`)).toHaveCount(1);
+  await page.getByTestId('snapshot-history-manager').locator('summary').click();
+  const firstHistoryRow = page.getByTestId('snapshot-history-row').first();
+  await firstHistoryRow.getByTestId('snapshot-history-rename').click();
+  await firstHistoryRow.getByTestId('snapshot-history-rename-input').fill('Visual checkpoint');
+  await firstHistoryRow.getByTestId('snapshot-history-rename-save').click();
+  await expect(firstHistoryRow).toContainText('Visual checkpoint');
+  const renamedHistoryId = await page.getByTestId('snapshot-compare-current-select').locator('option', { hasText: 'Visual checkpoint' }).getAttribute('value');
+  if (!renamedHistoryId) {
+    throw new Error('renamed snapshot history entry was not reflected in selectors');
+  }
+  await page.getByTestId('snapshot-compare-current-select').selectOption(renamedHistoryId);
+  await firstHistoryRow.getByTestId('snapshot-history-delete').click();
+  await expect(firstHistoryRow.getByTestId('snapshot-history-delete')).toContainText('삭제 확인');
+  await firstHistoryRow.getByTestId('snapshot-history-delete').click();
+  await expect(page.getByTestId('snapshot-history-count')).toContainText('7 / 8');
+  await expect(page.getByTestId('snapshot-compare-current-select')).toHaveValue('');
+  await expect(page.getByTestId('snapshot-compare-current-select').locator(`option[value="${renamedHistoryId}"]`)).toHaveCount(0);
+  await page.getByTestId('snapshot-compare-capture').click();
+  await expect(page.getByTestId('snapshot-history-count')).toContainText('8 / 8');
+  const latestHistoryRow = page.getByTestId('snapshot-history-row').first();
+  await latestHistoryRow.getByTestId('snapshot-history-rename').click();
+  await latestHistoryRow.getByTestId('snapshot-history-rename-input').fill('   ');
+  await latestHistoryRow.getByTestId('snapshot-history-rename-save').click();
+  await expect(latestHistoryRow).toContainText('이름을 입력해 주세요.');
+  await latestHistoryRow.getByRole('button', { name: '이름 변경 취소' }).click();
+  const snapshotStorageKeys = await page.evaluate(() => Object.keys(localStorage).filter((key) => key.includes('snapshot')));
+  if (snapshotStorageKeys.length > 0) {
+    throw new Error(`snapshot history leaked into localStorage: ${snapshotStorageKeys.join(',')}`);
+  }
   const totalChanges = await page.locator('[data-testid^="snapshot-compare-"][data-testid$="-count"] p:nth-child(2)').evaluateAll((values) =>
     values.slice(2).reduce((total, value) => total + Number(value.textContent || 0), 0),
   );
   if (totalChanges < 1) {
     throw new Error('snapshot comparison did not detect source changes');
   }
+  const relationChangeCount = Number(await page.getByTestId('snapshot-compare-relation-count').locator('p').nth(1).innerText());
+  const clusterChangeCount = Number(await page.getByTestId('snapshot-compare-cluster-count').locator('p').nth(1).innerText());
+  if (relationChangeCount < 1 || clusterChangeCount < 1) {
+    throw new Error(`snapshot comparison drill-down counts are incomplete: relations=${relationChangeCount}, clusters=${clusterChangeCount}`);
+  }
+
+  const resourceChangeTable = page.getByTestId('snapshot-compare-resource-table');
+  const resourceTotal = Number(await resourceChangeTable.getAttribute('data-total-count'));
+  const resourceRendered = Number(await resourceChangeTable.getAttribute('data-rendered-count'));
+  if (resourceTotal > 80 && (await resourceChangeTable.getAttribute('data-virtualized')) !== 'true') {
+    throw new Error(`large resource diff was not virtualized: total=${resourceTotal}`);
+  }
+  if (resourceTotal > 80 && resourceRendered >= resourceTotal) {
+    throw new Error(`resource virtualization rendered every row: rendered=${resourceRendered}, total=${resourceTotal}`);
+  }
+
+  await page.getByTestId('snapshot-compare-scope-relations').click();
+  const relationTable = page.getByTestId('snapshot-compare-relation-table');
+  await expect(relationTable).toHaveAttribute('data-virtualized', 'true');
+  const relationTableTotal = Number(await relationTable.getAttribute('data-total-count'));
+  const relationTableRendered = Number(await relationTable.getAttribute('data-rendered-count'));
+  if (relationTableRendered >= relationTableTotal) {
+    throw new Error(`relation virtualization rendered every row: rendered=${relationTableRendered}, total=${relationTableTotal}`);
+  }
+  await expect(page.getByTestId('snapshot-compare-relation-group-row').first()).toBeVisible({ timeout: 10_000 });
+  const firstRelationChange = page.getByTestId('snapshot-compare-relation-row').first();
+  await expect(firstRelationChange).toBeVisible({ timeout: 10_000 });
+  await expect(firstRelationChange).toContainText(/observed|inferred/);
+  await expect(firstRelationChange.locator('button')).toHaveCount(2);
+  await relationTable.evaluate((element) => {
+    element.scrollTop = element.scrollHeight;
+    element.dispatchEvent(new Event('scroll'));
+  });
+  await page.waitForTimeout(100);
+  const relationScrollTop = await relationTable.evaluate((element) => element.scrollTop);
+  if (relationScrollTop <= 0) {
+    throw new Error('relation virtualized table did not scroll');
+  }
+  await page.getByTestId('snapshot-compare-relation-flat').click();
+  await expect(page.getByTestId('snapshot-compare-relation-group-row')).toHaveCount(0);
+  await expect(relationTable).toHaveAttribute('data-total-count', String(relationChangeCount));
+  await page.getByTestId('snapshot-compare-relation-grouped').click();
+  await expect(page.getByTestId('snapshot-compare-relation-group-row').first()).toBeVisible({ timeout: 10_000 });
+
+  const selectedRelationTypes = ['allows-ingress', 'applies-to'];
+  for (const relationType of selectedRelationTypes) {
+    await page.getByTestId(`snapshot-compare-relation-type-${relationType}`).click();
+  }
+  await expect(page.getByTestId('snapshot-compare-relation-type-filter')).toContainText('2개 선택');
+  await expect(page.getByTestId('snapshot-compare-relation-summary')).toContainText('유형 2개');
+  const filteredRelationRows = page.getByTestId('snapshot-compare-relation-row');
+  const filteredRelationRowCount = await filteredRelationRows.count();
+  if (filteredRelationRowCount < 1) {
+    throw new Error('relation type multi-filter removed every relation row');
+  }
+  for (let index = 0; index < filteredRelationRowCount; index += 1) {
+    const rowText = await filteredRelationRows.nth(index).innerText();
+    if (!selectedRelationTypes.some((relationType) => rowText.includes(relationType))) {
+      throw new Error(`relation type multi-filter leaked another type: ${rowText}`);
+    }
+  }
+
+  const jsonDownload = await Promise.all([
+    page.waitForEvent('download'),
+    page.getByTestId('snapshot-compare-export-json').click(),
+  ]).then(([downloadResult]) => downloadResult);
+  const jsonDownloadPath = await jsonDownload.path();
+  if (!jsonDownloadPath || !/^kuviewer-diff-.+-relations-.+\.json$/.test(jsonDownload.suggestedFilename())) {
+    throw new Error(`snapshot JSON export filename/path invalid: ${jsonDownload.suggestedFilename()}`);
+  }
+  const snapshotDiffPayload = JSON.parse(await readFile(jsonDownloadPath, 'utf8'));
+  assertSafeSnapshotDiffPayload(snapshotDiffPayload, selectedRelationTypes);
+  await page.setInputFiles('[data-testid="snapshot-diff-import-input"]', jsonDownloadPath);
+  await expect(page.getByTestId('snapshot-diff-import-preview')).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByTestId('snapshot-diff-import-preview')).toContainText('검증된 diff 보고서');
+  const importedPreviewText = await page.getByTestId('snapshot-diff-import-preview').innerText();
+  if (importedPreviewText.includes(sensitiveFixtureValue)) {
+    throw new Error('snapshot diff preview exposed a sensitive fixture value');
+  }
+  const invalidDiffPath = path.join(outputDir, `${viewportName}-invalid-snapshot-diff.json`);
+  await writeFile(invalidDiffPath, JSON.stringify({
+    ...snapshotDiffPayload,
+    filters: { ...snapshotDiffPayload.filters, query: sensitiveFixtureValue },
+  }), 'utf8');
+  await page.setInputFiles('[data-testid="snapshot-diff-import-input"]', invalidDiffPath);
+  await expect(page.getByTestId('snapshot-diff-import-error')).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByTestId('snapshot-diff-import-preview')).toHaveCount(0);
+  const unsupportedDiffPath = path.join(outputDir, `${viewportName}-unsupported-snapshot-diff.json`);
+  await writeFile(unsupportedDiffPath, JSON.stringify({ ...snapshotDiffPayload, schemaVersion: 2 }), 'utf8');
+  await page.setInputFiles('[data-testid="snapshot-diff-import-input"]', unsupportedDiffPath);
+  await expect(page.getByTestId('snapshot-diff-import-error')).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByTestId('snapshot-diff-import-preview')).toHaveCount(0);
+  await page.setInputFiles('[data-testid="snapshot-diff-import-input"]', jsonDownloadPath);
+  await expect(page.getByTestId('snapshot-diff-import-preview')).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByTestId('snapshot-diff-import-error')).toHaveCount(0);
+
+  const csvDownload = await Promise.all([
+    page.waitForEvent('download'),
+    page.getByTestId('snapshot-compare-export-csv').click(),
+  ]).then(([downloadResult]) => downloadResult);
+  const csvDownloadPath = await csvDownload.path();
+  if (!csvDownloadPath || !/^kuviewer-diff-.+-relations-.+\.csv$/.test(csvDownload.suggestedFilename())) {
+    throw new Error(`snapshot CSV export filename/path invalid: ${csvDownload.suggestedFilename()}`);
+  }
+  const snapshotDiffCsv = await readFile(csvDownloadPath, 'utf8');
+  if (!snapshotDiffCsv.startsWith('change,clusterId,relation,sourceKind,sourceNamespace,sourceName,')) {
+    throw new Error(`snapshot CSV export header invalid: ${snapshotDiffCsv.slice(0, 120)}`);
+  }
+  if (/labels|annotations|stringData|adminToken|kubeconfig/i.test(snapshotDiffCsv)) {
+    throw new Error('snapshot CSV export included a forbidden field');
+  }
+
+  await page.getByTestId('snapshot-compare-relation-type-all').click();
+  await expect(page.getByTestId('snapshot-compare-relation-type-filter')).toContainText('전체');
+
+  await page.getByTestId('snapshot-compare-scope-clusters').click();
+  await expect(page.getByTestId('snapshot-compare-cluster-row').first()).toBeVisible({ timeout: 10_000 });
+  const clusterCsvDownload = await Promise.all([
+    page.waitForEvent('download'),
+    page.getByTestId('snapshot-compare-export-csv').click(),
+  ]).then(([downloadResult]) => downloadResult);
+  const clusterCsvPath = await clusterCsvDownload.path();
+  if (!clusterCsvPath) {
+    throw new Error('snapshot cluster CSV export path was not available');
+  }
+  const clusterCsv = await readFile(clusterCsvPath, 'utf8');
+  if (!clusterCsv.includes("'=visual upload")) {
+    throw new Error('snapshot cluster CSV did not neutralize a formula-leading cluster name');
+  }
+
+  await page.getByTestId('snapshot-compare-scope-relations').click();
   await assertNoHorizontalOverflow(page, 'snapshot comparison');
-  await page.screenshot({ path: path.join(outputDir, `${viewportName}-snapshot-compare.png`), fullPage: true });
+  await page.getByTestId('snapshot-compare-panel').evaluate((panel) => {
+    const top = panel.getBoundingClientRect().top + window.scrollY;
+    window.scrollTo(0, Math.max(0, top - 150));
+  });
+  await page.waitForTimeout(100);
+  const screenshotStyle = await page.addStyleTag({
+    content: '* { -webkit-backdrop-filter: none !important; backdrop-filter: none !important; }',
+  });
+  await page.screenshot({ animations: 'disabled', path: path.join(outputDir, `${viewportName}-snapshot-compare.png`) });
+  await page.getByTestId('snapshot-compare-relation-table').scrollIntoViewIfNeeded();
+  await page.waitForTimeout(300);
+  await page.screenshot({
+    animations: 'disabled',
+    path: path.join(outputDir, `${viewportName}-snapshot-relations.png`),
+  });
+  await screenshotStyle.evaluate((element) => element.remove());
 
   await selectVisualMode(page, initialMode);
-  await page.getByRole('button', { name: /토폴로지/ }).click();
+  await page.getByLabel('주요 보기').getByRole('button', { name: '토폴로지', exact: true }).click();
   await expect(page.getByRole('heading', { name: '토폴로지 맵' })).toBeVisible({ timeout: 10_000 });
+}
+
+function assertSafeSnapshotDiffPayload(payload, selectedRelationTypes) {
+  if (payload.schemaVersion !== 1 || payload.kind !== 'kuviewer.snapshotDiff') {
+    throw new Error(`snapshot JSON export schema invalid: ${JSON.stringify(payload).slice(0, 240)}`);
+  }
+  if (payload.filters?.scope !== 'relations' || payload.filters?.changeType !== 'all') {
+    throw new Error(`snapshot JSON export filters invalid: ${JSON.stringify(payload.filters)}`);
+  }
+  if ('query' in (payload.filters || {})) {
+    throw new Error('snapshot JSON export persisted the UI search query');
+  }
+  const exportedRelationTypes = [...(payload.filters?.relationTypes || [])].sort();
+  if (exportedRelationTypes.join(',') !== [...selectedRelationTypes].sort().join(',')) {
+    throw new Error(`snapshot JSON export relation filters invalid: ${exportedRelationTypes.join(',')}`);
+  }
+  if (!Array.isArray(payload.items) || payload.items.length < 1 || payload.counts?.exported !== payload.items.length) {
+    throw new Error('snapshot JSON export item count invalid');
+  }
+  if (payload.items.some((item) => !selectedRelationTypes.includes(item.relation))) {
+    throw new Error('snapshot JSON export included a relation outside the selected types');
+  }
+  const forbiddenKeys = new Set(['labels', 'annotations', 'summary', 'data', 'stringData', 'token', 'adminToken', 'kubeconfig']);
+  const visit = (value) => {
+    if (!value || typeof value !== 'object') {
+      return;
+    }
+    for (const [key, child] of Object.entries(value)) {
+      if (forbiddenKeys.has(key)) {
+        throw new Error(`snapshot JSON export included forbidden key: ${key}`);
+      }
+      visit(child);
+    }
+  };
+  visit(payload);
 }
 
 async function selectVisualMode(page, mode) {
   if (mode === 'upload') {
     await page.getByTestId('source-mode-upload').click();
-    await page.getByTestId('upload-cluster-name').fill('visual upload');
+    await page.getByTestId('upload-cluster-name').fill('=visual upload');
     await page.getByTestId('upload-cluster-id').fill('visual-upload');
     await page.setInputFiles('[data-testid="upload-files"]', uploadManifestPath);
     if (!(await page.getByTestId('upload-warning-panel').isVisible().catch(() => false))) {
@@ -294,7 +545,7 @@ async function verifyNodeDrag(page, viewportName) {
   }
 }
 
-async function verifyResourceExplorer(page) {
+async function verifyResourceExplorer(page, viewportName) {
   await page.getByRole('button', { name: /리소스 탐색/ }).click();
   await expect(page.getByRole('heading', { name: '리소스 탐색' })).toBeVisible({ timeout: 10_000 });
   await verifyResourceListSorting(page);
@@ -309,7 +560,7 @@ async function verifyResourceExplorer(page) {
   await verifyResourceViewImportExportPolish(page);
   await verifyResourceViewBulkManagement(page);
   await verifyResourceViewConflictImport(page);
-  await verifyResourceViewTeamSyncPolish(page);
+  await verifyResourceViewTeamSyncPolish(page, viewportName);
   await selectVisualMode(page, visualMode);
   await page.getByRole('button', { name: /리소스 탐색/ }).click();
   await expect(page.getByRole('heading', { name: 'Metadata' })).toBeVisible({ timeout: 10_000 });
@@ -479,7 +730,7 @@ async function verifyResourceViewConflictImport(page) {
   await expect(page.getByTestId(`resource-view-preset-row-${savedViewDomId('Visual Conflict')}`)).toContainText('Imported', { timeout: 10_000 });
 }
 
-async function verifyResourceViewTeamSyncPolish(page) {
+async function verifyResourceViewTeamSyncPolish(page, viewportName) {
   let savedTeamPayload = null;
   await page.route('**/api/status', async (route) => {
     await route.fulfill({
@@ -494,11 +745,15 @@ async function verifyResourceViewTeamSyncPolish(page) {
       }),
     });
   });
+  await page.route('**/api/capabilities', async (route) => {
+    await route.fulfill({ contentType: 'application/json', body: JSON.stringify(getTeamSyncCapabilities()) });
+  });
   await page.route('**/api/topology', async (route) => {
     await route.fulfill({ contentType: 'application/json', body: JSON.stringify(getTeamSyncSnapshot()) });
   });
-  await page.route('**/api/resources', async (route) => {
-    await route.fulfill({ contentType: 'application/json', body: JSON.stringify(getTeamSyncResources()) });
+  await page.route(/\/api\/resources(?:\?.*)?$/, async (route) => {
+    const cursor = new URL(route.request().url()).searchParams.get('cursor') || '';
+    await route.fulfill({ contentType: 'application/json', body: JSON.stringify(getTeamSyncResources(cursor)) });
   });
   await page.route('**/api/resources/**/events', async (route) => {
     await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ items: [], warning: '' }) });
@@ -553,8 +808,33 @@ async function verifyResourceViewTeamSyncPolish(page) {
     await unlockButton.click();
   }
   await expect(page.getByText('실시간 연결됨')).toBeVisible({ timeout: 10_000 });
+  await page.getByLabel('주요 보기').getByRole('button', { name: '토폴로지', exact: true }).click();
+  await expect(page.getByTestId('connector-capability-matrix')).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByTestId('connector-capability-summary')).toContainText('읽기 1 · 인증/권한 1 · 미설치 1 · 확인 실패 0 · 보호 1');
+  await expect(page.getByTestId('connector-capability-required-warning')).toContainText('필수 Core 권한 1개');
+  await page.getByTestId('connector-capability-details').locator('summary').click();
+  await expect(page.getByTestId('connector-capability-core-pods')).toContainText('RBAC 거부');
+  await expect(page.getByTestId('connector-capability-gateway-gateways')).toContainText('미설치');
+  await expect(page.getByTestId('connector-capability-policy-secret-values')).toContainText('값 숨김');
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await page.waitForTimeout(500);
+  await page.screenshot({
+    animations: 'disabled',
+    path: path.join(outputDir, `${viewportName}-connector-capabilities.png`),
+    fullPage: true,
+  });
   await page.getByRole('button', { name: /리소스 탐색/ }).click();
   await expect(page.getByTestId('resource-view-team-load')).toBeEnabled({ timeout: 10_000 });
+  await expect(page.getByTestId('resource-list-load-more')).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByTestId('resource-result-count')).toContainText('표시 1 / 일치 2 · 전체 2');
+  await page.getByTestId('resource-list-load-more').click();
+  await expect(page.getByTestId('resource-list-load-more')).toHaveCount(0, { timeout: 10_000 });
+  await expect(page.getByTestId('resource-result-count')).toContainText('표시 2 / 일치 2 · 전체 2');
+  await page.screenshot({
+    animations: 'disabled',
+    path: path.join(outputDir, `${viewportName}-resource-pagination.png`),
+    fullPage: false,
+  });
 
   await page.getByTestId('resource-view-team-load').click();
   await expect(page.getByTestId('resource-view-team-compare-preview')).toBeVisible({ timeout: 10_000 });
@@ -1053,9 +1333,21 @@ function getTeamSyncSnapshot() {
   };
 }
 
-function getTeamSyncResources() {
+function getTeamSyncCapabilities() {
   return {
+    source: 'kubernetes',
+    checkedAt: new Date().toISOString(),
     items: [
+      { id: 'core/namespaces', group: 'Core', resource: 'Namespaces', required: true, status: 'available', reason: 'read_allowed' },
+      { id: 'core/pods', group: 'Core', resource: 'Pods', required: true, status: 'forbidden', reason: 'rbac_denied' },
+      { id: 'gateway/gateways', group: 'Gateway API', resource: 'Gateways', required: false, status: 'missing', reason: 'api_not_installed' },
+      { id: 'policy/secret-values', group: 'Security', resource: 'Secret values', required: false, status: 'protected', reason: 'secret_values_hidden' },
+    ],
+  };
+}
+
+function getTeamSyncResources(cursor = '') {
+  const items = [
       {
         id: 'visual-live:Namespace::default',
         clusterId: 'visual-live',
@@ -1102,7 +1394,23 @@ function getTeamSyncResources() {
           },
         ],
       },
-    ],
+    ];
+  const offset = cursor === 'MQ' ? 1 : 0;
+  return {
+    items: items.slice(offset, offset + 1),
+    metadata: {
+      total: 2,
+      filtered: 2,
+      returned: 1,
+      limit: 1,
+      nextCursor: offset === 0 ? 'MQ' : '',
+      facets: {
+        clusters: ['visual-live'],
+        namespaces: ['default'],
+        kinds: ['Namespace', 'Pod'],
+        statuses: ['healthy'],
+      },
+    },
   };
 }
 

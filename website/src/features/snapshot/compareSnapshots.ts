@@ -1,4 +1,4 @@
-import type { SummaryValue, TopologyEdge, TopologyNode, TopologySnapshot } from '../../types/topology';
+import type { ClusterSummary, SummaryValue, TopologyEdge, TopologyNode, TopologySnapshot } from '../../types/topology';
 
 export type SnapshotChangeType = 'added' | 'removed' | 'changed';
 
@@ -20,18 +20,41 @@ export interface SnapshotNodeChange {
   changedFields: string[];
 }
 
+export interface SnapshotClusterChange {
+  id: string;
+  type: SnapshotChangeType;
+  name: string;
+  before?: ClusterSummary;
+  after?: ClusterSummary;
+  changedFields: string[];
+}
+
+export interface SnapshotResourceIdentity {
+  id: string;
+  kind: string;
+  namespace: string;
+  name: string;
+}
+
 export interface SnapshotEdgeChange {
   id: string;
-  type: 'added' | 'removed';
+  type: SnapshotChangeType;
+  clusterId: string;
   relation: string;
-  source: string;
-  target: string;
+  source: SnapshotResourceIdentity;
+  target: SnapshotResourceIdentity;
+  confidence: TopologyEdge['confidence'];
+  sourceField: string;
+  changedFields: string[];
 }
 
 export interface SnapshotComparison {
+  clusters: SnapshotClusterChange[];
   nodes: SnapshotNodeChange[];
   edges: SnapshotEdgeChange[];
   counts: Record<SnapshotChangeType, number>;
+  clusterCounts: Record<SnapshotChangeType, number>;
+  edgeCounts: Record<SnapshotChangeType, number>;
 }
 
 export function captureSnapshotBaseline(snapshot: TopologySnapshot, label: string): SnapshotBaseline {
@@ -43,6 +66,7 @@ export function captureSnapshotBaseline(snapshot: TopologySnapshot, label: strin
 }
 
 export function compareTopologySnapshots(baseline: TopologySnapshot, current: TopologySnapshot): SnapshotComparison {
+  const clusters = compareClusters(baseline.clusters, current.clusters);
   const baselineNodes = new Map(baseline.nodes.map((node) => [node.id, node]));
   const currentNodes = new Map(current.nodes.map((node) => [node.id, node]));
   const nodes: SnapshotNodeChange[] = [];
@@ -69,13 +93,19 @@ export function compareTopologySnapshots(baseline: TopologySnapshot, current: To
   const currentEdges = new Map(current.edges.map((edge) => [edge.id, edge]));
   const edges: SnapshotEdgeChange[] = [];
   for (const edge of current.edges) {
-    if (!baselineEdges.has(edge.id)) {
-      edges.push(edgeChange('added', edge));
+    const previousEdge = baselineEdges.get(edge.id);
+    if (!previousEdge) {
+      edges.push(edgeChange('added', edge, currentNodes));
+      continue;
+    }
+    const changedFields = changedEdgeFields(previousEdge, edge);
+    if (changedFields.length > 0) {
+      edges.push(edgeChange('changed', edge, currentNodes, changedFields));
     }
   }
   for (const edge of baseline.edges) {
     if (!currentEdges.has(edge.id)) {
-      edges.push(edgeChange('removed', edge));
+      edges.push(edgeChange('removed', edge, baselineNodes));
     }
   }
 
@@ -83,6 +113,7 @@ export function compareTopologySnapshots(baseline: TopologySnapshot, current: To
   edges.sort((left, right) => changeTypeOrder(left.type) - changeTypeOrder(right.type) || left.relation.localeCompare(right.relation) || left.id.localeCompare(right.id));
 
   return {
+    clusters,
     nodes,
     edges,
     counts: {
@@ -90,6 +121,65 @@ export function compareTopologySnapshots(baseline: TopologySnapshot, current: To
       removed: nodes.filter((change) => change.type === 'removed').length,
       changed: nodes.filter((change) => change.type === 'changed').length,
     },
+    clusterCounts: countChanges(clusters),
+    edgeCounts: countChanges(edges),
+  };
+}
+
+function compareClusters(baseline: ClusterSummary[], current: ClusterSummary[]) {
+  const baselineClusters = new Map(baseline.map((cluster) => [cluster.id, cluster]));
+  const currentClusters = new Map(current.map((cluster) => [cluster.id, cluster]));
+  const changes: SnapshotClusterChange[] = [];
+
+  for (const cluster of current) {
+    const previous = baselineClusters.get(cluster.id);
+    if (!previous) {
+      changes.push(clusterChange('added', cluster));
+      continue;
+    }
+    const changedFields = changedClusterFields(previous, cluster);
+    if (changedFields.length > 0) {
+      changes.push(clusterChange('changed', cluster, previous, changedFields));
+    }
+  }
+  for (const cluster of baseline) {
+    if (!currentClusters.has(cluster.id)) {
+      changes.push(clusterChange('removed', cluster));
+    }
+  }
+  return changes.sort((left, right) => changeTypeOrder(left.type) - changeTypeOrder(right.type) || left.name.localeCompare(right.name));
+}
+
+function changedClusterFields(previous: ClusterSummary, current: ClusterSummary) {
+  const fields: Array<keyof ClusterSummary> = [
+    'name',
+    'provider',
+    'version',
+    'nodeReady',
+    'nodeTotal',
+    'podRunning',
+    'podWarning',
+    'namespaces',
+  ];
+  return fields.filter((field) => previous[field] !== current[field]);
+}
+
+function clusterChange(type: SnapshotChangeType, cluster: ClusterSummary, previous?: ClusterSummary, changedFields: string[] = []): SnapshotClusterChange {
+  return {
+    id: cluster.id,
+    type,
+    name: cluster.name,
+    before: previous || (type === 'removed' ? { ...cluster } : undefined),
+    after: type === 'removed' ? undefined : { ...cluster },
+    changedFields,
+  };
+}
+
+function countChanges(changes: Array<{ type: SnapshotChangeType }>) {
+  return {
+    added: changes.filter((change) => change.type === 'added').length,
+    removed: changes.filter((change) => change.type === 'removed').length,
+    changed: changes.filter((change) => change.type === 'changed').length,
   };
 }
 
@@ -162,13 +252,31 @@ function nodeChange(type: SnapshotChangeType, node: TopologyNode, previousNode?:
   };
 }
 
-function edgeChange(type: 'added' | 'removed', edge: TopologyEdge): SnapshotEdgeChange {
+function changedEdgeFields(previous: TopologyEdge, current: TopologyEdge) {
+  const fields: Array<keyof TopologyEdge> = ['clusterId', 'source', 'target', 'type', 'confidence', 'sourceField'];
+  return fields.filter((field) => previous[field] !== current[field]);
+}
+
+function edgeChange(type: SnapshotChangeType, edge: TopologyEdge, nodes: Map<string, TopologyNode>, changedFields: string[] = []): SnapshotEdgeChange {
   return {
     id: edge.id,
     type,
+    clusterId: edge.clusterId,
     relation: edge.type,
-    source: edge.source,
-    target: edge.target,
+    source: resourceIdentity(edge.source, nodes.get(edge.source)),
+    target: resourceIdentity(edge.target, nodes.get(edge.target)),
+    confidence: edge.confidence,
+    sourceField: edge.sourceField,
+    changedFields,
+  };
+}
+
+function resourceIdentity(id: string, node?: TopologyNode): SnapshotResourceIdentity {
+  return {
+    id,
+    kind: node?.kind || 'Unknown',
+    namespace: node?.namespace || '-',
+    name: node?.name || id,
   };
 }
 

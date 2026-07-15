@@ -33,13 +33,40 @@ export interface ResourceLogStreamMessage {
   warning?: string;
 }
 
-export async function fetchResources(signal?: AbortSignal): Promise<ResourceExplorerList> {
+export interface FetchResourcesOptions {
+  query?: string;
+  cluster?: string;
+  namespace?: string;
+  kind?: string;
+  status?: string;
+  sort?: 'name' | 'kind' | 'namespace' | 'status' | 'cluster';
+  direction?: 'asc' | 'desc';
+  limit?: number;
+  cursor?: string;
+}
+
+export async function fetchResources(options: FetchResourcesOptions = {}, signal?: AbortSignal): Promise<ResourceExplorerList> {
   const baseUrl = getTopologyApiBaseUrl().replace(/\/$/, '');
   if (!baseUrl) {
     throw new Error('api_base_url_not_configured');
   }
 
-  const response = await fetch(`${baseUrl}/api/resources`, {
+  const query = new URLSearchParams();
+  setResourceQueryValue(query, 'query', options.query);
+  setResourceQueryValue(query, 'cluster', options.cluster);
+  setResourceQueryValue(query, 'namespace', options.namespace);
+  setResourceQueryValue(query, 'kind', options.kind);
+  setResourceQueryValue(query, 'status', options.status);
+  setResourceQueryValue(query, 'sort', options.sort);
+  setResourceQueryValue(query, 'direction', options.direction);
+  if (options.limit) {
+    query.set('limit', String(options.limit));
+  }
+  setResourceQueryValue(query, 'cursor', options.cursor);
+  const serializedQuery = query.toString();
+  const queryString = serializedQuery ? `?${serializedQuery}` : '';
+
+  const response = await fetch(`${baseUrl}/api/resources${queryString}`, {
     headers: { Authorization: `Bearer ${getStoredAdminToken()}` },
     signal,
   });
@@ -47,6 +74,13 @@ export async function fetchResources(signal?: AbortSignal): Promise<ResourceExpl
     throw new Error(`resources_request_failed:${response.status}`);
   }
   return response.json() as Promise<ResourceExplorerList>;
+}
+
+function setResourceQueryValue(query: URLSearchParams, key: string, value: string | undefined) {
+  const normalized = value?.trim();
+  if (normalized && normalized !== 'all') {
+    query.set(key, normalized);
+  }
 }
 
 export async function fetchResourceViewPresets(signal?: AbortSignal): Promise<ResourceViewPresetApiList> {

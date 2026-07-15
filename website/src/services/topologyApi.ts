@@ -1,16 +1,11 @@
 import type { TopologySnapshot } from '../types/topology';
 import { getStoredAdminToken } from '../features/auth/adminToken';
-import { getDesktopCmRuntimeProfile, getDesktopConnectionProfile } from '../features/desktop/desktopConnectionProfile';
+import { getDesktopApiBaseUrl } from '../features/desktop/desktopApiBaseUrl';
 
 export function getTopologyApiBaseUrl() {
-  const desktopCmRuntimeProfile = getDesktopCmRuntimeProfile();
-  if (desktopCmRuntimeProfile) {
-    return desktopCmRuntimeProfile.serverUrl;
-  }
-
-  const desktopProfile = getDesktopConnectionProfile();
-  if (desktopProfile) {
-    return desktopProfile.serverUrl;
+  const desktopApiBaseUrl = getDesktopApiBaseUrl();
+  if (desktopApiBaseUrl) {
+    return desktopApiBaseUrl;
   }
 
   const configuredBaseUrl = import.meta.env.VITE_API_BASE_URL?.trim();
@@ -30,18 +25,19 @@ export function getTopologyApiBaseUrl() {
   return '';
 }
 
-export async function fetchTopologySnapshot(signal?: AbortSignal): Promise<TopologySnapshot> {
+export async function fetchTopologySnapshot(options: { refresh?: boolean; signal?: AbortSignal } = {}): Promise<TopologySnapshot> {
   const baseUrl = getTopologyApiBaseUrl().replace(/\/$/, '');
 
   if (!baseUrl) {
     throw new Error('api_base_url_not_configured');
   }
 
-  const response = await fetch(`${baseUrl}/api/topology`, {
+  const query = options.refresh ? '?refresh=true' : '';
+  const response = await fetch(`${baseUrl}/api/topology${query}`, {
     headers: {
       Authorization: `Bearer ${getStoredAdminToken()}`,
     },
-    signal,
+    signal: options.signal,
   });
 
   if (!response.ok) {

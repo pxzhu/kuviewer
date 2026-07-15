@@ -7,6 +7,8 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"kuviewer/server/internal/topology"
 )
 
 func TestKubernetesProviderResourceEventsConvertsCoreEvents(t *testing.T) {
@@ -71,6 +73,57 @@ func TestKubernetesProviderResourceEventsConvertsCoreEvents(t *testing.T) {
 	}
 	if events.Items[1].Reason != "Scheduled" || events.Items[1].Source != "default-scheduler" {
 		t.Fatalf("older event = %+v, want scheduled event second", events.Items[1])
+	}
+}
+
+func TestKubernetesProviderCapabilitiesClassifiesSafeAccessResults(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.URL.Query().Get("limit"); got != "1" {
+			t.Fatalf("limit = %q, want 1", got)
+		}
+		if got := r.Header.Get("Authorization"); got != "Bearer test-token" {
+			t.Fatalf("Authorization = %q, want bearer token", got)
+		}
+		switch r.URL.Path {
+		case "/api/v1/namespaces", "/api/v1/nodes", "/api/v1/pods", "/api/v1/services":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"items":[]}`))
+		case "/apis/gateway.networking.k8s.io/v1/gateways":
+			http.Error(w, "forbidden", http.StatusForbidden)
+		case "/apis/gateway.networking.k8s.io/v1/tlsroutes":
+			http.NotFound(w, r)
+		case "/apis/gateway.networking.k8s.io/v1alpha2/tlsroutes":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"items":[]}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	provider := KubernetesProvider{client: &kubeAPIClient{baseURL: server.URL, bearer: "test-token", httpClient: server.Client()}}
+	report, err := provider.Capabilities(context.Background())
+	if err != nil {
+		t.Fatalf("Capabilities() error = %v", err)
+	}
+	if report.Source != "kubernetes" || report.CheckedAt == "" {
+		t.Fatalf("unexpected report metadata: %+v", report)
+	}
+	capabilities := make(map[string]topology.ResourceCapability, len(report.Items))
+	for _, capability := range report.Items {
+		capabilities[capability.ID] = capability
+	}
+	if capability := capabilities["core/pods"]; capability.Status != "available" || !capability.Required {
+		t.Fatalf("core pods capability = %+v", capability)
+	}
+	if capability := capabilities["gateway/gateways"]; capability.Status != "forbidden" || capability.Reason != "rbac_denied" {
+		t.Fatalf("gateway capability = %+v", capability)
+	}
+	if capability := capabilities["gateway/tlsroutes"]; capability.Status != "available" {
+		t.Fatalf("TLSRoute fallback capability = %+v", capability)
+	}
+	if capability := capabilities["policy/secret-values"]; capability.Status != "protected" || capability.Reason != "secret_values_hidden" {
+		t.Fatalf("Secret policy capability = %+v", capability)
 	}
 }
 

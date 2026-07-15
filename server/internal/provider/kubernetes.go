@@ -15,6 +15,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"kuviewer/server/internal/topology"
@@ -34,6 +35,43 @@ type KubernetesProvider struct {
 	clusterName string
 }
 
+type capabilityProbe struct {
+	id       string
+	group    string
+	resource string
+	required bool
+	paths    []string
+}
+
+var kubernetesCapabilityProbes = []capabilityProbe{
+	{id: "core/namespaces", group: "Core", resource: "Namespaces", required: true, paths: []string{"/api/v1/namespaces"}},
+	{id: "core/nodes", group: "Core", resource: "Nodes", required: true, paths: []string{"/api/v1/nodes"}},
+	{id: "core/pods", group: "Core", resource: "Pods", required: true, paths: []string{"/api/v1/pods"}},
+	{id: "core/services", group: "Core", resource: "Services", required: true, paths: []string{"/api/v1/services"}},
+	{id: "core/serviceaccounts", group: "Core", resource: "ServiceAccounts", paths: []string{"/api/v1/serviceaccounts"}},
+	{id: "core/configmaps", group: "Core", resource: "ConfigMaps", paths: []string{"/api/v1/configmaps"}},
+	{id: "workloads/deployments", group: "Workloads", resource: "Deployments", paths: []string{"/apis/apps/v1/deployments"}},
+	{id: "workloads/replicasets", group: "Workloads", resource: "ReplicaSets", paths: []string{"/apis/apps/v1/replicasets"}},
+	{id: "workloads/statefulsets", group: "Workloads", resource: "StatefulSets", paths: []string{"/apis/apps/v1/statefulsets"}},
+	{id: "workloads/daemonsets", group: "Workloads", resource: "DaemonSets", paths: []string{"/apis/apps/v1/daemonsets"}},
+	{id: "workloads/jobs", group: "Workloads", resource: "Jobs", paths: []string{"/apis/batch/v1/jobs"}},
+	{id: "workloads/cronjobs", group: "Workloads", resource: "CronJobs", paths: []string{"/apis/batch/v1/cronjobs"}},
+	{id: "workloads/hpas", group: "Workloads", resource: "HorizontalPodAutoscalers", paths: []string{"/apis/autoscaling/v2/horizontalpodautoscalers"}},
+	{id: "networking/endpointslices", group: "Networking", resource: "EndpointSlices", paths: []string{"/apis/discovery.k8s.io/v1/endpointslices"}},
+	{id: "networking/ingresses", group: "Networking", resource: "Ingresses", paths: []string{"/apis/networking.k8s.io/v1/ingresses"}},
+	{id: "networking/networkpolicies", group: "Networking", resource: "NetworkPolicies", paths: []string{"/apis/networking.k8s.io/v1/networkpolicies"}},
+	{id: "gateway/gateways", group: "Gateway API", resource: "Gateways", paths: []string{"/apis/gateway.networking.k8s.io/v1/gateways"}},
+	{id: "gateway/httproutes", group: "Gateway API", resource: "HTTPRoutes", paths: []string{"/apis/gateway.networking.k8s.io/v1/httproutes"}},
+	{id: "gateway/grpcroutes", group: "Gateway API", resource: "GRPCRoutes", paths: []string{"/apis/gateway.networking.k8s.io/v1/grpcroutes"}},
+	{id: "gateway/tlsroutes", group: "Gateway API", resource: "TLSRoutes", paths: []string{"/apis/gateway.networking.k8s.io/v1/tlsroutes", "/apis/gateway.networking.k8s.io/v1alpha2/tlsroutes"}},
+	{id: "gateway/tcproutes", group: "Gateway API", resource: "TCPRoutes", paths: []string{"/apis/gateway.networking.k8s.io/v1/tcproutes", "/apis/gateway.networking.k8s.io/v1alpha2/tcproutes"}},
+	{id: "storage/pvcs", group: "Storage", resource: "PersistentVolumeClaims", paths: []string{"/api/v1/persistentvolumeclaims"}},
+	{id: "storage/pvs", group: "Storage", resource: "PersistentVolumes", paths: []string{"/api/v1/persistentvolumes"}},
+	{id: "storage/storageclasses", group: "Storage", resource: "StorageClasses", paths: []string{"/apis/storage.k8s.io/v1/storageclasses"}},
+	{id: "extensions/crds", group: "Extensions", resource: "CustomResourceDefinitions", paths: []string{"/apis/apiextensions.k8s.io/v1/customresourcedefinitions"}},
+	{id: "observability/events", group: "Observability", resource: "Events", paths: []string{"/api/v1/events"}},
+}
+
 func NewKubernetesProviderFromEnv() (TopologyProvider, error) {
 	config, err := kubeConfigFromEnv()
 	if err != nil {
@@ -44,6 +82,51 @@ func NewKubernetesProviderFromEnv() (TopologyProvider, error) {
 		client:      config.client,
 		clusterID:   config.clusterID,
 		clusterName: config.clusterName,
+	}, nil
+}
+
+func (p KubernetesProvider) Capabilities(ctx context.Context) (topology.CapabilityReport, error) {
+	items := make([]topology.ResourceCapability, len(kubernetesCapabilityProbes))
+	semaphore := make(chan struct{}, 6)
+	var waitGroup sync.WaitGroup
+
+	for index, probe := range kubernetesCapabilityProbes {
+		waitGroup.Add(1)
+		go func(index int, probe capabilityProbe) {
+			defer waitGroup.Done()
+			select {
+			case semaphore <- struct{}{}:
+				defer func() { <-semaphore }()
+			case <-ctx.Done():
+				return
+			}
+			status, reason := p.client.probeCapability(ctx, probe.paths)
+			items[index] = topology.ResourceCapability{
+				ID:       probe.id,
+				Group:    probe.group,
+				Resource: probe.resource,
+				Required: probe.required,
+				Status:   status,
+				Reason:   reason,
+			}
+		}(index, probe)
+	}
+	waitGroup.Wait()
+	if err := ctx.Err(); err != nil {
+		return topology.CapabilityReport{}, err
+	}
+
+	items = append(items, topology.ResourceCapability{
+		ID:       "policy/secret-values",
+		Group:    "Security",
+		Resource: "Secret values",
+		Status:   "protected",
+		Reason:   "secret_values_hidden",
+	})
+	return topology.CapabilityReport{
+		Source:    "kubernetes",
+		CheckedAt: time.Now().UTC().Format(time.RFC3339),
+		Items:     items,
 	}, nil
 }
 
@@ -719,6 +802,69 @@ func kubeHTTPClient(apiServer string, caFile string) (*http.Client, error) {
 func (c *kubeAPIClient) getJSON(ctx context.Context, path string, out interface{}, optional bool) error {
 	_, err := c.getJSONStatus(ctx, path, out, optional)
 	return err
+}
+
+func (c *kubeAPIClient) probeCapability(ctx context.Context, paths []string) (string, string) {
+	bestStatus := "missing"
+	bestReason := "api_not_installed"
+	for _, path := range paths {
+		status, reason := c.probeCapabilityPath(ctx, path)
+		if status == "available" {
+			return status, reason
+		}
+		if capabilityStatusPriority(status) > capabilityStatusPriority(bestStatus) {
+			bestStatus = status
+			bestReason = reason
+		}
+	}
+	return bestStatus, bestReason
+}
+
+func (c *kubeAPIClient) probeCapabilityPath(ctx context.Context, path string) (string, string) {
+	separator := "?"
+	if strings.Contains(path, "?") {
+		separator = "&"
+	}
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+path+separator+"limit=1", nil)
+	if err != nil {
+		return "unavailable", "request_failed"
+	}
+	request.Header.Set("Authorization", "Bearer "+c.bearer)
+	request.Header.Set("Accept", "application/json")
+
+	response, err := c.httpClient.Do(request)
+	if err != nil {
+		return "unavailable", "request_failed"
+	}
+	defer response.Body.Close()
+	_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, 4096))
+
+	switch response.StatusCode {
+	case http.StatusUnauthorized:
+		return "unauthorized", "authentication_failed"
+	case http.StatusForbidden:
+		return "forbidden", "rbac_denied"
+	case http.StatusNotFound:
+		return "missing", "api_not_installed"
+	default:
+		if response.StatusCode >= 200 && response.StatusCode < 300 {
+			return "available", "read_allowed"
+		}
+		return "unavailable", "request_failed"
+	}
+}
+
+func capabilityStatusPriority(status string) int {
+	switch status {
+	case "available":
+		return 4
+	case "unauthorized", "forbidden":
+		return 3
+	case "unavailable":
+		return 2
+	default:
+		return 1
+	}
 }
 
 func (c *kubeAPIClient) getJSONStatus(ctx context.Context, path string, out interface{}, optional bool) (bool, error) {

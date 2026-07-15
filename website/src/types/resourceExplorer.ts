@@ -2,6 +2,21 @@ import type { ResourceKind, ResourceStatus, SummaryValue } from './topology';
 
 export interface ResourceExplorerList {
   items: ResourceExplorerItem[];
+  metadata?: ResourceExplorerListMetadata;
+}
+
+export interface ResourceExplorerListMetadata {
+  total: number;
+  filtered: number;
+  returned: number;
+  limit: number;
+  nextCursor?: string;
+  facets: {
+    clusters: string[];
+    namespaces: string[];
+    kinds: string[];
+    statuses: string[];
+  };
 }
 
 export interface ResourceExplorerItem {

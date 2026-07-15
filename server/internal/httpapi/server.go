@@ -2,6 +2,9 @@ package httpapi
 
 import (
 	"context"
+	"crypto/sha256"
+	"crypto/subtle"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -25,6 +28,7 @@ type Server struct {
 	corsOrigin    string
 	staticDir     string
 	source        string
+	snapshots     *snapshotCache
 	mux           *http.ServeMux
 }
 
@@ -34,6 +38,7 @@ type ServerConfig struct {
 	StaticDir         string
 	Source            string
 	ResourceViewsFile string
+	SnapshotCacheTTL  time.Duration
 }
 
 type statusResponse struct {
@@ -66,6 +71,7 @@ func NewServerWithConfig(snapshotProvider provider.TopologyProvider, config Serv
 		corsOrigin:    config.CORSOrigin,
 		staticDir:     config.StaticDir,
 		source:        source,
+		snapshots:     newSnapshotCache(config.SnapshotCacheTTL),
 		mux:           http.NewServeMux(),
 	}
 
@@ -83,6 +89,9 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	s.setSecurityHeaders(w)
 	s.setCORS(w)
+	if strings.HasPrefix(r.URL.Path, "/api/") {
+		w.Header().Set("Cache-Control", "no-store")
+	}
 	if r.Method == http.MethodOptions {
 		w.WriteHeader(http.StatusNoContent)
 		return
@@ -94,6 +103,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func (s *Server) routes() {
 	s.mux.HandleFunc("/healthz", s.handleHealth)
 	s.mux.HandleFunc("/api/status", s.requireAdmin(s.handleStatus))
+	s.mux.HandleFunc("/api/capabilities", s.requireAdmin(s.handleCapabilities))
 	s.mux.HandleFunc("/api/topology", s.requireAdmin(s.handleTopology))
 	s.mux.HandleFunc("/api/resource-views", s.requireAdmin(s.handleResourceViewsPresets))
 	s.mux.HandleFunc("/api/resources", s.requireAdmin(s.handleResources))
@@ -101,6 +111,39 @@ func (s *Server) routes() {
 	if s.staticDir != "" {
 		s.mux.HandleFunc("/", s.handleStatic)
 	}
+}
+
+func (s *Server) handleCapabilities(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "method_not_allowed")
+		return
+	}
+
+	capabilityProvider, ok := s.provider.(provider.CapabilityProvider)
+	if !ok {
+		writeJSON(w, http.StatusOK, topology.CapabilityReport{
+			Source:    s.source,
+			CheckedAt: time.Now().UTC().Format(time.RFC3339),
+			Items:     []topology.ResourceCapability{},
+			Warning:   "capability_probe_unsupported",
+		})
+		return
+	}
+
+	report, err := capabilityProvider.Capabilities(r.Context())
+	if err != nil {
+		writeJSON(w, http.StatusOK, topology.CapabilityReport{
+			Source:    s.source,
+			CheckedAt: time.Now().UTC().Format(time.RFC3339),
+			Items:     []topology.ResourceCapability{},
+			Warning:   "capability_probe_unavailable",
+		})
+		return
+	}
+	if report.Items == nil {
+		report.Items = []topology.ResourceCapability{}
+	}
+	writeJSON(w, http.StatusOK, report)
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
@@ -129,7 +172,8 @@ func (s *Server) handleTopology(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	snapshot, err := s.provider.Snapshot(r.Context())
+	snapshot, cacheInfo, err := s.snapshot(r.Context(), strings.EqualFold(r.URL.Query().Get("refresh"), "true"))
+	setSnapshotCacheHeaders(w, cacheInfo)
 	if err != nil {
 		if errors.Is(err, provider.ErrProviderNotImplemented) {
 			writeError(w, http.StatusNotImplemented, "provider_not_implemented")
@@ -149,13 +193,18 @@ func (s *Server) handleResources(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	snapshot, err := s.provider.Snapshot(r.Context())
+	query, err := parseResourceListQuery(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_resource_query")
+		return
+	}
+	snapshot, cacheInfo, err := s.snapshot(r.Context(), false)
+	setSnapshotCacheHeaders(w, cacheInfo)
 	if err != nil {
 		writeProviderError(w, err)
 		return
 	}
-
-	writeJSON(w, http.StatusOK, topology.ResourceList{Items: resourcesFromSnapshot(snapshot)})
+	writeJSON(w, http.StatusOK, resourceListFromSnapshot(snapshot, query))
 }
 
 func (s *Server) handleResourceViewsPresets(w http.ResponseWriter, r *http.Request) {
@@ -198,7 +247,8 @@ func (s *Server) handleResourceRoute(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	snapshot, err := s.provider.Snapshot(r.Context())
+	snapshot, cacheInfo, err := s.snapshot(r.Context(), false)
+	setSnapshotCacheHeaders(w, cacheInfo)
 	if err != nil {
 		writeProviderError(w, err)
 		return
@@ -343,7 +393,24 @@ func (s *Server) authorized(_ context.Context, header string) bool {
 		return false
 	}
 
-	return parts[1] == s.adminToken
+	return subtle.ConstantTimeCompare([]byte(parts[1]), []byte(s.adminToken)) == 1
+}
+
+func (s *Server) snapshot(ctx context.Context, force bool) (topology.Snapshot, snapshotCacheInfo, error) {
+	return s.snapshots.get(ctx, force, s.provider.Snapshot)
+}
+
+func setSnapshotCacheHeaders(w http.ResponseWriter, info snapshotCacheInfo) {
+	if info.Status != "" {
+		w.Header().Set("X-Kuviewer-Snapshot-Cache", info.Status)
+	}
+	if !info.CachedAt.IsZero() {
+		age := time.Since(info.CachedAt)
+		if age < 0 {
+			age = 0
+		}
+		w.Header().Set("X-Kuviewer-Snapshot-Age-Ms", strconv.FormatInt(age.Milliseconds(), 10))
+	}
 }
 
 func (s *Server) setCORS(w http.ResponseWriter) {
@@ -477,6 +544,216 @@ func resourceExists(snapshot topology.Snapshot, kind string, namespace string, n
 		}
 	}
 	return false
+}
+
+const maxResourceListPageSize = 200
+
+type resourceListQuery struct {
+	query     string
+	cluster   string
+	namespace string
+	kind      string
+	status    string
+	sort      string
+	direction string
+	limit     int
+	offset    int
+}
+
+func parseResourceListQuery(r *http.Request) (resourceListQuery, error) {
+	values := r.URL.Query()
+	query := resourceListQuery{
+		query:     strings.TrimSpace(values.Get("query")),
+		cluster:   strings.TrimSpace(values.Get("cluster")),
+		namespace: strings.TrimSpace(values.Get("namespace")),
+		kind:      strings.TrimSpace(values.Get("kind")),
+		status:    strings.TrimSpace(values.Get("status")),
+		sort:      strings.TrimSpace(values.Get("sort")),
+		direction: strings.TrimSpace(values.Get("direction")),
+	}
+	if len(query.query) > 160 || len(query.cluster) > 120 || len(query.namespace) > 120 || len(query.kind) > 120 || len(query.status) > 120 {
+		return resourceListQuery{}, errors.New("resource filter too long")
+	}
+	if query.sort != "" && query.sort != "name" && query.sort != "kind" && query.sort != "namespace" && query.sort != "status" && query.sort != "cluster" {
+		return resourceListQuery{}, errors.New("invalid resource sort")
+	}
+	if query.direction == "" {
+		query.direction = "asc"
+	}
+	if query.direction != "asc" && query.direction != "desc" {
+		return resourceListQuery{}, errors.New("invalid resource sort direction")
+	}
+
+	rawLimit := strings.TrimSpace(values.Get("limit"))
+	if rawLimit == "" {
+		if values.Get("cursor") != "" {
+			return resourceListQuery{}, errors.New("cursor requires limit")
+		}
+		return query, nil
+	}
+	limit, err := strconv.Atoi(rawLimit)
+	if err != nil || limit < 1 || limit > maxResourceListPageSize {
+		return resourceListQuery{}, errors.New("invalid resource limit")
+	}
+	query.limit = limit
+
+	rawCursor := strings.TrimSpace(values.Get("cursor"))
+	if rawCursor == "" {
+		return query, nil
+	}
+	if len(rawCursor) > 32 {
+		return resourceListQuery{}, errors.New("resource cursor too long")
+	}
+	decoded, err := base64.RawURLEncoding.DecodeString(rawCursor)
+	if err != nil {
+		return resourceListQuery{}, errors.New("invalid resource cursor")
+	}
+	cursorParts := strings.Split(string(decoded), ".")
+	if len(cursorParts) != 2 || cursorParts[1] != resourceListCursorSignature(query) {
+		return resourceListQuery{}, errors.New("resource cursor does not match filters")
+	}
+	offset, err := strconv.Atoi(cursorParts[0])
+	if err != nil || offset < 0 {
+		return resourceListQuery{}, errors.New("invalid resource cursor")
+	}
+	query.offset = offset
+	return query, nil
+}
+
+func resourceListFromSnapshot(snapshot topology.Snapshot, query resourceListQuery) topology.ResourceList {
+	resources := resourcesFromSnapshot(snapshot)
+	filtered := make([]topology.Resource, 0, len(resources))
+	for _, resource := range resources {
+		if resourceMatchesListQuery(resource, query) {
+			filtered = append(filtered, resource)
+		}
+	}
+	if query.sort != "" {
+		sort.SliceStable(filtered, func(leftIndex int, rightIndex int) bool {
+			left := strings.ToLower(resourceListSortValue(filtered[leftIndex], query.sort))
+			right := strings.ToLower(resourceListSortValue(filtered[rightIndex], query.sort))
+			if left == right {
+				left = filtered[leftIndex].ID
+				right = filtered[rightIndex].ID
+			}
+			if query.direction == "desc" {
+				return left > right
+			}
+			return left < right
+		})
+	}
+
+	start := query.offset
+	if start > len(filtered) {
+		start = len(filtered)
+	}
+	end := len(filtered)
+	if query.limit > 0 && start+query.limit < end {
+		end = start + query.limit
+	}
+	nextCursor := ""
+	if end < len(filtered) {
+		nextCursor = base64.RawURLEncoding.EncodeToString([]byte(strconv.Itoa(end) + "." + resourceListCursorSignature(query)))
+	}
+	items := make([]topology.Resource, end-start)
+	copy(items, filtered[start:end])
+	return topology.ResourceList{
+		Items: items,
+		Metadata: &topology.ResourceListMetadata{
+			Total:      len(resources),
+			Filtered:   len(filtered),
+			Returned:   len(items),
+			Limit:      query.limit,
+			NextCursor: nextCursor,
+			Facets:     resourceListFacets(resources),
+		},
+	}
+}
+
+func resourceListCursorSignature(query resourceListQuery) string {
+	value := strings.Join([]string{query.query, query.cluster, query.namespace, query.kind, query.status, query.sort, query.direction}, "\x00")
+	digest := sha256.Sum256([]byte(value))
+	return fmt.Sprintf("%x", digest[:6])
+}
+
+func resourceMatchesListQuery(resource topology.Resource, query resourceListQuery) bool {
+	if query.cluster != "" && query.cluster != "all" && resource.ClusterID != query.cluster {
+		return false
+	}
+	if query.namespace != "" && query.namespace != "all" && resource.Namespace != query.namespace && !(resource.Kind == "Namespace" && resource.Name == query.namespace) {
+		return false
+	}
+	if query.kind != "" && query.kind != "all" && resource.Kind != query.kind {
+		return false
+	}
+	if query.status != "" && query.status != "all" && resource.Status != query.status {
+		return false
+	}
+	normalizedQuery := strings.ToLower(strings.TrimSpace(query.query))
+	if normalizedQuery == "" {
+		return true
+	}
+	for _, value := range []string{resource.Name, resource.Kind, resource.Namespace, resource.ClusterID, resource.Status} {
+		if strings.Contains(strings.ToLower(value), normalizedQuery) {
+			return true
+		}
+	}
+	for key, value := range resource.Labels {
+		if strings.Contains(strings.ToLower(key+" "+value), normalizedQuery) {
+			return true
+		}
+	}
+	for key, value := range resource.Summary {
+		if strings.Contains(strings.ToLower(key+" "+fmt.Sprint(value)), normalizedQuery) {
+			return true
+		}
+	}
+	return false
+}
+
+func resourceListSortValue(resource topology.Resource, field string) string {
+	switch field {
+	case "name":
+		return resource.Name
+	case "namespace":
+		return resource.Namespace
+	case "status":
+		return resource.Status
+	case "cluster":
+		return resource.ClusterID
+	default:
+		return resource.Kind
+	}
+}
+
+func resourceListFacets(resources []topology.Resource) topology.ResourceListFacets {
+	clusters := map[string]struct{}{}
+	namespaces := map[string]struct{}{}
+	kinds := map[string]struct{}{}
+	statuses := map[string]struct{}{}
+	for _, resource := range resources {
+		clusters[resource.ClusterID] = struct{}{}
+		if resource.Namespace != "" {
+			namespaces[resource.Namespace] = struct{}{}
+		}
+		kinds[resource.Kind] = struct{}{}
+		statuses[resource.Status] = struct{}{}
+	}
+	return topology.ResourceListFacets{
+		Clusters:   sortedStringSet(clusters),
+		Namespaces: sortedStringSet(namespaces),
+		Kinds:      sortedStringSet(kinds),
+		Statuses:   sortedStringSet(statuses),
+	}
+}
+
+func sortedStringSet(values map[string]struct{}) []string {
+	items := make([]string, 0, len(values))
+	for value := range values {
+		items = append(items, value)
+	}
+	sort.Strings(items)
+	return items
 }
 
 func resourcesFromSnapshot(snapshot topology.Snapshot) []topology.Resource {
