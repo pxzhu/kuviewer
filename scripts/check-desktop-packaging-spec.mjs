@@ -1103,7 +1103,8 @@ async function validateCredentialStorageDesign(spec) {
     for (const marker of [
       'Desktop native credential runtime smoke',
       'scripts/smoke-desktop-keychain-runtime.mjs',
-      'npx playwright install --with-deps chromium',
+      'npx playwright install-deps chromium',
+      'npx playwright install chromium',
       'http://127.0.0.1:4174/',
     ]) {
       requireCondition(ciWorkflow.includes(marker), `ci workflow must include ${marker}`);
@@ -5785,7 +5786,8 @@ async function validateCmSshSessionManager(spec) {
   for (const marker of [
     'Desktop CM session runtime smoke',
     'scripts/smoke-desktop-cm-sessions.mjs',
-    'npx playwright install --with-deps chromium',
+    'npx playwright install-deps chromium',
+    'npx playwright install chromium',
     'http://127.0.0.1:4174/',
   ]) {
     requireCondition(ciWorkflow.includes(marker), `ci workflow must include ${marker}`);
