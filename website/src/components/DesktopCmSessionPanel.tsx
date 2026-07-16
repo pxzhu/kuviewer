@@ -10,6 +10,33 @@ import {
   type DesktopCmSessionInput,
   type DesktopCmSessionRuntimeProfile,
 } from '../features/desktop/desktopConnectionProfile';
+import {
+  buildDesktopCmSessionGroups,
+  cmDiagnosticSeverityFilterOptions,
+  cmDiagnosticStageFilterOptions,
+  defaultDesktopCmSessionGroup,
+  desktopCmSessionViewPreferencesEqual,
+  getDesktopCmSessionPreference,
+  getDisplayedCmDiagnostic,
+  matchesCmDiagnosticFilters,
+  matchesCmSessionSearch,
+  maxDesktopCmSessionGroupNameLength,
+  normalizeDesktopCmSessionGroupName,
+  normalizeDesktopCmSessionViewPreferences,
+  pruneDesktopCmSessionViewPreferences,
+  readDesktopCmSessionViewPreferences,
+  setDesktopCmSessionFavoritePreferences,
+  setDesktopCmSessionGroupPreference,
+  setDesktopCmSessionGroupPreferences,
+  toggleDesktopCmSessionFavoritePreference,
+  toggleDesktopCmSessionGroupCollapsed,
+  writeDesktopCmSessionViewPreferences,
+  type CmDiagnosticSeverityFilter,
+  type CmDiagnosticStageFilter,
+  type DesktopCmSessionGroup,
+  type DesktopCmSessionViewPreference,
+  type DesktopCmSessionViewPreferences,
+} from '../features/desktop/desktopCmSessionView';
 
 interface DesktopCmSessionPanelProps {
   message: string;
@@ -109,18 +136,6 @@ interface DesktopCmSessionLayoutReorderHistoryFilterPreset {
   density: DesktopCmSessionLayoutReorderHistoryDensity;
 }
 
-interface DesktopCmSessionViewPreference {
-  sessionId: string;
-  group: string;
-  favorite: boolean;
-  updatedAt: number;
-}
-
-interface DesktopCmSessionViewPreferences {
-  sessions: DesktopCmSessionViewPreference[];
-  collapsedGroups: string[];
-}
-
 interface DesktopCmSessionLayoutPreset {
   name: string;
   folder: string;
@@ -142,19 +157,7 @@ interface DesktopCmSessionLayoutFolderFilterOption {
   count: number;
 }
 
-interface DesktopCmSessionGroup {
-  group: string;
-  slug: string;
-  sessions: DesktopCmSession[];
-  totalCount: number;
-  favoriteCount: number;
-  collapsed: boolean;
-}
-
-const cmDiagnosticStageFilterOptions = ['all', 'metadata', 'credential', 'reachability', 'ssh-auth', 'tunnel', 'health', 'runtime'] as const;
-const cmDiagnosticSeverityFilterOptions = ['all', 'info', 'warning', 'error'] as const;
 const desktopCmDiagnosticFilterPresetStorageKey = 'kuviewer_desktop_cm_diagnostic_filter_presets';
-const desktopCmSessionViewPreferenceStorageKey = 'kuviewer_desktop_cm_session_view_preferences';
 const desktopCmSessionLayoutPresetStorageKey = 'kuviewer_desktop_cm_session_layout_presets';
 const desktopCmSessionLayoutFolderCollapseStorageKey = 'kuviewer_desktop_cm_session_layout_collapsed_folders';
 const desktopCmSessionLayoutExportKind = 'kuviewer.desktop.cmSessionLayouts';
@@ -165,8 +168,6 @@ const maxDesktopCmSessionLayoutPresetNameLength = 40;
 const maxDesktopCmSessionLayoutFolderNameLength = 40;
 const maxDesktopCmSessionLayoutReorderHistoryEntries = 5;
 const maxDesktopCmSessionCloneNameLength = 60;
-const maxDesktopCmSessionGroupNameLength = 40;
-const defaultDesktopCmSessionGroup = 'General';
 const defaultDesktopCmSessionLayoutFolder = 'General';
 const desktopCmSessionLayoutReorderHistoryScopeFilterOptions: DesktopCmSessionLayoutReorderHistoryScopeFilter[] = ['all', 'folder', 'preset', 'focus', 'system'];
 const desktopCmSessionLayoutReorderHistoryStatusFilterOptions: DesktopCmSessionLayoutReorderHistoryStatusFilter[] = [
@@ -186,9 +187,6 @@ const desktopCmSessionLayoutReorderHistoryFilterPresets: DesktopCmSessionLayoutR
 ];
 const desktopCmSessionLayoutReorderHistoryFilterPresetIds = desktopCmSessionLayoutReorderHistoryFilterPresets.map((preset) => preset.id);
 const desktopCmSessionLayoutReorderHistoryFilterPresetShortcuts = 'ArrowLeft ArrowRight ArrowUp ArrowDown Home End Enter Space';
-
-type CmDiagnosticStageFilter = (typeof cmDiagnosticStageFilterOptions)[number];
-type CmDiagnosticSeverityFilter = (typeof cmDiagnosticSeverityFilterOptions)[number];
 
 export function DesktopCmSessionPanel({
   message,
@@ -4172,83 +4170,6 @@ function buildDesktopCmSessionCloneName(sourceName: string, sessions: DesktopCmS
   return `${sourceBase.slice(0, 42).trimEnd() || 'CM'} copy ${Date.now().toString(36).slice(-6)}`;
 }
 
-function readDesktopCmSessionViewPreferences(): DesktopCmSessionViewPreferences {
-  if (typeof window === 'undefined') {
-    return { sessions: [], collapsedGroups: [] };
-  }
-  try {
-    const rawValue = window.localStorage.getItem(desktopCmSessionViewPreferenceStorageKey);
-    if (!rawValue) {
-      return { sessions: [], collapsedGroups: [] };
-    }
-    const parsedValue = JSON.parse(rawValue);
-    return normalizeDesktopCmSessionViewPreferences(parsedValue);
-  } catch {
-    window.localStorage.removeItem(desktopCmSessionViewPreferenceStorageKey);
-    return { sessions: [], collapsedGroups: [] };
-  }
-}
-
-function writeDesktopCmSessionViewPreferences(preferences: DesktopCmSessionViewPreferences) {
-  if (typeof window === 'undefined') {
-    return;
-  }
-  try {
-    window.localStorage.setItem(desktopCmSessionViewPreferenceStorageKey, JSON.stringify(normalizeDesktopCmSessionViewPreferences(preferences)));
-  } catch {
-    // Session grouping is only a UI preference; storage failures should not break CM sessions.
-  }
-}
-
-function normalizeDesktopCmSessionViewPreferences(value: unknown): DesktopCmSessionViewPreferences {
-  if (!value || typeof value !== 'object') {
-    return { sessions: [], collapsedGroups: [] };
-  }
-  const candidate = value as Partial<DesktopCmSessionViewPreferences>;
-  const seenSessionIds = new Set<string>();
-  const sessions: DesktopCmSessionViewPreference[] = [];
-  if (Array.isArray(candidate.sessions)) {
-    for (const item of candidate.sessions) {
-      if (!item || typeof item !== 'object') {
-        continue;
-      }
-      const preference = item as Partial<DesktopCmSessionViewPreference>;
-      if (typeof preference.sessionId !== 'string' || !preference.sessionId.trim()) {
-        continue;
-      }
-      const sessionId = preference.sessionId.trim().slice(0, 120);
-      if (seenSessionIds.has(sessionId)) {
-        continue;
-      }
-      seenSessionIds.add(sessionId);
-      sessions.push({
-        sessionId,
-        group: normalizeDesktopCmSessionGroupName(preference.group || ''),
-        favorite: preference.favorite === true,
-        updatedAt: typeof preference.updatedAt === 'number' && Number.isFinite(preference.updatedAt) ? preference.updatedAt : Date.now(),
-      });
-    }
-  }
-
-  const collapsedGroups = Array.isArray(candidate.collapsedGroups)
-    ? [...new Set(candidate.collapsedGroups.filter((group): group is string => typeof group === 'string').map(normalizeDesktopCmSessionGroupName))]
-    : [];
-
-  return { sessions, collapsedGroups };
-}
-
-function pruneDesktopCmSessionViewPreferences(preferences: DesktopCmSessionViewPreferences, sessions: DesktopCmSession[]) {
-  const validSessionIds = new Set(sessions.map((session) => session.id));
-  return normalizeDesktopCmSessionViewPreferences({
-    sessions: preferences.sessions.filter((preference) => validSessionIds.has(preference.sessionId)),
-    collapsedGroups: preferences.collapsedGroups,
-  });
-}
-
-function desktopCmSessionViewPreferencesEqual(left: DesktopCmSessionViewPreferences, right: DesktopCmSessionViewPreferences) {
-  return JSON.stringify(normalizeDesktopCmSessionViewPreferences(left)) === JSON.stringify(normalizeDesktopCmSessionViewPreferences(right));
-}
-
 function readDesktopCmSessionLayoutPresets(): DesktopCmSessionLayoutPreset[] {
   if (typeof window === 'undefined') {
     return [];
@@ -4694,148 +4615,6 @@ function matchesDesktopCmSessionLayoutFolderFilter(preset: DesktopCmSessionLayou
   return normalizeDesktopCmSessionLayoutFolderName(preset.folder) === normalizeDesktopCmSessionLayoutFolderName(folderFilter);
 }
 
-function getDesktopCmSessionPreference(sessionId: string, preferences: Map<string, DesktopCmSessionViewPreference>) {
-  return preferences.get(sessionId) || {
-    sessionId,
-    group: defaultDesktopCmSessionGroup,
-    favorite: false,
-    updatedAt: 0,
-  };
-}
-
-function setDesktopCmSessionGroupPreference(preferences: DesktopCmSessionViewPreferences, sessionId: string, group: string) {
-  const current = getDesktopCmSessionPreference(sessionId, new Map(preferences.sessions.map((preference) => [preference.sessionId, preference])));
-  return upsertDesktopCmSessionViewPreference(preferences, {
-    ...current,
-    group: normalizeDesktopCmSessionGroupName(group),
-    updatedAt: Date.now(),
-  });
-}
-
-function setDesktopCmSessionGroupPreferences(preferences: DesktopCmSessionViewPreferences, sessionIds: string[], group: string) {
-  let nextPreferences = preferences;
-  for (const sessionId of sessionIds) {
-    nextPreferences = setDesktopCmSessionGroupPreference(nextPreferences, sessionId, group);
-  }
-  return nextPreferences;
-}
-
-function toggleDesktopCmSessionFavoritePreference(preferences: DesktopCmSessionViewPreferences, sessionId: string) {
-  const current = getDesktopCmSessionPreference(sessionId, new Map(preferences.sessions.map((preference) => [preference.sessionId, preference])));
-  return upsertDesktopCmSessionViewPreference(preferences, {
-    ...current,
-    favorite: !current.favorite,
-    updatedAt: Date.now(),
-  });
-}
-
-function setDesktopCmSessionFavoritePreferences(preferences: DesktopCmSessionViewPreferences, sessionIds: string[], favorite: boolean) {
-  let nextPreferences = preferences;
-  for (const sessionId of sessionIds) {
-    const current = getDesktopCmSessionPreference(sessionId, new Map(nextPreferences.sessions.map((preference) => [preference.sessionId, preference])));
-    nextPreferences = upsertDesktopCmSessionViewPreference(nextPreferences, {
-      ...current,
-      favorite,
-      updatedAt: Date.now(),
-    });
-  }
-  return nextPreferences;
-}
-
-function toggleDesktopCmSessionGroupCollapsed(preferences: DesktopCmSessionViewPreferences, group: string) {
-  const normalizedGroup = normalizeDesktopCmSessionGroupName(group);
-  const collapsedGroups = new Set(preferences.collapsedGroups.map(normalizeDesktopCmSessionGroupName));
-  if (collapsedGroups.has(normalizedGroup)) {
-    collapsedGroups.delete(normalizedGroup);
-  } else {
-    collapsedGroups.add(normalizedGroup);
-  }
-  return normalizeDesktopCmSessionViewPreferences({
-    sessions: preferences.sessions,
-    collapsedGroups: [...collapsedGroups],
-  });
-}
-
-function upsertDesktopCmSessionViewPreference(preferences: DesktopCmSessionViewPreferences, nextPreference: DesktopCmSessionViewPreference) {
-  const normalizedPreference = normalizeDesktopCmSessionViewPreferences({ sessions: [nextPreference], collapsedGroups: [] }).sessions[0];
-  if (!normalizedPreference) {
-    return preferences;
-  }
-  const withoutCurrent = preferences.sessions.filter((preference) => preference.sessionId !== normalizedPreference.sessionId);
-  const nextSessions =
-    normalizedPreference.group === defaultDesktopCmSessionGroup && !normalizedPreference.favorite
-      ? withoutCurrent
-      : [normalizedPreference, ...withoutCurrent];
-  return normalizeDesktopCmSessionViewPreferences({
-    sessions: nextSessions,
-    collapsedGroups: preferences.collapsedGroups,
-  });
-}
-
-function normalizeDesktopCmSessionGroupName(value: string) {
-  const normalized = value.trim().replace(/\s+/g, ' ').slice(0, maxDesktopCmSessionGroupNameLength);
-  return normalized || defaultDesktopCmSessionGroup;
-}
-
-function buildDesktopCmSessionGroups(
-  allSessions: DesktopCmSession[],
-  visibleSessions: DesktopCmSession[],
-  preferences: Map<string, DesktopCmSessionViewPreference>,
-  collapsedGroups: string[],
-): DesktopCmSessionGroup[] {
-  const collapsedGroupSet = new Set(collapsedGroups.map(normalizeDesktopCmSessionGroupName));
-  const allGroupCounts = new Map<string, { totalCount: number; favoriteCount: number }>();
-  for (const session of allSessions) {
-    const preference = getDesktopCmSessionPreference(session.id, preferences);
-    const counts = allGroupCounts.get(preference.group) || { totalCount: 0, favoriteCount: 0 };
-    counts.totalCount += 1;
-    if (preference.favorite) {
-      counts.favoriteCount += 1;
-    }
-    allGroupCounts.set(preference.group, counts);
-  }
-
-  const visibleGroupSessions = new Map<string, DesktopCmSession[]>();
-  for (const session of visibleSessions) {
-    const preference = getDesktopCmSessionPreference(session.id, preferences);
-    const groupSessions = visibleGroupSessions.get(preference.group) || [];
-    groupSessions.push(session);
-    visibleGroupSessions.set(preference.group, groupSessions);
-  }
-
-  return [...visibleGroupSessions.entries()]
-    .map(([group, groupSessions]) => ({
-      group,
-      slug: slugifyTestId(group),
-      sessions: sortDesktopCmSessionsForGroup(groupSessions, preferences),
-      totalCount: allGroupCounts.get(group)?.totalCount || groupSessions.length,
-      favoriteCount: allGroupCounts.get(group)?.favoriteCount || 0,
-      collapsed: collapsedGroupSet.has(group),
-    }))
-    .sort((left, right) => compareDesktopCmSessionGroupNames(left.group, right.group));
-}
-
-function sortDesktopCmSessionsForGroup(sessions: DesktopCmSession[], preferences: Map<string, DesktopCmSessionViewPreference>) {
-  return [...sessions].sort((left, right) => {
-    const leftFavorite = getDesktopCmSessionPreference(left.id, preferences).favorite;
-    const rightFavorite = getDesktopCmSessionPreference(right.id, preferences).favorite;
-    if (leftFavorite !== rightFavorite) {
-      return leftFavorite ? -1 : 1;
-    }
-    return 0;
-  });
-}
-
-function compareDesktopCmSessionGroupNames(left: string, right: string) {
-  if (left === defaultDesktopCmSessionGroup && right !== defaultDesktopCmSessionGroup) {
-    return -1;
-  }
-  if (right === defaultDesktopCmSessionGroup && left !== defaultDesktopCmSessionGroup) {
-    return 1;
-  }
-  return left.localeCompare(right);
-}
-
 function setsEqual(left: Set<string>, right: Set<string>) {
   if (left.size !== right.size) {
     return false;
@@ -5014,56 +4793,6 @@ function isDesktopCmKeyboardIgnoredTarget(target: EventTarget | null) {
 
 function slugifyTestId(value: string) {
   return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'preset';
-}
-
-function getDisplayedCmDiagnostic(session: DesktopCmSession, runtimeProfile: DesktopCmSessionRuntimeProfile | null, activeRuntimeSessionId: string) {
-  return activeRuntimeSessionId === session.id && runtimeProfile ? runtimeProfile : session;
-}
-
-function matchesCmDiagnosticFilters(
-  diagnostic: Pick<DesktopCmSession, 'diagnosticStage' | 'diagnosticSeverity'> | Pick<DesktopCmSessionRuntimeProfile, 'diagnosticStage' | 'diagnosticSeverity'>,
-  stageFilter: CmDiagnosticStageFilter,
-  severityFilter: CmDiagnosticSeverityFilter,
-) {
-  const stage = diagnostic.diagnosticStage || 'metadata';
-  const severity = diagnostic.diagnosticSeverity || 'info';
-  return (stageFilter === 'all' || stage === stageFilter) && (severityFilter === 'all' || severity === severityFilter);
-}
-
-function matchesCmSessionSearch(
-  session: DesktopCmSession,
-  normalizedQuery: string,
-  diagnostic: Pick<DesktopCmSession, 'diagnosticStage' | 'diagnosticSeverity' | 'diagnosticMessage' | 'diagnosticHint'> | Pick<DesktopCmSessionRuntimeProfile, 'diagnosticStage' | 'diagnosticSeverity' | 'diagnosticMessage' | 'diagnosticHint'>,
-  preference: DesktopCmSessionViewPreference,
-) {
-  if (!normalizedQuery) {
-    return true;
-  }
-
-  const searchText = [
-    session.name,
-    session.host,
-    session.port,
-    session.user,
-    session.remoteApiHost,
-    session.remoteApiPort,
-    session.status,
-    session.runtimeStatus,
-    session.description || '',
-    session.credentialAvailable ? 'credential ready' : 'credential missing',
-    formatCmSessionCheckStatus(session.lastCheckStatus),
-    formatRuntimeStatus(session.runtimeStatus),
-    preference.group,
-    preference.favorite ? 'favorite 즐겨찾기' : '',
-    diagnostic.diagnosticStage || '',
-    diagnostic.diagnosticSeverity || '',
-    diagnostic.diagnosticMessage || '',
-    diagnostic.diagnosticHint || '',
-  ]
-    .join(' ')
-    .toLowerCase();
-
-  return searchText.includes(normalizedQuery);
 }
 
 function cmRuntimeStatusClass(status: string) {

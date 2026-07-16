@@ -120,6 +120,16 @@ function detectHostTriple() {
     }
   }
 
+  const platformTarget = new Map([
+    ['darwin:arm64', 'aarch64-apple-darwin'],
+    ['darwin:x64', 'x86_64-apple-darwin'],
+    ['win32:arm64', 'aarch64-pc-windows-msvc'],
+    ['win32:x64', 'x86_64-pc-windows-msvc'],
+  ]).get(`${process.platform}:${process.arch}`);
+  if (platformTarget) {
+    return platformTarget;
+  }
+
   throw new Error('Could not detect host target triple. Pass --target explicitly.');
 }
 

@@ -1,229 +1,50 @@
 # Kuviewer
 
-Kuviewer is a Kubernetes topology viewer focused on visualizing clusters, namespaces, nodes, workloads, pods, services, ConfigMaps, Secrets, and storage relationships in a web UI.
+Kuviewer is a read-only Kubernetes topology and resource explorer. It turns uploaded manifests, bundled mock data, or a live Kubernetes API into a visual resource graph, traffic-flow view, resource explorer, and snapshot comparison workspace.
 
-## Current direction
+## Product Direction
 
-- First target: native Kubernetes
-- Later validation: k3s, AKS, and other Kubernetes-compatible distributions
-- Initial auth model: no user accounts; live connector uses a single admin token
-- Primary data sources: browser-side YAML/JSON/ZIP upload, live Kubernetes API, and bundled mock data
-- Upload mode is SaaS-friendly: manifests are parsed in the browser and are not sent to a backend by the frontend
-- Future desktop-local idea: read-only CM/SSH session exploration can stay as a prototype, but it is not a downloadable product path
-- Frontend: React, TypeScript, Vite, Tailwind CSS
+- Primary product: standalone web UI plus Go server
+- First live target: native Kubernetes; k3s and AKS remain validation targets
+- Authentication: no user accounts, one server-side admin token for protected live APIs
+- Upload mode parses YAML/JSON/ZIP in the browser and does not send manifests to the backend
+- Secret values, kubeconfigs, private keys, cloud credentials, and raw SSH errors are never displayed or persisted
+- Desktop CM/SSH support is a local Tauri prototype only; the web app must not expose SSH
+- No public desktop installer or download workflow is active
 
-## Local Task Notifications
+## Features
 
-- `scripts/notify-telegram.mjs` can send a local task summary and optional screenshot through Telegram.
-- It requires `TELEGRAM_BOT_TOKEN_TWO` or fallback `TELEGRAM_BOT_TOKEN`, and accepts `--chat-id`, `TELEGRAM_CHAT_ID`, `TELEGRAM_TO`, or `TELEGRAM_CHAT_ID_KUVIEWER`; if no chat id is set, it tries to infer the latest chat from Telegram `getUpdates`.
-- Use `--preflight` to verify local readiness without sending; add `--resolve-chat` when the check should call `getUpdates` and report only whether chat inference is available, or `--require-explicit-chat` when chat inference should be disabled.
-- Use `--require-token-source TELEGRAM_BOT_TOKEN_TWO` when the notification must fail instead of silently falling back to `TELEGRAM_BOT_TOKEN`.
-- The CLI entrypoint stays in `scripts/notify-telegram.mjs`; reusable parsing, token resolution, and send helpers live in `scripts/lib/telegram-notify.mjs`.
-- The script never prints the bot token or chat id and is intended for local agent/task reporting, not product runtime behavior.
+- Kubernetes resource topology with cluster and namespace zones
+- Desktop React Flow renderer and lightweight mobile SVG pan/zoom renderer
+- YAML-derived traffic-flow evidence and broken-route indicators
+- Upload diagnostics for unsupported resources and parse errors
+- Live connector diagnostics for authentication, RBAC, reachability, and optional APIs
+- Resource Explorer with server-side filters, cursor pagination, facets, safe detail preview, Events, and Pod logs
+- Pod logs with container selection, previous logs, follow, pause/resume, local search, time range, sort, copy, and download
+- Saved resource views with grouping, search, reorder, bulk actions, import/export, URL sharing, and optional team sync
+- Snapshot history and resource/relation/cluster diff with large-result windowing and safe JSON/CSV export
+- Snapshot history metadata-only export without topology payloads
+- Native workloads, storage, Ingress, Gateway API routes, NetworkPolicy selectors, CRDs, and safe custom-resource relation inference
 
-## Current UI
+## Source Modes
 
-- Next work is summarized in `docs/NEXT_WORK.md`; `CODEX_HANDOFF.md` keeps the longer archival state.
+### Upload
 
-- Source modes: `Upload YAML`, `Live Cluster`, and `Mock Demo`
-- `Topology`: draggable React Flow resource relationship map with cluster and namespace zones
-- `Flow`: YAML-derived traffic flow view
-- `Resource Explorer`: read-only Kubernetes resource list, safe YAML/detail preview, topology relations, and live Events
-- `Snapshot Compare`: keeps up to eight in-memory captures/imports for baseline/current selection, validates exported diff JSON for read-only preview, and shows safe resource/relation additions, removals, and changes without persisting cluster data
-- Purpose-built YAML Flow link preview, transparent favicon, and apple-touch icon assets for shared links and bookmarks
-- Brand theme toggle: `D` YAML Flow is the default UI theme, while `B` Radar can be selected as a dark app theme without changing shared-link metadata
-- Manual refresh, optional 30 second auto refresh, and last sync status for live mode
-- Backend provider/status line for source, read-only mode, Secret handling, and static UI mode
-- Connector diagnostics panel for backend source, safe authentication/RBAC/reachability/server failure guidance, sync time, and visible/total graph counts
-- Resource Explorer and Snapshot Compare are lazy-loaded so the initial topology bundle does not include their heavy UI code; Resource Explorer list/saved-view controls and the Events/Logs detail workspace are separate chunks, the detail workspace keeps its stateful orchestrator separate from health calculations, Event/Log/Relation activity helpers, shared types, and UI primitives, the mobile SVG and desktop React Flow topology renderers load independently, and desktop CM APIs load only inside the Tauri runtime
-- YAML/ZIP upload, topology JSON import/export, and Secret value hiding for uploaded manifests
-- Flow evidence rows show source/target resources, YAML field paths, and observed/inferred confidence
-- Broken Flow cards show routed Services with no visible backend Pod endpoints
-- Flow filtering keeps the full path context while matching flows by the currently visible resources
-- Empty filter results clear the detail panel instead of showing a stale resource
-- Responsive graph stage keeps zoom/pan/drag inside the topology canvas and stores manual node positions per source
-- Touch devices use an SVG topology renderer with pinch, wheel/trackpad, drag pan, zoom buttons, fit, and reset while keeping React Flow unmounted for mobile stability
+Upload YAML, JSON, ZIP, or a Kuviewer topology JSON. Manifest parsing happens in the browser. Secret resources expose type and key names only.
 
-## Desktop Local Prototype
+### Mock
 
-Kuviewer keeps a desktop-local CM/SSH session prototype for future exploration, documented in [desktop/README.md](desktop/README.md), with a machine-checked spec in [desktop/packaging-spec.json](desktop/packaging-spec.json) and build notes in [desktop/BUILD_PREREQUISITES.md](desktop/BUILD_PREREQUISITES.md).
+Loads the bundled topology without a backend connection. This is the default demo and visual-smoke source.
 
-No desktop installer download path is active. Kuviewer does not publish desktop installer files, desktop release assets, or a public desktop download workflow. The current product path remains the web app plus the standalone server deployment. The desktop idea is limited to a read-only local shell prototype for CM/SSH session management, closer to VS Code Remote SSH than a browser feature.
+### Live
 
-The web app must not expose SSH. The prototype direction keeps CM/SSH multiple sessions as the desktop-local model. Existing local sidecar/API paths are prototype-only scaffolds and are not the desktop product default. Desktop icons are generated from the transparent YAML Flow PNG asset, committed under `desktop/src-tauri/icons`, and checked by the desktop spec validator.
+Uses protected same-origin endpoints by default in production. Local Vite development keeps live mode disabled unless `VITE_API_BASE_URL` is configured.
 
-The current desktop product UI includes a desktop-only CM/SSH session manager. It manages multiple safe metadata sessions with `name`, `host`, `port`, `user`, remote API host/port, status, description, credential availability, runtime status, last connection check result, and safe diagnostic metadata through Tauri commands: `desktop_cm_sessions`, `desktop_save_cm_session`, `desktop_select_cm_session`, `desktop_delete_cm_session`, `desktop_import_cm_session_private_key`, `desktop_delete_cm_session_credential`, `desktop_check_cm_session`, `desktop_cm_session_runtime`, `desktop_check_cm_session_runtime`, `desktop_start_cm_session_runtime`, and `desktop_stop_cm_session_runtime`. The session form is polished as desktop-only UI: it previews the safe endpoint tuple, offers quick remote API presets, can refill from the selected session, validates required metadata/ports before save, and can create a session clone draft from an existing session without adding browser persistence. Session clone drafts require an explicit save, use a conflict-safe `copy` suffix, and copy only safe editable metadata; credentials, credential availability, runtime profiles, selected state, and diagnostic history are not cloned. The session list can be searched in memory by safe metadata and diagnostic stage/message/hint only, and desktop CM diagnostic filtering can narrow the list by displayed diagnostic stage and severity without persisting the active filter state. Desktop CM diagnostic saved filters store only user-named stage/severity presets under `kuviewer_desktop_cm_diagnostic_filter_presets` as a desktop-only UI preference; they do not include session search text, session data, credentials, runtime profiles, diagnostic history, or export/import payloads. Desktop CM session grouping/favorites stores only session id, group, favorite, updatedAt, and collapsed group UI state under `kuviewer_desktop_cm_session_view_preferences`; it is not included in Tauri command payloads or session export/import JSON. Desktop CM session bulk actions add memory-only bulk selection for visible results/group rows, selected safe-metadata export, group move, favorite set/unset, and inline two-step selected delete; bulk selection itself is not persisted, exported, synced, or sent through Tauri commands. Desktop CM session saved layouts store only named layout preference metadata under `kuviewer_desktop_cm_session_layout_presets`: `name`, current session view preferences (`sessionId`, `group`, `favorite`, `updatedAt`, `collapsedGroups`), and preset `updatedAt`. The saved layout list can be searched in memory by preset name, summary, group, collapsed group, favorite count, and session count; that search query only filters the visible list and is not persisted or exported. Saved layout preset names can be renamed inline; rename draft/error state is memory-only, same-name saves are no-ops, duplicate names are rejected, and existing layout preferences are preserved. Saved layout presets can also be duplicated inline; the copy uses a collision-safe `copy` suffix, preserves the same safe layout preferences, and does not change session export/import, layout export/import, or Tauri schemas. Saved session layouts can be exported/imported separately with `kuviewer.desktop.cmSessionLayouts`; import adds new presets, skips invalid entries, prunes unknown session ids, and uses a layout conflict preview for same-name/different-layout imports. Conflict preview state is memory-only and same-name presets are not overwritten until the user explicitly chooses incoming, keep current, or rename incoming. Saved session layout import/export does not include search text, diagnostic filters, endpoint/session metadata, credentials, runtime profiles, diagnostics history, Events, logs, Tauri payloads, or the CM session export/import JSON. The selected-session summary shows credential, runtime, health, last-check status, and compact advanced diagnostics. Private keys can be imported only by the desktop Rust layer into the OS credential store and are never returned to browser JavaScript, app logs, JSON export, or repository files. Starting a CM tunnel/runtime writes a temporary owner-only key file outside the repository, opens an SSH tunnel from an ephemeral `127.0.0.1` port to the configured remote Kuviewer API host/port, verifies `/healthz`, and stores only the localhost runtime profile in `sessionStorage`. Runtime health/details are exposed as safe metadata only: localhost URL, remote API host/port, status, last health timestamp, safe health message, diagnostic stage, severity, message, and hint. A manual health recheck keeps the runtime profile fresh, and if the SSH child is gone or unhealthy the UI marks the session `runtime-lost` or `runtime-unhealthy`, clears the stale runtime profile when needed, and falls back out of live mode without storing secrets. The admin token remains session-only and the tunnel does not bypass live API authentication. No password, token, kubeconfig, cloud credential, Secret value, Event, log, raw SSH stderr, or private key body is stored.
+The admin token is stored in `sessionStorage` only. The legacy localStorage token key is removed when auth state is read or cleared.
 
-Desktop CM session export/import is desktop-only and user-click driven. Export downloads `{ "schemaVersion": 1, "kind": "kuviewer.desktop.cmSessions", "items": [...] }` with only safe editable metadata: `name`, `host`, `port`, `user`, `remoteApiHost`, `remoteApiPort`, and optional `description`. Import accepts that bundle shape, `{ items }`, or a plain array, caps processing at 50 valid sessions, updates matching endpoint tuples, and skips invalid or duplicate entries. Export/import never includes private key bodies, OS credential payloads, credential availability as proof, runtime profiles, diagnostic history, admin tokens, kubeconfigs, cloud credentials, Secret values, Events, or logs.
+## Local Development
 
-Desktop CM saved session layout per-row conflict actions are desktop-only UI controls inside the memory-only layout conflict preview. They resolve one same-name layout conflict at a time with incoming, keep current, or rename incoming actions, leave remaining conflicts visible, and update only safe layout preference metadata. The conflict preview also supports keyboard active-row navigation and resolution: ArrowUp/ArrowDown, Home/End, Enter for incoming, K for keep current, R for rename incoming, and Escape to clear the active row. The active row state is browser memory only, ignores editable controls, and is not persisted, exported, synced, or sent through Tauri commands. The preview focuses itself when conflicts open, exposes labelled/described regions, safe row and action labels, `aria-current` active row state, and a screen-reader live summary without adding visible keyboard instruction text. The conflict preview also shows memory-only summary counts for total, resolved, remaining, incoming/current/rename resolutions, and import results; those summary counters are not persisted or exported.
-
-Desktop CM saved layout bulk management is desktop-only UI state. Selection and delete confirmation are memory-only, visible-result selection follows the current layout search filter, selected export uses the existing `kuviewer.desktop.cmSessionLayouts` bundle shape, and selected delete uses inline two-step confirmation without storing endpoint/session metadata, credentials, runtime profiles, diagnostic history, Events, or logs.
-
-Desktop CM saved layout folder polish stores only safe preset folder metadata in `kuviewer_desktop_cm_session_layout_presets`. Missing folders normalize to `General`; users can set a folder while saving a layout or edit a row folder inline, and the layout list renders by folder with separate collapse state under `kuviewer_desktop_cm_session_layout_collapsed_folders`. Folder metadata is preserved in layout import/export, but folder collapse state is UI-only and is not included in session export/import, layout export/import, Tauri payloads, credentials, runtime profiles, diagnostics, Events, or logs.
-
-Desktop CM saved layout folder bulk move is desktop-only UI state. The bulk toolbar can move selected saved layout presets to a target folder while preserving the current selection and search query. The folder draft and selection state stay in browser memory; only the safe preset `folder` metadata is written to `kuviewer_desktop_cm_session_layout_presets`. This does not change session export/import, layout import/export schema, Tauri payloads, credentials, runtime profiles, diagnostics, Events, or logs.
-
-Desktop CM saved layout folder filter is desktop-only UI state. The saved layout list can be narrowed to an existing folder, combines that folder filter with the layout search query, and uses filtered results for visible bulk selection. The active folder filter is kept in browser memory only and is not written to localStorage, sessionStorage, export/import JSON, Tauri payloads, credentials, runtime profiles, diagnostics, Events, or logs.
-
-Desktop CM saved layout folder actions are desktop-only UI controls on each saved layout folder header. Users can select the currently visible presets in a folder or rename a folder, which moves every preset in that folder to the normalized target folder by updating only safe preset `folder` metadata. Folder action drafts and selections stay in browser memory; the feature does not change session export/import, layout export/import schema, Tauri payloads, credentials, runtime profiles, diagnostics, Events, or logs.
-
-Desktop CM saved layout folder keyboard polish is desktop-only UI state. When the saved layout folder list has focus, ArrowUp/ArrowDown, Home/End, Enter, S, R, and Escape move the active folder, toggle collapse, select visible presets, start folder rename, or clear the active state. Active folder state, shortcut state, and rename drafts remain browser-memory only; only explicit folder rename writes safe preset `folder` metadata to `kuviewer_desktop_cm_session_layout_presets`.
-
-Desktop CM saved layout folder accessibility polish is desktop-only UI metadata. The saved layout folder list exposes a labelled list, active descendant, listitem rows, row count/action descriptions, toggle `aria-controls`, explicit folder action labels, rename editor group labels, and screen-reader live status that includes collapsed/expanded state. These accessibility fields do not add visible keyboard instruction text and do not change saved layout data, export/import JSON, Tauri payloads, credentials, runtime profiles, diagnostics, Events, or logs.
-
-Desktop CM saved layout folder empty-state polish is desktop-only UI state. The saved layout area distinguishes no saved layouts, search-only empty results, folder-filter empty results, and selected-folder rows with zero visible presets while keeping safe search/folder context visible. Empty-state text and counts stay in browser memory only and do not change saved layout data, export/import JSON, Tauri payloads, credentials, runtime profiles, diagnostics, Events, or logs.
-
-Desktop CM saved layout folder drag/reorder polish is desktop-only UI state. Folder headers and layout presets expose drag handles plus up/down controls, disabled while layout search or folder filter is active. Reorder writes only the existing `kuviewer_desktop_cm_session_layout_presets` array order; it adds no `order` field, no storage key, and no Tauri/export/import schema changes.
-
-Desktop CM saved layout folder drag/reorder keyboard polish is desktop-only UI state. The focused folder list can move the active folder with `Shift+ArrowUp`, `Shift+ArrowDown`, `Shift+Home`, and `Shift+End`; focused folder or layout drag handles can use `ArrowUp`, `ArrowDown`, `Home`, and `End`. Keyboard reorder status is announced through screen-reader live text and stays browser-memory only. It still writes only the existing saved layout preset array order and adds no `order` field, storage key, export/import field, Tauri payload, credentials, runtime profile, diagnostics history, Events, or logs.
-
-Desktop CM saved layout folder reorder focus polish is desktop-only UI state. After folder-list shortcut reorder, focus returns to the folder list; after folder or preset button/handle reorder, focus returns to the stable drag handle for the moved item. Focus target and focus status are browser-memory only, use `preventScroll`, and are not stored, exported, synced, or sent through Tauri.
-
-Desktop CM saved layout folder reorder focus accessibility polish is desktop-only UI metadata. The folder list and folder/preset drag handles describe the focus restoration policy, the live focus status is an atomic `status` region, and announcements use human-readable folder/preset/list labels rather than internal test ids. Focus target labels and status stay browser-memory only and do not change saved layout data, export/import JSON, Tauri payloads, credentials, runtime profiles, diagnostics, Events, or logs.
-
-Desktop CM saved layout folder reorder disabled-state polish is desktop-only derived UI metadata. Reorder state, disabled titles, and `aria-describedby` descriptions explain whether layout search, folder filter, first/last edge position, or insufficient folders/presets prevents reorder. These disabled reasons are computed in browser memory, use safe labels only, and do not change saved layout data, export/import JSON, Tauri payloads, credentials, runtime profiles, diagnostics, Events, or logs.
-
-Desktop CM saved layout folder reorder status wording polish is desktop-only UI text. Reorder live status now uses consistent `Reorder ready`, `Reorder unavailable`, `Reorder unchanged`, `Reorder complete`, and `Focus restored` prefixes, includes safe folder/preset scope and position counts for successful keyboard moves, and gives drag/drop moves a clear completion message. These status messages are memory-only and do not change saved layout data, export/import JSON, Tauri payloads, credentials, runtime profiles, diagnostics, Events, or logs.
-
-Desktop CM saved layout folder reorder status history polish is desktop-only UI state. The saved layout panel now keeps the latest five reorder/focus status messages in browser memory, shows the newest summary, and lets the user clear that history. It adds no storage key, export/import field, Tauri payload, credentials, runtime profile, diagnostic history, Events, or logs.
-
-Desktop CM saved layout folder reorder status history filter polish is desktop-only UI state. Reorder history can be filtered by safe scope (`folder`, `preset`, `focus`, `system`) and status prefix, with matched/total counts, an empty state, and a filter clear action. Filter state stays in browser memory only and is not stored, exported, sent through Tauri, or mixed with credentials, runtime profiles, diagnostics, Events, or logs.
-
-Desktop CM saved layout folder reorder status history timestamp polish is desktop-only UI state. Each reorder history row now shows a relative age, exact local timestamp, ISO `dateTime`, and timestamp title/aria label, while the latest summary also shows age. Timestamp display state stays in browser memory only and is not stored, exported, sent through Tauri, or mixed with credentials, runtime profiles, diagnostics, Events, or logs.
-
-Desktop CM saved layout folder reorder status history timestamp accessibility polish is desktop-only UI state. The timestamp history panel is exposed as a labelled region with hidden assistive text, an atomic live summary, newest-first list labeling, and row aria labels that include scope, status message, relative age, and exact timestamp. Accessibility display state stays in browser memory only and is not stored, exported, sent through Tauri, or mixed with credentials, runtime profiles, diagnostics, Events, or logs.
-
-Desktop CM saved layout folder reorder status history timestamp responsive polish is desktop-only UI layout state. On narrow widths, the timestamp history toolbar wraps filters and actions to full-width controls, status messages wrap instead of truncating, and timestamp metadata wraps without horizontal overflow; desktop widths keep the dense row layout. Responsive display state stays in browser memory only and is not stored, exported, sent through Tauri, or mixed with credentials, runtime profiles, diagnostics, Events, or logs.
-
-Desktop CM saved layout folder reorder status history timestamp density polish is desktop-only UI state. The timestamp history panel now offers comfortable and compact display density for recent reorder rows; compact density reduces row padding, timestamp chip height, and timestamp font size while preserving exact timestamps, `dateTime`, and accessibility labels. Density state stays in browser memory only and is not stored, exported, sent through Tauri, or mixed with credentials, runtime profiles, diagnostics, Events, or logs.
-
-Desktop CM saved layout folder reorder status history timestamp filter preset polish is desktop-only UI state. The timestamp history panel provides quick presets for all entries, completed reorders, focus restoration, and blocked reorder states; each preset applies safe scope/status filters and display density together without saving preset state. Filter preset state stays in browser memory only and is not stored, exported, sent through Tauri, or mixed with credentials, runtime profiles, diagnostics, Events, or logs.
-
-Desktop CM saved layout folder reorder status history timestamp filter preset accessibility polish is desktop-only UI state. The filter preset group has hidden assistive help, an atomic live summary of the active preset, and per-preset button labels that include safe scope/status/density metadata. Accessibility preset state stays in browser memory only and is not stored, exported, sent through Tauri, or mixed with credentials, runtime profiles, diagnostics, Events, or logs.
-
-Desktop CM saved layout folder reorder status history timestamp filter preset keyboard polish is desktop-only UI state. The filter preset group now uses a single roving tab stop with arrow-key, Home/End, Enter, and Space support plus hidden keyboard help and a live focus status. Keyboard preset state stays in browser memory only and is not stored, exported, sent through Tauri, or mixed with credentials, runtime profiles, diagnostics, Events, or logs.
-
-Desktop CM saved layout folder reorder status history timestamp filter preset shortcut hint polish is desktop-only UI state. The filter preset group exposes hidden shortcut hint text, `aria-keyshortcuts`, and safe button titles so keyboard affordances are discoverable without adding persistent state or static visible shortcut copy. Shortcut hint metadata stays in browser memory/rendered DOM only and is not stored, exported, sent through Tauri, or mixed with credentials, runtime profiles, diagnostics, Events, or logs.
-
-Desktop CM saved layout folder reorder status history timestamp filter preset discoverability smoke polish is desktop-only UI state. The filter preset group now includes a compact visible help icon with safe title/aria text for the same Arrow/Home/End/Enter/Space controls, and the desktop smoke verifies that the hint is visible, described by the preset group, and absent from saved layout storage. Discoverability hint metadata stays in browser memory/rendered DOM only and is not stored, exported, sent through Tauri, or mixed with credentials, runtime profiles, diagnostics, Events, or logs.
-
-Desktop CM saved layout folder reorder status history timestamp filter preset help focus polish is desktop-only UI state. The visible help icon is now a focusable button: focusing it announces the available focus action, and Enter or Space moves focus to the active reorder history preset, falling back to the first preset when no preset matches. Help focus state stays in browser memory/rendered DOM only and is not stored, exported, sent through Tauri, or mixed with credentials, runtime profiles, diagnostics, Events, or logs.
-
-Desktop CM saved layout folder reorder status history timestamp filter preset help tooltip placement polish is desktop-only UI state. The visible help button exposes a compact hover/focus tooltip linked with `aria-describedby`, uses viewport-clamped bottom inline placement with a small anchored arrow, and summarizes shortcuts plus the focus action without storing tooltip text. Help tooltip placement metadata stays in browser memory/rendered DOM only and is not stored, exported, sent through Tauri, or mixed with credentials, runtime profiles, diagnostics, Events, or logs.
-
-Desktop CM saved layout folder reorder status history timestamp filter preset help tooltip contrast polish is desktop-only UI state. The tooltip uses high-contrast safe color tokens for text, surface, border, shadow, and arrow, and the desktop smoke checks rendered text/background contrast at a 7:1 minimum without storing tooltip style state. Help tooltip contrast metadata stays in browser memory/rendered DOM only and is not stored, exported, sent through Tauri, or mixed with credentials, runtime profiles, diagnostics, Events, or logs.
-
-Desktop CM saved layout folder reorder status history timestamp filter preset help tooltip contrast accessibility polish is desktop-only UI metadata. The help button and preset group now reference a hidden contrast note that names the 7:1 minimum and UI-only policy, while the tooltip exposes the same minimum ratio as safe rendered metadata. Help tooltip contrast accessibility metadata stays in browser memory/rendered DOM only and is not stored, exported, sent through Tauri, or mixed with credentials, runtime profiles, diagnostics, Events, or logs.
-
-Desktop CM saved layout folder reorder status history timestamp filter preset help tooltip focus-visible polish is desktop-only UI metadata. The help button now uses a high-contrast keyboard focus ring with a safe outline, ring, and offset token so keyboard users can see the tooltip entry point clearly. Help tooltip focus-visible metadata stays in browser memory/rendered DOM only and is not stored, exported, sent through Tauri, or mixed with credentials, runtime profiles, diagnostics, Events, or logs.
-
-Desktop CM saved layout folder reorder status history timestamp filter preset help tooltip focus-visible accessibility polish is desktop-only UI metadata. The help button and preset group now reference a hidden focus-visible note that describes the high-contrast outline, ring, and offset policy for keyboard users without adding visible instruction text. Help tooltip focus-visible accessibility metadata stays in browser memory/rendered DOM only and is not stored, exported, sent through Tauri, or mixed with credentials, runtime profiles, diagnostics, Events, or logs.
-
-Desktop CM saved layout folder reorder status history timestamp filter preset help tooltip focus-visible keyboard smoke polish is desktop-only verification metadata. The desktop smoke now tabs from the density controls to the help button and verifies the `:focus-visible` outline, ring, tooltip visibility, and safe live status without adding visible instruction text. Help tooltip focus-visible keyboard smoke metadata stays in rendered DOM/test state only and is not stored, exported, sent through Tauri, or mixed with credentials, runtime profiles, diagnostics, Events, or logs.
-
-Desktop CM saved layout folder reorder status history timestamp filter preset help tooltip focus-visible visual polish is desktop-only UI metadata. The help button now uses a solid focus-visible visual token that changes the button background, border, icon color, shadow, and scale so the keyboard focus target is visually distinct from hover and idle states. Help tooltip focus-visible visual metadata stays in rendered DOM/test state only and is not stored, exported, sent through Tauri, or mixed with credentials, runtime profiles, diagnostics, Events, or logs.
-
-Desktop CM saved layout folder reorder status history timestamp filter preset help tooltip focus-visible visual regression polish is desktop-only verification metadata. The help button exposes stable visual-regression marker/state/token attributes, and the desktop smoke compares idle, hover, and keyboard focus-visible rendered styles so regressions in color, shadow, scale, tooltip visibility, or storage leakage are caught. Help tooltip focus-visible visual regression metadata stays in rendered DOM/test state only and is not stored, exported, sent through Tauri, or mixed with credentials, runtime profiles, diagnostics, Events, or logs.
-
-Desktop CM saved layout folder reorder status history timestamp filter preset help tooltip focus-visible visual regression screenshot polish is desktop-only verification metadata. The desktop smoke captures a focused help button plus tooltip PNG clip under the smoke artifact directory, validates the PNG signature, byte size, and clipped dimensions, and treats the image as disposable test output only. Help tooltip focus-visible visual regression screenshot metadata stays in rendered DOM/test artifacts only and is not stored, exported, sent through Tauri, or mixed with credentials, runtime profiles, diagnostics, Events, or logs.
-
-Desktop CM saved layout folder reorder status history timestamp filter preset help tooltip focus-visible visual regression screenshot cleanup polish is desktop-only verification metadata. Before capture, the desktop smoke removes only its known focused-help PNG filename from the smoke output directory so stale screenshots cannot satisfy the check, then verifies the path is empty before writing a fresh PNG. Screenshot cleanup state stays in rendered DOM/test artifacts only and is not stored, exported, sent through Tauri, or mixed with credentials, runtime profiles, diagnostics, Events, or logs.
-
-Desktop CM saved layout folder reorder status history timestamp filter preset help tooltip focus-visible visual regression screenshot metadata polish is desktop-only verification metadata. The desktop smoke writes a same-directory JSON sidecar with safe artifact facts only: schema/kind, file name, visual marker/token, capture timestamp, PNG byte length, dimensions, and clip dimensions. The sidecar deliberately excludes URLs, tokens, credentials, kubeconfigs, Secret values, runtime profiles, diagnostics, Events, and logs, and remains disposable test output only.
-
-Desktop CM saved layout folder reorder status history timestamp filter preset help tooltip focus-visible visual regression screenshot metadata cleanup polish keeps those disposable artifacts from accumulating. After the desktop smoke verifies the focused-help PNG and safe sidecar, it removes both known filenames and verifies they no longer exist. The cleanup never scans arbitrary directories and does not change storage, export/import, Tauri payloads, credentials, runtime profiles, diagnostics, Events, or logs.
-
-Desktop CM saved layout folder reorder status history timestamp filter preset help tooltip focus-visible visual regression screenshot artifact directory hygiene polish verifies the smoke output directory itself stays tidy. The desktop smoke writes a known sentinel file before screenshot cleanup, proves screenshot cleanup preserves that unrelated sentinel, then explicitly removes the sentinel and verifies the directory has no remaining files. This checks scoped cleanup behavior without storing app data or deleting arbitrary paths.
-
-Desktop CM saved layout folder reorder status history timestamp filter preset help tooltip focus-visible visual regression screenshot artifact manifest polish adds a disposable manifest for that smoke artifact set. The manifest lists only known file names, media types, roles, transient cleanup policy, and safe PNG dimensions/byte length for the focused-help screenshot. It does not include URLs, credentials, kubeconfigs, Secret values, runtime profiles, diagnostics, Events, logs, or raw app data, and hygiene cleanup removes it before the smoke exits.
-
-Desktop CM saved layout folder reorder status history timestamp filter preset help tooltip focus-visible visual regression screenshot artifact manifest cleanup polish verifies that cleanup contract directly. The desktop smoke proves the disposable manifest survives known screenshot cleanup, is listed in the explicit hygiene cleanup paths, is absent after hygiene cleanup, and records the cleanup receipt in memory only. No cleanup receipt, manifest content, URL, credential, kubeconfig, Secret value, runtime profile, diagnostic history, Event, log, or raw app data is persisted, exported, sent through Tauri, or stored in browser storage.
-
-Desktop CM saved layout folder reorder status history timestamp filter preset help tooltip focus-visible visual regression screenshot artifact manifest no-persistence polish verifies that the disposable manifest markers stay out of app persistence surfaces. The desktop smoke checks browser `localStorage` and `sessionStorage`, saved layout export JSON, and CM session export JSON for manifest file names, manifest schema markers, cleanup receipt markers, and disposable cleanup policy strings. These smoke-only artifact markers are never written to Tauri payloads, user preferences, saved layouts, session exports, credentials, runtime profiles, diagnostics, Events, or logs.
-
-Desktop CM saved layout folder reorder status history timestamp filter preset help tooltip focus-visible visual regression screenshot artifact manifest retention policy polish makes the manifest's retention contract machine-readable. The disposable manifest declares `retentionPolicy: delete-before-smoke-exit`, `retentionScope: single-smoke-run`, `retentionUntil: explicit-hygiene-cleanup`, and `retentionEnforcedBy: cleanDesktopSmokeArtifactHygieneFiles`, with repo/browser/export/Tauri persistence all set to `none`. The desktop smoke validates those fields before cleanup and still removes the manifest before the smoke exits.
-
-Desktop CM saved layout folder reorder status history timestamp filter preset help tooltip focus-visible visual regression screenshot artifact manifest retention policy documentation polish keeps the retention contract visible in docs and spec checks. The documented persistence fields are `repoPersistence`, `browserPersistence`, `exportPersistence`, and `tauriPayloadPersistence`, and each remains `none` for the disposable smoke manifest.
-
-Desktop CM saved layout folder reorder status history timestamp filter preset help tooltip focus-visible visual regression screenshot artifact manifest retention policy example polish keeps a machine-readable safe manifest example in the packaging spec. The example uses `screenshotArtifactManifestRetentionExample` to show `schemaVersion`, `kind`, `artifactSet`, `marker`, `token`, `<iso8601-smoke-time>`, `retentionPolicy`, `retentionScope`, `retentionUntil`, `retentionEnforcedBy`, repo/browser/export/Tauri persistence `none`, and the three transient artifact entries only. `screenshotArtifactManifestRetentionExampleForbiddenFields` documents that URL, token value, credential, private key, kubeconfig, Secret value, runtime profile, diagnostic history, Events, logs, and Tauri payload fields are excluded from the example and from the disposable smoke manifest.
-
-Desktop CM saved layout folder reorder status history timestamp filter preset help tooltip focus-visible visual regression screenshot artifact manifest retention policy example smoke polish makes that example executable. The desktop smoke reads `desktop/packaging-spec.json`, normalizes the actual manifest readback with `buildRetentionExampleFromManifestReadback`, compares it with `screenshotArtifactManifestRetentionExample`, and checks `screenshotArtifactManifestRetentionExampleForbiddenFields` against the manifest text before cleanup. Dynamic artifact fields such as `byteLength`, `width`, `height`, and metadata `schemaVersion` stay verified by smoke-specific assertions but are intentionally outside the static example.
-
-Desktop CM saved layout folder reorder status history timestamp filter preset help tooltip focus-visible visual regression screenshot artifact manifest retention policy example smoke documentation polish keeps that executable smoke contract visible in docs and spec checks. The documented smoke fields are `screenshotArtifactManifestRetentionExampleSmokeSpecReadback`, `screenshotArtifactManifestRetentionExampleSmokeComparison`, `screenshotArtifactManifestRetentionExampleSmokeGeneratedAtPlaceholder`, `screenshotArtifactManifestRetentionExampleSmokeDynamicArtifactFields`, and `screenshotArtifactManifestRetentionExampleSmokeForbiddenFieldCheck`; the documented values include `manifest-readback-normalized-to-spec-example`, `<iso8601-smoke-time>`, `byteLength`, `width`, `height`, `schemaVersion`, and `buildRetentionExampleFromManifestReadback`.
-
-Desktop CM saved layout folder reorder status history timestamp filter preset help tooltip focus-visible visual regression screenshot artifact manifest retention policy example smoke documentation checker polish makes the checker contract visible too. `scripts/check-desktop-packaging-spec.mjs` now requires `retentionExampleSmokeDocumentationSurfaces`, `retentionExampleSmokeDocumentedFields`, `retentionExampleSmokeDocumentedValues`, `screenshotArtifactManifestRetentionExampleSmokeDocumentationMachineReadable`, and `screenshotArtifactManifestRetentionExampleSmokeDocumentationCheckerMachineReadable` to stay documented. The checker also keeps the smoke documentation markers out of persisted `localStorage`, `sessionStorage`, `export/import` bundles, and any `Tauri payload`.
-
-Desktop CM saved layout folder reorder status history timestamp filter preset help tooltip focus-visible visual regression screenshot artifact manifest retention policy example smoke documentation checker failure message polish makes missing documentation failures point at the exact surface and needle. Failure messages include `missing required documentation marker`, `retention example smoke documentation checker needle`, `retention example smoke documentation checker persistence guard`, `surface`, and `needle`; safe examples are `README.md missing required documentation marker for retention example smoke documentation checker needle retentionExampleSmokeDocumentationSurfaces` and `README.md missing required documentation marker for retention example smoke documentation checker persistence guard localStorage`. These checker failure-message markers are documentation-only and are not persisted to app state.
-
-Desktop CM saved layout folder reorder status history timestamp filter preset help tooltip focus-visible visual regression screenshot artifact manifest retention policy example smoke documentation checker failure message documentation polish keeps that failure-message contract machine-checked in docs. The documented fields are `screenshotArtifactManifestRetentionExampleSmokeDocumentationCheckerFailureMessagePolish`, `screenshotArtifactManifestRetentionExampleSmokeDocumentationCheckerFailureMessageMachineReadable`, `screenshotArtifactManifestRetentionExampleSmokeDocumentationCheckerFailureMessageNeedles`, `screenshotArtifactManifestRetentionExampleSmokeDocumentationCheckerFailureMessageExamples`, and `screenshotArtifactManifestRetentionExampleSmokeDocumentationCheckerFailureMessageNoPersistence`; documented values include `missing required documentation marker`, `retention example smoke documentation checker needle`, `retention example smoke documentation checker persistence guard`, `surface`, `needle`, the two safe README failure examples, and `requireDocumentationMarker`.
-
-Desktop CM saved layout folder reorder status history timestamp filter preset help tooltip focus-visible visual regression screenshot artifact manifest retention policy example smoke documentation checker failure message documentation checker polish keeps that documentation contract guarded by the checker itself. The checker now requires `retentionExampleSmokeDocumentationCheckerFailureMessageDocumentationSurfaces`, `retentionExampleSmokeDocumentationCheckerFailureMessageDocumentedFields`, `retentionExampleSmokeDocumentationCheckerFailureMessageDocumentedValues`, `screenshotArtifactManifestRetentionExampleSmokeDocumentationCheckerFailureMessageDocumentationMachineReadable`, and `screenshotArtifactManifestRetentionExampleSmokeDocumentationCheckerFailureMessageDocumentationCheckerMachineReadable` to remain documented, plus the `failure message documentation checker polish` marker. These checker-only markers remain absent from persisted `localStorage`, `sessionStorage`, `export/import` bundles, and any `Tauri payload`.
-
-Desktop CM saved layout folder reorder status history timestamp filter preset help tooltip focus-visible visual regression screenshot artifact manifest retention policy example smoke documentation checker failure message documentation checker failure message polish makes missing checker-documentation markers actionable too. Failure messages include `missing required documentation marker`, `retention example smoke documentation checker failure message documentation checker needle`, `retention example smoke documentation checker failure message documentation checker persistence guard`, `surface`, and `needle`; safe examples are `README.md missing required documentation marker for retention example smoke documentation checker failure message documentation checker needle retentionExampleSmokeDocumentationCheckerFailureMessageDocumentationSurfaces` and `README.md missing required documentation marker for retention example smoke documentation checker failure message documentation checker persistence guard localStorage`. These markers remain documentation-only and are not persisted to app state.
-
-Desktop CM saved layout folder reorder status history timestamp filter preset help tooltip focus-visible visual regression screenshot artifact manifest retention policy example smoke documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message documentation polish now documents the final documentation-checker failure-message marker contract itself. Spec declares `screenshotArtifactManifestRetentionExampleSmokeDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationMachineReadable`, `screenshotArtifactManifestRetentionExampleSmokeDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationSurfaces`, `screenshotArtifactManifestRetentionExampleSmokeDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationDocumentedFields`, and `screenshotArtifactManifestRetentionExampleSmokeDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationDocumentedValues`; the documented fields are `screenshotArtifactManifestRetentionExampleSmokeDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessagePolish`, `screenshotArtifactManifestRetentionExampleSmokeDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageMachineReadable`, `screenshotArtifactManifestRetentionExampleSmokeDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageNeedles`, `screenshotArtifactManifestRetentionExampleSmokeDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageExamples`, `screenshotArtifactManifestRetentionExampleSmokeDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageNoPersistence`. Documentation surfaces are `desktop/packaging-spec.json`, `scripts/check-desktop-packaging-spec.mjs`, `README.md`, `desktop/README.md`, `desktop/BUILD_PREREQUISITES.md`, `CODEX_HANDOFF.md`. Documented values include `missing required documentation marker`, `retention example smoke documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message needle`, `retention example smoke documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message persistence guard`, `surface`, `needle`, `README.md missing required documentation marker for retention example smoke documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message needle retentionExampleSmokeDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationSurfaces`, `README.md missing required documentation marker for retention example smoke documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message persistence guard localStorage`, `requireDocumentationMarker`. This documentation marker remains checker-only and is not written to localStorage, sessionStorage, export/import JSON, Tauri payload, backend storage, or runtime state.
-
-Desktop CM saved layout folder reorder status history timestamp filter preset help tooltip focus-visible visual regression screenshot artifact manifest retention policy example smoke documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message documentation checker polish now machine-checks the final documentation marker contract. Spec declares `screenshotArtifactManifestRetentionExampleSmokeDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerPolish`, `screenshotArtifactManifestRetentionExampleSmokeDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerMachineReadable`, `screenshotArtifactManifestRetentionExampleSmokeDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerNeedles`, and `screenshotArtifactManifestRetentionExampleSmokeDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerForbiddenPersistence`. Checker needles are `retentionExampleSmokeDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationSurfaces`, `retentionExampleSmokeDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationDocumentedFields`, `retentionExampleSmokeDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationDocumentedValues`, `screenshotArtifactManifestRetentionExampleSmokeDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationMachineReadable`, `screenshotArtifactManifestRetentionExampleSmokeDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerMachineReadable`, `failure message documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message documentation checker polish`; forbidden persistence surfaces remain `localStorage`, `sessionStorage`, `export/import`, `Tauri payload`. These checker-only markers are not written to localStorage, sessionStorage, export/import JSON, Tauri payload, backend storage, or runtime state.
-
-Desktop CM saved layout folder reorder status history timestamp filter preset help tooltip focus-visible visual regression screenshot artifact manifest retention policy example smoke documentation checker failure message documentation checker failure message documentation polish keeps that checker-documentation failure-message contract machine-checked in docs. The documented fields are `screenshotArtifactManifestRetentionExampleSmokeDocumentationCheckerFailureMessageDocumentationCheckerFailureMessagePolish`, `screenshotArtifactManifestRetentionExampleSmokeDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageMachineReadable`, `screenshotArtifactManifestRetentionExampleSmokeDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageNeedles`, `screenshotArtifactManifestRetentionExampleSmokeDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageExamples`, and `screenshotArtifactManifestRetentionExampleSmokeDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageNoPersistence`; documented values include `missing required documentation marker`, `retention example smoke documentation checker failure message documentation checker needle`, `retention example smoke documentation checker failure message documentation checker persistence guard`, `surface`, `needle`, the safe examples `README.md missing required documentation marker for retention example smoke documentation checker failure message documentation checker needle retentionExampleSmokeDocumentationCheckerFailureMessageDocumentationSurfaces` and `README.md missing required documentation marker for retention example smoke documentation checker failure message documentation checker persistence guard localStorage`, and `requireDocumentationMarker`.
-
-Desktop CM saved layout folder reorder status history timestamp filter preset help tooltip focus-visible visual regression screenshot artifact manifest retention policy example smoke documentation checker failure message documentation checker failure message documentation checker polish keeps that failure-message documentation contract guarded by the checker itself. The checker now requires `retentionExampleSmokeDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationSurfaces`, `retentionExampleSmokeDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentedFields`, `retentionExampleSmokeDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentedValues`, `screenshotArtifactManifestRetentionExampleSmokeDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationMachineReadable`, and `screenshotArtifactManifestRetentionExampleSmokeDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerMachineReadable` to remain documented, plus the `failure message documentation checker failure message documentation polish` marker. These checker-only markers remain absent from persisted `localStorage`, `sessionStorage`, `export/import` bundles, and any `Tauri payload`.
-
-Desktop CM saved layout folder reorder status history timestamp filter preset help tooltip focus-visible visual regression screenshot artifact manifest retention policy example smoke documentation checker failure message documentation checker failure message documentation checker failure message polish makes missing failure-message documentation checker markers actionable too. Failure messages include `missing required documentation marker`, `retention example smoke documentation checker failure message documentation checker failure message documentation checker needle`, `retention example smoke documentation checker failure message documentation checker failure message documentation checker persistence guard`, `surface`, and `needle`; safe examples are `README.md missing required documentation marker for retention example smoke documentation checker failure message documentation checker failure message documentation checker needle retentionExampleSmokeDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationSurfaces` and `README.md missing required documentation marker for retention example smoke documentation checker failure message documentation checker failure message documentation checker persistence guard localStorage`. These markers remain documentation-only and are not persisted to app state.
-
-Desktop CM saved layout folder reorder status history timestamp filter preset help tooltip focus-visible visual regression screenshot artifact manifest retention policy example smoke documentation checker failure message documentation checker failure message documentation checker failure message documentation polish keeps that failure-message contract machine-checked in docs. The documented fields are `screenshotArtifactManifestRetentionExampleSmokeDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessagePolish`, `screenshotArtifactManifestRetentionExampleSmokeDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageMachineReadable`, `screenshotArtifactManifestRetentionExampleSmokeDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageNeedles`, `screenshotArtifactManifestRetentionExampleSmokeDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageExamples`, and `screenshotArtifactManifestRetentionExampleSmokeDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageNoPersistence`; documented values include `missing required documentation marker`, `retention example smoke documentation checker failure message documentation checker failure message documentation checker needle`, `retention example smoke documentation checker failure message documentation checker failure message documentation checker persistence guard`, `surface`, `needle`, the safe examples `README.md missing required documentation marker for retention example smoke documentation checker failure message documentation checker failure message documentation checker needle retentionExampleSmokeDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationSurfaces` and `README.md missing required documentation marker for retention example smoke documentation checker failure message documentation checker failure message documentation checker persistence guard localStorage`, and `requireDocumentationMarker`.
-
-Desktop CM saved layout folder reorder status history timestamp filter preset help tooltip focus-visible visual regression screenshot artifact manifest retention policy example smoke documentation checker failure message documentation checker failure message documentation checker failure message documentation checker polish keeps that failure-message documentation contract guarded by the checker itself. The checker now requires `retentionExampleSmokeDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationSurfaces`, `retentionExampleSmokeDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentedFields`, `retentionExampleSmokeDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentedValues`, `screenshotArtifactManifestRetentionExampleSmokeDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationMachineReadable`, and `screenshotArtifactManifestRetentionExampleSmokeDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerMachineReadable` to remain documented, plus the `failure message documentation checker failure message documentation checker polish` marker. These checker-only markers remain absent from persisted `localStorage`, `sessionStorage`, `export/import` bundles, and any `Tauri payload`.
-
-Desktop CM saved layout folder reorder status history timestamp filter preset help tooltip focus-visible visual regression screenshot artifact manifest retention policy example smoke documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message polish makes missing failure-message documentation checker markers actionable too. Failure messages include `missing required documentation marker`, `retention example smoke documentation checker failure message documentation checker failure message documentation checker failure message documentation checker needle`, `retention example smoke documentation checker failure message documentation checker failure message documentation checker failure message documentation checker persistence guard`, `surface`, and `needle`; safe examples are `README.md missing required documentation marker for retention example smoke documentation checker failure message documentation checker failure message documentation checker failure message documentation checker needle retentionExampleSmokeDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationSurfaces` and `README.md missing required documentation marker for retention example smoke documentation checker failure message documentation checker failure message documentation checker failure message documentation checker persistence guard localStorage`. These markers remain documentation-only and are not persisted to app state.
-
-Desktop CM saved layout folder reorder status history timestamp filter preset help tooltip focus-visible visual regression screenshot artifact manifest retention policy example smoke documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message documentation polish keeps that failure-message contract machine-checked in docs. Documentation surfaces are `desktop/packaging-spec.json`, `scripts/check-desktop-packaging-spec.mjs`, `README.md`, `desktop/README.md`, `desktop/BUILD_PREREQUISITES.md`, and `CODEX_HANDOFF.md`. The documented fields are `screenshotArtifactManifestRetentionExampleSmokeDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessagePolish`, `screenshotArtifactManifestRetentionExampleSmokeDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageMachineReadable`, `screenshotArtifactManifestRetentionExampleSmokeDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageNeedles`, `screenshotArtifactManifestRetentionExampleSmokeDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageExamples`, and `screenshotArtifactManifestRetentionExampleSmokeDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageNoPersistence`; documented values include `missing required documentation marker`, `retention example smoke documentation checker failure message documentation checker failure message documentation checker failure message documentation checker needle`, `retention example smoke documentation checker failure message documentation checker failure message documentation checker failure message documentation checker persistence guard`, `surface`, `needle`, the safe examples `README.md missing required documentation marker for retention example smoke documentation checker failure message documentation checker failure message documentation checker failure message documentation checker needle retentionExampleSmokeDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationSurfaces` and `README.md missing required documentation marker for retention example smoke documentation checker failure message documentation checker failure message documentation checker failure message documentation checker persistence guard localStorage`, and `requireDocumentationMarker`.
-
-Desktop CM saved layout folder reorder status history timestamp filter preset help tooltip focus-visible visual regression screenshot artifact manifest retention policy example smoke documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message documentation checker polish keeps that failure-message documentation contract guarded by the checker itself. The checker now requires `retentionExampleSmokeDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationSurfaces`, `retentionExampleSmokeDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationDocumentedFields`, `retentionExampleSmokeDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationDocumentedValues`, `screenshotArtifactManifestRetentionExampleSmokeDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationMachineReadable`, and `screenshotArtifactManifestRetentionExampleSmokeDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerMachineReadable` to remain documented, plus the `failure message documentation checker failure message documentation checker failure message documentation checker polish` marker. These checker-only markers remain absent from persisted `localStorage`, `sessionStorage`, `export/import` bundles, and any `Tauri payload`.
-
-Desktop CM saved layout folder reorder status history timestamp filter preset help tooltip focus-visible visual regression screenshot artifact manifest retention policy example smoke documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message polish makes missing failure-message documentation checker markers actionable too. Failure messages include `missing required documentation marker`, `retention example smoke documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message documentation checker needle`, `retention example smoke documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message documentation checker persistence guard`, `surface`, and `needle`; safe examples are `README.md missing required documentation marker for retention example smoke documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message documentation checker needle retentionExampleSmokeDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationSurfaces` and `README.md missing required documentation marker for retention example smoke documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message documentation checker persistence guard localStorage`. These markers remain documentation-only and are not persisted to app state.
-
-Desktop CM saved layout folder reorder status history timestamp filter preset help tooltip focus-visible visual regression screenshot artifact manifest retention policy example smoke documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message documentation polish keeps that failure-message contract machine-checked in docs. Documentation surfaces are `desktop/packaging-spec.json`, `scripts/check-desktop-packaging-spec.mjs`, `README.md`, `desktop/README.md`, `desktop/BUILD_PREREQUISITES.md`, and `CODEX_HANDOFF.md`. The documented fields are `screenshotArtifactManifestRetentionExampleSmokeDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessagePolish`, `screenshotArtifactManifestRetentionExampleSmokeDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageMachineReadable`, `screenshotArtifactManifestRetentionExampleSmokeDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageNeedles`, `screenshotArtifactManifestRetentionExampleSmokeDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageExamples`, and `screenshotArtifactManifestRetentionExampleSmokeDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageNoPersistence`; documented values include `missing required documentation marker`, `retention example smoke documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message documentation checker needle`, `retention example smoke documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message documentation checker persistence guard`, `surface`, `needle`, the safe examples `README.md missing required documentation marker for retention example smoke documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message documentation checker needle retentionExampleSmokeDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationSurfaces` and `README.md missing required documentation marker for retention example smoke documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message documentation checker persistence guard localStorage`, and `requireDocumentationMarker`. These documentation markers are checker-only and remain absent from persisted `localStorage`, `sessionStorage`, `export/import` bundles, and any `Tauri payload`.
-
-Desktop CM saved layout folder reorder status history timestamp filter preset help tooltip focus-visible visual regression screenshot artifact manifest retention policy example smoke documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message documentation checker polish keeps that documentation contract guarded by the checker itself. The checker now requires `retentionExampleSmokeDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationSurfaces`, `retentionExampleSmokeDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationDocumentedFields`, `retentionExampleSmokeDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationDocumentedValues`, `screenshotArtifactManifestRetentionExampleSmokeDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationMachineReadable`, and `screenshotArtifactManifestRetentionExampleSmokeDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerMachineReadable` to remain documented, plus the `failure message documentation checker failure message documentation checker failure message documentation checker failure message documentation checker polish` marker. These checker-only markers remain absent from persisted `localStorage`, `sessionStorage`, `export/import` bundles, and any `Tauri payload`.
-
-Desktop CM saved layout folder reorder status history timestamp filter preset help tooltip focus-visible visual regression screenshot artifact manifest retention policy example smoke documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message polish makes missing documentation-checker markers actionable too. Failure messages include `missing required documentation marker`, `retention example smoke documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message documentation checker needle`, `retention example smoke documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message documentation checker persistence guard`, `surface`, and `needle`; safe examples are `README.md missing required documentation marker for retention example smoke documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message documentation checker needle retentionExampleSmokeDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationSurfaces` and `README.md missing required documentation marker for retention example smoke documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message documentation checker persistence guard localStorage`. These markers remain documentation-only and are not persisted to app state.
-
-Desktop CM saved layout folder reorder status history timestamp filter preset help tooltip focus-visible visual regression screenshot artifact manifest retention policy example smoke documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message documentation polish keeps that final failure-message contract machine-checked in docs. Documentation surfaces are `desktop/packaging-spec.json`, `scripts/check-desktop-packaging-spec.mjs`, `README.md`, `desktop/README.md`, `desktop/BUILD_PREREQUISITES.md`, and `CODEX_HANDOFF.md`. The documented fields are `screenshotArtifactManifestRetentionExampleSmokeDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessagePolish`, `screenshotArtifactManifestRetentionExampleSmokeDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageMachineReadable`, `screenshotArtifactManifestRetentionExampleSmokeDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageNeedles`, `screenshotArtifactManifestRetentionExampleSmokeDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageExamples`, and `screenshotArtifactManifestRetentionExampleSmokeDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageNoPersistence`; documented values include `missing required documentation marker`, `retention example smoke documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message documentation checker needle`, `retention example smoke documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message documentation checker persistence guard`, `surface`, `needle`, the safe examples `README.md missing required documentation marker for retention example smoke documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message documentation checker needle retentionExampleSmokeDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationSurfaces` and `README.md missing required documentation marker for retention example smoke documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message documentation checker persistence guard localStorage`, and `requireDocumentationMarker`. These documentation markers are checker-only and remain absent from persisted `localStorage`, `sessionStorage`, `export/import` bundles, and any `Tauri payload`.
-
-Desktop CM saved layout folder reorder status history timestamp filter preset help tooltip focus-visible visual regression screenshot artifact manifest retention policy example smoke documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message documentation checker polish keeps that documentation contract guarded by the checker itself. The checker now requires `retentionExampleSmokeDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationSurfaces`, `retentionExampleSmokeDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationDocumentedFields`, `retentionExampleSmokeDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationDocumentedValues`, `screenshotArtifactManifestRetentionExampleSmokeDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationMachineReadable`, and `screenshotArtifactManifestRetentionExampleSmokeDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerMachineReadable` to remain documented, plus the `failure message documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message documentation checker polish` marker. These checker-only markers remain absent from persisted `localStorage`, `sessionStorage`, `export/import` bundles, and any `Tauri payload`.
-
-Desktop CM saved layout folder reorder status history timestamp filter preset help tooltip focus-visible visual regression screenshot artifact manifest retention policy example smoke documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message polish makes missing final checker documentation markers actionable too. Failure messages include `missing required documentation marker`, `retention example smoke documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message documentation checker needle`, `retention example smoke documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message documentation checker persistence guard`, `surface`, and `needle`; safe examples are `README.md missing required documentation marker for retention example smoke documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message documentation checker needle retentionExampleSmokeDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationSurfaces` and `README.md missing required documentation marker for retention example smoke documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message documentation checker persistence guard localStorage`. These markers remain documentation-only and are not persisted to app state.
-
-Desktop CM saved layout folder reorder status history timestamp filter preset help tooltip focus-visible visual regression screenshot artifact manifest retention policy example smoke documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message documentation polish keeps the final checker failure-message contract machine-checked in docs. Spec now declares `screenshotArtifactManifestRetentionExampleSmokeDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationMachineReadable`, `screenshotArtifactManifestRetentionExampleSmokeDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationSurfaces`, `screenshotArtifactManifestRetentionExampleSmokeDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationDocumentedFields`, and `screenshotArtifactManifestRetentionExampleSmokeDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationDocumentedValues`. Documentation surfaces are `desktop/packaging-spec.json`, `scripts/check-desktop-packaging-spec.mjs`, `README.md`, `desktop/README.md`, `desktop/BUILD_PREREQUISITES.md`, and `CODEX_HANDOFF.md`. The documented fields are `screenshotArtifactManifestRetentionExampleSmokeDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessagePolish`, `screenshotArtifactManifestRetentionExampleSmokeDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageMachineReadable`, `screenshotArtifactManifestRetentionExampleSmokeDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageNeedles`, `screenshotArtifactManifestRetentionExampleSmokeDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageExamples`, and `screenshotArtifactManifestRetentionExampleSmokeDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageNoPersistence`; documented values include `missing required documentation marker`, `retention example smoke documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message documentation checker needle`, `retention example smoke documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message documentation checker persistence guard`, `surface`, `needle`, the safe examples `README.md missing required documentation marker for retention example smoke documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message documentation checker needle retentionExampleSmokeDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationSurfaces` and `README.md missing required documentation marker for retention example smoke documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message documentation checker persistence guard localStorage`, and `requireDocumentationMarker`. These documentation markers are checker-only and remain absent from persisted `localStorage`, `sessionStorage`, `export/import` bundles, and any `Tauri payload`.
-
-Desktop CM saved layout folder reorder status history timestamp filter preset help tooltip focus-visible visual regression screenshot artifact manifest retention policy example smoke documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message documentation checker polish keeps that final documentation contract guarded by the checker itself. The checker now requires `retentionExampleSmokeDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationSurfaces`, `retentionExampleSmokeDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationDocumentedFields`, `retentionExampleSmokeDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationDocumentedValues`, `screenshotArtifactManifestRetentionExampleSmokeDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationMachineReadable`, and `screenshotArtifactManifestRetentionExampleSmokeDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerMachineReadable` to remain documented, plus the `failure message documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message documentation checker polish` marker. These checker-only markers remain absent from persisted `localStorage`, `sessionStorage`, `export/import` bundles, and any `Tauri payload`.
-
-Desktop CM saved layout folder reorder status history timestamp filter preset help tooltip focus-visible visual regression screenshot artifact manifest retention policy example smoke documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message polish makes missing final documentation-checker markers actionable too. Spec now declares `screenshotArtifactManifestRetentionExampleSmokeDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessagePolish`, `screenshotArtifactManifestRetentionExampleSmokeDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageMachineReadable`, `screenshotArtifactManifestRetentionExampleSmokeDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageNeedles`, `screenshotArtifactManifestRetentionExampleSmokeDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageExamples`, and `screenshotArtifactManifestRetentionExampleSmokeDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageNoPersistence`. Failure messages include `missing required documentation marker`, `retention example smoke documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message documentation checker needle`, `retention example smoke documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message documentation checker persistence guard`, `surface`, and `needle`; safe examples are `README.md missing required documentation marker for retention example smoke documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message documentation checker needle retentionExampleSmokeDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationCheckerFailureMessageDocumentationSurfaces` and `README.md missing required documentation marker for retention example smoke documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message documentation checker failure message documentation checker persistence guard localStorage`. These markers remain documentation-only and are not persisted to app state.
-
-Existing remote API profile, local sidecar, and direct Kubernetes/keychain paths remain prototype-only scaffolds. The local sidecar no longer starts by default in the desktop product path; it requires `KUVIEWER_DESKTOP_ENABLE_PROTOTYPE_SIDECAR=1` for explicit prototype work. The web app must not expose SSH.
-
-The Flow view is intended to feel closer to real request movement than a generic resource graph. It derives paths such as:
-
-```text
-External client -> Ingress -> Service -> Pod -> Node
-In-cluster client -> Service -> Pod -> Node
-```
-
-The first implementation uses the same topology edge contract as the graph. The real Kubernetes connector should build those edges from fields visible in `kubectl get ... -o yaml`, including Ingress backends, Service selectors, EndpointSlice endpoints, Pod `spec.nodeName`, and Pod ConfigMap/Secret/PVC references.
-
-NetworkPolicy rendering is policy intent, not observed CNI traffic. Kuviewer parses `policyTypes`, `ingress`, `egress`, peers, and ports, then infers `allows-ingress` / `allows-egress` edges from selectors that can be resolved against the loaded Pod and Namespace labels. `matchLabels` and the `In`, `NotIn`, `Exists`, and `DoesNotExist` `matchExpressions` operators are evaluated; `ipBlock` remains summary-only.
-
-## MVP flow
-
-1. Build topology UI, source modes, upload parser, and traffic flow view.
-2. Validate resource graph, traffic flow, filters, color modes, node dragging, and detail panel.
-3. Add backend API with server-side admin token validation for live mode.
-4. Add native Kubernetes read-only connector.
-5. Add real sample infrastructure manifest and in-cluster deployment manifests.
-
-## Local frontend
+Frontend:
 
 ```bash
 cd website
@@ -231,505 +52,102 @@ npm install
 npm run dev
 ```
 
-Development URL:
-
-```text
-http://127.0.0.1:5174
-```
-
-Suggested local/admin token:
-
-```text
-kuviewer-admin
-```
-
-Upload and Mock modes do not require a token. Live Cluster mode stores the entered token in `sessionStorage`, sends it as a `Bearer` token, and lets the server validate it. The local API server defaults to `kuviewer-admin` only when it listens on loopback; public binds such as `0.0.0.0:8080` require `KUVIEWER_ADMIN_TOKEN`.
-
-## Upload mode
-
-The default UI source is `Upload YAML`. It accepts:
-
-- `.yaml` and `.yml` manifests, including multi-document YAML
-- Kubernetes `List` JSON/YAML documents
-- `.zip` archives containing YAML or JSON manifests
-- exported Kuviewer topology JSON from the `Export` button
-
-The parser builds the same topology contract as the live connector. It infers relationships from Kubernetes fields commonly visible in `kubectl get ... -o yaml`, including owner references, Ingress and Gateway route backends, Gateway route parent Gateways, Service selectors, Pod node scheduling, ServiceAccount use, ConfigMap/Secret env references, mounted volumes, PVC/PV bindings, StorageClass references, and safe CustomResource spec references. Secret values are never decoded or displayed; uploaded Secret summaries show type/key count only.
-
-Before uploading, the UI lets you set a browser-local cluster name and cluster id for the bundle. Empty values fall back to `uploaded-bundle`, and the chosen cluster id is used in generated topology JSON exports. Upload diagnostics show skipped files, YAML/JSON parse errors, unsupported Kubernetes kinds, and import validation errors without displaying manifest body content.
-
-## Local API server
-
-The server currently exposes the same topology contract as the frontend mock data.
+Server:
 
 ```bash
 cd server
-go run ./cmd/kuviewer-server
+KUVIEWER_SOURCE=mock KUVIEWER_ADMIN_TOKEN=replace-me go run ./cmd/kuviewer-server
 ```
 
-Default loopback server settings:
-
-```text
-KUVIEWER_LISTEN_ADDR=127.0.0.1:8080
-KUVIEWER_ADMIN_TOKEN=kuviewer-admin
-KUVIEWER_CORS_ORIGIN=
-KUVIEWER_SOURCE=mock
-KUVIEWER_RESOURCE_VIEWS_FILE=
-KUVIEWER_SNAPSHOT_CACHE_TTL=10s
-```
-
-Set `KUVIEWER_CORS_ORIGIN=http://127.0.0.1:5174` only when the Vite dev server calls a separately running local API server.
-
-When `KUVIEWER_LISTEN_ADDR` is set to a non-loopback address, `KUVIEWER_ADMIN_TOKEN` must be set explicitly or the server exits before listening.
-
-API endpoints:
-
-```text
-GET /healthz
-GET /api/status
-GET /api/topology
-GET /api/capabilities
-GET /api/resources?query=&cluster=&namespace=&kind=&status=&sort=kind&direction=asc&limit=200&cursor=
-GET /api/resource-views
-PUT /api/resource-views
-GET /api/resources/{kind}/{namespace-or--}/{name}
-GET /api/resources/{kind}/{namespace-or--}/{name}/events
-GET /api/resources/{kind}/{namespace-or--}/{name}/logs
-GET /api/resources/{kind}/{namespace-or--}/{name}/logs/stream
-Authorization: Bearer <admin-token>
-```
-
-In live Kubernetes mode, `/api/capabilities` performs a bounded read-only probe of the resource APIs used by Kuviewer and reports only safe access metadata: readable, RBAC denied, authentication failed, API not installed, request unavailable, or policy protected. The connector diagnostics panel groups these results by API area and highlights unavailable required Core resources. Probe responses never include Kubernetes object bodies, raw provider errors, credentials, or Secret values; Secret values are always reported as protected and are not queried.
-
-The resource explorer endpoints are read-only. They expose metadata, labels, redacted annotations, age/owner/uid summary, status, safe summary/preview data, safe YAML preview, and topology relations derived from the current snapshot. The YAML preview is generated from Kuviewer safe metadata and summaries, not from raw Kubernetes manifests. Secret values, `data`, and `stringData` are not returned. Live resource lists use server-side search/exact filters, deterministic sorting, and an opaque cursor with a maximum page size of 200; omitting `limit` keeps the older full-list response compatible. The browser loads additional pages only after a user click and receives safe global filter facets in response metadata. The resource list supports local keyboard navigation with ArrowUp/ArrowDown, Home/End, and Enter-to-detail focus. It also supports memory-only bulk selection for the currently loaded filter results with checkbox selection, Space toggle, Shift+Arrow/Home/End range selection, Ctrl/Cmd+A select all, and Escape clear. User-click copy/export actions are limited to safe inventory fields such as cluster, namespace, kind, name, status, counts, summary keys, and relation count. The detail panel provides a compact scope/age/owner/signals overview, section jump badges, status health signals, and local keyboard navigation for scanning read-only sections without storing resource data.
-
-Successful topology snapshots are cached for `KUVIEWER_SNAPSHOT_CACHE_TTL` (`10s` by default), and concurrent topology/resource/detail requests share one in-flight Kubernetes collection. `GET /api/topology?refresh=true` bypasses a fresh cache entry for explicit refresh. Set the TTL to `0`, `off`, or `disabled` to disable caching. Authenticated API responses use `Cache-Control: no-store`; cache hit/miss/shared state is exposed only as safe response headers.
-
-Resource health signals are computed in the browser from the existing safe status and summary fields. They highlight common read-only causes such as Pod readiness, restarts, workload replica gaps, Service endpoint gaps, Job failures, PVC/PV phase, routing summaries, and NetworkPolicy intent. They do not expose raw manifests or Secret values.
-
-Snapshot comparison keeps up to eight topology captures/imports in browser memory and lets users select separate baseline and current entries; the live/current screen remains available as the default comparison target. History entries can be renamed or individually deleted with inline confirmation, and deleting a selected entry safely resets that selection. The selected history and topology data are never written to localStorage, sessionStorage, URLs, or server storage. Changes are separated into resource, relation, and cluster drill-down views. Resource changes compare safe status, label, annotation-key, owner, and safe summary fields. Relation changes show added/removed/changed relation type, source and target resource identity, confidence, and source field; they can be grouped by relation type, shown as a flat list, and filtered by multiple relation types. Cluster changes show provider/version, node readiness, running/warning Pod counts, and namespace-count changes. Large result tables keep the full filtered result set while rendering only the current scroll window plus overscan rows. Users can explicitly download the current filtered scope as safe JSON or CSV. Export files contain safe identities/status/evidence/cluster summary fields only, omit the UI search query and raw resource fields, and neutralize formula-leading CSV cells. Exported diff JSON can be re-opened as a read-only preview after strict schema, size, count, allowed-field, and string-length validation; import dispatches by explicit schema version and rejects unsupported versions instead of guessing. Diff JSON is not treated as a topology snapshot. Secret summary values are not included in comparison output, and history, grouping mode, filters, search, scroll state, imported preview, and generated files are never persisted or synchronized by Kuviewer.
-
-The Resource Explorer detail panel shows a compact resource identity header, active section indicator, open section count, and a section navigator for scanning `Metadata`, `Status`, `Safe Preview`, `YAML Preview`, `Labels`, `Annotations`, `Relations`, `Events`, and `Logs`. Users can jump to a section, expand every detail section, collapse every detail section, or restore the default detail sections (`Metadata`, `Status`, `Safe Preview`, `Relations`, `Events`) without changing resource data. When the detail panel has focus, keyboard shortcuts support `J/K` section navigation, `O` active-section toggle, `E` expand all, `C` collapse all, `R` default sections, and `1-9` direct section jumps; shortcuts are ignored inside editable controls. Safe Preview supports local key/value search with match highlighting and previous/next navigation for the selected resource. Detail section open state, navigator state, keyboard shortcut state, and Safe Preview search state are browser-memory UI state only and are not written to localStorage, URLs, saved views, team saved views, JSON export/import, or backend APIs.
-
-Resource Explorer saved views store only the list filters the user explicitly saves: search text, cluster, namespace, kind, and status, plus the saved view name/group/order metadata. Saved views can be quick-applied from grouped sections, scanned through folder summary/chips with visible folder expand/collapse controls, filtered in-memory by saved view name/group/filter summary, reordered within each group by drag handle or up/down controls when search is clear, bulk-selected for selected-only export/group move/inline-confirm delete, updated by saving with the same name, renamed inline without changing filters, moved between groups, cleared from the current filter controls with the reset button, shared as a filter-only URL, exported as browser-local JSON with scope/timestamp filenames, imported back from array JSON or `{ "items": [...] }` JSON, and explicitly synced with a server-side team saved view collection when Live Cluster mode is unlocked with an admin token. Import/export actions show an in-page summary with filename, valid/skipped counts, folders, and import format, but the summary is not persisted. Resource Explorer filter changes quietly sync into the browser URL with `view=resources` plus optional `source`, `resourceQuery`, `resourceCluster`, `resourceNamespace`, `resourceKind`, and `resourceStatus` query parameters. Default filter values are omitted, invalid cluster/namespace/kind/status values fall back to `all` for the current data source, switching away from Resource Explorer removes the resource filter query, and browser back/forward restores the view, source, and filters. Local saved views use browser `localStorage` key `kuviewer_resource_view_presets`; saved view folder collapse state uses `kuviewer_resource_view_collapsed_groups` as UI preference only. The saved view search text, folder chip state beyond collapse preference, import/export summary, team compare preview, team sync summary, and bulk selection state are UI-only and are not persisted, exported, synced, or encoded in URLs; reorder controls are disabled while saved view search is active so hidden matches cannot be moved accidentally. Team saved views use `GET /api/resource-views` and `PUT /api/resource-views`, both protected by `Authorization: Bearer <admin-token>`, with response shape `{ "items": [...], "metadata": { "version": 0, "updatedAt": 0, "count": 0, "storage": "memory" } }`; PUT requests still send `{ "items": [...] }`, and older file-backed `{ "items": [...] }` payloads remain readable. Team load first shows a local-vs-team compare preview with new, changed, identical, local-only, skipped, max-limit-dropped counts, and server snapshot metadata. Team save first compares the current browser saved views with the server-side team collection and highlights new, changed, identical, server-only views, and the current server snapshot before replacing the team collection. Team load/save then shows an in-page sync summary with count, skipped items, folders, local-before count, conflict/new/duplicate counts, and the resulting snapshot version/update time/count/storage when available. To persist team saved views across server restarts, set `KUVIEWER_RESOURCE_VIEWS_FILE=/path/to/resource-views.json`; when unset, the server keeps them in memory only. Snapshot metadata describes only the saved view collection state and does not include resource data, Events, logs, Secret values, kubeconfigs, cloud credentials, private keys, or admin tokens. Both local and team saved views include only preset fields and do not store those sensitive values. Saved view rename/group/order/bulk edits, JSON import/export, and team sync are triggered by user clicks; local rename/group/order/bulk changes do not automatically write to the team store until the user reviews the compare preview and confirms team save. When imported or team views have the same name as a browser-local view but different filters, group, or order metadata, Kuviewer shows an inline conflict panel instead of silently overwriting; the user can prefer the incoming view, keep the current browser view, or rename the incoming view to keep both. The resource list sort preference stores only `{ field, direction }` under `kuviewer_resource_list_sort`; it is not included in saved view URLs, JSON export/import, or team saved views. The resource list column preference stores only optional column visibility under `kuviewer_resource_list_columns`; `Kind`, `Name`, and `Status` remain always visible and column preferences are not included in saved views or share URLs. The resource list density, resource detail density, and log density toggles store only `comfortable` or `compact` UI preferences under `kuviewer_resource_list_density`, `kuviewer_resource_detail_density`, and `kuviewer_log_density`. The live Events auto refresh toggle stores only `true` or `false` under `kuviewer_events_auto_refresh`, and the live Events warning notification toggle stores only `true` or `false` under `kuviewer_events_warning_notifications`.
-
-The active Resource Explorer filter chips are derived from the current search/cluster/namespace/kind/status controls. Each chip can clear one filter, while `Clear all` uses the same reset behavior as the saved view reset button. The chip UI is not a saved view field and is not written to localStorage, team saved views, JSON export/import, or URLs beyond the existing filter query parameters.
-
-In live Kubernetes mode, `/api/resources/{kind}/{namespace-or--}/{name}/events` reads core v1 Events with an `involvedObject` field selector and returns newest events first. The Resource Explorer fetches Events when a live resource is selected, lets the user manually refresh the selected resource's Events, and can auto refresh the selected resource's Events every 30 seconds when the Events toggle is enabled. Loading and last-refreshed status are shown without storing them. The Resource Explorer can filter the currently displayed Events locally in the browser by text, severity/type, and time range (`all`, `1h`, `6h`, `24h`, `7d`), sort them newest-first or oldest-first, pin important events to the top of the current detail view, export the currently visible Events as browser-local CSV or JSON files after a user click, and group unpinned events by severity/type so Warning/Error style events appear before Normal events. When the in-app warning notification preference is enabled, the initial Events fetch only establishes a baseline; later manual or automatic refreshes show an in-app banner, session-only `NEW` chip, `NEW N` count, optional `NEW only` filter, and `NEW clear` action for newly observed Warning/Error Events. The banner can be dismissed without clearing markers, or the markers can be cleared from the banner or Events header to remove the banner, `NEW` markers, and `NEW only` filter. This does not use browser system notification permissions. Warning counts are surfaced in the detail badges, and Event cards show type, reason, source, absolute timestamp, and relative age for quick scanning. Missing or unparseable timestamps appear only in the `all` time range, sort after timestamped Events, and render as `timestamp unknown`. Event filter text, severity selection, time range, sort order, pinned Events, refresh status, notification state/history, `NEW` markers, `NEW only` filter, exported files, and Event records are not persisted by Kuviewer. If Events are unavailable because of RBAC or API differences, Kuviewer returns an empty event list with a safe warning instead of failing the whole resource detail panel. Upload and mock modes keep returning an empty event list.
-
-In live Kubernetes mode, `/api/resources/Pod/{namespace}/{name}/logs` reads the selected Pod's recent logs with `tailLines=200`. Add `?container=name` to read a specific container or initContainer, and `?previous=true` to read the previous terminated container instance when Kubernetes has one. `/logs/stream` uses the same query shape and follows current Pod logs as newline-delimited JSON; the browser keeps only the latest 500 displayed lines for the active connection. Follow mode can be paused without closing the stream; paused lines stay in a browser-memory pending buffer until the user clicks resume, and the pending buffer is capped at 500 lines. The Resource Explorer can filter the currently displayed log lines locally in the browser, show match count/current position, jump to previous/next matches with buttons or Enter/Shift+Enter, parse timestamp prefixes for display and time range filtering (`all`, `1h`, `6h`, `24h`, `7d`), sort by received/newest/oldest order, switch between comfortable and compact log display density, and copy or download the currently displayed or loaded raw lines when the user clicks the controls. Logs without parseable timestamps remain visible in the `all` range only and sort after timestamped lines in time-based order. Filter text, match position, time range selection, sort order, pause state, pending logs, copied text, downloaded files, and log lines are not persisted by Kuviewer. Downloads are generated as browser-local `.log` files only after a user click. Logs are read-only, fetched only when the user clicks the logs controls, and are not stored by Kuviewer. Kubernetes logs can contain application secrets, so grant `pods/log` only to clusters where this exposure is acceptable. Upload and mock modes show a logs empty state.
-
-The Resource Explorer relation panel groups related resources by direction and edge type, supports local relation search, and can open a related node directly in the topology view. Relation search text is not stored.
-
-Live and upload modes also surface `CustomResourceDefinition` objects as read-only inventory nodes. Kuviewer shows the CRD group, kind, plural name, scope, served versions, and storage version. When a CRD definition is available, Kuviewer can also show matching custom resource instances as `CustomResource` nodes with safe metadata, CRD context, spec/status field counts, condition summaries, and inferred references to existing Services, Secrets, ConfigMaps, ServiceAccounts, or other known CustomResources. It does not expose raw custom resource spec or status values.
-
-To make the frontend read from the API server, create `website/.env.local`:
-
-```bash
-VITE_API_BASE_URL=http://127.0.0.1:8080
-```
-
-Then restart `npm run dev`.
-
-In production/static builds, the frontend defaults to the same origin API when `VITE_API_BASE_URL` is not set. For example, a page served from `http://127.0.0.1:8080` calls `http://127.0.0.1:8080/api/topology`.
-
-## Kubernetes API source
-
-The first Kubernetes provider is implemented as a read-only snapshot reader using the Kubernetes REST API.
-
-In-cluster mode:
-
-```bash
-KUVIEWER_SOURCE=kubernetes \
-KUVIEWER_ADMIN_TOKEN=your-ui-token \
-go run ./cmd/kuviewer-server
-```
-
-When running inside a Pod, Kuviewer reads:
-
-```text
-KUBERNETES_SERVICE_HOST
-KUBERNETES_SERVICE_PORT
-/var/run/secrets/kubernetes.io/serviceaccount/token
-/var/run/secrets/kubernetes.io/serviceaccount/ca.crt
-```
-
-External API mode:
-
-```bash
-KUVIEWER_SOURCE=kubernetes \
-KUVIEWER_KUBE_API_SERVER=https://your-api-server:6443 \
-KUVIEWER_KUBE_BEARER_TOKEN=your-readonly-token \
-KUVIEWER_KUBE_CA_FILE=/path/to/ca.crt \
-go run ./cmd/kuviewer-server
-```
-
-Supported snapshot resources in the first provider:
-
-- Namespace
-- Node
-- Pod
-- ServiceAccount
-- Service
-- EndpointSlice
-- ConfigMap
-- Deployment
-- ReplicaSet
-- StatefulSet
-- DaemonSet
-- Job
-- CronJob
-- HorizontalPodAutoscaler
-- Ingress
-- Gateway
-- HTTPRoute
-- GRPCRoute
-- TLSRoute
-- TCPRoute
-- NetworkPolicy
-- PersistentVolume
-- PersistentVolumeClaim
-- StorageClass
-- CustomResourceDefinition
-- CustomResource instances when the API group/resource is readable
-- referenced Secret metadata only
-- live core v1 Events for the selected resource detail
-- live Pod logs and current-log follow for the selected Pod detail
-
-Secret list/read RBAC is intentionally not granted. Secret nodes are created from Pod references such as `envFrom`, `env.valueFrom`, `volumes.secret`, and `imagePullSecrets`, and values are never displayed. Events, Pod logs, and CustomResourceDefinition read RBAC are granted for read-only resource detail and CRD inventory context. Custom resource instance discovery uses the CRD storage version, falling back to the first served version, and stays optional: RBAC/API failures for a custom resource list do not break the topology. The default Kubernetes manifest does not grant wildcard custom-resource instance access; grant only the specific API groups/resources you want Kuviewer to inventory.
-
-The live connector capability probe uses small `limit=1` list requests with bounded concurrency and classifies only HTTP access outcomes. It does not grant permissions or replace cluster-specific validation. Pod log access remains an on-demand detail action and is not claimed by the general resource capability matrix.
-
-### Real sample infrastructure
-
-Apply [deploy/sample-infra/kuviewer-demo.yaml](deploy/sample-infra/kuviewer-demo.yaml) to create a real Kubernetes topology for UI validation:
-
-```bash
-kubectl apply -f deploy/sample-infra/kuviewer-demo.yaml
-```
-
-It creates sample namespaces with real Kubernetes objects:
-
-- `kuviewer-demo`: gateway/API/db/node-agent baseline topology
-- `kuviewer-commerce`: orders API, queue StatefulSet, Ingress, Secret/ConfigMap references
-- `kuviewer-observability`: telemetry Deployment, telemetry-agent DaemonSet, ConfigMap mounts
-- Services and EndpointSlices for gateway/API/db/queue/telemetry traffic
-- Job, CronJob, HorizontalPodAutoscaler, and NetworkPolicy resources for expanded topology validation
-- NetworkPolicy ingress/egress intent examples, including namespaceSelector + podSelector matching
-- ConfigMap, Secret reference, ServiceAccount, PVC, PV, and StorageClass relationships
-
-Gateway API resources are optional because they require Gateway API CRDs. Kuviewer supports Gateway, HTTPRoute, GRPCRoute, and optional TLSRoute/TCPRoute when those CRDs are installed. Apply [deploy/sample-infra/gateway-api-demo.yaml](deploy/sample-infra/gateway-api-demo.yaml) only on clusters where Gateway API resources are installed:
-
-```bash
-kubectl apply -f deploy/sample-infra/gateway-api-demo.yaml
-```
-
-Remove it when done:
-
-```bash
-kubectl delete namespace kuviewer-demo kuviewer-commerce kuviewer-observability --ignore-not-found
-kubectl delete namespace kuviewer-gateway-demo --ignore-not-found
-```
-
-Do not commit real tokens, kubeconfigs, private keys, Kubernetes Secret values, or cloud credentials.
-
-### Kubernetes smoke test from macOS
-
-Use [scripts/smoke-kubernetes-api.sh](scripts/smoke-kubernetes-api.sh) to test the real Kubernetes provider against the current `kubectl` context. The script creates temporary read-only RBAC, starts Kuviewer locally with `KUVIEWER_SOURCE=kubernetes`, verifies `/api/status` and `/api/topology`, then removes the temporary resources.
-
-Dry-run the temporary manifest first:
-
-```bash
-KUVIEWER_SMOKE_DRY_RUN=1 scripts/smoke-kubernetes-api.sh
-```
-
-Run the actual smoke test:
-
-```bash
-scripts/smoke-kubernetes-api.sh
-```
-
-Keep the local Kubernetes-backed web UI running after the smoke checks:
-
-```bash
-KUVIEWER_SMOKE_HOLD=1 scripts/smoke-kubernetes-api.sh
-```
-
-Default local smoke URL and token:
-
-```text
-http://127.0.0.1:18083
-kuviewer-admin
-```
-
-### Visual smoke test
-
-The website includes a Playwright visual smoke script for checking source modes, topology view, node dragging, traffic flow view, and desktop/mobile horizontal overflow.
-
-Install the Chromium browser once if Playwright asks for it:
+Production-style frontend build:
 
 ```bash
 cd website
-npx playwright install chromium
+VITE_BASE_PATH=/ npm run build
 ```
 
-Run against a local Kuviewer server:
+## Verification
 
 ```bash
 cd website
-KUVIEWER_VISUAL_URL=http://127.0.0.1:18084 \
-KUVIEWER_ADMIN_TOKEN=kuviewer-admin \
+npm run typecheck
+npm run test:unit
+npm run build
+VITE_BASE_PATH=/ npm run build
 npm run test:visual
+KUVIEWER_VISUAL_MODE=mock npm run test:visual
+npm audit
+npm audit --omit=dev
+
+cd ../server
+go test ./...
+go vet ./...
+
+cd ..
+node scripts/check-desktop-packaging-spec.mjs
 ```
 
-Run the upload-mode smoke without needing a live Kubernetes API:
+Visual smoke writes temporary files under `website/artifacts/visual-smoke`. Generated build and smoke directories should be removed after local work.
 
-```bash
-cd website
-KUVIEWER_VISUAL_MODE=upload \
-KUVIEWER_VISUAL_URL=http://127.0.0.1:18084 \
-npm run test:visual
-```
+## Server Configuration
 
-Screenshots are written to `website/artifacts/visual-smoke` by default.
+Common environment variables:
 
-Supported visual modes:
+- `KUVIEWER_SOURCE=mock|kubernetes`
+- `KUVIEWER_ADMIN_TOKEN`: required for protected APIs
+- `KUVIEWER_STATIC_DIR`: built frontend directory
+- `KUVIEWER_ALLOWED_ORIGIN`: optional explicit CORS origin
+- `KUVIEWER_RESOURCE_VIEWS_FILE`: optional team saved-view persistence file
 
-```text
-KUVIEWER_VISUAL_MODE=live
-KUVIEWER_VISUAL_MODE=upload
-KUVIEWER_VISUAL_MODE=mock
-```
+Protected endpoints require `Authorization: Bearer <admin-token>`:
 
-Useful overrides:
+- `GET /api/status`
+- `GET /api/topology`
+- `GET /api/resources`
+- `GET /api/resources/{kind}/{namespace-or--}/{name}`
+- `GET /api/resources/{kind}/{namespace-or--}/{name}/events`
+- `GET /api/resources/{kind}/{namespace-or--}/{name}/logs`
+- `GET /api/resources/{kind}/{namespace-or--}/{name}/logs/stream`
+- `GET|PUT /api/resource-views`
 
-```bash
-KUVIEWER_ADMIN_TOKEN=your-ui-token \
-KUVIEWER_SMOKE_PORT=18084 \
-KUVIEWER_SMOKE_HOLD=1 \
-scripts/smoke-kubernetes-api.sh
-```
+`GET /healthz` remains unauthenticated for container and gateway health checks.
 
-## Single-container build
+## Security Model
 
-The root [Dockerfile](Dockerfile) builds the React frontend and Go API server into one image. The Docker image defaults to root-path static assets for standalone subdomain deployment.
+- Read-only Kubernetes permissions
+- No Secret `data` or `stringData` values
+- Protected API responses use `Cache-Control: no-store`
+- CSP, frame denial, nosniff, referrer, and permissions security headers
+- Constant-time admin token comparison
+- Logs and Events are fetched only on explicit live-mode actions and are not stored by Kuviewer
+- Export files are user-click generated and contain safe metadata only
 
-The final runtime image uses a supported Alpine release and runs as the non-root `kuviewer` user.
+Kubernetes application logs may contain sensitive application output. Grant `pods/log` only where that exposure is acceptable.
 
-```bash
-docker build -t kuviewer:local .
-docker run --rm -p 127.0.0.1:8080:8080 \
-  -e KUVIEWER_ADMIN_TOKEN=kuviewer-admin \
-  kuviewer:local
-```
+## Deployment
 
-Local container URL:
-
-```text
-http://127.0.0.1:8080
-```
-
-The default container build leaves `VITE_API_BASE_URL` empty, so the public UI starts with Upload and Mock modes and does not automatically call the live API. To intentionally enable same-origin live API mode, rebuild with:
-
-```bash
-docker build \
-  --build-arg VITE_BASE_PATH=/ \
-  --build-arg VITE_API_BASE_URL=/api \
-  -t kuviewer:live .
-```
-
-For the older `/kuviewer/` subpath preview build, keep using `npm run build` from `website`, or pass `--build-arg VITE_BASE_PATH=/kuviewer/` to Docker.
-
-## Shared 443 subdomain deployment
-
-Kuviewer can run as a separate service while sharing the server's external HTTPS port with the existing website. The host-level gateway routes by the request domain:
-
-```text
-www.example.com       -> 127.0.0.1:8080
-kuviewer.example.com  -> 127.0.0.1:18085
-```
-
-The two services share external `443`, but they use different localhost ports behind the gateway.
-
-Build the standalone image:
-
-```bash
-docker build --build-arg VITE_BASE_PATH=/ -t kuviewer:local .
-```
-
-Create the runtime env from the example and replace the placeholder admin token before starting:
+Standalone compose binds Kuviewer to localhost so a host gateway can route a dedicated domain to the internal port:
 
 ```bash
 cp deploy/standalone/.env.example deploy/standalone/.env
 docker compose --env-file deploy/standalone/.env -f deploy/standalone/docker-compose.yml up -d
 ```
 
-The tracked compose file binds Kuviewer only to localhost:
+The release workflow builds and pushes through the configured container registry, then performs health-checked rollout with rollback support. Repository secrets and registry credentials are not documented in this repository.
 
-```text
-127.0.0.1:18085 -> container:8080
-```
+## Desktop Local Prototype
 
-Gateway example:
+The Tauri scaffold is retained for local CM/SSH multiple-session exploration. It stores only safe session/view metadata in browser preferences and keeps private-key material in the OS credential store. It is not a downloadable product and does not alter the web product boundary.
 
-```caddyfile
-www.example.com {
-  reverse_proxy 127.0.0.1:8080
-}
+See [desktop/README.md](desktop/README.md), [desktop/BUILD_PREREQUISITES.md](desktop/BUILD_PREREQUISITES.md), and [desktop/packaging-spec.json](desktop/packaging-spec.json).
 
-kuviewer.example.com {
-  reverse_proxy 127.0.0.1:18085
-}
-```
+## Project Notes
 
-The same example is tracked at [deploy/gateway/Caddyfile.kuviewer.example](deploy/gateway/Caddyfile.kuviewer.example). Replace the example domains with your own DNS names; TLS stays the responsibility of the host-level gateway.
+- Next work: [docs/NEXT_WORK.md](docs/NEXT_WORK.md)
+- Current handoff: [CODEX_HANDOFF.md](CODEX_HANDOFF.md)
+- Completed-work summary: [docs/archive/2026-07-completed-work-summary.md](docs/archive/2026-07-completed-work-summary.md)
+- Sample manifests: `samples/`
+- Kubernetes deployment: `deploy/kubernetes/`
+- Standalone deployment: `deploy/standalone/`
 
-Local checks:
-
-```bash
-curl -fsS http://127.0.0.1:18085/healthz
-curl -fsS http://127.0.0.1:18085/robots.txt
-curl -fsS http://127.0.0.1:18085/sitemap.xml
-```
-
-Visual smoke against the standalone service:
-
-```bash
-cd website
-KUVIEWER_VISUAL_URL=http://127.0.0.1:18085/ npm run test:visual
-```
-
-## GitHub Actions deploy
-
-Kuviewer can deploy without a container registry. The workflow in `.github/workflows/deploy.yml` first validates SSH access and remote runtime prerequisites, then builds `kuviewer:local` on the GitHub runner, saves it as a compressed image archive, and tries a short bounded upload to the server over SSH/SCP. If runner-to-server file upload stalls, the deploy continues with a remote Docker build fallback from the same Git ref on the server. The server then updates the Git checkout, either loads the uploaded image or builds it locally, and runs the standalone compose file.
-
-If GitHub-hosted runners cannot receive an SSH banner from the server network path, `.github/workflows/deploy-self-hosted.yml` provides an SSH-free manual fallback. It requires a GitHub Actions self-hosted runner on the target server or an internal network that can run Docker locally, with runner labels `self-hosted` and `kuviewer-deploy`. This workflow does not use `SERVER_SSH_KEY`, `SERVER_SSH_KNOWN_HOSTS`, `ssh-keyscan`, SSH, or SCP. It checks out the selected ref on the self-hosted runner, builds a candidate `kuviewer` image locally, copies tracked files into `DEPLOY_PATH` with `git archive`, preserves the untracked `deploy/standalone/.env`, runs the standalone compose file, performs the same bounded `/healthz` check, and writes the same safe `$DEPLOY_PATH/.kuviewer/deploy-state.json` metadata. It is `workflow_dispatch` only so it does not race the tag-based SSH deploy path.
-
-Required repository secrets:
-
-```text
-SERVER_FHOST
-SERVER_FUSER
-SERVER_PORT
-SERVER_SSH_KEY
-```
-
-Optional non-credential SSH pin. A repository variable is preferred because this is public host-key data, not a credential; the workflow also accepts a secret with the same name for compatibility:
-
-```text
-SERVER_SSH_KNOWN_HOSTS
-```
-
-Deploy SSH preflight uses the same required secrets and does not require a registry or extra credential. It validates the SSH port range, checks TCP reachability to the SSH endpoint, verifies that an SSH banner is received before host key scanning, pins the SSH host key with `StrictHostKeyChecking=yes`, checks remote `git`, `curl`, `gzip`, Docker/Compose availability, verifies `DEPLOY_PATH` and `/tmp` writability, and confirms `deploy/standalone/.env` when an existing checkout is already present. When `SERVER_SSH_KNOWN_HOSTS` is set as a repository variable or secret, the workflow writes that pinned public host key data directly to `known_hosts`, preferring the secret if both exist. Otherwise, host key scan retries run six times, scan `ed25519`, `ecdsa`, then `rsa` sequentially, accept non-empty scan output even when one scan command exits non-zero, and include an IPv4 keyscan fallback without disabling strict host key checking. Runner-side image archives and temporary SSH material are removed in an always-run cleanup step.
-
-To prepare the optional host key pin without printing the key body in logs:
-
-```bash
-node scripts/prepare-deploy-known-hosts.mjs --host <server-host> --port <server-port> --out /tmp/kuviewer-known-hosts
-gh variable set SERVER_SSH_KNOWN_HOSTS < /tmp/kuviewer-known-hosts
-```
-
-The helper also supports validating an existing known_hosts file and setting the repository variable or secret directly:
-
-```bash
-node scripts/prepare-deploy-known-hosts.mjs --from-file /tmp/kuviewer-known-hosts --set-variable
-```
-
-If `ssh-keyscan` is blocked but you can run commands on the server, generate the same pin from public SSH host key files. These `.pub` files are public keys, not private keys:
-
-```bash
-node scripts/prepare-deploy-known-hosts.mjs \
-  --host <server-host> \
-  --port <server-port> \
-  --from-public-key /etc/ssh/ssh_host_ed25519_key.pub \
-  --from-public-key /etc/ssh/ssh_host_ecdsa_key.pub \
-  --from-public-key /etc/ssh/ssh_host_rsa_key.pub \
-  --set-variable
-```
-
-If you cannot run the helper from a trusted local/server shell, the manual `deploy-known-hosts-bootstrap` workflow can populate the repository variable. It first tries `ssh-keyscan`; if keyscan is blocked, it only falls back to SSH `accept-new` when the workflow input `trust_first_connection` is exactly `I_UNDERSTAND_TOFU`. That fallback is trust-on-first-use, so prefer the helper or a copied server `.pub` host key when available. The workflow stores only the public SSH host key pin in `SERVER_SSH_KNOWN_HOSTS` and does not build, upload, deploy, roll back, or mutate the server.
-
-If a workflow reports `ssh-banner-timeout`, TCP opened but the SSH server did not send an SSH banner. Verify that `SERVER_PORT` is the SSH port, `sshd` is listening on that port, cloud/firewall rules allow GitHub-hosted runners, and no proxy or tarpit sits in front of SSH. The same banner check can be run from a trusted shell:
-
-```bash
-node scripts/check-ssh-banner.mjs --host <server-host> --port <server-port>
-```
-
-For a broader no-credential check, run the manual `deploy-ssh-endpoint-diagnostics` workflow or the local helper below. It classifies the endpoint as TCP reachable/unreachable, SSH banner detected/missing, HTTP response detected/missing, and TLS handshake detected/missing without using the deploy private key or changing the server:
-
-```bash
-node scripts/diagnose-ssh-endpoint.mjs --host <server-host> --port <server-port>
-```
-
-On the server, check the daemon and listener before retrying the GitHub workflow:
-
-```bash
-sudo systemctl status ssh --no-pager
-sudo sshd -T | grep -E '^(port|listenaddress) '
-sudo ss -ltnp | grep sshd
-```
-
-If both the workflow keyscan fallback and the helper cannot collect host keys, SSH is not reachable from that network path; verify the server SSH service, port, DNS/IP, and firewall before rerunning the tag deploy.
-
-Before creating a new release tag, the manual `deploy-preflight` workflow can validate only the deploy connection path. It checks required secrets, SSH TCP reachability, the optional pinned host key, strict SSH connection setup, remote `git`/`curl`/`gzip`/Docker/Compose availability, `DEPLOY_PATH`, existing `deploy/standalone/.env`, and temporary write access. It does not build an image, upload files, run compose, roll back, or change the server deployment.
-
-Tag deploy bounds each image upload attempt to 90 seconds, uses two total attempts, and caps the whole upload step at 8 minutes. The first attempt uses SCP; if SCP stalls or fails, the second attempt uses an SSH command-channel stream fallback (`cat >` the remote tar) so deployments are not dependent on the remote SCP/SFTP subsystem. A timed-out SCP attempt prints `scp-upload-timeout`, other SCP failures print `scp-upload-failed`, fallback timeouts print `ssh-stream-upload-timeout`, fallback failures print `ssh-stream-upload-failed`, and successful uploads print `upload-remote-image-verified` after a remote `gzip -t` check. If both upload methods fail, the workflow prints `upload-remote-image-unavailable; remote docker build fallback will run`, continues into the deploy step, checks out the same ref on the server, builds `kuviewer:local` remotely, and reports `remote-build-fallback-start` / `remote-build-fallback-ok`. The workflow removes partial remote image tar files before retrying and never prints raw logs, env files, tokens, kubeconfigs, private keys, cloud credentials, or Secret values. If both upload and remote build fallback fail, run `deploy-ssh-endpoint-diagnostics` and verify SSH/network throughput or use the self-hosted fallback below.
-
-For the self-hosted fallback, install/configure the runner outside this repository and assign the `kuviewer-deploy` label. The runner user needs access to Docker/Compose, `git`, `curl`, and `tar`. Prepare `DEPLOY_PATH` once with an untracked env file before running the workflow:
-
-```bash
-mkdir -p /opt/kuviewer/deploy/standalone
-cp deploy/standalone/.env.example /opt/kuviewer/deploy/standalone/.env
-# edit KUVIEWER_ADMIN_TOKEN before the first deploy
-```
-
-The self-hosted workflow preserves that env file and never prints it. It stores no SSH credential, kubeconfig, cloud credential, private key, admin token, raw logs, or Secret value.
-
-Deploy rollback is local to the server. Before loading the new `kuviewer:local` image, the workflow preserves the existing image as `kuviewer:rollback-${GITHUB_RUN_ID}` when one exists. If the new compose rollout does not pass the bounded `/healthz` retry loop, the workflow retags that preserved image back to `kuviewer:local`, recreates compose, checks health again, and still fails the GitHub Actions run so the failed release is visible. The server writes safe deploy metadata to `$DEPLOY_PATH/.kuviewer/deploy-state.json`, including run id, ref, sha, timestamps, image ids, result, and rollback result. It does not print raw container logs, `.env` content, tokens, kubeconfigs, private keys, cloud credentials, or Secret values.
-
-Optional repository variables, shown with example values:
-
-```text
-DEPLOY_PATH=/opt/kuviewer
-HEALTH_URL=http://127.0.0.1:18085/healthz
-```
-
-Server prerequisite for the selected `DEPLOY_PATH`:
-
-```bash
-cd /opt/kuviewer
-cp deploy/standalone/.env.example deploy/standalone/.env
-# edit KUVIEWER_ADMIN_TOKEN before the first deploy
-```
-
-Deployment triggers:
-
-- Push a release tag matching `v*.*.*`: deploys that tag after confirming the tagged commit is contained in `origin/main`.
-- Manual `workflow_dispatch`: deploys the selected branch, tag, or SHA for controlled operations.
-- Manual `deploy-self-hosted` `workflow_dispatch`: deploys the selected branch, tag, or SHA from a labeled self-hosted runner without SSH/SCP.
-
-## Native Kubernetes install draft
-
-The first manifest is available at [deploy/kubernetes/kuviewer.yaml](deploy/kubernetes/kuviewer.yaml).
-
-Before applying it, change the placeholder admin token:
-
-```yaml
-stringData:
-  admin-token: change-me
-```
-
-Then apply and port-forward:
-
-```bash
-kubectl apply -f deploy/kubernetes/kuviewer.yaml
-kubectl -n kuviewer port-forward svc/kuviewer 8080:8080
-```
-
-Open:
-
-```text
-http://127.0.0.1:8080
-```
-
-The draft RBAC intentionally does not grant `secrets` read access. Secret nodes are inferred from Pod references only. It grants read-only `events` and `pods/log` access so Resource Explorer can show selected-resource Events, recent Pod logs, and current-log follow when the cluster allows it. It also grants CRD definition read access, but it does not grant wildcard custom-resource instance access. Add narrow read rules for specific custom API groups/resources only when you want those instances to appear.
+Local Telegram task notifications use `scripts/notify-telegram.mjs`. The script prefers `TELEGRAM_BOT_TOKEN_TWO`, never prints token/chat values, and is not part of product runtime behavior.

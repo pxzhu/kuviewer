@@ -234,6 +234,21 @@ async function verifySnapshotComparison(page, initialMode, viewportName) {
   }
   await expect(page.getByTestId('snapshot-history-count')).toContainText('8 / 8');
   await expect(page.getByTestId('snapshot-compare-baseline-select').locator(`option[value="${firstBaselineId}"]`)).toHaveCount(1);
+  const historyMetadataDownload = await Promise.all([
+    page.waitForEvent('download'),
+    page.getByTestId('snapshot-history-metadata-export').click(),
+  ]).then(([downloadResult]) => downloadResult);
+  const historyMetadataPath = await historyMetadataDownload.path();
+  if (!historyMetadataPath || !/^kuviewer-snapshot-history-.+\.json$/.test(historyMetadataDownload.suggestedFilename())) {
+    throw new Error(`snapshot history metadata filename/path invalid: ${historyMetadataDownload.suggestedFilename()}`);
+  }
+  const historyMetadataPayload = JSON.parse(await readFile(historyMetadataPath, 'utf8'));
+  if (historyMetadataPayload.kind !== 'kuviewer.snapshotHistoryMetadata' || historyMetadataPayload.count !== 8) {
+    throw new Error('snapshot history metadata export shape is invalid');
+  }
+  if (JSON.stringify(historyMetadataPayload).includes(sensitiveFixtureValue) || historyMetadataPayload.items.some((item) => 'snapshot' in item)) {
+    throw new Error('snapshot history metadata export included topology or sensitive payload data');
+  }
   await page.getByTestId('snapshot-history-manager').locator('summary').click();
   const firstHistoryRow = page.getByTestId('snapshot-history-row').first();
   await firstHistoryRow.getByTestId('snapshot-history-rename').click();

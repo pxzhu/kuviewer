@@ -1,40 +1,42 @@
 # Kuviewer Next Work
 
-이 문서는 `CODEX_HANDOFF.md`의 긴 완료 로그 대신 다음 작업 판단에 필요한 현재 후보만 요약한다.
+이 문서는 다음 작업 판단에 필요한 현재 후보만 유지한다. 완료 이력은 `docs/archive/2026-07-completed-work-summary.md`를 본다.
 
 ## Recommended Order
 
-1. Documentation pruning
-   - `CODEX_HANDOFF.md`의 반복적인 Desktop CM documentation-checker 완료 로그를 archival summary로 접는다.
-   - 완료 로그와 실제 후보를 분리해 다음 작업 선택 비용을 낮춘다.
+1. Live Kubernetes connection verification
+   - Native Kubernetes, k3s, AKS에서 same-origin/API-base live mode를 검증한다.
+   - Capability/RBAC/reachability, Events, Pod logs, Gateway/CRD optional resources를 확인한다.
+   - 10초 snapshot cache, in-flight sharing, server filter/cursor pagination을 실제 규모에서 측정한다.
+   - 출력은 safe metadata로 제한하고 Secret value, token, kubeconfig, private key를 기록하지 않는다.
 
-2. Runtime architecture decision
-   - Web product path는 standalone web/server 배포로 유지한다.
-   - Desktop CM/SSH code는 public installer/download가 아닌 local prototype으로 유지하거나 별도 archive 범위로 줄인다.
-   - Web app에는 SSH/CM controls를 노출하지 않는다.
+2. Resource Explorer panel extraction
+   - Events/Logs 요청·취소·stream 상태는 controller hook으로 분리됐다.
+   - 다음은 Events, Logs, Relations의 큰 JSX를 표시 전용 panel component로 분리한다.
+   - API/storage/wire shape 변경 없이 렌더링 범위와 회귀 위험을 줄인다.
 
-3. Live Kubernetes connection verification
-   - Safe resource capability probe와 connector matrix, 10초 기본 snapshot cache/in-flight request sharing, Resource API server-side filter/cursor pagination은 구현됐다. Same-origin/API-base live mode, authentication/RBAC/reachability/server 진단, capability 분류와 대규모 resource page loading을 실제 클러스터 기준으로 재검증한다.
-   - Secret values, kubeconfig, cloud credential, private key는 계속 표시/저장/커밋하지 않는다.
+3. Frontend regression coverage
+   - `npm run test:unit`은 Desktop safe view model과 snapshot metadata export를 검증한다.
+   - 다음은 server pagination/filter helper와 snapshot comparison reducer를 pure module로 분리해 단위 테스트한다.
+   - Visual smoke는 주요 화면과 브라우저 통합에 집중해 CI 시간을 관리한다.
 
-4. Snapshot comparison refinement
-   - Cluster summary, 관계 변경 drill-down, 80개 초과 결과 windowing, relation-type grouping/multi-filter, safe JSON/CSV export, 최대 8개 browser-memory baseline/current history, history rename/inline-confirm delete, strict versioned diff JSON validation/read-only preview는 구현됐다.
-   - 다음은 diff report끼리의 summary 비교 또는 history metadata export가 실제 사용에 필요한지 검토한다.
-   - history와 선택값은 저장하지 않고 Secret 값은 비교 결과와 import preview에도 노출하지 않는다.
+4. Desktop prototype scope reduction
+   - Web product path는 standalone web/server를 유지하며 SSH/CM controls를 노출하지 않는다.
+   - Desktop CM/SSH는 public installer가 없는 local prototype이다.
+   - Session/layout UI를 더 분리할지, prototype archive로 축소할지 실제 사용 후 결정한다.
 
-5. Remaining bundle cleanup
-   - Desktop CM API와 Resource Explorer list/detail을 별도 lazy chunk로 분리했다.
-   - TopologyCanvas도 dispatcher, shared layout, mobile SVG, desktop React Flow entry로 분리했고 React Flow JS/CSS는 desktop renderer에서만 로드한다.
-   - Resource Explorer detail workspace의 shared types, health/overview 계산, Event/Log/Relation activity helper, UI primitives를 stateful orchestrator에서 분리했고 실제 앱 소스를 검사하지 않던 typecheck script도 project-reference 검증으로 수정했다.
-   - 다음은 stateful Events/Logs controller hook과 큰 JSX section을 별도 panel component로 분리한다.
+5. Snapshot comparison follow-up
+   - Metadata-only history export는 완료됐다.
+   - Diff report-to-report summary 비교는 실제 사용 요구가 확인될 때만 추가한다.
+   - History와 선택값은 저장하지 않고 Secret 값은 모든 비교/export/import에서 제외한다.
 
 6. Local automation hygiene
-   - `scripts/notify-telegram.mjs`처럼 CLI entrypoint와 reusable helper를 분리하는 패턴을 다른 scripts에도 적용한다.
-   - Telegram token은 `TELEGRAM_BOT_TOKEN_TWO`를 우선 사용하고, 필요하면 `--require-token-source TELEGRAM_BOT_TOKEN_TWO`로 fallback을 금지한다.
+   - CLI entrypoint와 reusable helper 분리 패턴을 다른 scripts에도 적용한다.
+   - Telegram은 `TELEGRAM_BOT_TOKEN_TWO`를 우선하고 필요하면 required token-source guard를 사용한다.
 
 ## Current Guardrails
 
 - Git 작업은 사용자가 명시 요청할 때만 한다.
-- 작업 전/후 `website/dist`, `website/artifacts/visual-smoke`, `desktop/src-tauri/binaries`와 preview/Playwright/Tauri 프로세스를 정리한다.
-- UI 작업 여부와 무관하게 작업 후 현재 화면 스크린샷을 남긴다.
-- 작업 완료 전 typecheck/build/test/audit와 민감값 스캔을 수행한다.
+- 작업 전후 `website/dist`, `website/artifacts/visual-smoke`, `desktop/src-tauri/binaries`와 임시 프로세스를 정리한다.
+- UI 작업 여부와 관계없이 작업 후 현재 화면 스크린샷을 남긴다.
+- typecheck, unit/build/visual tests, backend tests, audit와 민감값 검사를 수행한다.
