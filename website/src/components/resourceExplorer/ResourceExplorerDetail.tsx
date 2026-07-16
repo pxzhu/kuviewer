@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 import { Activity, AlertTriangle, ArrowDown, ArrowUp, Bookmark, Boxes, CheckCircle2, Copy, Download, FileText, GitBranch, Link2, RefreshCw, RotateCcw, Search, Tags, X } from "lucide-react";
-import { fetchResourceEvents, fetchResourceLogs, streamResourceLogs } from "../../services/resourceApi";
-import type { ResourceEvent, ResourceExplorerItem } from "../../types/resourceExplorer";
+import type { ResourceExplorerItem } from "../../types/resourceExplorer";
 import {
   DetailSection,
   EventSeverityChips,
@@ -16,7 +15,6 @@ import {
   countEventSeverities,
   countNewEvents,
   collectKeyValueSearchMatches,
-  collectLogSearchMatches,
   downloadTextFile,
   eventControlSummary,
   eventExportCsv,
@@ -27,7 +25,6 @@ import {
   eventSeverity,
   eventSeverityBadgeClassName,
   filterEvents,
-  filterLogLines,
   filterRelatedResources,
   formatEventTimestamp,
   formatLogTimestamp,
@@ -36,23 +33,12 @@ import {
   groupEventsBySeverity,
   groupRelatedResources,
   keyValueEntries,
-  logDownloadFileName,
-  parseLogLines,
-  podLogContainerOptions,
-  readEventsAutoRefreshPreference,
-  readEventsWarningNotificationsPreference,
-  readLogDensityPreference,
   readResourceDetailDensityPreference,
   recordFromUnknown,
   renderHighlightedText,
   sortEventListItems,
-  sortLogLines,
   statusPillClassName,
-  updateEventNotificationState,
   validEventTimestamp,
-  writeEventsAutoRefreshPreference,
-  writeEventsWarningNotificationsPreference,
-  writeLogDensityPreference,
   writeResourceDetailDensityPreference,
 } from './resourceDetailActivity';
 import {
@@ -67,7 +53,6 @@ import {
   detailJumpSections,
   detailKeyboardSections,
   detailNavigatorSections,
-  eventsAutoRefreshIntervalMs,
   eventTimeRangeOptions,
   logSortOptions,
   maxCollapsedRelations,
@@ -75,15 +60,13 @@ import {
   type DetailSectionTone,
   type EventExportFormat,
   type EventListItem,
-  type EventNotificationNotice,
   type EventSeverityFilter,
   type EventSortOrder,
   type EventTimeRangeFilter,
-  type LogDensity,
-  type LogSortOrder,
-  type LogTimeRangeFilter,
   type ResourceDetailDensity,
 } from './resourceDetailTypes';
+import { useResourceEventsController } from './useResourceEventsController';
+import { useResourceLogsController } from './useResourceLogsController';
 
 function isEditableTarget(target: EventTarget | null) {
   if (!(target instanceof HTMLElement)) {
@@ -142,39 +125,78 @@ function ResourceExplorerDetailBody({
   onOpenTopologyNode: (nodeId: string) => void;
   onSelectNode: (nodeId: string) => void;
 }) {
-  const [events, setEvents] = useState<ResourceEvent[]>([]);
-  const [eventsError, setEventsError] = useState('');
-  const [eventsWarning, setEventsWarning] = useState('');
-  const [eventsLoading, setEventsLoading] = useState(false);
-  const [eventsLastUpdatedAt, setEventsLastUpdatedAt] = useState<number | null>(null);
-  const [eventsAutoRefreshEnabled, setEventsAutoRefreshEnabled] = useState(() => readEventsAutoRefreshPreference());
-  const [eventsWarningNotificationsEnabled, setEventsWarningNotificationsEnabled] = useState(() => readEventsWarningNotificationsPreference());
-  const [eventNotificationNotice, setEventNotificationNotice] = useState<EventNotificationNotice | null>(null);
-  const [newEventKeys, setNewEventKeys] = useState<Set<string>>(() => new Set());
-  const [showNewEventsOnly, setShowNewEventsOnly] = useState(false);
-  const [eventFilter, setEventFilter] = useState('');
-  const [eventSeverityFilter, setEventSeverityFilter] = useState<EventSeverityFilter>('all');
-  const [eventTimeRangeFilter, setEventTimeRangeFilter] = useState<EventTimeRangeFilter>('all');
-  const [eventSortOrder, setEventSortOrder] = useState<EventSortOrder>('newest');
-  const [pinnedEventKeys, setPinnedEventKeys] = useState<Set<string>>(() => new Set());
-  const [logLines, setLogLines] = useState<string[]>([]);
-  const [logsError, setLogsError] = useState('');
-  const [logsWarning, setLogsWarning] = useState('');
-  const [logsLoading, setLogsLoading] = useState(false);
-  const [logsStreaming, setLogsStreaming] = useState(false);
-  const logsStreamControllerRef = useRef<AbortController | null>(null);
-  const logsPausedRef = useRef(false);
-  const pendingLogLinesRef = useRef<string[]>([]);
-  const [logsPaused, setLogsPaused] = useState(false);
-  const [pendingLogLines, setPendingLogLines] = useState<string[]>([]);
-  const [selectedLogContainer, setSelectedLogContainer] = useState('');
-  const [previousLogs, setPreviousLogs] = useState(false);
-  const [logFilter, setLogFilter] = useState('');
-  const [activeLogMatchIndex, setActiveLogMatchIndex] = useState(0);
-  const [logTimeRangeFilter, setLogTimeRangeFilter] = useState<LogTimeRangeFilter>('all');
-  const [logSortOrder, setLogSortOrder] = useState<LogSortOrder>('received');
-  const [logCopyStatus, setLogCopyStatus] = useState<{ tone: 'success' | 'warning'; message: string } | null>(null);
-  const [logDensity, setLogDensity] = useState<LogDensity>(() => readLogDensityPreference());
+  const {
+    events,
+    eventsAutoRefreshEnabled,
+    eventsError,
+    eventsLastUpdatedAt,
+    eventsLoading,
+    eventsWarning,
+    eventsWarningNotificationsEnabled,
+    eventFilter,
+    eventNotificationNotice,
+    eventSeverityFilter,
+    eventSortOrder,
+    eventTimeRangeFilter,
+    loadResourceEvents,
+    newEventKeys,
+    pinnedEventKeys,
+    resetEventMarkerState,
+    resetResourceEventUiState,
+    setEventFilter,
+    setEventNotificationNotice,
+    setEventsAutoRefreshEnabled,
+    setEventsWarningNotificationsEnabled,
+    setEventSeverityFilter,
+    setEventSortOrder,
+    setEventTimeRangeFilter,
+    setNewEventKeys,
+    setPinnedEventKeys,
+    setShowNewEventsOnly,
+    showNewEventsOnly,
+  } = useResourceEventsController({ liveEnabled, resource });
+  const {
+    activeLogMatch,
+    activeLogMatchIndex,
+    canFetchLogs,
+    clearLogOutput,
+    copyLogs,
+    downloadLogs,
+    effectiveLogContainer,
+    fetchLogs,
+    filteredLogLines,
+    logContainerOptions,
+    logCopyStatus,
+    logDensity,
+    logFilter,
+    logLineRefs,
+    logLines,
+    logSearchMatches,
+    logSortOrder,
+    logsError,
+    logsLoading,
+    logsPaused,
+    logsStreaming,
+    logsWarning,
+    logTimeRangeFilter,
+    moveActiveLogMatch: moveActiveLogMatchController,
+    pauseLogStream,
+    pendingLogLines,
+    previousLogs,
+    resetLogPauseState,
+    resumeLogStream,
+    selectedLogContainer,
+    setActiveLogMatchIndex,
+    setLogCopyStatus,
+    setLogDensity,
+    setLogFilter,
+    setLogSortOrder,
+    setLogTimeRangeFilter,
+    setPreviousLogs,
+    setSelectedLogContainer,
+    stopLogStream,
+    toggleLogStream,
+  } = useResourceLogsController({ liveEnabled, resource });
   const [resourceDetailDensity, setResourceDetailDensity] = useState<ResourceDetailDensity>(() => readResourceDetailDensityPreference());
   const [safePreviewFilter, setSafePreviewFilter] = useState('');
   const [activeSafePreviewMatchIndex, setActiveSafePreviewMatchIndex] = useState(0);
@@ -184,195 +206,21 @@ function ResourceExplorerDetailBody({
   const detailPanelRef = useRef<HTMLDivElement | null>(null);
   const detailPanelActiveRef = useRef(false);
   const detailSectionRefs = useRef<Partial<Record<DetailSectionId, HTMLElement | null>>>({});
-  const logLineRefs = useRef<Record<number, HTMLDivElement | null>>({});
-  const eventsControllerRef = useRef<AbortController | null>(null);
-  const eventsRequestIdRef = useRef(0);
-  const knownEventKeysRef = useRef<Set<string>>(new Set());
-  const knownEventKeysInitializedRef = useRef(false);
-  const eventsWarningNotificationsEnabledRef = useRef(eventsWarningNotificationsEnabled);
   const [openSections, setOpenSections] = useState<Set<DetailSectionId>>(() => new Set(defaultOpenDetailSections));
-  const resourceEventsKey = resource ? `${resource.kind}:${resource.namespace || '-'}:${resource.name}` : '';
-
-  const loadResourceEvents = (options: { preserveExistingEvents?: boolean } = {}) => {
-    const requestId = eventsRequestIdRef.current + 1;
-    eventsRequestIdRef.current = requestId;
-    eventsControllerRef.current?.abort();
-    eventsControllerRef.current = null;
-
-    if (!resource || !liveEnabled) {
-      setEvents([]);
-      setEventsError('');
-      setEventsWarning('');
-      setEventsLoading(false);
-      setEventsLastUpdatedAt(null);
-      setEventNotificationNotice(null);
-      setNewEventKeys(new Set());
-      setShowNewEventsOnly(false);
-      knownEventKeysRef.current = new Set();
-      knownEventKeysInitializedRef.current = false;
-      return undefined;
-    }
-
-    if (!options.preserveExistingEvents) {
-      setEvents([]);
-      setEventsLastUpdatedAt(null);
-      setEventNotificationNotice(null);
-      setNewEventKeys(new Set());
-      setShowNewEventsOnly(false);
-      knownEventKeysRef.current = new Set();
-      knownEventKeysInitializedRef.current = false;
-    }
-
-    const controller = new AbortController();
-    eventsControllerRef.current = controller;
-    setEventsLoading(true);
-    setEventsError('');
-    setEventsWarning('');
-
-    fetchResourceEvents(resource, controller.signal)
-      .then((response) => {
-        if (controller.signal.aborted || eventsRequestIdRef.current !== requestId) {
-          return;
-        }
-        const nextEvents = [...response.items].sort((a, b) => b.timestamp.localeCompare(a.timestamp));
-        updateEventNotificationState(nextEvents, knownEventKeysRef, knownEventKeysInitializedRef, eventsWarningNotificationsEnabledRef.current, setEventNotificationNotice, setNewEventKeys);
-        setEvents(nextEvents);
-        setEventsError('');
-        setEventsWarning(response.warning || '');
-        setEventsLastUpdatedAt(Date.now());
-      })
-      .catch((requestError: unknown) => {
-        if (!controller.signal.aborted && eventsRequestIdRef.current === requestId) {
-          if (!options.preserveExistingEvents) {
-            setEvents([]);
-            setEventsLastUpdatedAt(null);
-          }
-          setEventsError(requestError instanceof Error ? requestError.message : 'resource_events_request_failed');
-          setEventsWarning('');
-        }
-      })
-      .finally(() => {
-        if (!controller.signal.aborted && eventsRequestIdRef.current === requestId) {
-          eventsControllerRef.current = null;
-          setEventsLoading(false);
-        }
-      });
-    return controller;
-  };
-
-  useEffect(() => {
-    const controller = loadResourceEvents();
-    return () => {
-      controller?.abort();
-    };
-  }, [liveEnabled, resource]);
-
-  useEffect(() => {
-    writeEventsAutoRefreshPreference(eventsAutoRefreshEnabled);
-  }, [eventsAutoRefreshEnabled]);
-
-  useEffect(() => {
-    eventsWarningNotificationsEnabledRef.current = eventsWarningNotificationsEnabled;
-    writeEventsWarningNotificationsPreference(eventsWarningNotificationsEnabled);
-    if (!eventsWarningNotificationsEnabled) {
-      setEventNotificationNotice(null);
-      setNewEventKeys(new Set());
-      setShowNewEventsOnly(false);
-    }
-  }, [eventsWarningNotificationsEnabled]);
-
-  useEffect(() => {
-    if (!eventsAutoRefreshEnabled || !liveEnabled || !resource) {
-      return undefined;
-    }
-    const intervalId = window.setInterval(() => {
-      if (eventsControllerRef.current) {
-        return;
-      }
-      loadResourceEvents({ preserveExistingEvents: true });
-    }, eventsAutoRefreshIntervalMs);
-    return () => window.clearInterval(intervalId);
-  }, [eventsAutoRefreshEnabled, liveEnabled, resourceEventsKey]);
-
-  const resetLogPauseState = useCallback(() => {
-    logsPausedRef.current = false;
-    pendingLogLinesRef.current = [];
-    setLogsPaused(false);
-    setPendingLogLines([]);
-  }, []);
-
-  const resetEventMarkerState = useCallback(() => {
-    setEventNotificationNotice(null);
-    setNewEventKeys(new Set());
-    setShowNewEventsOnly(false);
-    knownEventKeysRef.current = new Set();
-    knownEventKeysInitializedRef.current = false;
-  }, []);
-
-  const abortLogStream = useCallback(() => {
-    logsStreamControllerRef.current?.abort();
-    logsStreamControllerRef.current = null;
-  }, []);
-
-  const stopLogStream = useCallback(() => {
-    abortLogStream();
-    setLogsStreaming(false);
-    resetLogPauseState();
-  }, [abortLogStream, resetLogPauseState]);
-
-  const resetResourceLogState = useCallback(() => {
-    abortLogStream();
-    setLogLines([]);
-    setLogsError('');
-    setLogsWarning('');
-    setLogsLoading(false);
-    setLogsStreaming(false);
-    resetLogPauseState();
-    setSelectedLogContainer('');
-    setPreviousLogs(false);
-    setLogFilter('');
-    setActiveLogMatchIndex(0);
-    setLogTimeRangeFilter('all');
-    setLogSortOrder('received');
-    setLogCopyStatus(null);
-  }, [abortLogStream, resetLogPauseState]);
 
   const resetResourceDetailUiState = useCallback(() => {
     setSafePreviewFilter('');
     setActiveSafePreviewMatchIndex(0);
     setRelationFilter('');
     setRelationsExpanded(false);
-    setEventFilter('');
-    setEventSeverityFilter('all');
-    setEventTimeRangeFilter('all');
-    setEventSortOrder('newest');
-    setPinnedEventKeys(new Set());
-    setEventsLastUpdatedAt(null);
-    resetEventMarkerState();
+    resetResourceEventUiState();
     setActiveDetailSectionId('metadata');
     setOpenSections(new Set(defaultOpenDetailSections));
-  }, [resetEventMarkerState]);
+  }, [resetResourceEventUiState]);
 
   useEffect(() => {
-    resetResourceLogState();
     resetResourceDetailUiState();
-  }, [resetResourceDetailUiState, resetResourceLogState, resource.id]);
-
-  useEffect(() => {
-    return () => {
-      eventsControllerRef.current?.abort();
-      eventsControllerRef.current = null;
-      logsStreamControllerRef.current?.abort();
-      logsStreamControllerRef.current = null;
-      logsPausedRef.current = false;
-      pendingLogLinesRef.current = [];
-    };
-  }, []);
-
-  const parsedLogLines = useMemo(() => parseLogLines(logLines), [logLines]);
-  const filteredLogLines = useMemo(() => sortLogLines(filterLogLines(parsedLogLines, logFilter, logTimeRangeFilter, Date.now()), logSortOrder), [logFilter, logSortOrder, logTimeRangeFilter, parsedLogLines]);
-  const logSearchMatches = useMemo(() => collectLogSearchMatches(filteredLogLines, logFilter), [filteredLogLines, logFilter]);
-  const activeLogMatch = logSearchMatches[activeLogMatchIndex] || null;
+  }, [resetResourceDetailUiState, resource.id]);
   const baseFilteredEvents = useMemo(
     () => sortEventListItems(filterEvents(events, eventFilter, eventSeverityFilter, eventTimeRangeFilter, Date.now()), eventSortOrder, pinnedEventKeys),
     [eventFilter, eventSeverityFilter, eventSortOrder, eventTimeRangeFilter, events, pinnedEventKeys],
@@ -405,20 +253,8 @@ function ResourceExplorerDetailBody({
   const canExportEvents = filteredEvents.length > 0;
 
   useEffect(() => {
-    writeLogDensityPreference(logDensity);
-  }, [logDensity]);
-
-  useEffect(() => {
     writeResourceDetailDensityPreference(resourceDetailDensity);
   }, [resourceDetailDensity]);
-
-  useEffect(() => {
-    if (!logCopyStatus) {
-      return undefined;
-    }
-    const timeout = window.setTimeout(() => setLogCopyStatus(null), 2200);
-    return () => window.clearTimeout(timeout);
-  }, [logCopyStatus]);
 
   useEffect(() => {
     if (focusRequest <= 0) {
@@ -429,25 +265,6 @@ function ResourceExplorerDetailBody({
       detailPanelRef.current?.focus({ preventScroll: false });
     });
   }, [focusRequest]);
-
-  useEffect(() => {
-    setActiveLogMatchIndex((current) => {
-      if (logSearchMatches.length === 0) {
-        return 0;
-      }
-      return Math.min(current, logSearchMatches.length - 1);
-    });
-  }, [logSearchMatches.length]);
-
-  useEffect(() => {
-    if (!activeLogMatch) {
-      return undefined;
-    }
-    const frame = window.requestAnimationFrame(() => {
-      logLineRefs.current[activeLogMatch.lineIndex]?.scrollIntoView({ block: 'center', behavior: 'smooth' });
-    });
-    return () => window.cancelAnimationFrame(frame);
-  }, [activeLogMatch?.id]);
 
   const metadataPreview = resource ? recordFromUnknown(resource.preview.metadata) : {};
   const statusPreview = resource ? recordFromUnknown(resource.preview.status) : {};
@@ -474,9 +291,6 @@ function ResourceExplorerDetailBody({
 
   const healthSignals = resourceHealthSignals(resource, statusPreview, summaryPreview);
   const healthSectionTone = healthSignalSectionTone(resource, healthSignals);
-  const canFetchLogs = liveEnabled && resource.kind === 'Pod';
-  const logContainerOptions = podLogContainerOptions(resource);
-  const effectiveLogContainer = selectedLogContainer || logContainerOptions.find((option) => !option.init)?.name || logContainerOptions[0]?.name || '';
   const logFilterActive = normalizedLogFilter.length > 0;
   const activeLogMatchNumber = logSearchMatches.length > 0 ? Math.min(activeLogMatchIndex + 1, logSearchMatches.length) : 0;
   const pendingLogCount = pendingLogLines.length;
@@ -675,23 +489,7 @@ function ResourceExplorerDetailBody({
       return;
     }
     openSection('logs');
-    stopLogStream();
-    resetLogPauseState();
-    setActiveLogMatchIndex(0);
-    setLogsLoading(true);
-    setLogsError('');
-    setLogsWarning('');
-    setLogCopyStatus(null);
-    try {
-      const response = await fetchResourceLogs(resource, { container: effectiveLogContainer || undefined, previous: previousLogs });
-      setLogLines(response.lines);
-      setLogsWarning(response.warning || '');
-    } catch (requestError) {
-      setLogLines([]);
-      setLogsError(requestError instanceof Error ? requestError.message : 'resource_logs_request_failed');
-    } finally {
-      setLogsLoading(false);
-    }
+    await fetchLogs();
   };
 
   const handleRefreshEvents = () => {
@@ -717,7 +515,6 @@ function ResourceExplorerDetailBody({
     openSection('events');
     setEventsWarningNotificationsEnabled((current) => {
       const next = !current;
-      eventsWarningNotificationsEnabledRef.current = next;
       if (!next) {
         setEventNotificationNotice(null);
         setNewEventKeys(new Set());
@@ -750,122 +547,34 @@ function ResourceExplorerDetailBody({
     downloadTextFile(content, mimeType, eventExportFileName(resource, format));
   };
 
-  const appendVisibleLogLine = (line: string) => {
-    setLogLines((current) => [...current, line].slice(-500));
-  };
-
-  const appendPendingLogLine = (line: string) => {
-    pendingLogLinesRef.current = [...pendingLogLinesRef.current, line].slice(-500);
-    setPendingLogLines(pendingLogLinesRef.current);
-  };
-
   const handlePauseLogStream = () => {
-    if (!logsStreaming) {
-      return;
-    }
-    logsPausedRef.current = true;
-    setLogsPaused(true);
-    setLogCopyStatus(null);
+    pauseLogStream();
   };
 
   const handleResumeLogStream = () => {
-    const pendingLines = pendingLogLinesRef.current;
-    logsPausedRef.current = false;
-    pendingLogLinesRef.current = [];
-    setLogsPaused(false);
-    setPendingLogLines([]);
-    if (pendingLines.length > 0) {
-      setLogLines((current) => [...current, ...pendingLines].slice(-500));
-    }
-    setLogCopyStatus(null);
+    resumeLogStream();
   };
 
   const handleStreamLogs = async () => {
     if (!canFetchLogs || previousLogs) {
       return;
     }
-    if (logsStreaming) {
-      stopLogStream();
-      return;
-    }
-
-    const controller = new AbortController();
-    logsStreamControllerRef.current = controller;
     openSection('logs');
-    setLogLines([]);
-    setLogsError('');
-    setLogsWarning('');
-    setLogCopyStatus(null);
-    setActiveLogMatchIndex(0);
-    resetLogPauseState();
-    setLogsStreaming(true);
-    try {
-      await streamResourceLogs(
-        resource,
-        {
-          container: effectiveLogContainer || undefined,
-          previous: false,
-          signal: controller.signal,
-          tailLines: 200,
-        },
-        (message) => {
-          if (message.warning) {
-            setLogsWarning(message.warning);
-          }
-          if (typeof message.line === 'string') {
-            const nextLine = message.line || '';
-            if (logsPausedRef.current) {
-              appendPendingLogLine(nextLine);
-            } else {
-              appendVisibleLogLine(nextLine);
-            }
-          }
-        },
-      );
-    } catch (requestError) {
-      if (!controller.signal.aborted) {
-        setLogsError(requestError instanceof Error ? requestError.message : 'resource_logs_stream_failed');
-      }
-    } finally {
-      if (logsStreamControllerRef.current === controller) {
-        logsStreamControllerRef.current = null;
-        setLogsStreaming(false);
-        resetLogPauseState();
-      }
-    }
+    await toggleLogStream();
   };
 
   const handleCopyLogs = async (mode: 'visible' | 'all') => {
-    const lines = mode === 'all' ? logLines : filteredLogLines.map(({ line }) => line);
-    if (lines.length === 0) {
-      return;
-    }
-    if (!navigator.clipboard?.writeText) {
-      setLogCopyStatus({ tone: 'warning', message: '복사할 수 없습니다' });
-      return;
-    }
-    try {
-      await navigator.clipboard.writeText(lines.join('\n'));
-      setLogCopyStatus({ tone: 'success', message: `${lines.length}줄 복사됨` });
-    } catch {
-      setLogCopyStatus({ tone: 'warning', message: '복사할 수 없습니다' });
-    }
+    await copyLogs(mode);
   };
   const handleDownloadLogs = (mode: 'visible' | 'all') => {
-    const lines = mode === 'all' ? logLines : filteredLogLines.map(({ line }) => line);
-    if (lines.length === 0) {
-      return;
-    }
-    downloadTextFile(`${lines.join('\n')}\n`, 'text/plain;charset=utf-8', logDownloadFileName(resource, effectiveLogContainer, previousLogs));
-    setLogCopyStatus({ tone: 'success', message: `${lines.length}줄 다운로드 준비됨` });
+    downloadLogs(mode);
   };
   const moveActiveLogMatch = (offset: number) => {
     if (logSearchMatches.length === 0) {
       return;
     }
     openSection('logs');
-    setActiveLogMatchIndex((current) => (current + offset + logSearchMatches.length) % logSearchMatches.length);
-    setLogCopyStatus(null);
+    moveActiveLogMatchController(offset);
   };
   const togglePinnedEvent = (eventId: string) => {
     setPinnedEventKeys((current) => {
@@ -1560,14 +1269,7 @@ function ResourceExplorerDetailBody({
                     onChange={(event) => {
                       stopLogStream();
                       setSelectedLogContainer(event.target.value);
-                      setLogLines([]);
-                      setLogsError('');
-                      setLogsWarning('');
-                      setLogFilter('');
-                      setActiveLogMatchIndex(0);
-                      setLogTimeRangeFilter('all');
-                      setLogSortOrder('received');
-                      setLogCopyStatus(null);
+                      clearLogOutput();
                     }}
                     disabled={logsLoading || logsStreaming}
                   >
@@ -1586,14 +1288,7 @@ function ResourceExplorerDetailBody({
                     onChange={(event) => {
                       stopLogStream();
                       setPreviousLogs(event.target.checked);
-                      setLogLines([]);
-                      setLogsError('');
-                      setLogsWarning('');
-                      setLogFilter('');
-                      setActiveLogMatchIndex(0);
-                      setLogTimeRangeFilter('all');
-                      setLogSortOrder('received');
-                      setLogCopyStatus(null);
+                      clearLogOutput();
                     }}
                     disabled={logsLoading || logsStreaming}
                   />

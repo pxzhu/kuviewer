@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "deployWorkflowPolicy": {
+    "status": "nascr-release-pull",
+    "tagOnly": true,
+    "serverPullsReleaseImage": true,
+    "noImageArchiveUpload": true,
+    "noRemoteBuildFallback": true,
+    "registrySecretNames": [
+      "NCR_REGISTRY",
+      "NCR_USERNAME",
+      "NCR_PASSWORD"
+    ],
+    "rollbackOnHealthFailure": true,
+    "healthRetryAttempts": 12,
+    "strictHostKeyChecking": true
+  }
+}

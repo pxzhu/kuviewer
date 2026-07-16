@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
-import { Camera, FileSearch, FileUp, GitCompareArrows, Trash2 } from 'lucide-react';
+import { Camera, Download, FileSearch, FileUp, GitCompareArrows, Trash2 } from 'lucide-react';
+import { downloadSnapshotHistoryMetadata } from '../../features/snapshot/exportSnapshotHistoryMetadata';
 import { importSnapshotDiffFile, type ImportedSnapshotDiff } from '../../features/snapshot/importSnapshotDiff';
 import type { SnapshotHistoryEntry } from '../../features/snapshot/snapshotHistory';
 import { formatLastSync } from '../../utils/formatTime';
@@ -113,6 +114,12 @@ export function SnapshotHistoryControls({
             data-testid="snapshot-diff-import-input"
             onChange={(event) => void handleDiffImport(event.target.files?.[0])}
           />
+          {history.length > 0 ? (
+            <button className="ku-control" type="button" onClick={() => downloadSnapshotHistoryMetadata(history)} data-testid="snapshot-history-metadata-export">
+              <Download size={15} aria-hidden="true" />
+              기록 정보 내보내기
+            </button>
+          ) : null}
           {history.length > 0 ? (
             <button className="ku-control" type="button" onClick={onClearHistory} data-testid="snapshot-history-clear">
               <Trash2 size={15} aria-hidden="true" />

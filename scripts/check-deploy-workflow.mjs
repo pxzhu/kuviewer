@@ -14,7 +14,7 @@ const selfHosted = await read('.github/workflows/deploy-self-hosted.yml');
 const ci = await read('.github/workflows/ci.yml');
 const compose = await read('deploy/standalone/docker-compose.yml');
 const envExample = await read('deploy/standalone/.env.example');
-const packagingSpec = JSON.parse(await read('desktop/packaging-spec.json'));
+const deployPolicy = JSON.parse(await read('deploy/deploy-policy.json'));
 
 function requireIncludes(source, value, message) {
   if (!source.includes(value)) failures.push(message);
@@ -107,7 +107,7 @@ requireNotIncludes(preflight, 'docker build', 'manual preflight must not build i
 requireNotIncludes(endpointDiagnostics, 'SERVER_SSH_KEY', 'endpoint diagnostics must not use private keys');
 requireIncludes(selfHosted, 'runs-on: [self-hosted, kuviewer-deploy]', 'manual self-hosted fallback must retain its dedicated label');
 
-const policy = packagingSpec.deployWorkflowPolicy || {};
+const policy = deployPolicy.deployWorkflowPolicy || {};
 requireCondition(policy.status === 'nascr-release-pull', 'deploy policy status must be nascr-release-pull');
 requireCondition(policy.tagOnly === true, 'deploy policy must be tag-only');
 requireCondition(policy.serverPullsReleaseImage === true, 'deploy policy must require server registry pull');
