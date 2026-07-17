@@ -165,7 +165,7 @@ function TopologyCanvasInner({ nodes, edges, selectedNodeId, colorMode, brandThe
               nodeColor={(node) => (node.type === 'resource' ? String((node.data as ResourceNodeData).color || '#8e8e93') : brandTheme === 'radar' ? 'rgba(125,173,220,0.16)' : 'rgba(137,158,186,0.2)')}
             />
             <Controls showInteractive={false} />
-            <Panel position="top-left" className="!m-3">
+            <Panel position="top-left" className="ku-map-panel">
               <div className="ku-map-toolbar flex flex-wrap gap-2 p-2">
                 <button className="ku-flow-button" type="button" onClick={() => reactFlow.fitView({ padding: 0.18, duration: 260 })}>
                   <Focus size={14} aria-hidden="true" />
@@ -228,8 +228,8 @@ function ResourceNode({ data }: NodeProps<Node<ResourceNodeData>>) {
       data-testid={`topology-node-${resource.id}`}
       style={{ borderColor: selected ? color : `${color}66`, borderWidth: selected ? 2 : 1 } as CSSProperties}
     >
-      <Handle className={`!h-2.5 !w-2.5 !border-2 ${isRadar ? '!border-[#07111d]' : '!border-white'}`} position={Position.Left} style={{ backgroundColor: color }} type="target" />
-      <Handle className={`!h-2.5 !w-2.5 !border-2 ${isRadar ? '!border-[#07111d]' : '!border-white'}`} position={Position.Right} style={{ backgroundColor: color }} type="source" />
+      <Handle className="ku-topology-handle" position={Position.Left} style={{ backgroundColor: color }} type="target" />
+      <Handle className="ku-topology-handle" position={Position.Right} style={{ backgroundColor: color }} type="source" />
       <div className="absolute inset-x-0 top-0 h-1 rounded-t-[13px]" style={{ backgroundColor: color }} />
       <div className="mt-1 flex items-start justify-between gap-2">
         <div className="min-w-0">
