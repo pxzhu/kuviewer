@@ -422,7 +422,7 @@ async function verifySnapshotComparison(page, initialMode, viewportName) {
   });
   await page.waitForTimeout(100);
   const screenshotStyle = await page.addStyleTag({
-    content: '* { -webkit-backdrop-filter: none !important; backdrop-filter: none !important; }',
+    content: 'html body .ku-app-shell, html body .ku-app-shell * { -webkit-backdrop-filter: none; backdrop-filter: none; }',
   });
   await page.screenshot({ animations: 'disabled', path: path.join(outputDir, `${viewportName}-snapshot-compare.png`) });
   await page.getByTestId('snapshot-compare-relation-table').scrollIntoViewIfNeeded();
