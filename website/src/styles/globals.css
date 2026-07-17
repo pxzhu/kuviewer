@@ -391,6 +391,16 @@ select:focus-visible,
   -webkit-backdrop-filter: blur(18px) saturate(1.16);
 }
 
+.ku-react-flow .ku-map-panel {
+  margin: 0.75rem;
+}
+
+.ku-react-flow .ku-topology-handle {
+  width: 0.625rem;
+  height: 0.625rem;
+  border: 2px solid #ffffff;
+}
+
 .ku-topology-node {
   box-shadow: 0 1px 0 rgba(255, 255, 255, 0.76) inset, 0 14px 34px rgba(73, 104, 143, 0.14);
 }
@@ -641,6 +651,10 @@ select:focus-visible,
 
 .ku-app-shell[data-brand-theme="radar"] .ku-map-toolbar {
   background: rgba(8, 18, 31, 0.86);
+}
+
+.ku-app-shell[data-brand-theme="radar"] .ku-react-flow .ku-topology-handle {
+  border-color: #07111d;
 }
 
 .ku-app-shell[data-brand-theme="radar"] .ku-topology-node {
