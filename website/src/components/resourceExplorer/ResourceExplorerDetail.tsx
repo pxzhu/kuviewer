@@ -17,7 +17,6 @@ import {
   type DetailSectionTone,
   type ResourceDetailDensity,
 } from './resourceDetailTypes';
-import { useResourceLogsController } from './useResourceLogsController';
 import { ResourceRelationsSection } from './ResourceRelationsSection';
 import { ResourceEventsSection } from './ResourceEventsSection';
 import { ResourceLogsSection } from './ResourceLogsSection';
@@ -26,6 +25,7 @@ import { ResourceCoreDetailSections } from './ResourceCoreDetailSections';
 import { useResourceDetailSectionsController } from './useResourceDetailSectionsController';
 import { useResourceRelationsController } from './useResourceRelationsController';
 import { useResourceEventsSectionController } from './useResourceEventsSectionController';
+import { useResourceLogsSectionController } from './useResourceLogsSectionController';
 
 function EmptyResourceDetail() {
   return (
@@ -76,46 +76,6 @@ function ResourceExplorerDetailBody({
   onOpenTopologyNode: (nodeId: string) => void;
   onSelectNode: (nodeId: string) => void;
 }) {
-  const {
-    activeLogMatch,
-    activeLogMatchIndex,
-    canFetchLogs,
-    clearLogOutput,
-    copyLogs,
-    downloadLogs,
-    effectiveLogContainer,
-    fetchLogs,
-    filteredLogLines,
-    logContainerOptions,
-    logCopyStatus,
-    logDensity,
-    logFilter,
-    logLineRefs,
-    logLines,
-    logSearchMatches,
-    logSortOrder,
-    logsError,
-    logsLoading,
-    logsPaused,
-    logsStreaming,
-    logsWarning,
-    logTimeRangeFilter,
-    moveActiveLogMatch: moveActiveLogMatchController,
-    pauseLogStream,
-    pendingLogLines,
-    previousLogs,
-    resumeLogStream,
-    setActiveLogMatchIndex,
-    setLogCopyStatus,
-    setLogDensity,
-    setLogFilter,
-    setLogSortOrder,
-    setLogTimeRangeFilter,
-    setPreviousLogs,
-    setSelectedLogContainer,
-    stopLogStream,
-    toggleLogStream,
-  } = useResourceLogsController({ liveEnabled, resource });
   const [resourceDetailDensity, setResourceDetailDensity] = useState<ResourceDetailDensity>(() => readResourceDetailDensityPreference());
   const {
     expanded: relationsExpanded,
@@ -153,7 +113,16 @@ function ResourceExplorerDetailBody({
     resource,
     sectionRef: setDetailSectionRef('events'),
   });
-  const normalizedLogFilter = logFilter.trim();
+  const logsSection = useResourceLogsSectionController({
+    active: activeDetailSectionId === 'logs',
+    liveEnabled,
+    onEnsureOpen: () => openSection('logs'),
+    onFocusSection: () => setActiveDetailSectionId('logs'),
+    onToggleSection: () => toggleSection('logs'),
+    open: isSectionOpen('logs'),
+    resource,
+    sectionRef: setDetailSectionRef('logs'),
+  });
 
   useEffect(() => {
     writeResourceDetailDensityPreference(resourceDetailDensity);
@@ -171,14 +140,6 @@ function ResourceExplorerDetailBody({
 
   const healthSignals = resourceHealthSignals(resource, statusPreview, summaryPreview);
   const healthSectionTone = healthSignalSectionTone(resource, healthSignals);
-  const logFilterActive = normalizedLogFilter.length > 0;
-  const activeLogMatchNumber = logSearchMatches.length > 0 ? Math.min(activeLogMatchIndex + 1, logSearchMatches.length) : 0;
-  const pendingLogCount = pendingLogLines.length;
-  const canCopyVisibleLogs = filteredLogLines.length > 0;
-  const canDownloadVisibleLogs = filteredLogLines.length > 0;
-  const logControlsActive = logFilterActive || logTimeRangeFilter !== 'all' || logSortOrder !== 'received';
-  const canCopyAllLogs = logControlsActive && logLines.length > 0;
-  const canDownloadAllLogs = logControlsActive && logLines.length > 0;
   const detailSectionSummaries: Record<DetailSectionId, string> = {
     metadata: sectionCount(metadataPreview),
     status: healthSectionSummary(resource, healthSignals, statusPreview),
@@ -188,7 +149,7 @@ function ResourceExplorerDetailBody({
     annotations: sectionCount(resource.annotations),
     relations: relationSummary,
     events: eventsSection.summary,
-    logs: logLines.length > 0 ? `${filteredLogLines.length} / ${logLines.length}` : canFetchLogs ? 'ready' : 'empty',
+    logs: logsSection.summary,
   };
   const detailSectionTones: Record<DetailSectionId, DetailSectionTone> = {
     metadata: 'default',
@@ -199,11 +160,11 @@ function ResourceExplorerDetailBody({
     annotations: 'default',
     relations: 'default',
     events: eventsSection.navigatorTone,
-    logs: logsError ? 'error' : logsWarning ? 'warning' : 'default',
+    logs: logsSection.navigatorTone,
   };
   const overviewItems = resourceDetailOverviewItems({
-    canFetchLogs,
-    effectiveLogContainer,
+    canFetchLogs: logsSection.canFetch,
+    effectiveLogContainer: logsSection.effectiveContainer,
     eventSeverityCounts: eventsSection.severityCounts,
     eventSummary: detailSectionSummaries.events,
     logSummary: detailSectionSummaries.logs,
@@ -214,51 +175,6 @@ function ResourceExplorerDetailBody({
     relationCount: resource.related.length,
     resource,
   });
-  const logViewportClassName =
-    logDensity === 'compact'
-      ? 'max-h-[420px] overflow-auto rounded-[10px] border border-[rgba(60,60,67,0.12)] bg-[#111827] p-1 font-mono text-[10px] leading-4 text-[#d1d5db]'
-      : 'max-h-[320px] overflow-auto rounded-[10px] border border-[rgba(60,60,67,0.12)] bg-[#111827] p-2 font-mono text-[11px] leading-5 text-[#d1d5db]';
-  const logRowClassName =
-    logDensity === 'compact'
-      ? 'grid grid-cols-[38px_minmax(0,1fr)] gap-1 rounded-[5px] px-0.5 py-0'
-      : 'grid grid-cols-[44px_minmax(0,1fr)] gap-2 rounded-[6px] px-1 py-0.5';
-  const handleFetchLogs = async () => {
-    if (!canFetchLogs) {
-      return;
-    }
-    openSection('logs');
-    await fetchLogs();
-  };
-
-  const handlePauseLogStream = () => {
-    pauseLogStream();
-  };
-
-  const handleResumeLogStream = () => {
-    resumeLogStream();
-  };
-
-  const handleStreamLogs = async () => {
-    if (!canFetchLogs || previousLogs) {
-      return;
-    }
-    openSection('logs');
-    await toggleLogStream();
-  };
-
-  const handleCopyLogs = async (mode: 'visible' | 'all') => {
-    await copyLogs(mode);
-  };
-  const handleDownloadLogs = (mode: 'visible' | 'all') => {
-    downloadLogs(mode);
-  };
-  const moveActiveLogMatch = (offset: number) => {
-    if (logSearchMatches.length === 0) {
-      return;
-    }
-    openSection('logs');
-    moveActiveLogMatchController(offset);
-  };
   return (
     <div
       ref={detailPanelRef}
@@ -324,87 +240,7 @@ function ResourceExplorerDetailBody({
           summary={detailSectionSummaries.relations}
         />
         <ResourceEventsSection actions={eventsSection.actions} model={eventsSection.model} />
-        <ResourceLogsSection
-          actions={{
-            changeContainer: (value) => {
-              stopLogStream();
-              setSelectedLogContainer(value);
-              clearLogOutput();
-            },
-            changeFilter: (value) => {
-              setLogFilter(value);
-              setActiveLogMatchIndex(0);
-              setLogCopyStatus(null);
-            },
-            changePrevious: (value) => {
-              stopLogStream();
-              setPreviousLogs(value);
-              clearLogOutput();
-            },
-            changeSortOrder: (value) => {
-              setLogSortOrder(value);
-              setActiveLogMatchIndex(0);
-              setLogCopyStatus(null);
-            },
-            changeTimeRange: (value) => {
-              setLogTimeRangeFilter(value);
-              setActiveLogMatchIndex(0);
-              setLogCopyStatus(null);
-            },
-            copy: (mode) => void handleCopyLogs(mode),
-            download: handleDownloadLogs,
-            fetch: () => void handleFetchLogs(),
-            focusSection: () => setActiveDetailSectionId('logs'),
-            moveMatch: moveActiveLogMatch,
-            resetControls: () => {
-              setLogFilter('');
-              setActiveLogMatchIndex(0);
-              setLogTimeRangeFilter('all');
-              setLogSortOrder('received');
-              setLogCopyStatus(null);
-            },
-            setDensity: setLogDensity,
-            stream: () => void handleStreamLogs(),
-            togglePause: logsPaused ? handleResumeLogStream : handlePauseLogStream,
-            toggleSection: () => toggleSection('logs'),
-          }}
-          model={{
-            active: activeDetailSectionId === 'logs',
-            activeMatch: activeLogMatch || undefined,
-            activeMatchNumber: activeLogMatchNumber,
-            canCopyAll: canCopyAllLogs,
-            canCopyVisible: canCopyVisibleLogs,
-            canDownloadAll: canDownloadAllLogs,
-            canDownloadVisible: canDownloadVisibleLogs,
-            canFetch: canFetchLogs,
-            containerOptions: logContainerOptions,
-            controlsActive: logControlsActive,
-            copyStatus: logCopyStatus,
-            density: logDensity,
-            effectiveContainer: effectiveLogContainer,
-            error: logsError,
-            filter: logFilter,
-            filterActive: logFilterActive,
-            filteredLines: filteredLogLines,
-            lineRefs: logLineRefs,
-            lines: logLines,
-            loading: logsLoading,
-            normalizedFilter: normalizedLogFilter,
-            open: isSectionOpen('logs'),
-            paused: logsPaused,
-            pendingCount: pendingLogCount,
-            previous: previousLogs,
-            rowClassName: logRowClassName,
-            searchMatchCount: logSearchMatches.length,
-            sectionRef: setDetailSectionRef('logs'),
-            sortOrder: logSortOrder,
-            streaming: logsStreaming,
-            summary: detailSectionSummaries.logs,
-            timeRangeFilter: logTimeRangeFilter,
-            viewportClassName: logViewportClassName,
-            warning: logsWarning,
-          }}
-        />
+        <ResourceLogsSection actions={logsSection.actions} model={logsSection.model} />
       </div>
     </div>
   );
