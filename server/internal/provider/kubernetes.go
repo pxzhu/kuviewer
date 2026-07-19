@@ -34,6 +34,7 @@ const (
 	kubeListMaxItems        = 100_000
 	kubeListMaxTotalBytes   = 128 * 1024 * 1024
 	kubeListMaxTokenBytes   = 4096
+	kubeSnapshotConcurrency = 6
 )
 
 var (
@@ -161,7 +162,6 @@ func (p KubernetesProvider) Capabilities(ctx context.Context) (topology.Capabili
 
 func (p KubernetesProvider) Snapshot(ctx context.Context) (topology.Snapshot, error) {
 	version := kubeVersion{GitVersion: "unknown"}
-	_ = p.client.getJSON(ctx, "/version", &version, true)
 
 	namespaces := namespaceList{}
 	nodes := nodeList{}
@@ -202,28 +202,56 @@ func (p KubernetesProvider) Snapshot(ctx context.Context) (topology.Snapshot, er
 		return topology.Snapshot{}, err
 	}
 
-	_ = getKubeListJSON(ctx, p.client, "/api/v1/serviceaccounts", &serviceAccounts, true)
-	_ = getKubeListJSON(ctx, p.client, "/api/v1/configmaps", &configMaps, true)
-	_ = getKubeListJSON(ctx, p.client, "/apis/discovery.k8s.io/v1/endpointslices", &endpointSlices, true)
-	_ = getKubeListJSON(ctx, p.client, "/apis/apps/v1/deployments", &deployments, true)
-	_ = getKubeListJSON(ctx, p.client, "/apis/apps/v1/replicasets", &replicaSets, true)
-	_ = getKubeListJSON(ctx, p.client, "/apis/apps/v1/statefulsets", &statefulSets, true)
-	_ = getKubeListJSON(ctx, p.client, "/apis/apps/v1/daemonsets", &daemonSets, true)
-	_ = getKubeListJSON(ctx, p.client, "/apis/batch/v1/jobs", &jobs, true)
-	_ = getKubeListJSON(ctx, p.client, "/apis/batch/v1/cronjobs", &cronJobs, true)
-	_ = getKubeListJSON(ctx, p.client, "/apis/autoscaling/v2/horizontalpodautoscalers", &hpas, true)
-	_ = getKubeListJSON(ctx, p.client, "/apis/networking.k8s.io/v1/ingresses", &ingresses, true)
-	_ = getKubeListJSON(ctx, p.client, "/apis/gateway.networking.k8s.io/v1/gateways", &gateways, true)
-	_ = getKubeListJSON(ctx, p.client, "/apis/gateway.networking.k8s.io/v1/httproutes", &httpRoutes, true)
-	_ = getKubeListJSON(ctx, p.client, "/apis/gateway.networking.k8s.io/v1/grpcroutes", &grpcRoutes, true)
-	_ = p.client.getGatewayRouteJSON(ctx, "tlsroutes", &tlsRoutes)
-	_ = p.client.getGatewayRouteJSON(ctx, "tcproutes", &tcpRoutes)
-	_ = getKubeListJSON(ctx, p.client, "/apis/networking.k8s.io/v1/networkpolicies", &networkPolicies, true)
-	_ = getKubeListJSON(ctx, p.client, "/api/v1/persistentvolumeclaims", &pvcs, true)
-	_ = getKubeListJSON(ctx, p.client, "/api/v1/persistentvolumes", &pvs, true)
-	_ = getKubeListJSON(ctx, p.client, "/apis/storage.k8s.io/v1/storageclasses", &storageClasses, true)
-	_ = getKubeListJSON(ctx, p.client, "/apis/apiextensions.k8s.io/v1/customresourcedefinitions", &crds, true)
-	customResources := p.customResourceInstances(ctx, crds)
+	diagnostics, err := collectSnapshotFetches(ctx, kubeSnapshotConcurrency, []snapshotFetchTask{
+		{id: "core/version", resource: "Kubernetes version", fetch: func() error { return p.client.getJSON(ctx, "/version", &version, true) }},
+		{id: "core/serviceaccounts", resource: "ServiceAccounts", fetch: func() error { return getKubeListJSON(ctx, p.client, "/api/v1/serviceaccounts", &serviceAccounts, true) }},
+		{id: "core/configmaps", resource: "ConfigMaps", fetch: func() error { return getKubeListJSON(ctx, p.client, "/api/v1/configmaps", &configMaps, true) }},
+		{id: "networking/endpointslices", resource: "EndpointSlices", fetch: func() error {
+			return getKubeListJSON(ctx, p.client, "/apis/discovery.k8s.io/v1/endpointslices", &endpointSlices, true)
+		}},
+		{id: "workloads/deployments", resource: "Deployments", fetch: func() error { return getKubeListJSON(ctx, p.client, "/apis/apps/v1/deployments", &deployments, true) }},
+		{id: "workloads/replicasets", resource: "ReplicaSets", fetch: func() error { return getKubeListJSON(ctx, p.client, "/apis/apps/v1/replicasets", &replicaSets, true) }},
+		{id: "workloads/statefulsets", resource: "StatefulSets", fetch: func() error { return getKubeListJSON(ctx, p.client, "/apis/apps/v1/statefulsets", &statefulSets, true) }},
+		{id: "workloads/daemonsets", resource: "DaemonSets", fetch: func() error { return getKubeListJSON(ctx, p.client, "/apis/apps/v1/daemonsets", &daemonSets, true) }},
+		{id: "workloads/jobs", resource: "Jobs", fetch: func() error { return getKubeListJSON(ctx, p.client, "/apis/batch/v1/jobs", &jobs, true) }},
+		{id: "workloads/cronjobs", resource: "CronJobs", fetch: func() error { return getKubeListJSON(ctx, p.client, "/apis/batch/v1/cronjobs", &cronJobs, true) }},
+		{id: "workloads/hpas", resource: "HorizontalPodAutoscalers", fetch: func() error {
+			return getKubeListJSON(ctx, p.client, "/apis/autoscaling/v2/horizontalpodautoscalers", &hpas, true)
+		}},
+		{id: "networking/ingresses", resource: "Ingresses", fetch: func() error {
+			return getKubeListJSON(ctx, p.client, "/apis/networking.k8s.io/v1/ingresses", &ingresses, true)
+		}},
+		{id: "gateway/gateways", resource: "Gateways", fetch: func() error {
+			return getKubeListJSON(ctx, p.client, "/apis/gateway.networking.k8s.io/v1/gateways", &gateways, true)
+		}},
+		{id: "gateway/httproutes", resource: "HTTPRoutes", fetch: func() error {
+			return getKubeListJSON(ctx, p.client, "/apis/gateway.networking.k8s.io/v1/httproutes", &httpRoutes, true)
+		}},
+		{id: "gateway/grpcroutes", resource: "GRPCRoutes", fetch: func() error {
+			return getKubeListJSON(ctx, p.client, "/apis/gateway.networking.k8s.io/v1/grpcroutes", &grpcRoutes, true)
+		}},
+		{id: "gateway/tlsroutes", resource: "TLSRoutes", fetch: func() error { return p.client.getGatewayRouteJSON(ctx, "tlsroutes", &tlsRoutes) }},
+		{id: "gateway/tcproutes", resource: "TCPRoutes", fetch: func() error { return p.client.getGatewayRouteJSON(ctx, "tcproutes", &tcpRoutes) }},
+		{id: "networking/networkpolicies", resource: "NetworkPolicies", fetch: func() error {
+			return getKubeListJSON(ctx, p.client, "/apis/networking.k8s.io/v1/networkpolicies", &networkPolicies, true)
+		}},
+		{id: "storage/pvcs", resource: "PersistentVolumeClaims", fetch: func() error { return getKubeListJSON(ctx, p.client, "/api/v1/persistentvolumeclaims", &pvcs, true) }},
+		{id: "storage/pvs", resource: "PersistentVolumes", fetch: func() error { return getKubeListJSON(ctx, p.client, "/api/v1/persistentvolumes", &pvs, true) }},
+		{id: "storage/storageclasses", resource: "StorageClasses", fetch: func() error {
+			return getKubeListJSON(ctx, p.client, "/apis/storage.k8s.io/v1/storageclasses", &storageClasses, true)
+		}},
+		{id: "extensions/crds", resource: "CustomResourceDefinitions", fetch: func() error {
+			return getKubeListJSON(ctx, p.client, "/apis/apiextensions.k8s.io/v1/customresourcedefinitions", &crds, true)
+		}},
+	})
+	if err != nil {
+		return topology.Snapshot{}, err
+	}
+	customResources, customResourceDiagnostics, err := p.customResourceInstancesWithDiagnostics(ctx, crds)
+	if err != nil {
+		return topology.Snapshot{}, err
+	}
+	diagnostics = append(diagnostics, customResourceDiagnostics...)
 
 	builder := newKubeGraphBuilder(p.clusterID)
 	readyNodes := 0
@@ -602,9 +630,10 @@ func (p KubernetesProvider) Snapshot(ctx context.Context) (topology.Snapshot, er
 	}
 
 	return topology.Snapshot{
-		Clusters: []topology.ClusterSummary{clusterSummary},
-		Nodes:    builder.nodes,
-		Edges:    builder.edges,
+		Clusters:    []topology.ClusterSummary{clusterSummary},
+		Nodes:       builder.nodes,
+		Edges:       builder.edges,
+		Diagnostics: diagnostics,
 	}, nil
 }
 
@@ -697,38 +726,63 @@ func effectivePodLogTailLines(ref ResourceRef) int {
 }
 
 func (p KubernetesProvider) customResourceInstances(ctx context.Context, crds customResourceDefinitionList) []customResourceInstance {
-	resources := []customResourceInstance{}
-	for _, crd := range crds.Items {
+	resources, _, _ := p.customResourceInstancesWithDiagnostics(ctx, crds)
+	return resources
+}
+
+func (p KubernetesProvider) customResourceInstancesWithDiagnostics(ctx context.Context, crds customResourceDefinitionList) ([]customResourceInstance, []topology.SnapshotDiagnostic, error) {
+	results := make([][]customResourceInstance, len(crds.Items))
+	tasks := make([]snapshotFetchTask, 0, len(crds.Items))
+	for index, crd := range crds.Items {
 		version := crdPreferredVersion(crd)
 		if crd.Spec.Group == "" || version == "" || crd.Spec.Names.Plural == "" || crd.Spec.Names.Kind == "" {
 			continue
 		}
-
-		list := customResourceInstanceList{}
-		found, err := getKubeListJSONStatus(ctx, p.client, customResourceListPath(crd, version), &list, true)
-		if err != nil || !found {
-			continue
-		}
-		for _, item := range list.Items {
-			if item.Metadata.Name == "" {
-				continue
-			}
-			if item.Kind == "" {
-				item.Kind = crd.Spec.Names.Kind
-			}
-			if item.APIVersion == "" {
-				item.APIVersion = crd.Spec.Group + "/" + version
-			}
-			resources = append(resources, customResourceInstance{
-				customResourceInstanceResource: item,
-				CRDName:                        crd.Metadata.Name,
-				CRDGroup:                       crd.Spec.Group,
-				CRDVersion:                     version,
-				CRDScope:                       crd.Spec.Scope,
-			})
-		}
+		itemIndex := index
+		definition := crd
+		selectedVersion := version
+		tasks = append(tasks, snapshotFetchTask{
+			id:       "extensions/custom-resources",
+			resource: "Custom resources",
+			fetch: func() error {
+				list := customResourceInstanceList{}
+				found, err := getKubeListJSONStatus(ctx, p.client, customResourceListPath(definition, selectedVersion), &list, true)
+				if err != nil || !found {
+					return err
+				}
+				items := make([]customResourceInstance, 0, len(list.Items))
+				for _, item := range list.Items {
+					if item.Metadata.Name == "" {
+						continue
+					}
+					if item.Kind == "" {
+						item.Kind = definition.Spec.Names.Kind
+					}
+					if item.APIVersion == "" {
+						item.APIVersion = definition.Spec.Group + "/" + selectedVersion
+					}
+					items = append(items, customResourceInstance{
+						customResourceInstanceResource: item,
+						CRDName:                        definition.Metadata.Name,
+						CRDGroup:                       definition.Spec.Group,
+						CRDVersion:                     selectedVersion,
+						CRDScope:                       definition.Spec.Scope,
+					})
+				}
+				results[itemIndex] = items
+				return nil
+			},
+		})
 	}
-	return resources
+	diagnostics, err := collectSnapshotFetches(ctx, kubeSnapshotConcurrency, tasks)
+	if err != nil {
+		return nil, nil, err
+	}
+	resources := make([]customResourceInstance, 0)
+	for _, items := range results {
+		resources = append(resources, items...)
+	}
+	return resources, aggregateSnapshotDiagnostics(diagnostics), nil
 }
 
 func customResourceListPath(crd customResourceDefinitionResource, version string) string {

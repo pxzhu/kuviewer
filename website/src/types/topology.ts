@@ -92,4 +92,12 @@ export interface TopologySnapshot {
   clusters: ClusterSummary[];
   nodes: TopologyNode[];
   edges: TopologyEdge[];
+  diagnostics?: SnapshotDiagnostic[];
+}
+
+export interface SnapshotDiagnostic {
+  id: string;
+  resource: string;
+  reason: string;
+  count: number;
 }

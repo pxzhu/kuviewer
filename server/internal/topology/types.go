@@ -1,9 +1,17 @@
 package topology
 
 type Snapshot struct {
-	Clusters []ClusterSummary `json:"clusters"`
-	Nodes    []Node           `json:"nodes"`
-	Edges    []Edge           `json:"edges"`
+	Clusters    []ClusterSummary     `json:"clusters"`
+	Nodes       []Node               `json:"nodes"`
+	Edges       []Edge               `json:"edges"`
+	Diagnostics []SnapshotDiagnostic `json:"diagnostics,omitempty"`
+}
+
+type SnapshotDiagnostic struct {
+	ID       string `json:"id"`
+	Resource string `json:"resource"`
+	Reason   string `json:"reason"`
+	Count    int    `json:"count"`
 }
 
 type ClusterSummary struct {

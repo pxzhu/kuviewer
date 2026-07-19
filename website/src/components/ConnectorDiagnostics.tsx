@@ -2,7 +2,9 @@ import { AlertTriangle, CheckCircle2, ChevronDown, CircleSlash2, Clock3, Databas
 import { formatClockTime, formatLastSync } from '../utils/formatTime';
 import type { ConnectorStatus } from '../types/status';
 import { describeConnectorError, type ConnectorDiagnostic } from '../features/status/connectorDiagnostics';
+import { snapshotDiagnosticAffectedCount, snapshotDiagnosticReasonLabel } from '../features/status/snapshotDiagnostics';
 import type { CapabilityReport, ResourceCapability, ResourceCapabilityStatus } from '../types/capabilities';
+import type { SnapshotDiagnostic } from '../types/topology';
 
 interface ConnectorDiagnosticsProps {
   capabilityEnabled: boolean;
@@ -14,6 +16,7 @@ interface ConnectorDiagnosticsProps {
   statusError: string;
   topologyLoading: boolean;
   topologyError: string;
+  collectionDiagnostics: SnapshotDiagnostic[];
   lastUpdatedAt: number | null;
   source: string;
   visibleNodes: number;
@@ -33,6 +36,7 @@ export function ConnectorDiagnostics({
   statusError,
   topologyLoading,
   topologyError,
+  collectionDiagnostics,
   lastUpdatedAt,
   source,
   visibleNodes,
@@ -47,6 +51,7 @@ export function ConnectorDiagnostics({
   const secretsLabel = status ? formatSecrets(status.secrets) : '알 수 없음';
   const uiLabel = status ? (status.static ? '정적 UI 포함' : '외부 UI') : '알 수 없음';
   const hasError = Boolean(statusError || topologyError);
+  const hasCollectionWarning = collectionDiagnostics.length > 0;
   const isSyncing = statusLoading || topologyLoading;
 
   return (
@@ -59,15 +64,15 @@ export function ConnectorDiagnostics({
           </div>
           <span
             className={`inline-flex h-7 items-center gap-1 rounded-full border px-2.5 font-mono text-[11px] font-semibold ${
-              hasError
+              hasError || hasCollectionWarning
                 ? 'border-[rgba(255,149,0,0.24)] bg-[rgba(255,149,0,0.12)] text-[#b05f00]'
                 : isSyncing
                   ? 'border-[rgba(0,122,255,0.24)] bg-[rgba(0,122,255,0.10)] text-[#007aff]'
                   : 'border-[rgba(52,199,89,0.22)] bg-[rgba(52,199,89,0.10)] text-[#248a3d]'
             }`}
           >
-            {hasError ? <AlertTriangle size={14} aria-hidden="true" /> : <CheckCircle2 size={14} aria-hidden="true" />}
-            {hasError ? '점검 필요' : isSyncing ? '동기화 중' : '정상'}
+            {hasError || hasCollectionWarning ? <AlertTriangle size={14} aria-hidden="true" /> : <CheckCircle2 size={14} aria-hidden="true" />}
+            {hasError ? '점검 필요' : hasCollectionWarning ? '부분 수집' : isSyncing ? '동기화 중' : '정상'}
           </span>
         </div>
       </div>
@@ -104,10 +109,33 @@ export function ConnectorDiagnostics({
           />
         ) : null}
 
+        {collectionDiagnostics.length > 0 ? <CollectionDiagnostics items={collectionDiagnostics} /> : null}
+
         {statusError ? <ErrorRow label="상태 API" diagnostic={describeConnectorError(statusError)} /> : null}
         {topologyError ? <ErrorRow label="토폴로지 API" diagnostic={describeConnectorError(topologyError)} /> : null}
       </div>
     </section>
+  );
+}
+
+function CollectionDiagnostics({ items }: { items: SnapshotDiagnostic[] }) {
+  const affected = snapshotDiagnosticAffectedCount(items);
+  return (
+    <details className="group rounded-[11px] border border-[rgba(255,149,0,0.24)] bg-[rgba(255,149,0,0.08)] px-3 py-2" data-testid="connector-collection-diagnostics">
+      <summary className="flex cursor-pointer list-none items-center justify-between gap-2 text-xs font-semibold text-[#8a5200]">
+        <span className="flex items-center gap-1.5"><AlertTriangle size={13} aria-hidden="true" />리소스 수집 {affected}건 불완전</span>
+        <ChevronDown className="transition group-open:rotate-180" size={14} aria-hidden="true" />
+      </summary>
+      <div className="mt-2 divide-y divide-[rgba(255,149,0,0.16)] border-t border-[rgba(255,149,0,0.18)]">
+        {items.map((item) => (
+          <div className="flex items-center justify-between gap-2 py-1.5 text-xs" key={`${item.id}:${item.resource}:${item.reason}`}>
+            <span className="min-w-0 truncate font-semibold text-[#6e4100]">{item.resource}</span>
+            <span className="shrink-0 font-mono text-[10px] text-[#8a5200]">{snapshotDiagnosticReasonLabel(item.reason)}{item.count > 1 ? ` · ${item.count}` : ''}</span>
+          </div>
+        ))}
+      </div>
+      <p className="mt-1.5 text-[11px] font-medium text-[#8a5200]">표시된 리소스는 완전한 응답만 반영했습니다. 접근 범위에서 다시 확인할 수 있습니다.</p>
+    </details>
   );
 }
 
