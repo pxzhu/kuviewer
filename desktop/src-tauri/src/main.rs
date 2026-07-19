@@ -7,7 +7,7 @@ use std::process::{Child, Command, Stdio};
 use std::sync::Mutex;
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
-use tauri::{AppHandle, Manager, State};
+use tauri::{Manager, State};
 
 const DESKTOP_CM_SSH_CREDENTIAL_SERVICE: &str = "com.kuviewer.desktop.cm-ssh";
 const MAX_DESKTOP_CM_PRIVATE_KEY_BYTES: u64 = 128 * 1024;
@@ -526,10 +526,14 @@ fn check_cm_session_runtime_state(
     } else {
         Some("desktop_cm_runtime_health_unavailable".to_string())
     };
-    apply_cm_runtime_diagnostic(
-        &mut updated_profile,
-        cm_runtime_diagnostic_for_health(health_ok, updated_profile.last_health_message.as_deref().unwrap_or("healthz-unavailable")),
+    let health_diagnostic = cm_runtime_diagnostic_for_health(
+        health_ok,
+        updated_profile
+            .last_health_message
+            .as_deref()
+            .unwrap_or("healthz-unavailable"),
     );
+    apply_cm_runtime_diagnostic(&mut updated_profile, health_diagnostic);
 
     {
         let mut profile_slot = state
