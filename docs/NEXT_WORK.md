@@ -5,13 +5,14 @@
 ## Recommended Order
 
 1. Live Kubernetes connection verification
-   - Native Kubernetes, k3s, AKS에서 same-origin/API-base live mode를 검증한다.
+   - Native Kubernetes 1차 검증은 완료했다. k3s와 AKS에서 same-origin/API-base live mode를 추가 검증한다.
    - Capability/RBAC/reachability, Events, Pod logs, Gateway/CRD optional resources를 확인한다.
    - 10초 snapshot cache, in-flight sharing, server filter/cursor pagination을 실제 규모에서 측정한다.
    - 출력은 safe metadata로 제한하고 Secret value, token, kubeconfig, private key를 기록하지 않는다.
    - Gateway route는 v1 성공 시 종료하고 unavailable일 때만 v1alpha2 fallback하며, API 오류는 원격 body/path 없이 bounded code로 처리한다.
    - Core, workload, Gateway, CRD/CR, Events list는 selector를 보존한 `continue` pagination과 page/item/byte cap을 사용한다.
    - Optional API/CR instance는 최대 6개 bounded concurrency로 수집하고, 실패 항목은 safe snapshot diagnostics로 표시한다.
+   - Fixed/follow Pod logs는 실제 Native API에서 검증했으며 `Accept: */*`, 200줄/byte/line cap을 유지한다.
 
 2. Resource Explorer panel extraction
    - Resource fetch/pagination abort, selection anchor, keyboard/bulk action은 controller hook으로 분리됐다.

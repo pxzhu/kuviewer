@@ -988,7 +988,7 @@ func (c *kubeAPIClient) getJSONStatusBounded(ctx context.Context, path string, o
 }
 
 func (c *kubeAPIClient) getTextStatus(ctx context.Context, path string, optional bool, maxBytes int64) (bool, string, error) {
-	request, err := c.newRequest(ctx, path, "text/plain")
+	request, err := c.newRequest(ctx, path, "*/*")
 	if err != nil {
 		return false, "", err
 	}
@@ -1019,7 +1019,7 @@ func (c *kubeAPIClient) getTextStatus(ctx context.Context, path string, optional
 }
 
 func (c *kubeAPIClient) streamText(ctx context.Context, path string, optional bool, maxBytes int64, onLine func(string) error) (bool, error) {
-	request, err := c.newRequest(ctx, path, "text/plain")
+	request, err := c.newRequest(ctx, path, "*/*")
 	if err != nil {
 		return false, err
 	}
