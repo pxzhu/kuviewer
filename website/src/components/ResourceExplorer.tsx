@@ -6,7 +6,6 @@ import type { ResourceExplorerItem, ResourceExplorerListMetadata } from '../type
 import type { TopologySnapshot } from '../types/topology';
 import type { TopologySourceMode } from '../features/topology/useTopology';
 import { resourceViewFiltersEqual, type ResourceViewFilters } from '../features/resources/resourceViewState';
-import { safeCsvCell } from '../features/export/safeCsv';
 import { useResourceViewPresetsController } from '../features/resources/useResourceViewPresetsController';
 import {
   defaultResourceViewGroup,
@@ -14,6 +13,31 @@ import {
   resourceViewPresetMatchesFilters,
 } from '../features/resources/resourceViewPresets';
 import type { ResourceViewMessage } from '../features/resources/resourceViewPresets';
+import {
+  filterResourceList,
+  getResourceSelectionRange,
+  readResourceListColumnPreference,
+  readResourceListDensityPreference,
+  readResourceListSortPreference,
+  reconcileResourceSelection,
+  resourceBulkCopyName,
+  resourceBulkExportCsv,
+  resourceBulkExportFileName,
+  resourceBulkExportJson,
+  resourceListAllValue,
+  resourceListOptionalColumns,
+  resourceListSortOptions,
+  sortResourceList,
+  uniqueSortedValues,
+  writeResourceListColumnPreference,
+  writeResourceListDensityPreference,
+  writeResourceListSortPreference,
+  type ResourceListColumnPreference,
+  type ResourceListDensity,
+  type ResourceListOptionalColumn,
+  type ResourceListSortField,
+  type ResourceListSortPreference,
+} from '../features/resources/resourceListModel';
 import { ResourceExplorerListPanel, resourceOptionDomId } from './resourceExplorer/ResourceExplorerListPanel';
 import { ResourceViewPresetsPanel } from './resourceExplorer/ResourceViewPresetsPanel';
 
@@ -28,64 +52,18 @@ interface ResourceExplorerProps {
   onSelectNode: (nodeId: string) => void;
 }
 
-const allValue = 'all';
+const allValue = resourceListAllValue;
 const ResourceExplorerDetail = lazy(async () => {
   const module = await import('./resourceExplorer/ResourceExplorerDetail');
   return { default: module.ResourceExplorerDetail };
 });
-const resourceListDensityStorageKey = 'kuviewer_resource_list_density';
-const resourceListSortStorageKey = 'kuviewer_resource_list_sort';
-const resourceListColumnsStorageKey = 'kuviewer_resource_list_columns';
 const liveResourcePageSize = 200;
-type ResourceListDensity = 'comfortable' | 'compact';
-type ResourceListSortField = 'name' | 'kind' | 'namespace' | 'status' | 'cluster';
-type ResourceListSortDirection = 'asc' | 'desc';
-type ResourceListOptionalColumn = 'namespace' | 'cluster' | 'age' | 'summary';
-const resourceListSortOptions: Array<{ value: ResourceListSortField; label: string }> = [
-  { value: 'kind', label: 'Kind' },
-  { value: 'name', label: '이름' },
-  { value: 'namespace', label: 'Namespace' },
-  { value: 'status', label: 'Status' },
-  { value: 'cluster', label: 'Cluster' },
-];
-const defaultResourceListSortPreference: ResourceListSortPreference = { field: 'kind', direction: 'asc' };
-const resourceListOptionalColumns: Array<{ key: ResourceListOptionalColumn; label: string }> = [
-  { key: 'namespace', label: 'Namespace' },
-  { key: 'cluster', label: 'Cluster' },
-  { key: 'age', label: 'Age' },
-  { key: 'summary', label: 'Summary' },
-];
-const defaultResourceListColumns: ResourceListColumnPreference = {
-  namespace: true,
-  cluster: false,
-  age: true,
-  summary: true,
-};
 
 interface ActiveResourceFilterChip {
   id: keyof ResourceViewFilters;
   label: string;
   value: string;
   testId: string;
-}
-
-interface ResourceListSortPreference {
-  field: ResourceListSortField;
-  direction: ResourceListSortDirection;
-}
-
-type ResourceListColumnPreference = Record<ResourceListOptionalColumn, boolean>;
-
-interface ResourceBulkExportRow {
-  cluster: string;
-  namespace: string;
-  kind: string;
-  name: string;
-  status: string;
-  labelsCount: number;
-  annotationsCount: number;
-  summaryKeys: string[];
-  relatedCount: number;
 }
 
 export function ResourceExplorer({
@@ -184,19 +162,19 @@ export function ResourceExplorer({
   }, [cluster, kind, liveEnabled, namespace, query, resourceListSort.direction, resourceListSort.field, snapshot, sourceMode, status]);
 
   const clusters = useMemo(
-    () => resourceListMetadata?.facets.clusters ?? unique(resources.map((resource) => resource.clusterId)),
+    () => resourceListMetadata?.facets.clusters ?? uniqueSortedValues(resources.map((resource) => resource.clusterId)),
     [resourceListMetadata?.facets.clusters, resources],
   );
   const namespaces = useMemo(
-    () => resourceListMetadata?.facets.namespaces ?? unique(resources.map((resource) => resource.namespace).filter(Boolean) as string[]),
+    () => resourceListMetadata?.facets.namespaces ?? uniqueSortedValues(resources.map((resource) => resource.namespace).filter(Boolean) as string[]),
     [resourceListMetadata?.facets.namespaces, resources],
   );
   const kinds = useMemo(
-    () => resourceListMetadata?.facets.kinds ?? unique(resources.map((resource) => resource.kind)),
+    () => resourceListMetadata?.facets.kinds ?? uniqueSortedValues(resources.map((resource) => resource.kind)),
     [resourceListMetadata?.facets.kinds, resources],
   );
   const statuses = useMemo(
-    () => resourceListMetadata?.facets.statuses ?? unique(resources.map((resource) => resource.status)),
+    () => resourceListMetadata?.facets.statuses ?? uniqueSortedValues(resources.map((resource) => resource.status)),
     [resourceListMetadata?.facets.statuses, resources],
   );
   const currentPresetFilters = useMemo(() => ({ query, cluster, namespace, kind, status }), [cluster, kind, namespace, query, status]);
@@ -245,26 +223,7 @@ export function ResourceExplorer({
       status !== allValue ? { id: 'status', label: 'Status', value: status, testId: 'resource-active-filter-status' } : null,
     ].filter((chip): chip is ActiveResourceFilterChip => chip !== null);
   }, [cluster, kind, namespace, query, status]);
-  const filteredResources = useMemo(() => {
-    const normalizedQuery = query.trim().toLowerCase();
-    return resources.filter((resource) => {
-      const matchesQuery =
-        !normalizedQuery ||
-        resource.name.toLowerCase().includes(normalizedQuery) ||
-        resource.kind.toLowerCase().includes(normalizedQuery) ||
-        resource.namespace?.toLowerCase().includes(normalizedQuery) ||
-        resource.clusterId.toLowerCase().includes(normalizedQuery) ||
-        recordText(resource.labels).includes(normalizedQuery) ||
-        recordText(resource.summary).includes(normalizedQuery);
-      return (
-        matchesQuery &&
-        (cluster === allValue || resource.clusterId === cluster) &&
-        (namespace === allValue || resource.namespace === namespace || (resource.kind === 'Namespace' && resource.name === namespace)) &&
-        (kind === allValue || resource.kind === kind) &&
-        (status === allValue || resource.status === status)
-      );
-    });
-  }, [cluster, kind, namespace, query, resources, status]);
+  const filteredResources = useMemo(() => filterResourceList(resources, currentPresetFilters), [currentPresetFilters, resources]);
   const sortedResources = useMemo(() => sortResourceList(filteredResources, resourceListSort), [filteredResources, resourceListSort]);
   const nextResourceCursor = resourceListMetadata?.nextCursor ?? '';
   const resourceResultLabel = resourceListMetadata
@@ -310,10 +269,7 @@ export function ResourceExplorer({
 
   useEffect(() => {
     const visibleResourceIds = new Set(sortedResources.map((resource) => resource.id));
-    setSelectedResourceIds((current) => {
-      const next = new Set([...current].filter((resourceId) => visibleResourceIds.has(resourceId)));
-      return next.size === current.size ? current : next;
-    });
+    setSelectedResourceIds((current) => reconcileResourceSelection(current, sortedResources));
     if (resourceSelectionAnchorRef.current && !visibleResourceIds.has(resourceSelectionAnchorRef.current)) {
       resourceSelectionAnchorRef.current = selectedResource && visibleResourceIds.has(selectedResource.id) ? selectedResource.id : sortedResources[0]?.id ?? null;
     }
@@ -404,21 +360,14 @@ export function ResourceExplorer({
     onSelectNode(resourceId);
   };
   const selectResourceRange = (anchorResourceId: string, targetResourceId: string) => {
-    const targetIndex = sortedResources.findIndex((resource) => resource.id === targetResourceId);
-    if (targetIndex < 0) {
-      return;
-    }
-    const anchorIndex = sortedResources.findIndex((resource) => resource.id === anchorResourceId);
-    const normalizedAnchorIndex = anchorIndex >= 0 ? anchorIndex : selectedResourceIndex >= 0 ? selectedResourceIndex : targetIndex;
-    const startIndex = Math.min(normalizedAnchorIndex, targetIndex);
-    const endIndex = Math.max(normalizedAnchorIndex, targetIndex);
-    const rangeResourceIds = sortedResources.slice(startIndex, endIndex + 1).map((resource) => resource.id);
+    const range = getResourceSelectionRange(sortedResources, anchorResourceId, targetResourceId, selectedResourceIndex);
+    if (!range) return;
     setSelectedResourceIds((current) => {
       const next = new Set(current);
-      rangeResourceIds.forEach((resourceId) => next.add(resourceId));
+      range.resourceIds.forEach((resourceId) => next.add(resourceId));
       return next;
     });
-    resourceSelectionAnchorRef.current = sortedResources[normalizedAnchorIndex]?.id ?? targetResourceId;
+    resourceSelectionAnchorRef.current = range.anchorResourceId;
     setResourceBulkMessage(null);
     onSelectNode(targetResourceId);
     focusResourceRow(targetResourceId);
@@ -740,79 +689,6 @@ function ResourceSelect({ label, testId, value, values, onChange }: { label: str
   );
 }
 
-function readResourceListDensityPreference(): ResourceListDensity {
-  try {
-    return window.localStorage.getItem(resourceListDensityStorageKey) === 'compact' ? 'compact' : 'comfortable';
-  } catch {
-    return 'comfortable';
-  }
-}
-
-function writeResourceListDensityPreference(density: ResourceListDensity) {
-  try {
-    window.localStorage.setItem(resourceListDensityStorageKey, density);
-  } catch {
-    // Density is only a UI preference; storage failures should not break the explorer.
-  }
-}
-
-function readResourceListSortPreference(): ResourceListSortPreference {
-  try {
-    const rawValue = window.localStorage.getItem(resourceListSortStorageKey);
-    if (!rawValue) {
-      return defaultResourceListSortPreference;
-    }
-    const parsedValue = JSON.parse(rawValue) as Partial<ResourceListSortPreference>;
-    return normalizeResourceListSortPreference(parsedValue);
-  } catch {
-    return defaultResourceListSortPreference;
-  }
-}
-
-function writeResourceListSortPreference(sortPreference: ResourceListSortPreference) {
-  try {
-    window.localStorage.setItem(resourceListSortStorageKey, JSON.stringify(sortPreference));
-  } catch {
-    // Sorting is only a UI preference; storage failures should not break the explorer.
-  }
-}
-
-function normalizeResourceListSortPreference(value: Partial<ResourceListSortPreference>): ResourceListSortPreference {
-  const field = value.field && resourceListSortOptions.some((option) => option.value === value.field) ? value.field : defaultResourceListSortPreference.field;
-  const direction = value.direction === 'desc' ? 'desc' : defaultResourceListSortPreference.direction;
-  return { field, direction };
-}
-
-function readResourceListColumnPreference(): ResourceListColumnPreference {
-  try {
-    const rawValue = window.localStorage.getItem(resourceListColumnsStorageKey);
-    if (!rawValue) {
-      return { ...defaultResourceListColumns };
-    }
-    const parsedValue = JSON.parse(rawValue) as Partial<Record<ResourceListOptionalColumn, unknown>>;
-    return normalizeResourceListColumnPreference(parsedValue);
-  } catch {
-    return { ...defaultResourceListColumns };
-  }
-}
-
-function writeResourceListColumnPreference(columns: ResourceListColumnPreference) {
-  try {
-    window.localStorage.setItem(resourceListColumnsStorageKey, JSON.stringify(normalizeResourceListColumnPreference(columns)));
-  } catch {
-    // Column visibility is only a UI preference; storage failures should not break the explorer.
-  }
-}
-
-function normalizeResourceListColumnPreference(value: Partial<Record<ResourceListOptionalColumn, unknown>>): ResourceListColumnPreference {
-  return {
-    namespace: typeof value.namespace === 'boolean' ? value.namespace : defaultResourceListColumns.namespace,
-    cluster: typeof value.cluster === 'boolean' ? value.cluster : defaultResourceListColumns.cluster,
-    age: typeof value.age === 'boolean' ? value.age : defaultResourceListColumns.age,
-    summary: typeof value.summary === 'boolean' ? value.summary : defaultResourceListColumns.summary,
-  };
-}
-
 function isResourceListShortcutTarget(target: EventTarget | null) {
   if (!(target instanceof HTMLElement)) {
     return false;
@@ -825,102 +701,4 @@ function isResourceListShortcutTarget(target: EventTarget | null) {
   }
   const tagName = target.tagName.toLowerCase();
   return tagName === 'input' || tagName === 'select' || tagName === 'textarea' || tagName === 'button' || target.isContentEditable;
-}
-
-function sortResourceList(resources: ResourceExplorerItem[], sortPreference: ResourceListSortPreference) {
-  const normalizedSort = normalizeResourceListSortPreference(sortPreference);
-  return resources
-    .map((resource, index) => ({ resource, index }))
-    .sort((left, right) => {
-      const primary = compareResourceSortValue(left.resource, right.resource, normalizedSort.field);
-      if (primary !== 0) {
-        return normalizedSort.direction === 'desc' ? -primary : primary;
-      }
-      const fallback =
-        compareResourceText(left.resource.kind, right.resource.kind) ||
-        compareResourceText(left.resource.namespace || '', right.resource.namespace || '') ||
-        compareResourceText(left.resource.name, right.resource.name) ||
-        compareResourceText(left.resource.id, right.resource.id);
-      return fallback || left.index - right.index;
-    })
-    .map(({ resource }) => resource);
-}
-
-function compareResourceSortValue(left: ResourceExplorerItem, right: ResourceExplorerItem, field: ResourceListSortField) {
-  switch (field) {
-    case 'cluster':
-      return compareResourceText(left.clusterId, right.clusterId);
-    case 'kind':
-      return compareResourceText(left.kind, right.kind);
-    case 'namespace':
-      return compareResourceText(left.namespace || '', right.namespace || '');
-    case 'status':
-      return compareResourceText(left.status, right.status);
-    case 'name':
-    default:
-      return compareResourceText(left.name, right.name);
-  }
-}
-
-function compareResourceText(left: string, right: string) {
-  return left.localeCompare(right, undefined, { numeric: true, sensitivity: 'base' });
-}
-
-function resourceBulkCopyName(resource: ResourceExplorerItem) {
-  return `${resource.kind} ${resource.namespace ? `${resource.namespace}/` : ''}${resource.name}`;
-}
-
-function resourceBulkExportRows(resources: ResourceExplorerItem[]): ResourceBulkExportRow[] {
-  return resources.map((resource) => ({
-    cluster: resource.clusterId,
-    namespace: resource.namespace || '',
-    kind: resource.kind,
-    name: resource.name,
-    status: resource.status,
-    labelsCount: Object.keys(resource.labels).length,
-    annotationsCount: Object.keys(resource.annotations).length,
-    summaryKeys: Object.keys(resource.summary).sort(),
-    relatedCount: resource.related.length,
-  }));
-}
-
-function resourceBulkExportJson(resources: ResourceExplorerItem[]) {
-  return `${JSON.stringify(resourceBulkExportRows(resources), null, 2)}\n`;
-}
-
-function resourceBulkExportCsv(resources: ResourceExplorerItem[]) {
-  const header: Array<keyof ResourceBulkExportRow> = ['cluster', 'namespace', 'kind', 'name', 'status', 'labelsCount', 'annotationsCount', 'summaryKeys', 'relatedCount'];
-  const rows = resourceBulkExportRows(resources).map((row) => header.map((key) => safeCsvCell(Array.isArray(row[key]) ? row[key].join(';') : row[key])).join(','));
-  return `${header.join(',')}\n${rows.join('\n')}\n`;
-}
-
-function resourceBulkExportFileName(format: 'json' | 'csv') {
-  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-  return `kuviewer-resources-selected-${timestamp}.${format}`;
-}
-
-function isEditableTarget(target: EventTarget | null) {
-  if (!(target instanceof HTMLElement)) {
-    return false;
-  }
-  const tagName = target.tagName.toLowerCase();
-  return tagName === 'input' || tagName === 'select' || tagName === 'textarea' || tagName === 'button' || target.isContentEditable;
-}
-
-function unique(values: string[]) {
-  return Array.from(new Set(values)).sort();
-}
-
-function recordText(values: Record<string, unknown>) {
-  return Object.entries(values)
-    .map(([key, value]) => `${key}:${String(value)}`)
-    .join(' ')
-    .toLowerCase();
-}
-
-function recordFromUnknown(value: unknown): Record<string, unknown> {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
-    return {};
-  }
-  return value as Record<string, unknown>;
 }
