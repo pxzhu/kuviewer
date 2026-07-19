@@ -28,6 +28,7 @@
 4. Desktop prototype scope reduction
    - Web product path는 standalone web/server를 유지하며 SSH/CM controls를 노출하지 않는다.
    - Desktop CM/SSH는 public installer가 없는 local prototype이다.
+   - Session layout validation/storage/import/export/reorder 모델은 panel에서 feature module로 분리되고 direct unit test가 추가됐다.
    - Session/layout UI를 더 분리할지, prototype archive로 축소할지 실제 사용 후 결정한다.
 
 5. Snapshot comparison follow-up
