@@ -39,6 +39,7 @@
 - Saved-view action/summary/folder/search/bulk/list rendering은 `website/src/components/resourceExplorer/ResourceViewPresetsPanel.tsx`가 담당한다.
 - Resource API filter/sort/cursor/facet 계산은 `server/internal/httpapi/resource_list.go`에 두고 HTTP integration과 순수 helper test를 함께 유지한다.
 - Resource detail state는 `useResourceEventsController`와 `useResourceLogsController`로 분리돼 있다.
+- Resource detail identity/density, section navigation/jump controls, overview header는 `ResourceExplorerDetailHeader.tsx` 표시 component가 담당한다.
 - Relations, Events, Logs section과 highlight renderer는 `website/src/components/resourceExplorer/` 아래 표시 component로 분리돼 있다.
 - CSV export는 `website/src/features/export/safeCsv.ts`를 공통 사용해 formula injection과 NUL을 차단한다.
 - Topology는 dispatcher, shared layout, mobile SVG, desktop React Flow renderer로 분리돼 있다.

@@ -19,6 +19,7 @@
    - Resource list filtering/sorting/preferences/selection/export 모델은 feature module과 direct unit test로 분리됐다.
    - Events/Logs 요청·취소·stream 상태는 controller hook으로 분리됐다.
    - Relations, Events, Logs의 section/control/output은 표시 전용 component로 분리됐다.
+   - Detail identity/density, section navigator/jump controls, overview header는 표시 전용 component로 분리됐다.
    - Resource list와 resource bulk toolbar는 표시 전용 component로 분리됐다.
    - Resource list sort/density/column toolbar와 query/facet/active-filter panel은 표시 전용 component로 분리됐다.
    - Active filter chip 계산은 pure helper와 direct unit test로 분리됐다.
