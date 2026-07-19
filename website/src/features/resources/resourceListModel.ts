@@ -31,6 +31,38 @@ export interface ResourceBulkExportRow {
   relatedCount: number;
 }
 
+export interface ResourceListRequest {
+  query: string;
+  cluster: string;
+  namespace: string;
+  kind: string;
+  status: string;
+  sort: ResourceListSortField;
+  direction: ResourceListSortDirection;
+  limit: number;
+  cursor?: string;
+}
+
+export type ResourceListKeyboardCommand =
+  | { type: 'select-all' }
+  | { type: 'clear-selection' }
+  | { type: 'move'; index: number; range: boolean }
+  | { type: 'focus-detail' }
+  | { type: 'toggle-selection' };
+
+export interface ResourceListKeyboardInput {
+  altKey: boolean;
+  ctrlKey: boolean;
+  hasSelectedResource: boolean;
+  hasSelectionOrMessage: boolean;
+  key: string;
+  metaKey: boolean;
+  resourceCount: number;
+  selectedResourceIndex: number;
+  shiftKey: boolean;
+  shortcutTarget: boolean;
+}
+
 export const resourceListSortOptions: Array<{ value: ResourceListSortField; label: string }> = [
   { value: 'kind', label: 'Kind' },
   { value: 'name', label: '이름' },
@@ -53,6 +85,67 @@ export const defaultResourceListColumns: ResourceListColumnPreference = {
   age: true,
   summary: true,
 };
+
+export function buildResourceListRequest(
+  filters: ResourceViewFilters,
+  sortPreference: ResourceListSortPreference,
+  cursor = '',
+): ResourceListRequest {
+  const normalizedSort = normalizeResourceListSortPreference(sortPreference);
+  return {
+    ...filters,
+    sort: normalizedSort.field,
+    direction: normalizedSort.direction,
+    limit: 200,
+    ...(cursor ? { cursor } : {}),
+  };
+}
+
+export function mergeResourcePages(current: ResourceExplorerItem[], incoming: ResourceExplorerItem[]) {
+  const knownIds = new Set(current.map((resource) => resource.id));
+  return [...current, ...incoming.filter((resource) => !knownIds.has(resource.id))];
+}
+
+export function normalizeResourceListRequestError(error: unknown) {
+  return error instanceof Error && /^(api_base_url_not_configured|resources_request_failed:\d{3})$/.test(error.message)
+    ? error.message
+    : 'resources_request_failed';
+}
+
+export function resolveResourceListKeyboardCommand(input: ResourceListKeyboardInput): ResourceListKeyboardCommand | null {
+  if (!input.shortcutTarget && !input.altKey && (input.ctrlKey || input.metaKey) && input.key.toLowerCase() === 'a') {
+    return { type: 'select-all' };
+  }
+  if (!input.shortcutTarget && input.key === 'Escape' && input.hasSelectionOrMessage) {
+    return { type: 'clear-selection' };
+  }
+  if (input.altKey || input.ctrlKey || input.metaKey || input.shortcutTarget) {
+    return null;
+  }
+  if (input.key === 'ArrowDown') {
+    return { type: 'move', index: input.selectedResourceIndex >= 0 ? input.selectedResourceIndex + 1 : 0, range: input.shiftKey };
+  }
+  if (input.key === 'ArrowUp') {
+    return {
+      type: 'move',
+      index: input.selectedResourceIndex >= 0 ? input.selectedResourceIndex - 1 : input.resourceCount - 1,
+      range: input.shiftKey,
+    };
+  }
+  if (input.key === 'Home') {
+    return { type: 'move', index: 0, range: input.shiftKey };
+  }
+  if (input.key === 'End') {
+    return { type: 'move', index: input.resourceCount - 1, range: input.shiftKey };
+  }
+  if (input.key === 'Enter' && input.hasSelectedResource) {
+    return { type: 'focus-detail' };
+  }
+  if ((input.key === ' ' || input.key === 'Spacebar') && input.hasSelectedResource) {
+    return { type: 'toggle-selection' };
+  }
+  return null;
+}
 
 export function filterResourceList(resources: ResourceExplorerItem[], filters: ResourceViewFilters) {
   const normalizedQuery = filters.query.trim().toLowerCase();
