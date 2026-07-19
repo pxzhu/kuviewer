@@ -151,4 +151,4 @@ See [desktop/README.md](desktop/README.md), [desktop/BUILD_PREREQUISITES.md](des
 - Kubernetes deployment: `deploy/kubernetes/`
 - Standalone deployment: `deploy/standalone/`
 
-Local Telegram task notifications use `scripts/notify-telegram.mjs`. The script prefers `TELEGRAM_BOT_TOKEN_TWO`, never prints token/chat values, and is not part of product runtime behavior.
+Local Telegram task notifications use `scripts/notify-telegram.mjs`. The script prefers `TELEGRAM_BOT_TOKEN_TWO`, validates bot-token format and numeric chat ids before network access, reduces remote failures to bounded reason codes, and reports only readiness metadata without token/chat values or file paths. It is not part of product runtime behavior. Its helper contract is covered by `node --test scripts/lib/*.test.mjs`.

@@ -38,6 +38,13 @@ jobs:
         working-directory: website
         run: npm run typecheck
 
+      - name: Frontend unit tests
+        working-directory: website
+        run: npm run test:unit
+
+      - name: Automation helper tests
+        run: node --test scripts/lib/*.test.mjs
+
       - name: Frontend standalone build
         working-directory: website
         run: VITE_BASE_PATH=/ npm run build

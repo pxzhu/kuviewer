@@ -1,93 +1,76 @@
-import path from 'node:path';
 import {
+  buildTelegramDryRunReport,
+  buildTelegramPreflightReport,
   inferChatId,
   parseArgs,
   readMessageText,
   resolveExplicitChatId,
   resolveTelegramToken,
+  safeTelegramCliError,
   sendMessage,
   sendPhoto,
   truncateTelegramCaption,
   truncateTelegramMessage,
   validateRequiredTokenSource,
+  validateTelegramToken,
 } from './lib/telegram-notify.mjs';
 
-const args = parseCliArgs(process.argv.slice(2));
+await main().catch((error) => fail(safeTelegramCliError(error)));
 
-if (args.help) {
-  printHelp();
-  process.exit(0);
-}
-
-validateCliArgs(args);
-
-const { token, tokenSource } = resolveTelegramToken(process.env);
-const { explicitChatId, explicitChatIdSource } = resolveExplicitChatId(args, process.env);
-const tokenSourceMatches = !args.requireTokenSource || tokenSource === args.requireTokenSource;
-
-if (args.preflight) {
-  await runPreflight(args, {
-    explicitChatId,
-    explicitChatIdSource,
-    token,
-    tokenSource,
-    tokenSourceMatches,
-  });
-}
-
-if (!token) {
-  fail('TELEGRAM_BOT_TOKEN is required');
-}
-
-if (!tokenSourceMatches) {
-  fail(`Required Telegram token source unavailable. Expected ${args.requireTokenSource}, found ${tokenSource || 'none'}.`);
-}
-
-const messageText = await readMessageText(args);
-if (!messageText && !args.photo) {
-  fail('Provide --text, --message-file, or --photo');
-}
-
-if (args.dryRun) {
-  runDryRun(args, {
-    explicitChatId,
-    explicitChatIdSource,
-    messageText,
-    tokenSource,
-    tokenSourceMatches,
-  });
-}
-
-if (args.requireExplicitChat && !explicitChatId) {
-  fail('Explicit Telegram chat id required. Set --chat-id, TELEGRAM_CHAT_ID, TELEGRAM_TO, or TELEGRAM_CHAT_ID_KUVIEWER.');
-}
-
-const chatId = explicitChatId || await inferChatId(token);
-if (!chatId) {
-  fail('Telegram chat id not found. Set TELEGRAM_CHAT_ID or send a message to the bot so getUpdates can infer it.');
-}
-
-if (args.photo) {
-  await sendPhoto(token, chatId, args.photo, truncateTelegramCaption(messageText));
-  printJson({ ok: true, sent: 'photo', chatIdSource: explicitChatIdSource || 'getUpdates' });
-} else {
-  await sendMessage(token, chatId, truncateTelegramMessage(messageText));
-  printJson({ ok: true, sent: 'message', chatIdSource: explicitChatIdSource || 'getUpdates' });
-}
-
-function parseCliArgs(argv) {
-  try {
-    return parseArgs(argv);
-  } catch (error) {
-    fail(error.message);
+async function main() {
+  const args = parseArgs(process.argv.slice(2));
+  if (args.help) {
+    printHelp();
+    return;
   }
-}
 
-function validateCliArgs(options) {
-  try {
-    validateRequiredTokenSource(options.requireTokenSource);
-  } catch (error) {
-    fail(error.message);
+  validateRequiredTokenSource(args.requireTokenSource);
+  const { token, tokenSource } = resolveTelegramToken(process.env);
+  if (token) validateTelegramToken(token, tokenSource);
+  const { explicitChatId, explicitChatIdSource } = resolveExplicitChatId(args, process.env);
+  const tokenSourceMatches = !args.requireTokenSource || tokenSource === args.requireTokenSource;
+
+  if (args.preflight) {
+    await runPreflight(args, {
+      explicitChatId,
+      explicitChatIdSource,
+      token,
+      tokenSource,
+      tokenSourceMatches,
+    });
+  }
+
+  if (!token) fail('TELEGRAM_BOT_TOKEN is required');
+  if (!tokenSourceMatches) {
+    fail(`Required Telegram token source unavailable. Expected ${args.requireTokenSource}, found ${tokenSource || 'none'}.`);
+  }
+
+  const messageText = await readMessageText(args);
+  if (!messageText && !args.photo) fail('Provide --text, --message-file, or --photo');
+
+  if (args.dryRun) {
+    runDryRun(args, {
+      explicitChatId,
+      explicitChatIdSource,
+      messageText,
+      tokenSource,
+      tokenSourceMatches,
+    });
+  }
+
+  if (args.requireExplicitChat && !explicitChatId) {
+    fail('Explicit Telegram chat id required. Set --chat-id, TELEGRAM_CHAT_ID, TELEGRAM_TO, or TELEGRAM_CHAT_ID_KUVIEWER.');
+  }
+
+  const chatId = explicitChatId || await inferChatId(token);
+  if (!chatId) fail('Telegram chat id not found. Set TELEGRAM_CHAT_ID or send a message to the bot so getUpdates can infer it.');
+
+  if (args.photo) {
+    await sendPhoto(token, chatId, args.photo, truncateTelegramCaption(messageText));
+    printJson({ ok: true, sent: 'photo', chatIdSource: explicitChatIdSource || 'getUpdates' });
+  } else {
+    await sendMessage(token, chatId, truncateTelegramMessage(messageText));
+    printJson({ ok: true, sent: 'message', chatIdSource: explicitChatIdSource || 'getUpdates' });
   }
 }
 
@@ -103,49 +86,31 @@ async function runPreflight(options, context) {
     }
   }
 
-  const hasUsableChat =
-    Boolean(context.explicitChatId) ||
-    (!options.requireExplicitChat && (!options.resolveChat || inferredChatAvailable));
-  const preflightOk = Boolean(context.token) && context.tokenSourceMatches && hasUsableChat;
-
-  printJson({
-    ok: preflightOk,
-    preflight: true,
+  const report = buildTelegramPreflightReport(options, {
     hasToken: Boolean(context.token),
     tokenSource: context.tokenSource,
-    requiredTokenSource: options.requireTokenSource,
     tokenSourceMatches: context.tokenSourceMatches,
     hasExplicitChatId: Boolean(context.explicitChatId),
     hasInferredChat: inferredChatAvailable,
     chatResolveError,
     chatIdSource: context.explicitChatIdSource || '',
-    wouldUseGetUpdates: !context.explicitChatId,
-    requiresExplicitChatId: options.requireExplicitChat,
-    resolvedChat: options.resolveChat,
-    sendMode: options.photo ? 'photo' : preflightText ? 'message' : 'none',
     textLength: preflightText.length,
-    photo: options.photo ? path.basename(options.photo) : '',
   });
-  process.exit(preflightOk ? 0 : 1);
+  printJson(report);
+  process.exit(report.ok ? 0 : 1);
 }
 
 function runDryRun(options, context) {
-  const dryRunOk = context.tokenSourceMatches && (!options.requireExplicitChat || Boolean(context.explicitChatId));
-  printJson({
-    ok: dryRunOk,
-    dryRun: true,
+  const report = buildTelegramDryRunReport(options, {
     hasToken: true,
     tokenSource: context.tokenSource,
-    requiredTokenSource: options.requireTokenSource,
     tokenSourceMatches: context.tokenSourceMatches,
     hasExplicitChatId: Boolean(context.explicitChatId),
     chatIdSource: context.explicitChatIdSource || '',
-    wouldUseGetUpdates: !context.explicitChatId,
-    requiresExplicitChatId: options.requireExplicitChat,
     textLength: context.messageText.length,
-    photo: options.photo ? path.basename(options.photo) : '',
   });
-  process.exit(dryRunOk ? 0 : 1);
+  printJson(report);
+  process.exit(report.ok ? 0 : 1);
 }
 
 function printJson(value) {
