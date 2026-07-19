@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { KeyboardEvent as ReactKeyboardEvent } from "react";
-import { Activity, CheckCircle2, FileText, RotateCcw, Search, Tags, X } from "lucide-react";
+import { Activity, FileText, Tags } from "lucide-react";
 import type { ResourceExplorerItem } from "../../types/resourceExplorer";
 import {
   DetailSection,
@@ -10,7 +9,6 @@ import {
 import {
   countEventSeverities,
   countNewEvents,
-  collectKeyValueSearchMatches,
   downloadTextFile,
   eventControlSummary,
   eventExportCsv,
@@ -22,13 +20,11 @@ import {
   filterRelatedResources,
   groupEventsBySeverity,
   groupRelatedResources,
-  keyValueEntries,
   readResourceDetailDensityPreference,
   recordFromUnknown,
   sortEventListItems,
   writeResourceDetailDensityPreference,
 } from './resourceDetailActivity';
-import { renderHighlightedText } from './resourceDetailHighlight';
 import {
   healthSectionSummary,
   healthSignalSectionTone,
@@ -51,6 +47,7 @@ import { ResourceRelationsSection } from './ResourceRelationsSection';
 import { ResourceEventsSection } from './ResourceEventsSection';
 import { ResourceLogsSection } from './ResourceLogsSection';
 import { ResourceExplorerDetailHeader } from './ResourceExplorerDetailHeader';
+import { ResourceSafePreviewSection } from './ResourceSafePreviewSection';
 
 function isEditableTarget(target: EventTarget | null) {
   if (!(target instanceof HTMLElement)) {
@@ -182,8 +179,6 @@ function ResourceExplorerDetailBody({
     toggleLogStream,
   } = useResourceLogsController({ liveEnabled, resource });
   const [resourceDetailDensity, setResourceDetailDensity] = useState<ResourceDetailDensity>(() => readResourceDetailDensityPreference());
-  const [safePreviewFilter, setSafePreviewFilter] = useState('');
-  const [activeSafePreviewMatchIndex, setActiveSafePreviewMatchIndex] = useState(0);
   const [relationFilter, setRelationFilter] = useState('');
   const [relationsExpanded, setRelationsExpanded] = useState(false);
   const [activeDetailSectionId, setActiveDetailSectionId] = useState<DetailSectionId>('metadata');
@@ -193,8 +188,6 @@ function ResourceExplorerDetailBody({
   const [openSections, setOpenSections] = useState<Set<DetailSectionId>>(() => new Set(defaultOpenDetailSections));
 
   const resetResourceDetailUiState = useCallback(() => {
-    setSafePreviewFilter('');
-    setActiveSafePreviewMatchIndex(0);
     setRelationFilter('');
     setRelationsExpanded(false);
     resetResourceEventUiState();
@@ -259,19 +252,6 @@ function ResourceExplorerDetailBody({
       }
     : {};
   const yamlPreview = resource && typeof resource.preview.safeYaml === 'string' ? resource.preview.safeYaml : '';
-  const safePreviewEntries = keyValueEntries(summaryPreview);
-  const safePreviewMatches = collectKeyValueSearchMatches(safePreviewEntries, safePreviewFilter);
-  const safePreviewFilterActive = safePreviewFilter.trim().length > 0;
-  const activeSafePreviewMatch = safePreviewMatches[activeSafePreviewMatchIndex] || null;
-
-  useEffect(() => {
-    setActiveSafePreviewMatchIndex((current) => {
-      if (safePreviewMatches.length === 0) {
-        return 0;
-      }
-      return Math.min(current, safePreviewMatches.length - 1);
-    });
-  }, [safePreviewMatches.length]);
 
   const healthSignals = resourceHealthSignals(resource, statusPreview, summaryPreview);
   const healthSectionTone = healthSignalSectionTone(resource, healthSignals);
@@ -416,28 +396,6 @@ function ResourceExplorerDetailBody({
   const setDetailSectionRef = useCallback((id: DetailSectionId) => (node: HTMLElement | null) => {
     detailSectionRefs.current[id] = node;
   }, []);
-  const handleSafePreviewFilterChange = useCallback((value: string) => {
-    setSafePreviewFilter(value);
-    setActiveSafePreviewMatchIndex(0);
-    if (value.trim()) {
-      openSection('safe');
-    }
-  }, [openSection]);
-  const moveActiveSafePreviewMatch = useCallback((offset: number) => {
-    if (safePreviewMatches.length === 0) {
-      return;
-    }
-    openSection('safe');
-    setActiveSafePreviewMatchIndex((current) => (current + offset + safePreviewMatches.length) % safePreviewMatches.length);
-  }, [openSection, safePreviewMatches.length]);
-  const handleSafePreviewSearchKeyDown = useCallback((event: ReactKeyboardEvent<HTMLInputElement>) => {
-    if (event.key !== 'Enter') {
-      return;
-    }
-    event.preventDefault();
-    moveActiveSafePreviewMatch(event.shiftKey ? -1 : 1);
-  }, [moveActiveSafePreviewMatch]);
-
   useEffect(() => {
     const handleDocumentPointerDown = (event: MouseEvent | TouchEvent) => {
       detailPanelActiveRef.current = Boolean(detailPanelRef.current?.contains(event.target as Node));
@@ -604,74 +562,18 @@ function ResourceExplorerDetailBody({
           <HealthSignalPanel signals={healthSignals} />
           <KeyValueGrid density={resourceDetailDensity} testId="status" values={statusPreview} />
         </DetailSection>
-        <DetailSection id="safe" icon={FileText} title="Safe Preview" summary={detailSectionSummaries.safe} open={isSectionOpen('safe')} active={activeDetailSectionId === 'safe'} sectionRef={setDetailSectionRef('safe')} onFocusSection={() => setActiveDetailSectionId('safe')} onToggle={() => toggleSection('safe')}>
-          <div className="grid gap-2">
-            <div className="grid gap-2 rounded-[10px] border border-[rgba(60,60,67,0.12)] bg-white/70 p-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
-              <label className="relative block">
-                <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[rgba(60,60,67,0.45)]" size={15} />
-                <input
-                  className="ku-input w-full pl-9"
-                  data-testid="safe-preview-search-input"
-                  placeholder="Safe Preview 검색"
-                  value={safePreviewFilter}
-                  onChange={(event) => handleSafePreviewFilterChange(event.target.value)}
-                  onKeyDown={handleSafePreviewSearchKeyDown}
-                  aria-label="Safe Preview 검색"
-                />
-              </label>
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <span className="ku-chip" data-testid="safe-preview-search-count">
-                  {safePreviewFilterActive ? `${safePreviewMatches.length} matches` : `${safePreviewEntries.length} items`}
-                </span>
-                <div className="flex items-center gap-1.5">
-                  <button
-                    className="rounded-[8px] border border-[rgba(60,60,67,0.12)] bg-white px-2.5 py-1.5 text-xs font-semibold text-[rgba(60,60,67,0.72)] transition hover:bg-[rgba(242,242,247,0.9)] disabled:cursor-not-allowed disabled:opacity-50"
-                    type="button"
-                    onClick={() => moveActiveSafePreviewMatch(-1)}
-                    disabled={safePreviewMatches.length === 0}
-                    data-testid="safe-preview-search-prev"
-                    title="이전 Safe Preview match"
-                  >
-                    이전
-                  </button>
-                  <button
-                    className="rounded-[8px] border border-[rgba(60,60,67,0.12)] bg-white px-2.5 py-1.5 text-xs font-semibold text-[rgba(60,60,67,0.72)] transition hover:bg-[rgba(242,242,247,0.9)] disabled:cursor-not-allowed disabled:opacity-50"
-                    type="button"
-                    onClick={() => moveActiveSafePreviewMatch(1)}
-                    disabled={safePreviewMatches.length === 0}
-                    data-testid="safe-preview-search-next"
-                    title="다음 Safe Preview match"
-                  >
-                    다음
-                  </button>
-                  {safePreviewFilter ? (
-                    <button
-                      className="rounded-[8px] border border-[rgba(60,60,67,0.12)] bg-white px-2.5 py-1.5 text-xs font-semibold text-[rgba(60,60,67,0.72)] transition hover:bg-[rgba(242,242,247,0.9)]"
-                      type="button"
-                      onClick={() => handleSafePreviewFilterChange('')}
-                      data-testid="safe-preview-search-clear"
-                    >
-                      초기화
-                    </button>
-                  ) : null}
-                </div>
-              </div>
-            </div>
-            {safePreviewFilterActive ? (
-              <p className="ku-meta" data-testid="safe-preview-search-status">
-                {safePreviewMatches.length > 0 ? `검색 결과 ${Math.min(activeSafePreviewMatchIndex + 1, safePreviewMatches.length)} / ${safePreviewMatches.length}` : '검색 결과 0개'}
-              </p>
-            ) : null}
-            <KeyValueGrid
-              activeMatch={activeSafePreviewMatch}
-              density={resourceDetailDensity}
-              filter={safePreviewFilter}
-              filteredEmpty="일치하는 Safe Preview 항목 없음"
-              testId="safe"
-              values={summaryPreview}
-            />
-          </div>
-        </DetailSection>
+        <ResourceSafePreviewSection
+          key={resource.id}
+          active={activeDetailSectionId === 'safe'}
+          density={resourceDetailDensity}
+          onEnsureOpen={() => openSection('safe')}
+          onFocusSection={() => setActiveDetailSectionId('safe')}
+          onToggle={() => toggleSection('safe')}
+          open={isSectionOpen('safe')}
+          sectionRef={setDetailSectionRef('safe')}
+          summary={detailSectionSummaries.safe}
+          values={summaryPreview}
+        />
         <DetailSection id="yaml" icon={FileText} title="YAML Preview" summary={detailSectionSummaries.yaml} open={isSectionOpen('yaml')} active={activeDetailSectionId === 'yaml'} sectionRef={setDetailSectionRef('yaml')} onFocusSection={() => setActiveDetailSectionId('yaml')} onToggle={() => toggleSection('yaml')}>
           {yamlPreview ? (
             <pre className={`max-h-[360px] overflow-auto rounded-[10px] border border-[rgba(60,60,67,0.12)] bg-[#111827] font-mono text-[#d1d5db] ${resourceDetailDensity === 'compact' ? 'p-2 text-[10px] leading-4' : 'p-3 text-[11px] leading-5'}`}>{yamlPreview}</pre>
