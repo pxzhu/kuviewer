@@ -100,6 +100,8 @@ requireIncludes(ci, '  pull_request:', 'CI must validate pull requests');
 requireIncludes(ci, '  workflow_dispatch:', 'CI must retain an explicit manual fallback');
 requireNotIncludes(ci, '\n  push:', 'CI must not repeat validation after a protected main merge');
 requireIncludes(ci, '  validate:', 'CI required check must remain named validate');
+requireIncludes(ci, 'run: npm run test:unit', 'CI must execute frontend unit tests');
+requireIncludes(ci, 'run: node --test scripts/lib/*.test.mjs', 'CI must execute automation helper tests');
 
 requireIncludes(compose, 'image: ${KUVIEWER_IMAGE:-kuviewer:local}', 'compose must accept an explicit release image');
 requireIncludes(envExample, 'KUVIEWER_IMAGE=registry.example.com/kuviewer:latest', 'env example must use a neutral registry host');

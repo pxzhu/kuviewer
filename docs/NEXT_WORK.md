@@ -41,8 +41,8 @@
    - History와 선택값은 저장하지 않고 Secret 값은 모든 비교/export/import에서 제외한다.
 
 6. Local automation hygiene
-   - CLI entrypoint와 reusable helper 분리 패턴을 다른 scripts에도 적용한다.
-   - Telegram은 `TELEGRAM_BOT_TOKEN_TWO`를 우선하고 필요하면 required token-source guard를 사용한다.
+   - Telegram CLI는 reusable helper, direct unit test, bounded remote error code, required token-source guard를 사용한다.
+   - 다른 scripts도 보안/회귀 필요가 확인될 때 같은 CLI/helper 분리 패턴을 적용한다.
    - CI는 pull request와 수동 fallback에서만 실행하고, protected `main` merge 뒤의 중복 run은 만들지 않는다.
 
 ## Current Guardrails
