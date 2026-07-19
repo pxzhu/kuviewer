@@ -69,6 +69,21 @@ import {
   type DesktopCmSessionLayoutFolderFilterOption,
   type DesktopCmSessionLayoutPreset,
 } from '../features/desktop/desktopCmSessionLayouts';
+import { DesktopCmConnectionProfileForm } from './desktopCm/DesktopCmConnectionProfileForm';
+import {
+  DesktopCmDiagnostics,
+} from './desktopCm/DesktopCmSessionPrimitives';
+import {
+  buildDesktopCmSessionCloneName,
+  formatCmSessionError,
+  formatCmDiagnosticSeverity,
+  formatCmDiagnosticStage,
+  formatCmSessionCheckStatus,
+  formatRuntimeHealthStatus,
+  normalizeSearchValue,
+  validateDesktopCmSessionForm,
+} from '../features/desktop/desktopCmSessionPresentation';
+import { DesktopCmSessionSummary } from './desktopCm/DesktopCmSessionSummary';
 
 interface DesktopCmSessionPanelProps {
   message: string;
@@ -94,12 +109,6 @@ const emptyForm: DesktopCmSessionInput = {
   remoteApiPort: desktopCmDefaultRemoteApiPort,
   description: '',
 };
-
-const desktopCmQuickApiEndpoints = [
-  { label: '127.0.0.1:18085', host: desktopCmDefaultRemoteApiHost, port: desktopCmDefaultRemoteApiPort, testId: 'desktop-cm-session-api-preset-local-18085' },
-  { label: 'localhost:18085', host: 'localhost', port: desktopCmDefaultRemoteApiPort, testId: 'desktop-cm-session-api-preset-localhost-18085' },
-  { label: '127.0.0.1:8080', host: desktopCmDefaultRemoteApiHost, port: 8080, testId: 'desktop-cm-session-api-preset-local-8080' },
-] as const;
 
 interface DesktopCmSessionImportSummary {
   fileName: string;
@@ -172,7 +181,6 @@ const desktopCmDiagnosticFilterPresetStorageKey = 'kuviewer_desktop_cm_diagnosti
 const maxDesktopCmDiagnosticFilterPresets = 8;
 const maxDesktopCmDiagnosticFilterPresetNameLength = 40;
 const maxDesktopCmSessionLayoutReorderHistoryEntries = 5;
-const maxDesktopCmSessionCloneNameLength = 60;
 const desktopCmSessionLayoutReorderHistoryScopeFilterOptions: DesktopCmSessionLayoutReorderHistoryScopeFilter[] = ['all', 'folder', 'preset', 'focus', 'system'];
 const desktopCmSessionLayoutReorderHistoryStatusFilterOptions: DesktopCmSessionLayoutReorderHistoryStatusFilter[] = [
   'all',
@@ -2080,244 +2088,31 @@ export function DesktopCmSessionPanel({
         ) : null}
       </div>
 
-      <div className="grid gap-3 rounded-[10px] border border-[rgba(60,60,67,0.1)] bg-white/68 px-3 py-3" data-testid="desktop-cm-connection-profile-form">
-        <div className="flex min-w-0 flex-wrap items-center gap-2">
-          <span className="ku-meta">Connection profile</span>
-          <span className="ku-chip max-w-full font-mono" data-testid="desktop-cm-session-connection-preview" title={connectionPreview}>
-            <ServerCog size={13} aria-hidden="true" />
-            <span className="truncate">{connectionPreview}</span>
-          </span>
-          {selectedSession ? (
-            <button className="ku-control h-8 text-xs" data-testid="desktop-cm-session-fill-selected" type="button" onClick={fillSelectedSession}>
-              <CheckCircle2 size={13} aria-hidden="true" />
-              선택 세션으로 채우기
-            </button>
-          ) : null}
-          {cloneDraftSourceName ? (
-            <span className="ku-chip max-w-full border-[rgba(0,122,255,0.18)] bg-[rgba(0,122,255,0.08)] text-[#0066cc]" data-testid="desktop-cm-session-clone-draft">
-              <Copy size={13} aria-hidden="true" />
-              <span className="truncate">clone draft · {cloneDraftSourceName} · credential/runtime 제외</span>
-            </span>
-          ) : null}
-        </div>
+      <DesktopCmConnectionProfileForm
+        busy={busyAction === 'save'}
+        cloneDraftSourceName={cloneDraftSourceName}
+        connectionPreview={connectionPreview}
+        form={form}
+        hasSelectedSession={Boolean(selectedSession)}
+        onApplyRemoteApiEndpoint={applyRemoteApiEndpoint}
+        onCancel={() => {
+          setForm(emptyForm);
+          setCloneDraftSourceName('');
+        }}
+        onChange={(patch) => {
+          setForm((current) => ({ ...current, ...patch }));
+          setError('');
+        }}
+        onFillSelected={fillSelectedSession}
+        onSave={() => void handleSave()}
+      />
 
-        <div className="grid gap-3 xl:grid-cols-[minmax(280px,1.4fr)_minmax(260px,1fr)_minmax(220px,0.9fr)] xl:items-start" data-testid="desktop-cm-session-form-sections">
-          <section className="grid gap-2" data-testid="desktop-cm-session-form-ssh-endpoint">
-            <span className="ku-meta">SSH endpoint</span>
-            <div className="grid gap-2 sm:grid-cols-[minmax(120px,1fr)_minmax(160px,1.3fr)_88px_minmax(110px,0.9fr)]">
-              <label className="min-w-0">
-                <span className="ku-meta">Name</span>
-                <input
-                  className="ku-field mt-1 h-9 w-full"
-                  data-testid="desktop-cm-session-name"
-                  placeholder="prod cm"
-                  value={form.name}
-                  onChange={(event) => {
-                    setForm((current) => ({ ...current, name: event.target.value }));
-                    setError('');
-                  }}
-                />
-              </label>
-              <label className="min-w-0">
-                <span className="ku-meta">Host</span>
-                <input
-                  className="ku-field mt-1 h-9 w-full font-mono"
-                  data-testid="desktop-cm-session-host"
-                  placeholder="cm.internal"
-                  value={form.host}
-                  onChange={(event) => {
-                    setForm((current) => ({ ...current, host: event.target.value }));
-                    setError('');
-                  }}
-                />
-              </label>
-              <label className="min-w-0">
-                <span className="ku-meta">Port</span>
-                <input
-                  className="ku-field mt-1 h-9 w-full font-mono"
-                  data-testid="desktop-cm-session-port"
-                  inputMode="numeric"
-                  value={form.port}
-                  onChange={(event) => {
-                    setForm((current) => ({ ...current, port: Number(event.target.value || 0) }));
-                    setError('');
-                  }}
-                />
-              </label>
-              <label className="min-w-0">
-                <span className="ku-meta">User</span>
-                <input
-                  className="ku-field mt-1 h-9 w-full font-mono"
-                  data-testid="desktop-cm-session-user"
-                  placeholder="ubuntu"
-                  value={form.user}
-                  onChange={(event) => {
-                    setForm((current) => ({ ...current, user: event.target.value }));
-                    setError('');
-                  }}
-                />
-              </label>
-            </div>
-          </section>
-
-          <section className="grid gap-2" data-testid="desktop-cm-session-form-api-endpoint">
-            <div className="flex min-w-0 flex-wrap items-center gap-2">
-              <span className="ku-meta">Remote Kuviewer API</span>
-              <button className="ku-control h-8 text-xs" data-testid="desktop-cm-session-api-default-reset" type="button" onClick={() => applyRemoteApiEndpoint(desktopCmDefaultRemoteApiHost, desktopCmDefaultRemoteApiPort)}>
-                <RotateCcw size={13} aria-hidden="true" />
-                기본 API로 초기화
-              </button>
-            </div>
-            <div className="grid gap-2 sm:grid-cols-[minmax(140px,1fr)_88px]">
-              <label className="min-w-0">
-                <span className="ku-meta">API host</span>
-                <input
-                  className="ku-field mt-1 h-9 w-full font-mono"
-                  data-testid="desktop-cm-session-remote-api-host"
-                  placeholder={desktopCmDefaultRemoteApiHost}
-                  value={form.remoteApiHost || desktopCmDefaultRemoteApiHost}
-                  onChange={(event) => {
-                    setForm((current) => ({ ...current, remoteApiHost: event.target.value }));
-                    setError('');
-                  }}
-                />
-              </label>
-              <label className="min-w-0">
-                <span className="ku-meta">API port</span>
-                <input
-                  className="ku-field mt-1 h-9 w-full font-mono"
-                  data-testid="desktop-cm-session-remote-api-port"
-                  inputMode="numeric"
-                  value={form.remoteApiPort || desktopCmDefaultRemoteApiPort}
-                  onChange={(event) => {
-                    setForm((current) => ({ ...current, remoteApiPort: Number(event.target.value || 0) }));
-                    setError('');
-                  }}
-                />
-              </label>
-            </div>
-            <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-              {desktopCmQuickApiEndpoints.map((endpoint) => (
-                <button className="ku-control h-8 text-xs" data-testid={endpoint.testId} key={endpoint.testId} type="button" onClick={() => applyRemoteApiEndpoint(endpoint.host, endpoint.port)}>
-                  {endpoint.label}
-                </button>
-              ))}
-            </div>
-          </section>
-
-          <section className="grid gap-2" data-testid="desktop-cm-session-form-notes">
-            <span className="ku-meta">Notes</span>
-            <label className="min-w-0">
-              <span className="ku-meta">Description</span>
-              <input
-                className="ku-field mt-1 h-9 w-full"
-                data-testid="desktop-cm-session-description"
-                placeholder="readonly entry"
-                value={form.description || ''}
-                onChange={(event) => {
-                  setForm((current) => ({ ...current, description: event.target.value }));
-                  setError('');
-                }}
-              />
-            </label>
-            <div className="flex flex-wrap gap-2">
-              <button className="ku-control-primary h-9" data-testid="desktop-cm-session-save" type="button" disabled={busyAction === 'save'} onClick={() => void handleSave()}>
-                <Plus size={15} aria-hidden="true" />
-                {form.id ? '수정' : '저장'}
-              </button>
-              {form.id ? (
-                <button className="ku-control h-9" data-testid="desktop-cm-session-edit-cancel" type="button" onClick={() => {
-                  setForm(emptyForm);
-                  setCloneDraftSourceName('');
-                }}>
-                  취소
-                </button>
-              ) : cloneDraftSourceName ? (
-                <button className="ku-control h-9" data-testid="desktop-cm-session-clone-cancel" type="button" onClick={() => {
-                  setForm(emptyForm);
-                  setCloneDraftSourceName('');
-                }}>
-                  취소
-                </button>
-              ) : null}
-            </div>
-          </section>
-        </div>
-      </div>
-
-      <div
-        className="grid gap-2 rounded-[10px] border border-[rgba(60,60,67,0.1)] bg-white/70 px-3 py-2 md:grid-cols-[minmax(0,1fr)_auto] md:items-center"
-        data-testid="desktop-cm-session-summary"
-      >
-        {selectedSession ? (
-          <>
-            <div className="grid min-w-0 gap-1">
-              <div className="flex min-w-0 flex-wrap items-center gap-2">
-                <span className="ku-meta">Selected CM session</span>
-                <span className="ku-chip max-w-full border-[rgba(52,199,89,0.22)] bg-[rgba(52,199,89,0.1)] text-[#248a3d]" data-testid="desktop-cm-session-summary-name">
-                  <CheckCircle2 size={13} aria-hidden="true" />
-                  <span className="truncate">{selectedSession.name}</span>
-                </span>
-                <span
-                  className={`ku-chip max-w-full ${
-                    selectedSession.credentialAvailable ? 'border-[rgba(52,199,89,0.22)] bg-[rgba(52,199,89,0.1)] text-[#248a3d]' : 'border-[rgba(255,149,0,0.24)] bg-[rgba(255,149,0,0.12)] text-[#8a4d00]'
-                  }`}
-                  data-testid="desktop-cm-session-summary-credential"
-                >
-                  <KeyRound size={13} aria-hidden="true" />
-                  {selectedSession.credentialAvailable ? 'credential ready' : 'credential 필요'}
-                </span>
-                <span className={`ku-chip max-w-full ${cmRuntimeStatusClass(selectedRuntimeStatus)}`} data-testid="desktop-cm-session-summary-runtime">
-                  <Activity size={13} aria-hidden="true" />
-                  {formatRuntimeStatus(selectedRuntimeStatus)}
-                </span>
-                {selectedRuntimeActive && runtimeProfile ? (
-                  <span className={`ku-chip max-w-full ${runtimeProfile.healthStatus === 'healthy' ? 'border-[rgba(52,199,89,0.22)] bg-[rgba(52,199,89,0.1)] text-[#248a3d]' : 'border-[rgba(255,149,0,0.24)] bg-[rgba(255,149,0,0.12)] text-[#b05f00]'}`} data-testid="desktop-cm-session-summary-health">
-                    <Activity size={13} aria-hidden="true" />
-                    {formatRuntimeHealthStatus(runtimeProfile.healthStatus)}
-                  </span>
-                ) : null}
-              </div>
-              <div className="flex min-w-0 flex-wrap items-center gap-2 text-xs font-semibold text-[rgba(60,60,67,0.62)]">
-                <span className="truncate font-mono" title={`${selectedSession.user}@${selectedSession.host}:${selectedSession.port}`}>
-                  {selectedSession.user}@{selectedSession.host}:{selectedSession.port}
-                </span>
-                <span className="truncate font-mono">
-                  API {selectedSession.remoteApiHost}:{selectedSession.remoteApiPort}
-                </span>
-                <span className="truncate">
-                  {selectedSession.lastCheckAt ? `last check ${formatTimestamp(selectedSession.lastCheckAt)}` : formatCmSessionCheckStatus(selectedSession.lastCheckStatus)}
-                </span>
-              </div>
-              <DesktopCmDiagnostics
-                diagnostic={selectedRuntimeActive && runtimeProfile ? runtimeProfile : selectedSession}
-                testId="desktop-cm-session-summary-diagnostics"
-              />
-            </div>
-            {selectedRuntimeActive && runtimeProfile ? (
-              <div className="min-w-0 text-xs font-semibold text-[rgba(60,60,67,0.62)]" data-testid="desktop-cm-session-summary-runtime-url">
-                <p className="truncate font-mono" title={runtimeProfile.serverUrl}>{runtimeProfile.serverUrl}</p>
-                <p className="truncate">
-                  {runtimeProfile.lastHealthAt ? `health ${formatTimestamp(runtimeProfile.lastHealthAt)}` : 'health 미확인'}
-                  {runtimeProfile.lastHealthMessage ? ` · ${runtimeProfile.lastHealthMessage}` : ''}
-                </p>
-              </div>
-            ) : (
-              <div className="text-xs font-semibold text-[rgba(60,60,67,0.58)]">
-                runtime은 credential이 준비된 세션에서만 시작됩니다.
-              </div>
-            )}
-          </>
-        ) : (
-          <div className="flex min-w-0 flex-wrap items-center gap-2">
-            <span className="ku-meta">Selected CM session</span>
-            <span className="ku-chip">
-              <Unplug size={13} aria-hidden="true" />
-              선택된 세션 없음
-            </span>
-          </div>
-        )}
-      </div>
+      <DesktopCmSessionSummary
+        runtimeActive={selectedRuntimeActive}
+        runtimeProfile={runtimeProfile}
+        runtimeStatus={selectedRuntimeStatus}
+        selectedSession={selectedSession}
+      />
 
       <div className="flex min-w-0 flex-wrap items-center gap-2" data-testid="desktop-cm-session-transfer-bar">
         <button
@@ -3947,233 +3742,6 @@ export function DesktopCmSessionPanel({
   );
 }
 
-function DesktopCmDiagnostics({
-  diagnostic,
-  testId,
-}: {
-  diagnostic: Pick<DesktopCmSession, 'diagnosticStage' | 'diagnosticSeverity' | 'diagnosticMessage' | 'diagnosticHint' | 'lastCheckAt'> | Pick<DesktopCmSessionRuntimeProfile, 'diagnosticStage' | 'diagnosticSeverity' | 'diagnosticMessage' | 'diagnosticHint' | 'lastHealthAt'>;
-  testId: string;
-}) {
-  const stage = diagnostic.diagnosticStage || 'metadata';
-  const severity = diagnostic.diagnosticSeverity || 'info';
-  const message = diagnostic.diagnosticMessage || 'not-checked';
-  const hint = diagnostic.diagnosticHint || '연결 확인을 실행해 진단을 갱신하세요.';
-  const timestamp = 'lastHealthAt' in diagnostic ? diagnostic.lastHealthAt : 'lastCheckAt' in diagnostic ? diagnostic.lastCheckAt : undefined;
-  return (
-    <div className="mt-2 grid gap-1.5 rounded-[8px] border border-[rgba(60,60,67,0.1)] bg-white/68 px-2.5 py-2" data-testid={testId}>
-      <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-        <span className="ku-meta">Diagnostics</span>
-        <span className={`ku-chip ${cmDiagnosticSeverityClass(severity)}`} data-testid={`${testId}-severity`}>
-          {formatCmDiagnosticSeverity(severity)}
-        </span>
-        <span className="ku-chip" data-testid={`${testId}-stage`}>
-          {formatCmDiagnosticStage(stage)}
-        </span>
-        {timestamp ? <span className="ku-chip">{formatTimestamp(timestamp)}</span> : null}
-      </div>
-      <p className="break-words font-mono text-[10px] font-semibold text-[rgba(60,60,67,0.64)]" data-testid={`${testId}-message`}>
-        {message}
-      </p>
-      <p className="break-words text-xs font-semibold text-[rgba(60,60,67,0.68)]" data-testid={`${testId}-hint`}>
-        {hint}
-      </p>
-    </div>
-  );
-}
-
-function validateDesktopCmSessionForm(form: DesktopCmSessionInput) {
-  if (!form.name.trim()) {
-    return 'name 필요';
-  }
-  if (!form.host.trim()) {
-    return 'host 필요';
-  }
-  if (!form.user.trim()) {
-    return 'user 필요';
-  }
-  if (!Number.isInteger(form.port) || form.port < 1 || form.port > 65535) {
-    return 'port 1-65535';
-  }
-  const remoteApiPort = form.remoteApiPort || desktopCmDefaultRemoteApiPort;
-  if (!Number.isInteger(remoteApiPort) || remoteApiPort < 1 || remoteApiPort > 65535) {
-    return 'API port 1-65535';
-  }
-  return '';
-}
-
-function formatCmSessionError(error: string) {
-  if (error.includes('remote_api_host')) {
-    return 'API host 형식 오류';
-  }
-  if (error.includes('remote_api_port')) {
-    return 'API port 1-65535';
-  }
-  if (error.includes('runtime_health')) {
-    return 'API health 확인 실패';
-  }
-  if (error.includes('runtime_tunnel') || error.includes('process_start')) {
-    return 'runtime 터널 실패';
-  }
-  if (error.includes('import')) {
-    return 'import 파일 오류';
-  }
-  if (error.includes('host')) {
-    return 'host 형식 오류';
-  }
-  if (error.includes('port')) {
-    return 'port 1-65535';
-  }
-  if (error.includes('private_key_path')) {
-    return 'key path 필요';
-  }
-  if (error.includes('private_key_file') || error.includes('private_key_marker') || error.includes('repo_path')) {
-    return 'key 파일 오류';
-  }
-  if (error.includes('credential')) {
-    return 'credential 오류';
-  }
-  if (error.includes('timeout')) {
-    return '연결 시간 초과';
-  }
-  if (error.includes('unreachable')) {
-    return '연결 불가';
-  }
-  if (error.includes('ssh-binary')) {
-    return 'ssh 없음';
-  }
-  if (error.includes('user')) {
-    return 'user 형식 오류';
-  }
-  if (error.includes('name')) {
-    return 'name 필요';
-  }
-  if (error.includes('too_long')) {
-    return '값이 너무 김';
-  }
-  if (error.includes('not_found')) {
-    return '세션 없음';
-  }
-  return '세션 오류';
-}
-
-function formatCmSessionCheckStatus(status: string) {
-  switch (status) {
-    case 'reachable':
-      return '연결 가능';
-    case 'auth-failed':
-      return '인증 실패';
-    case 'timeout':
-      return '시간 초과';
-    case 'unreachable':
-      return '연결 불가';
-    case 'not-ssh':
-      return 'SSH 아님';
-    case 'ssh-binary-missing':
-      return 'ssh 없음';
-    case 'credential-ready':
-      return 'credential 준비됨';
-    case 'credential-deleted':
-      return 'credential 삭제됨';
-    case 'credential-missing':
-      return 'credential 없음';
-    case 'not-checked':
-      return '확인 안 됨';
-    default:
-      return status || '확인 안 됨';
-  }
-}
-
-function formatRuntimeStatus(status: string) {
-  switch (status) {
-    case 'runtime-active':
-      return 'runtime active';
-    case 'runtime-unhealthy':
-      return 'runtime health 실패';
-    case 'runtime-lost':
-      return 'runtime 끊김';
-    case 'stopped':
-      return 'runtime stopped';
-    default:
-      return status || 'runtime stopped';
-  }
-}
-
-function formatRuntimeHealthStatus(status: string) {
-  switch (status) {
-    case 'healthy':
-      return 'health 정상';
-    case 'unhealthy':
-      return 'health 실패';
-    case 'unknown':
-      return 'health 미확인';
-    default:
-      return status || 'health 미확인';
-  }
-}
-
-function formatCmDiagnosticStage(stage: string) {
-  switch (stage) {
-    case 'credential':
-      return 'credential';
-    case 'reachability':
-      return 'reachability';
-    case 'ssh-auth':
-      return 'ssh auth';
-    case 'tunnel':
-      return 'tunnel';
-    case 'health':
-      return 'health';
-    case 'runtime':
-      return 'runtime';
-    case 'metadata':
-      return 'metadata';
-    default:
-      return stage || 'metadata';
-  }
-}
-
-function formatCmDiagnosticSeverity(severity: string) {
-  switch (severity) {
-    case 'error':
-      return 'error';
-    case 'warning':
-      return 'warning';
-    case 'info':
-      return 'info';
-    default:
-      return severity || 'info';
-  }
-}
-
-function cmDiagnosticSeverityClass(severity: string) {
-  if (severity === 'error') {
-    return 'border-[rgba(255,59,48,0.24)] bg-[rgba(255,59,48,0.1)] text-[#b42318]';
-  }
-  if (severity === 'warning') {
-    return 'border-[rgba(255,149,0,0.24)] bg-[rgba(255,149,0,0.12)] text-[#8a4d00]';
-  }
-  return 'border-[rgba(52,199,89,0.22)] bg-[rgba(52,199,89,0.1)] text-[#248a3d]';
-}
-
-function normalizeSearchValue(value: string) {
-  return value.trim().toLowerCase();
-}
-
-function buildDesktopCmSessionCloneName(sourceName: string, sessions: DesktopCmSession[]) {
-  const existingNames = new Set(sessions.map((session) => session.name.trim().toLowerCase()).filter(Boolean));
-  const sourceBase = sourceName.trim() || 'CM session';
-  for (let copyIndex = 1; copyIndex <= 99; copyIndex += 1) {
-    const suffix = copyIndex === 1 ? ' copy' : ` copy ${copyIndex}`;
-    const maxBaseLength = Math.max(1, maxDesktopCmSessionCloneNameLength - suffix.length);
-    const candidateBase = sourceBase.slice(0, maxBaseLength).trimEnd() || 'CM';
-    const candidate = `${candidateBase}${suffix}`;
-    if (!existingNames.has(candidate.toLowerCase())) {
-      return candidate;
-    }
-  }
-  return `${sourceBase.slice(0, 42).trimEnd() || 'CM'} copy ${Date.now().toString(36).slice(-6)}`;
-}
-
 function readDesktopCmDiagnosticFilterPresets(): DesktopCmDiagnosticFilterPreset[] {
   if (typeof window === 'undefined') {
     return [];
@@ -4340,25 +3908,4 @@ function isDesktopCmKeyboardIgnoredTarget(target: EventTarget | null) {
 
 function slugifyTestId(value: string) {
   return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'preset';
-}
-
-function cmRuntimeStatusClass(status: string) {
-  if (status === 'runtime-active') {
-    return 'border-[rgba(0,122,255,0.18)] bg-[rgba(0,122,255,0.08)] text-[#0066cc]';
-  }
-  if (status === 'runtime-unhealthy' || status === 'runtime-lost') {
-    return 'border-[rgba(255,149,0,0.24)] bg-[rgba(255,149,0,0.12)] text-[#b05f00]';
-  }
-  return 'border-[rgba(142,142,147,0.2)] bg-[rgba(142,142,147,0.1)] text-[#636366]';
-}
-
-function formatTimestamp(timestamp?: number) {
-  if (!timestamp) {
-    return '';
-  }
-  const date = new Date(timestamp);
-  if (Number.isNaN(date.getTime())) {
-    return '';
-  }
-  return date.toLocaleTimeString();
 }
