@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent as ReactKeyboardEvent } from "react";
-import { Activity, AlertTriangle, ArrowDown, ArrowUp, Bookmark, Boxes, CheckCircle2, Copy, Download, FileText, GitBranch, Link2, RefreshCw, RotateCcw, Search, Tags, X } from "lucide-react";
+import { Activity, AlertTriangle, ArrowDown, ArrowUp, Boxes, CheckCircle2, Copy, Download, FileText, RefreshCw, RotateCcw, Search, Tags, X } from "lucide-react";
 import type { ResourceExplorerItem } from "../../types/resourceExplorer";
 import {
   DetailSection,
@@ -22,25 +22,20 @@ import {
   eventExportJson,
   eventIdentityKey,
   eventSectionSummary,
-  eventSeverity,
-  eventSeverityBadgeClassName,
   filterEvents,
   filterRelatedResources,
   formatEventTimestamp,
-  formatLogTimestamp,
   formatRefreshTimestamp,
-  formatRelativeEventTimestamp,
   groupEventsBySeverity,
   groupRelatedResources,
   keyValueEntries,
   readResourceDetailDensityPreference,
   recordFromUnknown,
-  renderHighlightedText,
   sortEventListItems,
   statusPillClassName,
-  validEventTimestamp,
   writeResourceDetailDensityPreference,
 } from './resourceDetailActivity';
+import { renderHighlightedText } from './resourceDetailHighlight';
 import {
   healthSectionSummary,
   healthSignalSectionTone,
@@ -59,7 +54,6 @@ import {
   type DetailSectionId,
   type DetailSectionTone,
   type EventExportFormat,
-  type EventListItem,
   type EventSeverityFilter,
   type EventSortOrder,
   type EventTimeRangeFilter,
@@ -67,6 +61,9 @@ import {
 } from './resourceDetailTypes';
 import { useResourceEventsController } from './useResourceEventsController';
 import { useResourceLogsController } from './useResourceLogsController';
+import { ResourceRelationsSection } from './ResourceRelationsSection';
+import { ResourceEventGroups } from './ResourceEventGroups';
+import { ResourceLogLines } from './ResourceLogLines';
 
 function isEditableTarget(target: EventTarget | null) {
   if (!(target instanceof HTMLElement)) {
@@ -587,70 +584,6 @@ function ResourceExplorerDetailBody({
       return next;
     });
   };
-  const renderEventCard = (item: EventListItem) => {
-    const { event, id, pinned } = item;
-    const severity = eventSeverity(event);
-    const isNewEvent = newEventKeys.has(eventIdentityKey(event));
-    const timestampKnown = validEventTimestamp(event.timestamp);
-    const relativeTime = formatRelativeEventTimestamp(event.timestamp);
-    const absoluteTime = formatEventTimestamp(event.timestamp);
-    return (
-      <div
-        key={id}
-        className={`rounded-[10px] border p-2 ${
-          isNewEvent
-            ? 'border-[rgba(255,149,0,0.35)] bg-[rgba(255,149,0,0.08)]'
-            : pinned
-              ? 'border-[rgba(0,122,255,0.26)] bg-[rgba(0,122,255,0.06)]'
-              : 'border-[rgba(60,60,67,0.12)] bg-white/75'
-        }`}
-      >
-        <div className="flex flex-wrap items-start justify-between gap-2">
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-1.5">
-              <span className={eventSeverityBadgeClassName(severity)}>{renderHighlightedText(event.type || 'Normal', normalizedEventFilter)}</span>
-              {isNewEvent ? (
-                <span
-                  data-testid="events-new-chip"
-                  className="rounded-full border border-[rgba(255,149,0,0.28)] bg-[rgba(255,149,0,0.14)] px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase text-[#9a5a00]"
-                >
-                  NEW
-                </span>
-              ) : null}
-              <p className="min-w-0 break-words text-xs font-semibold text-[#1d1d1f]">{renderHighlightedText(event.reason || event.type || 'Event', normalizedEventFilter)}</p>
-            </div>
-            <div className="mt-1 flex flex-wrap items-center gap-1.5">
-              <span className={`ku-chip ${timestampKnown ? '' : 'border-[rgba(142,142,147,0.2)] bg-[rgba(142,142,147,0.1)] text-[#636366]'}`}>
-                {renderHighlightedText(relativeTime, normalizedEventFilter)}
-              </span>
-              {event.source ? <span className="ku-chip">{renderHighlightedText(event.source, normalizedEventFilter)}</span> : null}
-            </div>
-          </div>
-          <div className="flex shrink-0 items-center gap-1.5">
-            <button
-              className={`inline-flex items-center gap-1 rounded-[7px] border px-1.5 py-1 text-[10px] font-semibold transition ${
-                pinned
-                  ? 'border-[rgba(0,122,255,0.24)] bg-[rgba(0,122,255,0.12)] text-[#0057b8]'
-                  : 'border-[rgba(60,60,67,0.12)] bg-white/78 text-[rgba(60,60,67,0.62)] hover:bg-white'
-              }`}
-              type="button"
-              onClick={() => togglePinnedEvent(id)}
-              aria-pressed={pinned}
-              title={pinned ? '이벤트 고정 해제' : '이벤트 고정'}
-            >
-              <Bookmark size={12} aria-hidden="true" />
-              {pinned ? '고정됨' : '고정'}
-            </button>
-          </div>
-        </div>
-        <p className="mt-2 break-words text-xs text-[rgba(60,60,67,0.72)]">{renderHighlightedText(event.message, normalizedEventFilter)}</p>
-        <p className="mt-1 break-words font-mono text-[10px] font-semibold text-[rgba(60,60,67,0.54)]">
-          {renderHighlightedText(absoluteTime, normalizedEventFilter)}
-        </p>
-      </div>
-    );
-  };
-
   return (
     <div
       ref={detailPanelRef}
@@ -892,81 +825,25 @@ function ResourceExplorerDetailBody({
         <DetailSection id="annotations" icon={Tags} title="Annotations" summary={detailSectionSummaries.annotations} open={isSectionOpen('annotations')} active={activeDetailSectionId === 'annotations'} sectionRef={setDetailSectionRef('annotations')} onFocusSection={() => setActiveDetailSectionId('annotations')} onToggle={() => toggleSection('annotations')}>
           <KeyValueGrid density={resourceDetailDensity} empty="annotations 없음" testId="annotations" values={resource.annotations} />
         </DetailSection>
-        <DetailSection id="relations" icon={Link2} title="Relations" summary={detailSectionSummaries.relations} open={isSectionOpen('relations')} active={activeDetailSectionId === 'relations'} sectionRef={setDetailSectionRef('relations')} onFocusSection={() => setActiveDetailSectionId('relations')} onToggle={() => toggleSection('relations')}>
-          {resource.related.length === 0 ? (
-            <p className="ku-meta">관계 없음</p>
-          ) : (
-            <div className="grid gap-2">
-              <div className="grid gap-2 rounded-[10px] border border-[rgba(60,60,67,0.12)] bg-white/70 p-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
-                <label className="relative block">
-                  <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[rgba(60,60,67,0.45)]" size={15} />
-                  <input className="ku-input w-full pl-9" placeholder="관계 검색" value={relationFilter} onChange={(event) => setRelationFilter(event.target.value)} />
-                </label>
-                <div className="flex items-center justify-between gap-2">
-                  <span className="ku-chip">
-                    {filteredRelations.length} / {resource.related.length}
-                  </span>
-                  {relationFilter ? (
-                    <button
-                      className="rounded-[9px] border border-[rgba(60,60,67,0.12)] bg-white px-2.5 py-1.5 text-xs font-semibold text-[rgba(60,60,67,0.72)] transition hover:bg-[rgba(242,242,247,0.9)]"
-                      type="button"
-                      onClick={() => setRelationFilter('')}
-                    >
-                      초기화
-                    </button>
-                  ) : null}
-                </div>
-              </div>
-              {filteredRelations.length === 0 ? (
-                <p className="ku-meta">필터와 일치하는 관계가 없습니다.</p>
-              ) : (
-                <div className="grid gap-2">
-                  {relationGroups.map((group) => (
-                    <div key={group.key} className="grid gap-1.5">
-                      <div className="flex items-center justify-between gap-2">
-                        <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.03em] text-[rgba(60,60,67,0.58)]">
-                          {renderHighlightedText(group.label, normalizedRelationFilter)}
-                        </p>
-                        <span className="ku-chip">{group.count}</span>
-                      </div>
-                      <div className="grid gap-1.5">
-                        {group.items.map((related) => (
-                          <div key={`${related.direction}:${related.edgeType}:${related.nodeId}`} className="grid gap-2 rounded-[10px] border border-[rgba(60,60,67,0.12)] bg-white/75 p-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
-                            <button className="min-w-0 text-left" type="button" onClick={() => onSelectNode(related.nodeId)}>
-                              <p className="truncate text-xs font-semibold text-[#1d1d1f]">
-                                {related.direction === 'outgoing' ? '→' : '←'} {renderHighlightedText(related.name, normalizedRelationFilter)}
-                              </p>
-                              <p className="mt-0.5 truncate font-mono text-[10px] font-semibold text-[rgba(60,60,67,0.58)]">
-                                {renderHighlightedText(`${related.edgeType} · ${related.namespace ? `${related.namespace} / ` : ''}${related.kind}`, normalizedRelationFilter)}
-                              </p>
-                            </button>
-                            <button
-                              className="inline-flex items-center justify-center gap-1.5 rounded-[9px] border border-[rgba(0,122,255,0.18)] bg-[rgba(0,122,255,0.06)] px-2.5 py-1.5 text-xs font-semibold text-[#0057b8] transition hover:bg-[rgba(0,122,255,0.1)]"
-                              type="button"
-                              onClick={() => onOpenTopologyNode(related.nodeId)}
-                            >
-                              <GitBranch size={13} aria-hidden="true" />
-                              토폴로지
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
-                  {hiddenRelationCount > 0 || relationsExpanded ? (
-                    <button
-                      className="rounded-[9px] border border-[rgba(60,60,67,0.12)] bg-white px-2.5 py-1.5 text-xs font-semibold text-[rgba(60,60,67,0.72)] transition hover:bg-[rgba(242,242,247,0.9)]"
-                      type="button"
-                      onClick={() => setRelationsExpanded((current) => !current)}
-                    >
-                      {relationsExpanded ? '접기' : `+${hiddenRelationCount} more`}
-                    </button>
-                  ) : null}
-                </div>
-              )}
-            </div>
-          )}
-        </DetailSection>
+        <ResourceRelationsSection
+          active={activeDetailSectionId === 'relations'}
+          expanded={relationsExpanded}
+          filter={relationFilter}
+          filteredRelations={filteredRelations}
+          groups={relationGroups}
+          hiddenCount={hiddenRelationCount}
+          normalizedFilter={normalizedRelationFilter}
+          onFilterChange={setRelationFilter}
+          onFocusSection={() => setActiveDetailSectionId('relations')}
+          onOpenTopologyNode={onOpenTopologyNode}
+          onSelectNode={onSelectNode}
+          onToggle={() => toggleSection('relations')}
+          onToggleExpanded={() => setRelationsExpanded((current) => !current)}
+          open={isSectionOpen('relations')}
+          resource={resource}
+          sectionRef={setDetailSectionRef('relations')}
+          summary={detailSectionSummaries.relations}
+        />
         <DetailSection id="events" icon={Boxes} title="Events" summary={detailSectionSummaries.events} tone={eventHasWarning ? 'warning' : 'default'} open={isSectionOpen('events')} active={activeDetailSectionId === 'events'} sectionRef={setDetailSectionRef('events')} onFocusSection={() => setActiveDetailSectionId('events')} onToggle={() => toggleSection('events')}>
           {liveEnabled ? (
             <div className="mb-2 flex flex-wrap items-center justify-between gap-2 rounded-[10px] border border-[rgba(60,60,67,0.12)] bg-white/70 p-2">
@@ -1231,28 +1108,13 @@ function ResourceExplorerDetailBody({
               {eventFilterSummary ? ` · ${eventFilterSummary}` : ''}
             </p>
           ) : (
-            <div className="grid gap-2">
-              {pinnedEvents.length > 0 ? (
-                <div className="grid gap-1.5">
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.03em] text-[#0057b8]">Pinned</p>
-                    <span className="ku-chip">{pinnedEvents.length}</span>
-                  </div>
-                  <div className="grid gap-2">{pinnedEvents.map(renderEventCard)}</div>
-                </div>
-              ) : null}
-              {eventGroups.map((group) => (
-                <div key={group.key} className="grid gap-1.5">
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.03em] text-[rgba(60,60,67,0.58)]">{group.label}</p>
-                    <span className="ku-chip">{group.count}</span>
-                  </div>
-                  <div className="grid gap-2">
-                    {group.items.map(renderEventCard)}
-                  </div>
-                </div>
-              ))}
-            </div>
+            <ResourceEventGroups
+              groups={eventGroups}
+              newEventKeys={newEventKeys}
+              normalizedFilter={normalizedEventFilter}
+              onTogglePinned={togglePinnedEvent}
+              pinnedEvents={pinnedEvents}
+            />
           )}
         </DetailSection>
         <DetailSection id="logs" icon={FileText} title="Logs" summary={detailSectionSummaries.logs} open={isSectionOpen('logs')} active={activeDetailSectionId === 'logs'} sectionRef={setDetailSectionRef('logs')} onFocusSection={() => setActiveDetailSectionId('logs')} onToggle={() => toggleSection('logs')}>
@@ -1521,33 +1383,14 @@ function ResourceExplorerDetailBody({
               ) : filteredLogLines.length === 0 ? (
                 <p className="ku-meta">필터와 일치하는 로그가 없습니다.</p>
               ) : (
-                <div className={logViewportClassName}>
-                  {filteredLogLines.map(({ line, message, index, timestamp }) => {
-                    const activeTimestampMatch = activeLogMatch?.lineIndex === index && activeLogMatch.field === 'timestamp' ? activeLogMatch : undefined;
-                    const activeMessageMatch = activeLogMatch?.lineIndex === index && activeLogMatch.field === 'message' ? activeLogMatch : undefined;
-                    const activeRow = Boolean(activeTimestampMatch || activeMessageMatch);
-                    return (
-                      <div
-                        key={`${index}:${line.slice(0, 16)}`}
-                        ref={(node) => {
-                          logLineRefs.current[index] = node;
-                        }}
-                        className={`${logRowClassName} ${activeRow ? 'bg-[rgba(255,214,10,0.12)] ring-1 ring-[rgba(255,214,10,0.28)]' : ''}`}
-                        data-testid={activeRow ? 'active-log-search-line' : undefined}
-                      >
-                        <span className="select-none text-right text-[rgba(209,213,219,0.42)]">{index + 1}</span>
-                        <span className="min-w-0 whitespace-pre-wrap break-words">
-                          {timestamp ? (
-                            <span className="mr-2 inline-flex rounded-[5px] bg-[rgba(96,165,250,0.16)] px-1.5 py-0.5 text-[rgba(191,219,254,0.9)]">
-                              {renderHighlightedText(formatLogTimestamp(timestamp), normalizedLogFilter, activeTimestampMatch)}
-                            </span>
-                          ) : null}
-                          {renderHighlightedText(message || line || ' ', normalizedLogFilter, activeMessageMatch)}
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
+                <ResourceLogLines
+                  activeMatch={activeLogMatch}
+                  lineRefs={logLineRefs}
+                  lines={filteredLogLines}
+                  normalizedFilter={normalizedLogFilter}
+                  rowClassName={logRowClassName}
+                  viewportClassName={logViewportClassName}
+                />
               )}
             </div>
           )}

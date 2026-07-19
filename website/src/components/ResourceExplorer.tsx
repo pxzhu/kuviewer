@@ -7,6 +7,7 @@ import type { ResourceExplorerItem, ResourceExplorerListMetadata } from '../type
 import type { TopologySnapshot } from '../types/topology';
 import type { TopologySourceMode } from '../features/topology/useTopology';
 import { appendResourceViewFilterSearchParams, resourceViewFiltersEqual, type ResourceViewFilters } from '../features/resources/resourceViewState';
+import { safeCsvCell } from '../features/export/safeCsv';
 
 interface ResourceExplorerProps {
   liveEnabled: boolean;
@@ -2467,11 +2468,6 @@ export function ResourceExplorer({
   );
 }
 
-function eventCsvCell(value: unknown) {
-  const text = String(value);
-  return /[",\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
-}
-
 function downloadTextFile(content: string, mimeType: string, fileName: string) {
   const blob = new Blob([content], { type: mimeType });
   const url = window.URL.createObjectURL(blob);
@@ -3224,7 +3220,7 @@ function resourceBulkExportJson(resources: ResourceExplorerItem[]) {
 
 function resourceBulkExportCsv(resources: ResourceExplorerItem[]) {
   const header: Array<keyof ResourceBulkExportRow> = ['cluster', 'namespace', 'kind', 'name', 'status', 'labelsCount', 'annotationsCount', 'summaryKeys', 'relatedCount'];
-  const rows = resourceBulkExportRows(resources).map((row) => header.map((key) => eventCsvCell(Array.isArray(row[key]) ? row[key].join(';') : row[key])).join(','));
+  const rows = resourceBulkExportRows(resources).map((row) => header.map((key) => safeCsvCell(Array.isArray(row[key]) ? row[key].join(';') : row[key])).join(','));
   return `${header.join(',')}\n${rows.join('\n')}\n`;
 }
 

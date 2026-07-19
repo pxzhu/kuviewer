@@ -11,9 +11,9 @@ import {
 import {
   keyValueEntries,
   keyValueEntryMatchesFilter,
-  renderHighlightedText,
   resourceDetailNavigatorItemClassName,
 } from './resourceDetailActivity';
+import { renderHighlightedText } from './resourceDetailHighlight';
 import type {
   DetailOverviewItem,
   DetailSectionId,
