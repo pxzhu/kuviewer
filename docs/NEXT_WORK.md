@@ -31,6 +31,7 @@
    - API/storage/wire shape 변경 없이 shell은 controller 조정과 detail/list 연결만 담당한다.
 
 3. Frontend regression coverage
+   - App/Vite TypeScript config는 `noUnusedLocals`와 `noUnusedParameters`를 강제해 미사용 import, type, helper, controller return을 CI에서 차단한다.
    - `npm run test:unit`은 Desktop safe view, snapshot metadata, CSV 방어, Resource detail activity, saved-view model/storage helper를 검증한다.
    - Resource primary/page request generation, abort, stale completion 방지는 coordinator direct unit test로 검증한다.
    - Server pagination/filter/cursor/facet 계산은 별도 Go module과 direct unit test로 분리됐다.

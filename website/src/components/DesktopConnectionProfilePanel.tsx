@@ -4,7 +4,6 @@ import {
   clearDesktopConnectionProfile,
   type DesktopConnectionProfile,
   type DesktopSidecarStatus,
-  normalizeDesktopServerUrl,
   storeDesktopConnectionProfile,
 } from '../features/desktop/desktopConnectionProfile';
 

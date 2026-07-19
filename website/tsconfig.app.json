@@ -11,6 +11,8 @@
     "allowSyntheticDefaultImports": true,
     "allowImportingTsExtensions": true,
     "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
     "forceConsistentCasingInFileNames": true,
     "module": "ESNext",
     "moduleResolution": "Node",
