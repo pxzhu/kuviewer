@@ -46,6 +46,7 @@
 - Frontend pure helper regression은 `npm run test:unit`, end-to-end UI는 `npm run test:visual`로 검증한다.
 - Local automation helper regression은 `node --test scripts/lib/*.test.mjs`로 검증하며 Telegram 원격 오류 원문은 출력하지 않는다.
 - SSH endpoint probe는 공용 helper에서 입력·응답 크기·오류 코드를 제한하고 대상 host를 로그에 출력하지 않는다.
+- Kubernetes API client 오류는 safe reason/status code만 유지하며 endpoint path와 원격 응답 body를 전달하지 않는다.
 
 ## Runtime Boundaries
 

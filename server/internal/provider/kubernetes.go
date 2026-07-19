@@ -6,6 +6,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -27,6 +28,13 @@ const (
 	podLogTailLines         = 200
 	podLogMaxBytes          = 256 * 1024
 	podLogMaxLineBytes      = 4096
+)
+
+var (
+	errKubeAPIInvalidRequest  = errors.New("kubernetes_api_request_invalid")
+	errKubeAPIInvalidResponse = errors.New("kubernetes_api_invalid_response")
+	errKubeAPIReadFailed      = errors.New("kubernetes_api_read_failed")
+	errKubeAPIUnavailable     = errors.New("kubernetes_api_unavailable")
 )
 
 type KubernetesProvider struct {
@@ -825,19 +833,17 @@ func (c *kubeAPIClient) probeCapabilityPath(ctx context.Context, path string) (s
 	if strings.Contains(path, "?") {
 		separator = "&"
 	}
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+path+separator+"limit=1", nil)
+	request, err := c.newRequest(ctx, path+separator+"limit=1", "application/json")
 	if err != nil {
 		return "unavailable", "request_failed"
 	}
-	request.Header.Set("Authorization", "Bearer "+c.bearer)
-	request.Header.Set("Accept", "application/json")
 
 	response, err := c.httpClient.Do(request)
 	if err != nil {
 		return "unavailable", "request_failed"
 	}
 	defer response.Body.Close()
-	_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, 4096))
+	discardKubeAPIResponseBody(response.Body)
 
 	switch response.StatusCode {
 	case http.StatusUnauthorized:
@@ -868,55 +874,56 @@ func capabilityStatusPriority(status string) int {
 }
 
 func (c *kubeAPIClient) getJSONStatus(ctx context.Context, path string, out interface{}, optional bool) (bool, error) {
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+path, nil)
+	request, err := c.newRequest(ctx, path, "application/json")
 	if err != nil {
 		return false, err
 	}
-	request.Header.Set("Authorization", "Bearer "+c.bearer)
-	request.Header.Set("Accept", "application/json")
 
 	response, err := c.httpClient.Do(request)
 	if err != nil {
-		return false, err
+		return false, safeKubeAPITransportError(ctx)
 	}
 	defer response.Body.Close()
 
 	if optional && (response.StatusCode == http.StatusNotFound || response.StatusCode == http.StatusForbidden) {
+		discardKubeAPIResponseBody(response.Body)
 		return false, nil
 	}
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		body, _ := io.ReadAll(io.LimitReader(response.Body, 512))
-		return false, fmt.Errorf("kubernetes api %s returned %s: %s", path, response.Status, strings.TrimSpace(string(body)))
+		discardKubeAPIResponseBody(response.Body)
+		return false, kubeAPIStatusError(response.StatusCode)
 	}
 
-	return true, json.NewDecoder(response.Body).Decode(out)
+	if err := json.NewDecoder(response.Body).Decode(out); err != nil {
+		return false, errKubeAPIInvalidResponse
+	}
+	return true, nil
 }
 
 func (c *kubeAPIClient) getTextStatus(ctx context.Context, path string, optional bool, maxBytes int64) (bool, string, error) {
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+path, nil)
+	request, err := c.newRequest(ctx, path, "text/plain")
 	if err != nil {
 		return false, "", err
 	}
-	request.Header.Set("Authorization", "Bearer "+c.bearer)
-	request.Header.Set("Accept", "text/plain")
 
 	response, err := c.httpClient.Do(request)
 	if err != nil {
-		return false, "", err
+		return false, "", safeKubeAPITransportError(ctx)
 	}
 	defer response.Body.Close()
 
 	if optional && (response.StatusCode == http.StatusNotFound || response.StatusCode == http.StatusForbidden || response.StatusCode == http.StatusBadRequest) {
+		discardKubeAPIResponseBody(response.Body)
 		return false, "", nil
 	}
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		body, _ := io.ReadAll(io.LimitReader(response.Body, 512))
-		return false, "", fmt.Errorf("kubernetes api %s returned %s: %s", path, response.Status, strings.TrimSpace(string(body)))
+		discardKubeAPIResponseBody(response.Body)
+		return false, "", kubeAPIStatusError(response.StatusCode)
 	}
 
 	body, err := io.ReadAll(io.LimitReader(response.Body, maxBytes+1))
 	if err != nil {
-		return false, "", err
+		return false, "", errKubeAPIReadFailed
 	}
 	if int64(len(body)) > maxBytes {
 		body = body[:maxBytes]
@@ -925,25 +932,24 @@ func (c *kubeAPIClient) getTextStatus(ctx context.Context, path string, optional
 }
 
 func (c *kubeAPIClient) streamText(ctx context.Context, path string, optional bool, maxBytes int64, onLine func(string) error) (bool, error) {
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+path, nil)
+	request, err := c.newRequest(ctx, path, "text/plain")
 	if err != nil {
 		return false, err
 	}
-	request.Header.Set("Authorization", "Bearer "+c.bearer)
-	request.Header.Set("Accept", "text/plain")
 
 	response, err := c.httpClient.Do(request)
 	if err != nil {
-		return false, err
+		return false, safeKubeAPITransportError(ctx)
 	}
 	defer response.Body.Close()
 
 	if optional && (response.StatusCode == http.StatusNotFound || response.StatusCode == http.StatusForbidden || response.StatusCode == http.StatusBadRequest) {
+		discardKubeAPIResponseBody(response.Body)
 		return false, nil
 	}
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		body, _ := io.ReadAll(io.LimitReader(response.Body, 512))
-		return false, fmt.Errorf("kubernetes api %s returned %s: %s", path, response.Status, strings.TrimSpace(string(body)))
+		discardKubeAPIResponseBody(response.Body)
+		return false, kubeAPIStatusError(response.StatusCode)
 	}
 
 	scanner := bufio.NewScanner(io.LimitReader(response.Body, maxBytes+1))
@@ -954,16 +960,43 @@ func (c *kubeAPIClient) streamText(ctx context.Context, path string, optional bo
 		}
 	}
 	if err := scanner.Err(); err != nil {
-		return true, err
+		return true, errKubeAPIReadFailed
 	}
 	return true, nil
 }
 
 func (c *kubeAPIClient) getGatewayRouteJSON(ctx context.Context, resource string, out interface{}) error {
-	if err := c.getJSON(ctx, "/apis/gateway.networking.k8s.io/v1/"+resource, out, true); err != nil {
+	found, err := c.getJSONStatus(ctx, "/apis/gateway.networking.k8s.io/v1/"+resource, out, true)
+	if err != nil || found {
 		return err
 	}
-	return c.getJSON(ctx, "/apis/gateway.networking.k8s.io/v1alpha2/"+resource, out, true)
+	_, err = c.getJSONStatus(ctx, "/apis/gateway.networking.k8s.io/v1alpha2/"+resource, out, true)
+	return err
+}
+
+func (c *kubeAPIClient) newRequest(ctx context.Context, path string, accept string) (*http.Request, error) {
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+path, nil)
+	if err != nil {
+		return nil, errKubeAPIInvalidRequest
+	}
+	request.Header.Set("Authorization", "Bearer "+c.bearer)
+	request.Header.Set("Accept", accept)
+	return request, nil
+}
+
+func safeKubeAPITransportError(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	return errKubeAPIUnavailable
+}
+
+func kubeAPIStatusError(statusCode int) error {
+	return fmt.Errorf("kubernetes_api_status_%d", statusCode)
+}
+
+func discardKubeAPIResponseBody(body io.Reader) {
+	_, _ = io.Copy(io.Discard, io.LimitReader(body, 4096))
 }
 
 type graphBuilder struct {
