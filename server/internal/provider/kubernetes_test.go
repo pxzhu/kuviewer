@@ -8,7 +8,9 @@ import (
 	"net/http/httptest"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"kuviewer/server/internal/topology"
 )
@@ -182,6 +184,119 @@ func TestKubernetesProviderSnapshotPaginatesRequiredLists(t *testing.T) {
 	}
 	if !namespaceNames["checkout"] || !namespaceNames["platform"] || len(namespaceNames) != 2 {
 		t.Fatalf("namespace nodes = %#v, want both paginated namespaces", namespaceNames)
+	}
+}
+
+func TestCollectSnapshotFetchesBoundsConcurrencyAndOrdersDiagnostics(t *testing.T) {
+	const taskCount = 12
+	var mutex sync.Mutex
+	active := 0
+	maxActive := 0
+	tasks := make([]snapshotFetchTask, 0, taskCount)
+	for index := 0; index < taskCount; index++ {
+		taskIndex := index
+		tasks = append(tasks, snapshotFetchTask{
+			id:       "task-" + strconv.Itoa(taskIndex),
+			resource: "Resource " + strconv.Itoa(taskIndex),
+			fetch: func() error {
+				mutex.Lock()
+				active++
+				if active > maxActive {
+					maxActive = active
+				}
+				mutex.Unlock()
+				time.Sleep(time.Duration(1+taskIndex%3) * 5 * time.Millisecond)
+				mutex.Lock()
+				active--
+				mutex.Unlock()
+				switch taskIndex {
+				case 1:
+					return errKubeAPIUnavailable
+				case 8:
+					return errKubeAPIResponseTooLarge
+				default:
+					return nil
+				}
+			},
+		})
+	}
+
+	diagnostics, err := collectSnapshotFetches(context.Background(), 3, tasks)
+	if err != nil {
+		t.Fatalf("collectSnapshotFetches() error = %v", err)
+	}
+	if maxActive < 2 || maxActive > 3 {
+		t.Fatalf("max concurrency = %d, want between 2 and 3", maxActive)
+	}
+	if len(diagnostics) != 2 || diagnostics[0].ID != "task-1" || diagnostics[0].Reason != "api_unavailable" || diagnostics[1].ID != "task-8" || diagnostics[1].Reason != "response_too_large" {
+		t.Fatalf("diagnostics = %+v, want deterministic task order and safe reasons", diagnostics)
+	}
+}
+
+func TestKubernetesProviderSnapshotReportsSafeOptionalCollectionDiagnostics(t *testing.T) {
+	var mutex sync.Mutex
+	active := 0
+	maxActive := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/api/v1/namespaces", "/api/v1/nodes", "/api/v1/pods", "/api/v1/services":
+			_, _ = w.Write([]byte(`{"items":[]}`))
+			return
+		}
+
+		mutex.Lock()
+		active++
+		if active > maxActive {
+			maxActive = active
+		}
+		mutex.Unlock()
+		defer func() {
+			mutex.Lock()
+			active--
+			mutex.Unlock()
+		}()
+		time.Sleep(10 * time.Millisecond)
+
+		switch r.URL.Path {
+		case "/api/v1/configmaps":
+			_, _ = w.Write([]byte(`{"items":`))
+		case "/apis/apps/v1/deployments":
+			http.Error(w, "sensitive-upstream-body", http.StatusBadGateway)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	provider := KubernetesProvider{
+		client:      &kubeAPIClient{baseURL: server.URL, bearer: "test-token", httpClient: server.Client()},
+		clusterID:   "live-test",
+		clusterName: "Live Test",
+	}
+	snapshot, err := provider.Snapshot(context.Background())
+	if err != nil {
+		t.Fatalf("Snapshot() error = %v", err)
+	}
+	if maxActive < 2 || maxActive > kubeSnapshotConcurrency {
+		t.Fatalf("optional max concurrency = %d, want between 2 and %d", maxActive, kubeSnapshotConcurrency)
+	}
+	diagnostics := make(map[string]topology.SnapshotDiagnostic, len(snapshot.Diagnostics))
+	for _, diagnostic := range snapshot.Diagnostics {
+		diagnostics[diagnostic.ID] = diagnostic
+	}
+	if diagnostic := diagnostics["core/configmaps"]; diagnostic.Reason != "invalid_response" || diagnostic.Resource != "ConfigMaps" || diagnostic.Count != 1 {
+		t.Fatalf("ConfigMap diagnostic = %+v", diagnostic)
+	}
+	if diagnostic := diagnostics["workloads/deployments"]; diagnostic.Reason != "request_failed" || diagnostic.Resource != "Deployments" || diagnostic.Count != 1 {
+		t.Fatalf("Deployment diagnostic = %+v", diagnostic)
+	}
+	encoded, err := json.Marshal(snapshot)
+	if err != nil {
+		t.Fatalf("marshal snapshot: %v", err)
+	}
+	if body := string(encoded); strings.Contains(body, "sensitive-upstream-body") || strings.Contains(body, "/apis/apps/v1/deployments") || strings.Contains(body, "502") {
+		t.Fatalf("snapshot diagnostics leaked remote detail: %s", body)
 	}
 }
 

@@ -25,6 +25,7 @@ Kuviewer is a read-only Kubernetes topology and resource explorer. It turns uplo
 - Snapshot history and resource/relation/cluster diff with large-result windowing and safe JSON/CSV export
 - Snapshot history metadata-only export without topology payloads
 - Native workloads, storage, Ingress, Gateway API routes, NetworkPolicy selectors, CRDs, and safe custom-resource relation inference
+- Bounded concurrent live collection with safe partial-result diagnostics; incomplete resource lists are never merged into a snapshot
 
 ## Source Modes
 

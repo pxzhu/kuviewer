@@ -865,6 +865,7 @@ function Dashboard() {
                 capabilityError={capabilityError}
                 capabilityLoading={capabilityLoading}
                 capabilityReport={capabilityReport}
+                collectionDiagnostics={snapshot.diagnostics || []}
                 lastUpdatedAt={lastUpdatedAt}
                 source={source}
                 status={connectorStatus}

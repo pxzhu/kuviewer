@@ -48,6 +48,7 @@
 - SSH endpoint probe는 공용 helper에서 입력·응답 크기·오류 코드를 제한하고 대상 host를 로그에 출력하지 않는다.
 - Kubernetes API client 오류는 safe reason/status code만 유지하며 endpoint path와 원격 응답 body를 전달하지 않는다.
 - Kubernetes list는 `continue` pagination을 사용하고 page/item/byte 상한 내에서 완료된 결과만 snapshot에 반영한다.
+- Live snapshot의 optional API와 CR instance 수집은 최대 6개 동시 요청으로 제한하고, 부분 실패는 원격 body/path 없이 resource와 allowlisted reason code만 `diagnostics`에 남긴다.
 
 ## Runtime Boundaries
 
