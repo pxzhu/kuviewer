@@ -96,9 +96,13 @@ requireNotIncludes(deploy, 'cat deploy/standalone/.env', 'deploy must not print 
 
 requireOrder(deploy, ['Validate required secrets', 'Build release image', 'Prepare SSH key', 'Remote SSH preflight', 'Authenticate deployment host to NasCR', 'Pull from NasCR and deploy', 'Cleanup SSH material']);
 requireIncludes(ci, 'node scripts/check-deploy-workflow.mjs', 'CI must execute this deploy contract');
+requireIncludes(ci, '  pull_request:', 'CI must validate pull requests');
+requireIncludes(ci, '  workflow_dispatch:', 'CI must retain an explicit manual fallback');
+requireNotIncludes(ci, '\n  push:', 'CI must not repeat validation after a protected main merge');
+requireIncludes(ci, '  validate:', 'CI required check must remain named validate');
 
 requireIncludes(compose, 'image: ${KUVIEWER_IMAGE:-kuviewer:local}', 'compose must accept an explicit release image');
-requireIncludes(envExample, 'KUVIEWER_IMAGE=ncr.nebbixh.com/kuviewer:latest', 'env example must document the NasCR image');
+requireIncludes(envExample, 'KUVIEWER_IMAGE=registry.example.com/kuviewer:latest', 'env example must use a neutral registry host');
 
 for (const [source, name] of [[preflight, 'deploy-preflight'], [knownHostsBootstrap, 'deploy-known-hosts-bootstrap'], [endpointDiagnostics, 'deploy-ssh-endpoint-diagnostics'], [selfHosted, 'deploy-self-hosted']]) {
   requireIncludes(source, 'workflow_dispatch:', `${name} must remain manual-only`);
@@ -119,6 +123,12 @@ for (const name of ['NCR_REGISTRY', 'NCR_USERNAME', 'NCR_PASSWORD']) {
 requireCondition(policy.rollbackOnHealthFailure === true, 'deploy policy must retain rollback');
 requireCondition(policy.healthRetryAttempts === 12, 'deploy policy must document 12 health attempts');
 requireCondition(policy.strictHostKeyChecking === true, 'deploy policy must require strict host checking');
+
+const ciPolicy = deployPolicy.ciWorkflowPolicy || {};
+requireCondition(ciPolicy.pullRequest === true, 'CI policy must require pull request validation');
+requireCondition(ciPolicy.manualDispatch === true, 'CI policy must retain manual dispatch');
+requireCondition(ciPolicy.mainPush === false, 'CI policy must disable duplicate main push validation');
+requireCondition(ciPolicy.requiredCheck === 'validate', 'CI policy must keep the validate required check name');
 
 if (failures.length) {
   console.error('deploy workflow check failed');

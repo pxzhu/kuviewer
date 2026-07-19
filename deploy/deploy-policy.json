@@ -14,5 +14,11 @@
     "rollbackOnHealthFailure": true,
     "healthRetryAttempts": 12,
     "strictHostKeyChecking": true
+  },
+  "ciWorkflowPolicy": {
+    "pullRequest": true,
+    "manualDispatch": true,
+    "mainPush": false,
+    "requiredCheck": "validate"
   }
 }
