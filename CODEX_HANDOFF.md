@@ -26,10 +26,11 @@
 
 ## Architecture Notes
 
-- `website/src/components/ResourceExplorer.tsx`는 resource list controller와 saved-view orchestration을 담당한다.
+- `website/src/components/ResourceExplorer.tsx`는 resource fetch/filter와 resource list/detail 조정을 담당한다.
 - Resource list/bulk rendering은 `website/src/components/resourceExplorer/ResourceExplorerListPanel.tsx`로 분리돼 있다.
 - Saved-view validation/storage/order/import/conflict/team compare 모델은 `website/src/features/resources/resourceViewPresets.ts`에 둔다.
 - Saved-view UI state와 save/import/conflict/team sync/reorder action은 `website/src/features/resources/useResourceViewPresetsController.ts`가 담당한다.
+- Saved-view action/summary/folder/search/bulk/list rendering은 `website/src/components/resourceExplorer/ResourceViewPresetsPanel.tsx`가 담당한다.
 - Resource detail state는 `useResourceEventsController`와 `useResourceLogsController`로 분리돼 있다.
 - Relations, Events, Logs section과 highlight renderer는 `website/src/components/resourceExplorer/` 아래 표시 component로 분리돼 있다.
 - CSV export는 `website/src/features/export/safeCsv.ts`를 공통 사용해 formula injection과 NUL을 차단한다.
@@ -76,7 +77,7 @@ go test ./...
 ## Remaining Work
 
 1. 실제 native Kubernetes, k3s, AKS에서 capability/RBAC/Events/logs/pagination 검증
-2. Resource Explorer saved-view control/summary/list JSX를 표시 전용 panel component로 추가 분리
+2. Server resource pagination/filter helper와 snapshot comparison reducer의 순수 모듈·단위 테스트 경계 확대
 3. Desktop CM local prototype의 layout/session UI 추가 모듈화 또는 archive 범위 축소
 4. 필요성이 확인되면 snapshot diff report-to-report summary 비교 추가
 5. scripts의 reusable helper/CLI entrypoint 분리 확대

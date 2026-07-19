@@ -807,6 +807,8 @@ export function useResourceViewPresetsController({
   };
 }
 
+export type ResourceViewPresetsController = ReturnType<typeof useResourceViewPresetsController>;
+
 function unique(values: string[]) {
   return Array.from(new Set(values)).sort();
 }
