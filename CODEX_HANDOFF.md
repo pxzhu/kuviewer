@@ -49,6 +49,7 @@
 - Kubernetes API client 오류는 safe reason/status code만 유지하며 endpoint path와 원격 응답 body를 전달하지 않는다.
 - Kubernetes list는 `continue` pagination을 사용하고 page/item/byte 상한 내에서 완료된 결과만 snapshot에 반영한다.
 - Live snapshot의 optional API와 CR instance 수집은 최대 6개 동시 요청으로 제한하고, 부분 실패는 원격 body/path 없이 resource와 allowlisted reason code만 `diagnostics`에 남긴다.
+- 2026-07-20 Native Kubernetes 실검증에서 capability/topology/Secret redaction/cursor/cache/Events와 fixed/follow Pod logs를 확인했다. Pod log content negotiation은 일부 API server의 `text/plain` 406을 피하도록 `Accept: */*`를 사용한다.
 
 ## Runtime Boundaries
 
@@ -88,7 +89,7 @@ go test ./...
 
 ## Remaining Work
 
-1. 실제 native Kubernetes, k3s, AKS에서 capability/RBAC/Events/logs/pagination 검증
+1. k3s와 AKS에서 capability/RBAC/Events/logs/pagination 검증 (Native Kubernetes 1차 실검증 완료)
 2. Desktop CM local prototype의 layout/session UI 추가 모듈화 또는 archive 범위 축소
 3. 필요성이 확인되면 snapshot diff report-to-report summary 비교 추가
 4. scripts의 reusable helper/CLI entrypoint 분리 확대

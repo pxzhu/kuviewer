@@ -121,6 +121,7 @@ Protected endpoints require `Authorization: Bearer <admin-token>`:
 - CSP, frame denial, nosniff, referrer, and permissions security headers
 - Constant-time admin token comparison
 - Logs and Events are fetched only on explicit live-mode actions and are not stored by Kuviewer
+- Pod log reads and follow streams use Kubernetes-compatible content negotiation, while retaining the 200-line, byte, and line-length bounds
 - Export files are user-click generated and contain safe metadata only
 - CSV exports neutralize spreadsheet formula prefixes and strip NUL bytes
 

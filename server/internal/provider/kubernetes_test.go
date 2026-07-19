@@ -646,14 +646,20 @@ func TestKubernetesProviderResourceLogsReadsPodLog(t *testing.T) {
 	var gotContainer string
 	var gotPrevious string
 	var gotFollow string
+	var gotAccept string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotPath = r.URL.Path
 		gotTailLines = r.URL.Query().Get("tailLines")
 		gotContainer = r.URL.Query().Get("container")
 		gotPrevious = r.URL.Query().Get("previous")
 		gotFollow = r.URL.Query().Get("follow")
+		gotAccept = r.Header.Get("Accept")
 		if got := r.Header.Get("Authorization"); got != "Bearer test-token" {
 			t.Fatalf("Authorization = %q, want bearer token", got)
+		}
+		if gotAccept != "*/*" {
+			http.Error(w, "not acceptable", http.StatusNotAcceptable)
+			return
 		}
 		w.Header().Set("Content-Type", "text/plain")
 		_, _ = w.Write([]byte("line-1\nline-2\n"))
@@ -687,6 +693,9 @@ func TestKubernetesProviderResourceLogsReadsPodLog(t *testing.T) {
 	if gotFollow != "" {
 		t.Fatalf("follow = %q, want empty for fixed log read", gotFollow)
 	}
+	if gotAccept != "*/*" {
+		t.Fatalf("Accept = %q, want Kubernetes-compatible wildcard", gotAccept)
+	}
 	if logs.Warning != "" || logs.Container != "api" || !logs.Previous || logs.TailLines != 200 || len(logs.Lines) != 2 || logs.Lines[1] != "line-2" {
 		t.Fatalf("logs = %+v, want two lines", logs)
 	}
@@ -698,6 +707,7 @@ func TestKubernetesProviderStreamLogs(t *testing.T) {
 	var gotContainer string
 	var gotPrevious string
 	var gotFollow string
+	var gotAccept string
 	longLine := strings.Repeat("x", podLogMaxLineBytes+20)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotPath = r.URL.Path
@@ -705,8 +715,13 @@ func TestKubernetesProviderStreamLogs(t *testing.T) {
 		gotContainer = r.URL.Query().Get("container")
 		gotPrevious = r.URL.Query().Get("previous")
 		gotFollow = r.URL.Query().Get("follow")
+		gotAccept = r.Header.Get("Accept")
 		if got := r.Header.Get("Authorization"); got != "Bearer test-token" {
 			t.Fatalf("Authorization = %q, want bearer token", got)
+		}
+		if gotAccept != "*/*" {
+			http.Error(w, "not acceptable", http.StatusNotAcceptable)
+			return
 		}
 		w.Header().Set("Content-Type", "text/plain")
 		_, _ = w.Write([]byte("line-1\n" + longLine + "\n"))
@@ -743,6 +758,9 @@ func TestKubernetesProviderStreamLogs(t *testing.T) {
 	}
 	if gotFollow != "true" {
 		t.Fatalf("follow = %q, want true", gotFollow)
+	}
+	if gotAccept != "*/*" {
+		t.Fatalf("Accept = %q, want Kubernetes-compatible wildcard", gotAccept)
 	}
 	if len(lines) != 2 || lines[0] != "line-1" {
 		t.Fatalf("lines = %+v, want two stream lines", lines)
