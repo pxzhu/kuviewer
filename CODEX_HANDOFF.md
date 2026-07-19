@@ -24,6 +24,7 @@
 - Web security headers, no-store API policy, constant-time admin token comparison
 - NasCR image release deployment과 SSH/self-hosted fallback/rollback diagnostics
 - Pull request `validate` CI와 tag-only deploy를 분리해 merge 후 중복 CI를 실행하지 않으며, `main`은 GitHub branch protection으로 PR과 required check를 강제한다.
+- App/Vite TypeScript는 `noUnusedLocals`와 `noUnusedParameters`를 강제해 dead code가 typecheck/CI를 통과하지 못하게 한다.
 
 ## Architecture Notes
 

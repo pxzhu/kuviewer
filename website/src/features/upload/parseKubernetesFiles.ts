@@ -1251,10 +1251,6 @@ function selectorMatchLabels(selector: unknown) {
   return isRecord(matchLabels) ? stringRecord(matchLabels) : {};
 }
 
-function selectorHasExpressions(selector: unknown) {
-  return asArray(readAt(selector, ['matchExpressions'])).length > 0;
-}
-
 function matchingNetworkPolicyNamespaces(namespaces: NamespaceRecord[], policyNamespace: string, namespaceSelector: unknown) {
   if (!isRecord(namespaceSelector)) {
     return new Set([policyNamespace]);

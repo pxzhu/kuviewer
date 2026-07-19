@@ -1,5 +1,5 @@
 import { type DragEvent as ReactDragEvent, type KeyboardEvent, useEffect, useMemo, useRef, useState } from 'react';
-import { Activity, ArrowDown, ArrowUp, Bookmark, CheckCircle2, ChevronDown, ChevronRight, CircleHelp, Copy, Download, Filter, Folder, GripVertical, KeyRound, Pencil, Play, Plus, RotateCcw, Search, ServerCog, ShieldCheck, Square, Star, Trash2, Unplug, Upload, XCircle } from 'lucide-react';
+import { Activity, ArrowDown, ArrowUp, Bookmark, CheckCircle2, ChevronDown, ChevronRight, CircleHelp, Copy, Download, Filter, Folder, GripVertical, KeyRound, Pencil, Play, Search, ServerCog, ShieldCheck, Square, Star, Trash2, Unplug, Upload, XCircle } from 'lucide-react';
 import {
   createDesktopCmSessionExportBundle,
   desktopCmDefaultRemoteApiHost,
@@ -33,8 +33,6 @@ import {
   writeDesktopCmSessionViewPreferences,
   type CmDiagnosticSeverityFilter,
   type CmDiagnosticStageFilter,
-  type DesktopCmSessionGroup,
-  type DesktopCmSessionViewPreference,
   type DesktopCmSessionViewPreferences,
 } from '../features/desktop/desktopCmSessionView';
 import {
@@ -65,8 +63,6 @@ import {
   setsEqual,
   writeDesktopCmSessionLayoutCollapsedFolders,
   writeDesktopCmSessionLayoutPresets,
-  type DesktopCmSessionLayoutFolder,
-  type DesktopCmSessionLayoutFolderFilterOption,
   type DesktopCmSessionLayoutPreset,
 } from '../features/desktop/desktopCmSessionLayouts';
 import { DesktopCmConnectionProfileForm } from './desktopCm/DesktopCmConnectionProfileForm';
