@@ -28,7 +28,7 @@ Safe local preferences may contain session ids, group/folder names, favorites, c
 ```bash
 node scripts/check-desktop-packaging-spec.mjs
 cargo fmt --manifest-path desktop/src-tauri/Cargo.toml --check
-cargo check --manifest-path desktop/src-tauri/Cargo.toml
+cargo check --locked --manifest-path desktop/src-tauri/Cargo.toml
 ```
 
 Run the desktop shell only for explicit CM/SSH prototype work.

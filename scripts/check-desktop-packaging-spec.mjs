@@ -60,6 +60,9 @@ const tauriMain = await readFile(path.join(repoRoot, 'desktop/src-tauri/src/main
 for (const forbiddenCommand of ['desktop_sidecar_profile', 'desktop_kubernetes_profiles', 'desktop_select_kubernetes_profile']) {
   requireCondition(!tauriMain.includes(forbiddenCommand), `removed native command returned: ${forbiddenCommand}`);
 }
+const cargoLock = await readFile(path.join(repoRoot, 'desktop/src-tauri/Cargo.lock'), 'utf8');
+requireCondition(cargoLock.includes('name = "kuviewer-desktop"'), 'Cargo.lock must include the desktop package');
+requireCondition(!cargoLock.includes('name = "tauri-plugin-shell"'), 'removed sidecar shell dependency returned to Cargo.lock');
 
 const docs = await Promise.all([
   'README.md',

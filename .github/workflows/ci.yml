@@ -86,8 +86,21 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev
 
+      - name: Cache desktop Rust dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            desktop/src-tauri/target
+          key: desktop-rust-${{ runner.os }}-${{ hashFiles('desktop/src-tauri/Cargo.lock') }}
+          restore-keys: |
+            desktop-rust-${{ runner.os }}-
+
       - name: Desktop Rust compile check
-        run: cargo check --manifest-path desktop/src-tauri/Cargo.toml
+        env:
+          CARGO_INCREMENTAL: 0
+        run: cargo check --locked --manifest-path desktop/src-tauri/Cargo.toml
 
       - name: Deploy workflow preflight check
         run: node scripts/check-deploy-workflow.mjs

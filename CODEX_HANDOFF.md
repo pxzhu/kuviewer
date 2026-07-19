@@ -100,7 +100,7 @@ go test ./...
 
 ## Remaining Work
 
-1. k3s와 AKS에서 capability/RBAC/Events/logs/pagination 검증 (Native Kubernetes 1차 실검증 완료)
+1. AKS에서 capability/RBAC/Events/logs/pagination 검증 (Native Kubernetes와 local k3s 실검증 완료)
 2. Desktop CM local prototype의 layout/session UI 추가 모듈화 또는 archive 범위 축소
 3. Desktop CM panel의 남은 session/layout JSX를 실제 사용성에 맞춰 추가 분리하거나 prototype archive 범위를 결정
 4. scripts의 반복 코드가 다시 확인될 때 reusable helper/CLI entrypoint 분리 확대

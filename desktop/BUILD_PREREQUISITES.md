@@ -15,7 +15,7 @@ macOS development requires Xcode command-line tools. Windows development require
 ```bash
 node scripts/check-desktop-packaging-spec.mjs
 cargo fmt --manifest-path desktop/src-tauri/Cargo.toml --check
-cargo check --manifest-path desktop/src-tauri/Cargo.toml
+cargo check --locked --manifest-path desktop/src-tauri/Cargo.toml
 ```
 
 ## Security Requirements

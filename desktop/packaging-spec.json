@@ -63,6 +63,7 @@
     ]
   },
   "requiredFiles": [
+    "desktop/src-tauri/Cargo.lock",
     "desktop/src-tauri/Cargo.toml",
     "desktop/src-tauri/tauri.conf.json",
     "desktop/src-tauri/src/main.rs",

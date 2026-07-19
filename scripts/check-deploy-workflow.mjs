@@ -102,6 +102,8 @@ requireNotIncludes(ci, '\n  push:', 'CI must not repeat validation after a prote
 requireIncludes(ci, '  validate:', 'CI required check must remain named validate');
 requireIncludes(ci, 'run: npm run test:unit', 'CI must execute frontend unit tests');
 requireIncludes(ci, 'run: node --test scripts/lib/*.test.mjs', 'CI must execute automation helper tests');
+requireIncludes(ci, "hashFiles('desktop/src-tauri/Cargo.lock')", 'CI Rust cache must be bound to Cargo.lock');
+requireIncludes(ci, 'cargo check --locked --manifest-path desktop/src-tauri/Cargo.toml', 'CI must compile the desktop prototype from Cargo.lock');
 
 requireIncludes(compose, 'image: ${KUVIEWER_IMAGE:-kuviewer:local}', 'compose must accept an explicit release image');
 requireIncludes(envExample, 'KUVIEWER_IMAGE=registry.example.com/kuviewer:latest', 'env example must use a neutral registry host');
