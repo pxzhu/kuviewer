@@ -27,7 +27,9 @@
 
 ## Architecture Notes
 
-- `website/src/components/ResourceExplorer.tsx`는 resource filter/preset과 list/detail 표시 조정을 담당한다.
+- `website/src/components/ResourceExplorer.tsx`는 resource filter controller와 list/detail 연결을 담당한다.
+- Resource list 표시 설정 toolbar와 query/facet/active-filter panel은 `website/src/components/resourceExplorer/` 아래 표시 component로 분리돼 있다.
+- Active filter chip 계산은 `resourceViewState.ts`의 pure helper와 direct unit test로 검증한다.
 - Resource fetch/pagination abort, selection anchor, keyboard/bulk action은 `website/src/features/resources/useResourceListController.ts`가 담당한다.
 - Resource request generation과 primary/page abort 계약은 `resourceListRequestCoordinator.ts`에 두고 direct unit test로 검증한다.
 - Resource list/bulk rendering은 `website/src/components/resourceExplorer/ResourceExplorerListPanel.tsx`로 분리돼 있다.

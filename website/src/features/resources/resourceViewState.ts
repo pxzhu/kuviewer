@@ -16,6 +16,13 @@ export interface ResourceViewFilters {
   status: string;
 }
 
+export interface ActiveResourceFilterChip {
+  id: keyof ResourceViewFilters;
+  label: string;
+  value: string;
+  testId: string;
+}
+
 export function defaultResourceViewFilters(): ResourceViewFilters {
   return {
     query: '',
@@ -79,4 +86,21 @@ export function resourceViewFiltersEqual(left: ResourceViewFilters, right: Resou
     left.kind === right.kind &&
     left.status === right.status
   );
+}
+
+export function activeResourceFilterChips(filters: ResourceViewFilters): ActiveResourceFilterChip[] {
+  const query = filters.query.trim();
+  return [
+    query ? { id: 'query', label: 'Search', value: query, testId: 'resource-active-filter-query' } : null,
+    filters.cluster !== allValue
+      ? { id: 'cluster', label: 'Cluster', value: filters.cluster, testId: 'resource-active-filter-cluster' }
+      : null,
+    filters.namespace !== allValue
+      ? { id: 'namespace', label: 'Namespace', value: filters.namespace, testId: 'resource-active-filter-namespace' }
+      : null,
+    filters.kind !== allValue ? { id: 'kind', label: 'Kind', value: filters.kind, testId: 'resource-active-filter-kind' } : null,
+    filters.status !== allValue
+      ? { id: 'status', label: 'Status', value: filters.status, testId: 'resource-active-filter-status' }
+      : null,
+  ].filter((chip): chip is ActiveResourceFilterChip => chip !== null);
 }
