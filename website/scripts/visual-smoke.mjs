@@ -747,6 +747,11 @@ async function verifyResourceViewConflictImport(page) {
 
 async function verifyResourceViewTeamSyncPolish(page, viewportName) {
   let savedTeamPayload = null;
+  let delayNextResourcePage = true;
+  let resolveDelayedResourcePage;
+  const delayedResourcePageSettled = new Promise((resolve) => {
+    resolveDelayedResourcePage = resolve;
+  });
   await page.route('**/api/status', async (route) => {
     await route.fulfill({
       contentType: 'application/json',
@@ -767,8 +772,17 @@ async function verifyResourceViewTeamSyncPolish(page, viewportName) {
     await route.fulfill({ contentType: 'application/json', body: JSON.stringify(getTeamSyncSnapshot()) });
   });
   await page.route(/\/api\/resources(?:\?.*)?$/, async (route) => {
-    const cursor = new URL(route.request().url()).searchParams.get('cursor') || '';
-    await route.fulfill({ contentType: 'application/json', body: JSON.stringify(getTeamSyncResources(cursor)) });
+    const searchParams = new URL(route.request().url()).searchParams;
+    const cursor = searchParams.get('cursor') || '';
+    const query = searchParams.get('query') || '';
+    if (cursor && delayNextResourcePage) {
+      delayNextResourcePage = false;
+      await new Promise((resolve) => setTimeout(resolve, 600));
+      await route.fulfill({ contentType: 'application/json', body: JSON.stringify(getTeamSyncResources(cursor, query)) }).catch(() => {});
+      resolveDelayedResourcePage();
+      return;
+    }
+    await route.fulfill({ contentType: 'application/json', body: JSON.stringify(getTeamSyncResources(cursor, query)) });
   });
   await page.route('**/api/resources/**/events', async (route) => {
     await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ items: [], warning: '' }) });
@@ -842,6 +856,14 @@ async function verifyResourceViewTeamSyncPolish(page, viewportName) {
   await expect(page.getByTestId('resource-view-team-load')).toBeEnabled({ timeout: 10_000 });
   await expect(page.getByTestId('resource-list-load-more')).toBeVisible({ timeout: 10_000 });
   await expect(page.getByTestId('resource-result-count')).toContainText('표시 1 / 일치 2 · 전체 2');
+  await page.getByTestId('resource-list-load-more').click();
+  await page.getByTestId('resource-view-query').fill('team-api');
+  await expect(page.getByTestId('resource-result-count')).toContainText('표시 1 / 일치 1 · 전체 2', { timeout: 10_000 });
+  await delayedResourcePageSettled;
+  await expect(page.getByTestId('resource-result-count')).toContainText('표시 1 / 일치 1 · 전체 2');
+  await page.getByTestId('resource-view-query').fill('');
+  await expect(page.getByTestId('resource-result-count')).toContainText('표시 1 / 일치 2 · 전체 2', { timeout: 10_000 });
+  await expect(page.getByTestId('resource-list-load-more')).toBeVisible({ timeout: 10_000 });
   await page.getByTestId('resource-list-load-more').click();
   await expect(page.getByTestId('resource-list-load-more')).toHaveCount(0, { timeout: 10_000 });
   await expect(page.getByTestId('resource-result-count')).toContainText('표시 2 / 일치 2 · 전체 2');
@@ -1361,7 +1383,7 @@ function getTeamSyncCapabilities() {
   };
 }
 
-function getTeamSyncResources(cursor = '') {
+function getTeamSyncResources(cursor = '', query = '') {
   const items = [
       {
         id: 'visual-live:Namespace::default',
@@ -1410,15 +1432,19 @@ function getTeamSyncResources(cursor = '') {
         ],
       },
     ];
+  const normalizedQuery = query.trim().toLowerCase();
+  const filteredItems = normalizedQuery
+    ? items.filter((item) => item.name.toLowerCase().includes(normalizedQuery) || item.kind.toLowerCase().includes(normalizedQuery))
+    : items;
   const offset = cursor === 'MQ' ? 1 : 0;
   return {
-    items: items.slice(offset, offset + 1),
+    items: filteredItems.slice(offset, offset + 1),
     metadata: {
       total: 2,
-      filtered: 2,
-      returned: 1,
+      filtered: filteredItems.length,
+      returned: Math.min(1, Math.max(0, filteredItems.length - offset)),
       limit: 1,
-      nextCursor: offset === 0 ? 'MQ' : '',
+      nextCursor: offset === 0 && filteredItems.length > 1 ? 'MQ' : '',
       facets: {
         clusters: ['visual-live'],
         namespaces: ['default'],

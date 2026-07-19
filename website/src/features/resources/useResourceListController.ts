@@ -6,6 +6,7 @@ import type { TopologySnapshot } from '../../types/topology';
 import type { TopologySourceMode } from '../topology/useTopology';
 import type { ResourceViewMessage } from './resourceViewPresets';
 import type { ResourceViewFilters } from './resourceViewState';
+import { ResourceListRequestCoordinator } from './resourceListRequestCoordinator';
 import {
   buildResourceListRequest,
   filterResourceList,
@@ -62,18 +63,16 @@ export function useResourceListController({
   const [selectedResourceIds, setSelectedResourceIds] = useState<Set<string>>(() => new Set());
   const [resourceBulkMessage, setResourceBulkMessage] = useState<ResourceViewMessage | null>(null);
   const resourceSelectionAnchorRef = useRef<string | null>(null);
-  const resourceRequestGenerationRef = useRef(0);
-  const loadMoreControllerRef = useRef<AbortController | null>(null);
+  const resourceRequestCoordinatorRef = useRef<ResourceListRequestCoordinator | null>(null);
+  if (!resourceRequestCoordinatorRef.current) resourceRequestCoordinatorRef.current = new ResourceListRequestCoordinator();
+  const resourceRequestCoordinator = resourceRequestCoordinatorRef.current;
   const resourceRowRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   useEffect(() => {
-    const requestGeneration = resourceRequestGenerationRef.current + 1;
-    resourceRequestGenerationRef.current = requestGeneration;
-    loadMoreControllerRef.current?.abort();
-    loadMoreControllerRef.current = null;
     setLoadingMore(false);
 
     if (sourceMode !== 'live' || !liveEnabled) {
+      resourceRequestCoordinator.invalidate();
       setResources(resourcesFromSnapshot(snapshot).items);
       setResourceListMetadata(null);
       setLiveResourceApiReady(false);
@@ -82,18 +81,18 @@ export function useResourceListController({
       return;
     }
 
-    const controller = new AbortController();
+    const request = resourceRequestCoordinator.beginPrimary();
     const timeoutId = window.setTimeout(() => {
-      void fetchResources(buildResourceListRequest(filters, resourceListSort), controller.signal)
+      void fetchResources(buildResourceListRequest(filters, resourceListSort), request.signal)
         .then((list) => {
-          if (!controller.signal.aborted && requestGeneration === resourceRequestGenerationRef.current) {
+          if (resourceRequestCoordinator.isCurrent(request)) {
             setResources(list.items);
             setResourceListMetadata(list.metadata ?? null);
             setLiveResourceApiReady(true);
           }
         })
         .catch((requestError: unknown) => {
-          if (!controller.signal.aborted && requestGeneration === resourceRequestGenerationRef.current) {
+          if (resourceRequestCoordinator.isCurrent(request)) {
             setError(normalizeResourceListRequestError(requestError));
             setResources(resourcesFromSnapshot(snapshot).items);
             setResourceListMetadata(null);
@@ -101,7 +100,7 @@ export function useResourceListController({
           }
         })
         .finally(() => {
-          if (!controller.signal.aborted && requestGeneration === resourceRequestGenerationRef.current) {
+          if (resourceRequestCoordinator.finish(request)) {
             setLoading(false);
           }
         });
@@ -112,10 +111,9 @@ export function useResourceListController({
     setError('');
     return () => {
       window.clearTimeout(timeoutId);
-      controller.abort();
-      loadMoreControllerRef.current?.abort();
+      resourceRequestCoordinator.cancelGeneration(request.generation);
     };
-  }, [filters, liveEnabled, resourceListSort, snapshot, sourceMode]);
+  }, [filters, liveEnabled, resourceListSort, resourceRequestCoordinator, snapshot, sourceMode]);
 
   const clusters = useMemo(
     () => resourceListMetadata?.facets.clusters ?? uniqueSortedValues(resources.map((resource) => resource.clusterId)),
@@ -299,26 +297,22 @@ export function useResourceListController({
 
   const handleLoadMoreResources = useCallback(async () => {
     if (!nextResourceCursor || loadingMore || sourceMode !== 'live' || !liveEnabled) return;
-    const requestGeneration = resourceRequestGenerationRef.current;
-    const controller = new AbortController();
-    loadMoreControllerRef.current?.abort();
-    loadMoreControllerRef.current = controller;
+    const request = resourceRequestCoordinator.beginPage();
     setLoadingMore(true);
     setError('');
     try {
-      const list = await fetchResources(buildResourceListRequest(filters, resourceListSort, nextResourceCursor), controller.signal);
-      if (controller.signal.aborted || requestGeneration !== resourceRequestGenerationRef.current) return;
+      const list = await fetchResources(buildResourceListRequest(filters, resourceListSort, nextResourceCursor), request.signal);
+      if (!resourceRequestCoordinator.isCurrent(request)) return;
       setResources((currentResources) => mergeResourcePages(currentResources, list.items));
       setResourceListMetadata(list.metadata ?? null);
     } catch (requestError: unknown) {
-      if (!controller.signal.aborted && requestGeneration === resourceRequestGenerationRef.current) {
+      if (resourceRequestCoordinator.isCurrent(request)) {
         setError(normalizeResourceListRequestError(requestError));
       }
     } finally {
-      if (loadMoreControllerRef.current === controller) loadMoreControllerRef.current = null;
-      if (!controller.signal.aborted && requestGeneration === resourceRequestGenerationRef.current) setLoadingMore(false);
+      if (resourceRequestCoordinator.finish(request)) setLoadingMore(false);
     }
-  }, [filters, liveEnabled, loadingMore, nextResourceCursor, resourceListSort, sourceMode]);
+  }, [filters, liveEnabled, loadingMore, nextResourceCursor, resourceListSort, resourceRequestCoordinator, sourceMode]);
 
   return {
     allFilteredResourcesSelected,
