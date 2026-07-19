@@ -1,6 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { CSSProperties, DragEvent as ReactDragEvent, KeyboardEvent as ReactKeyboardEvent } from 'react';
-import { ArrowDown, ArrowUp, Bookmark, Boxes, CheckCircle2, ChevronDown, Copy, Download, Folder, FolderOpen, GitBranch, GripVertical, Link2, Pencil, RefreshCw, RotateCcw, Search, Tags, Trash2, Upload, X } from 'lucide-react';
+import type { DragEvent as ReactDragEvent, KeyboardEvent as ReactKeyboardEvent } from 'react';
+import { ArrowDown, ArrowUp, Bookmark, Boxes, CheckCircle2, ChevronDown, Download, Folder, FolderOpen, GitBranch, GripVertical, Link2, Pencil, RefreshCw, RotateCcw, Search, Tags, Trash2, Upload, X } from 'lucide-react';
 import { fetchResourceViewPresets, fetchResources, resourcesFromSnapshot, saveResourceViewPresets } from '../services/resourceApi';
 import type { ResourceViewPresetApiMetadata } from '../services/resourceApi';
 import type { ResourceExplorerItem, ResourceExplorerListMetadata } from '../types/resourceExplorer';
@@ -8,6 +8,7 @@ import type { TopologySnapshot } from '../types/topology';
 import type { TopologySourceMode } from '../features/topology/useTopology';
 import { appendResourceViewFilterSearchParams, resourceViewFiltersEqual, type ResourceViewFilters } from '../features/resources/resourceViewState';
 import { safeCsvCell } from '../features/export/safeCsv';
+import { ResourceExplorerListPanel, resourceOptionDomId } from './resourceExplorer/ResourceExplorerListPanel';
 
 interface ResourceExplorerProps {
   liveEnabled: boolean;
@@ -1091,40 +1092,10 @@ export function ResourceExplorer({
     downloadTextFile(content, mimeType, resourceBulkExportFileName(format));
     setResourceBulkMessage({ tone: 'success', text: `선택한 리소스 ${selectedResources.length}개를 ${format.toUpperCase()}로 내보냈습니다.` });
   };
-  const resourceSummaryLimit = resourceListDensity === 'compact' ? 2 : 3;
   const visibleOptionalColumnCount = resourceListOptionalColumns.filter((column) => resourceListColumns[column.key]).length;
   const toggleResourceListColumn = (column: ResourceListOptionalColumn) => {
     setResourceListColumns((current) => ({ ...current, [column]: !current[column] }));
   };
-  const resourceRowClassName = (resource: ResourceExplorerItem) =>
-    `${resourceListDensity === 'compact' ? 'mb-1.5 rounded-[10px] px-2 py-2' : 'mb-2 rounded-[12px] p-3'} w-full cursor-pointer border text-left transition focus:outline-none focus:ring-2 focus:ring-[rgba(0,122,255,0.22)] ${
-      resource.id === selectedResource?.id
-        ? 'border-[rgba(0,122,255,0.36)] bg-[rgba(0,122,255,0.1)] shadow-[0_0_0_1px_rgba(0,122,255,0.08)]'
-        : selectedResourceIds.has(resource.id)
-          ? 'border-[rgba(52,199,89,0.24)] bg-[rgba(52,199,89,0.08)] hover:bg-[rgba(52,199,89,0.11)]'
-        : 'border-[rgba(60,60,67,0.12)] bg-white/78 hover:bg-white'
-    }`;
-  const resourceGridClassName =
-    resourceListDensity === 'compact'
-      ? 'grid gap-1.5 md:[grid-template-columns:var(--resource-list-columns)] md:items-center'
-      : 'grid gap-2 md:[grid-template-columns:var(--resource-list-columns)] md:items-center';
-  const resourceHeaderGridClassName = `${resourceGridClassName} rounded-[10px] border border-[rgba(60,60,67,0.08)] bg-[rgba(242,242,247,0.66)] px-3 py-2`;
-  const resourceGridStyle = { '--resource-list-columns': resourceListGridTemplate(resourceListColumns) } as CSSProperties;
-  const resourceNameClassName = resourceListDensity === 'compact' ? 'truncate text-xs font-semibold text-[#1d1d1f]' : 'truncate text-sm font-semibold text-[#1d1d1f]';
-  const resourceMetaClassName =
-    resourceListDensity === 'compact'
-      ? 'mt-0.5 truncate font-mono text-[9px] font-semibold uppercase tracking-[0.03em] text-[rgba(60,60,67,0.58)]'
-      : 'mt-0.5 truncate font-mono text-[10px] font-semibold uppercase tracking-[0.03em] text-[rgba(60,60,67,0.58)]';
-  const resourceColumnLabelClassName = 'ku-meta md:hidden';
-  const resourceColumnValueClassName =
-    resourceListDensity === 'compact'
-      ? 'min-w-0 truncate font-mono text-[10px] font-semibold text-[rgba(60,60,67,0.72)]'
-      : 'min-w-0 truncate font-mono text-[11px] font-semibold text-[rgba(60,60,67,0.72)]';
-  const resourceSummaryContainerClassName = resourceListDensity === 'compact' ? 'mt-1 flex flex-wrap gap-1' : 'mt-2 flex flex-wrap gap-1.5';
-  const resourceSummaryChipClassName =
-    resourceListDensity === 'compact'
-      ? 'rounded-full bg-[rgba(242,242,247,0.78)] px-1.5 py-0 font-mono text-[9px] font-semibold text-[rgba(60,60,67,0.72)]'
-      : 'rounded-full bg-[rgba(242,242,247,0.78)] px-2 py-0.5 font-mono text-[10px] font-semibold text-[rgba(60,60,67,0.72)]';
   const focusResourceRow = (resourceId: string) => {
     window.requestAnimationFrame(() => {
       resourceRowRefs.current[resourceId]?.focus({ preventScroll: true });
@@ -2253,206 +2224,28 @@ export function ResourceExplorer({
           </div>
         </div>
 
-        <div className="grid gap-2 border-b border-[rgba(60,60,67,0.1)] p-3" data-testid="resource-bulk-toolbar">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="flex flex-wrap items-center gap-1.5">
-              <span className={`ku-chip ${selectedResourceCount > 0 ? 'border-[rgba(0,122,255,0.22)] bg-[rgba(0,122,255,0.08)] text-[#0057b8]' : ''}`} data-testid="resource-bulk-count">
-                선택 {selectedResourceCount}개
-              </span>
-              <span className="ku-meta">현재 필터 결과 {sortedResources.length}개 · 메모리에만 보관</span>
-              <span className="ku-meta" data-testid="resource-bulk-keyboard-hint">Space 선택 · Shift+Arrow 범위 · Ctrl/⌘+A 전체</span>
-            </div>
-            <div className="flex flex-wrap items-center justify-end gap-1.5">
-              <button
-                className="rounded-[8px] border border-[rgba(60,60,67,0.12)] bg-white px-2.5 py-1.5 text-xs font-semibold text-[rgba(60,60,67,0.72)] transition hover:bg-[rgba(242,242,247,0.9)] disabled:cursor-not-allowed disabled:opacity-50"
-                type="button"
-                onClick={handleSelectFilteredResources}
-                disabled={sortedResources.length === 0 || allFilteredResourcesSelected}
-                data-testid="resource-bulk-select-all"
-              >
-                현재 필터 전체 선택
-              </button>
-              <button
-                className="rounded-[8px] border border-[rgba(60,60,67,0.12)] bg-white px-2.5 py-1.5 text-xs font-semibold text-[rgba(60,60,67,0.72)] transition hover:bg-[rgba(242,242,247,0.9)] disabled:cursor-not-allowed disabled:opacity-50"
-                type="button"
-                onClick={handleClearResourceSelection}
-                disabled={selectedResourceCount === 0}
-                data-testid="resource-bulk-clear"
-              >
-                선택 해제
-              </button>
-              <button
-                className="inline-flex items-center gap-1.5 rounded-[8px] border border-[rgba(0,122,255,0.18)] bg-[rgba(0,122,255,0.06)] px-2.5 py-1.5 text-xs font-semibold text-[#0057b8] transition hover:bg-[rgba(0,122,255,0.1)] disabled:cursor-not-allowed disabled:opacity-50"
-                type="button"
-                onClick={() => void handleCopySelectedResourceNames()}
-                disabled={selectedResourceCount === 0}
-                data-testid="resource-bulk-copy-names"
-                title="선택한 리소스 이름을 클립보드에 복사"
-              >
-                <Copy size={13} aria-hidden="true" />
-                이름 복사
-              </button>
-              <button
-                className="inline-flex items-center gap-1.5 rounded-[8px] border border-[rgba(60,60,67,0.12)] bg-white px-2.5 py-1.5 text-xs font-semibold text-[rgba(60,60,67,0.72)] transition hover:bg-[rgba(242,242,247,0.9)] disabled:cursor-not-allowed disabled:opacity-50"
-                type="button"
-                onClick={() => handleExportSelectedResources('json')}
-                disabled={selectedResourceCount === 0}
-                data-testid="resource-bulk-export-json"
-                title="선택한 리소스 safe inventory를 JSON으로 다운로드"
-              >
-                <Download size={13} aria-hidden="true" />
-                JSON
-              </button>
-              <button
-                className="inline-flex items-center gap-1.5 rounded-[8px] border border-[rgba(60,60,67,0.12)] bg-white px-2.5 py-1.5 text-xs font-semibold text-[rgba(60,60,67,0.72)] transition hover:bg-[rgba(242,242,247,0.9)] disabled:cursor-not-allowed disabled:opacity-50"
-                type="button"
-                onClick={() => handleExportSelectedResources('csv')}
-                disabled={selectedResourceCount === 0}
-                data-testid="resource-bulk-export-csv"
-                title="선택한 리소스 safe inventory를 CSV로 다운로드"
-              >
-                <Download size={13} aria-hidden="true" />
-                CSV
-              </button>
-            </div>
-          </div>
-          {resourceBulkMessage ? (
-            <p
-              className={`rounded-[9px] border px-2.5 py-1.5 text-xs font-semibold ${
-                resourceBulkMessage.tone === 'success'
-                  ? 'border-[rgba(52,199,89,0.22)] bg-[rgba(52,199,89,0.1)] text-[#248a3d]'
-                  : 'border-[rgba(255,149,0,0.24)] bg-[rgba(255,149,0,0.1)] text-[#8a4d00]'
-              }`}
-              data-testid="resource-bulk-message"
-            >
-              {resourceBulkMessage.text}
-            </p>
-          ) : null}
-        </div>
-
-        <div
-          className="max-h-[68vh] overflow-auto p-2 focus:outline-none focus:ring-2 focus:ring-[rgba(0,122,255,0.22)]"
-          role="listbox"
-          tabIndex={0}
-          aria-label="리소스 목록"
-          aria-activedescendant={selectedResource && selectedResourceIndex >= 0 ? resourceOptionDomId(selectedResource.id) : undefined}
+        <ResourceExplorerListPanel
+          allVisibleSelected={allFilteredResourcesSelected}
+          bulkMessage={resourceBulkMessage}
+          columns={resourceListColumns}
+          density={resourceListDensity}
+          loadingMore={loadingMore}
+          nextCursor={nextResourceCursor}
+          onClearSelection={handleClearResourceSelection}
+          onCopySelectedNames={() => void handleCopySelectedResourceNames()}
+          onExportSelected={handleExportSelectedResources}
           onKeyDown={handleResourceListKeyDown}
-        >
-          {sortedResources.length === 0 ? <p className="ku-meta p-2">필터와 일치하는 리소스가 없습니다.</p> : null}
-          {sortedResources.length > 0 ? (
-            <div className={`${resourceHeaderGridClassName} mb-2 hidden md:grid`} style={resourceGridStyle} data-testid="resource-list-column-header">
-              <span className="ku-meta" data-resource-column="select">Select</span>
-              <span className="ku-meta" data-resource-column="kind">Kind</span>
-              <span className="ku-meta" data-resource-column="name">Name</span>
-              {resourceListColumns.namespace ? <span className="ku-meta" data-resource-column="namespace">Namespace</span> : null}
-              <span className="ku-meta" data-resource-column="status">Status</span>
-              {resourceListColumns.cluster ? <span className="ku-meta" data-resource-column="cluster">Cluster</span> : null}
-              {resourceListColumns.age ? <span className="ku-meta" data-resource-column="age">Age</span> : null}
-              {resourceListColumns.summary ? <span className="ku-meta" data-resource-column="summary">Summary</span> : null}
-            </div>
-          ) : null}
-          {sortedResources.map((resource) => {
-            const summaryEntries = Object.entries(resource.summary).slice(0, resourceSummaryLimit);
-            const resourceAge = resourceListAge(resource);
-            const resourceBulkSelected = selectedResourceIds.has(resource.id);
-            const resourceBulkDomId = resourceOptionDomId(resource.id);
-            return (
-              <div
-                key={resource.id}
-                id={resourceOptionDomId(resource.id)}
-                className={resourceRowClassName(resource)}
-                ref={(node) => {
-                  resourceRowRefs.current[resource.id] = node;
-                }}
-                role="option"
-                aria-selected={resource.id === selectedResource?.id}
-                data-resource-row="true"
-                data-resource-bulk-selected={resourceBulkSelected ? 'true' : 'false'}
-                tabIndex={resource.id === selectedResource?.id ? 0 : -1}
-                onClick={() => handleSelectResource(resource.id)}
-              >
-                <div className={resourceGridClassName} style={resourceGridStyle}>
-                  <div className="flex min-w-0 items-center gap-2" data-resource-column="select" onClick={(event) => event.stopPropagation()}>
-                    <input
-                      className="h-4 w-4 rounded border-[rgba(60,60,67,0.24)] text-[#0057b8] focus:ring-[rgba(0,122,255,0.25)]"
-                      type="checkbox"
-                      checked={resourceBulkSelected}
-                      onChange={(event) => handleToggleResourceSelection(resource.id, event.currentTarget.checked)}
-                      aria-label={`${resource.kind} ${resource.namespace ? `${resource.namespace}/` : ''}${resource.name} 선택`}
-                      data-testid={`resource-bulk-checkbox-${resourceBulkDomId}`}
-                      data-resource-bulk-control="true"
-                    />
-                    <span className={`${resourceColumnLabelClassName} md:hidden`}>선택</span>
-                  </div>
-                  <div className="min-w-0" data-resource-column="kind">
-                    <span className={resourceColumnLabelClassName}>Kind</span>
-                    <span className={resourceColumnValueClassName} title={resource.kind}>{resource.kind}</span>
-                  </div>
-                  <div className="min-w-0" data-resource-column="name">
-                    <span className={resourceColumnLabelClassName}>Name</span>
-                    <p className={resourceNameClassName} title={resource.name}>{resource.name}</p>
-                    <p className={`${resourceMetaClassName} md:hidden`}>
-                      {resource.namespace ? `${resource.namespace} / ` : ''}
-                      {resource.clusterId}
-                    </p>
-                  </div>
-                  {resourceListColumns.namespace ? (
-                    <div className="min-w-0" data-resource-column="namespace">
-                      <span className={resourceColumnLabelClassName}>Namespace</span>
-                      <span className={resourceColumnValueClassName} title={resource.namespace || '-'}>{resource.namespace || '-'}</span>
-                    </div>
-                  ) : null}
-                  <div className="min-w-0" data-resource-column="status">
-                    <span className={resourceColumnLabelClassName}>Status</span>
-                    <span className={statusPillClassName(resource.status)}>{resource.status}</span>
-                  </div>
-                  {resourceListColumns.cluster ? (
-                    <div className="min-w-0" data-resource-column="cluster">
-                      <span className={resourceColumnLabelClassName}>Cluster</span>
-                      <span className={resourceColumnValueClassName} title={resource.clusterId}>{resource.clusterId}</span>
-                    </div>
-                  ) : null}
-                  {resourceListColumns.age ? (
-                    <div className="min-w-0" data-resource-column="age">
-                      <span className={resourceColumnLabelClassName}>Age</span>
-                      <span className={resourceColumnValueClassName} title={resourceAge}>{resourceAge}</span>
-                    </div>
-                  ) : null}
-                  {resourceListColumns.summary ? (
-                    <div className="min-w-0" data-resource-column="summary">
-                      <span className={resourceColumnLabelClassName}>Summary</span>
-                      {summaryEntries.length > 0 ? (
-                        <div className={`${resourceSummaryContainerClassName} md:mt-0`}>
-                          {summaryEntries.map(([key, value]) => (
-                            <span key={key} className={resourceSummaryChipClassName}>
-                              {key}:{String(value)}
-                            </span>
-                          ))}
-                        </div>
-                      ) : (
-                        <span className={resourceColumnValueClassName}>-</span>
-                      )}
-                    </div>
-                  ) : null}
-                </div>
-              </div>
-            );
-          })}
-          {nextResourceCursor ? (
-            <div className="flex justify-center border-t border-[rgba(60,60,67,0.1)] px-3 py-4">
-              <button
-                className="inline-flex items-center gap-2 rounded-[9px] border border-[rgba(0,122,255,0.2)] bg-[rgba(0,122,255,0.06)] px-4 py-2 text-xs font-semibold text-[#0057b8] transition hover:bg-[rgba(0,122,255,0.1)] disabled:cursor-wait disabled:opacity-60"
-                type="button"
-                onClick={() => void handleLoadMoreResources()}
-                disabled={loadingMore}
-                data-testid="resource-list-load-more"
-              >
-                <RefreshCw size={14} className={loadingMore ? 'animate-spin' : ''} aria-hidden="true" />
-                {loadingMore ? '추가 리소스 불러오는 중' : `더 불러오기 · ${filteredResources.length} / ${resourceListMetadata?.filtered ?? filteredResources.length}`}
-              </button>
-            </div>
-          ) : null}
-        </div>
+          onLoadMore={() => void handleLoadMoreResources()}
+          onSelectAll={handleSelectFilteredResources}
+          onSelectResource={handleSelectResource}
+          onToggleSelection={handleToggleResourceSelection}
+          resources={sortedResources}
+          rowRefs={resourceRowRefs}
+          selectedResourceId={selectedResource?.id ?? ''}
+          selectedResourceIds={selectedResourceIds}
+          selectedResourceIndex={selectedResourceIndex}
+          totalFilteredCount={resourceListMetadata?.filtered ?? filteredResources.length}
+        />
       </div>
 
       <Suspense fallback={<div className="ku-panel p-6 text-center"><p className="ku-meta">리소스 상세 불러오는 중</p></div>}>
@@ -3103,10 +2896,6 @@ function formatPresetUpdatedAt(updatedAt: number) {
   return new Date(updatedAt).toISOString().slice(0, 10);
 }
 
-function resourceOptionDomId(resourceId: string) {
-  return `kuviewer-resource-${resourceId.replace(/[^a-zA-Z0-9_-]/g, '_')}`;
-}
-
 function isResourceListShortcutTarget(target: EventTarget | null) {
   if (!(target instanceof HTMLElement)) {
     return false;
@@ -3160,42 +2949,6 @@ function compareResourceText(left: string, right: string) {
   return left.localeCompare(right, undefined, { numeric: true, sensitivity: 'base' });
 }
 
-function resourceListGridTemplate(columns: ResourceListColumnPreference) {
-  const tracks = ['minmax(44px,0.32fr)', 'minmax(92px,0.72fr)', 'minmax(150px,1.45fr)'];
-  if (columns.namespace) {
-    tracks.push('minmax(92px,0.72fr)');
-  }
-  tracks.push('minmax(92px,0.72fr)');
-  if (columns.cluster) {
-    tracks.push('minmax(96px,0.82fr)');
-  }
-  if (columns.age) {
-    tracks.push('minmax(74px,0.62fr)');
-  }
-  if (columns.summary) {
-    tracks.push('minmax(150px,1.25fr)');
-  }
-  return tracks.join(' ');
-}
-
-function resourceListAge(resource: ResourceExplorerItem) {
-  const metadata = recordFromUnknown(resource.preview.metadata);
-  return resourceListCellValue(metadata.age);
-}
-
-function resourceListCellValue(value: unknown) {
-  if (typeof value === 'string' && value.trim()) {
-    return value;
-  }
-  if (typeof value === 'number' && Number.isFinite(value)) {
-    return String(value);
-  }
-  if (typeof value === 'boolean') {
-    return value ? 'true' : 'false';
-  }
-  return '-';
-}
-
 function resourceBulkCopyName(resource: ResourceExplorerItem) {
   return `${resource.kind} ${resource.namespace ? `${resource.namespace}/` : ''}${resource.name}`;
 }
@@ -3235,19 +2988,6 @@ function isEditableTarget(target: EventTarget | null) {
   }
   const tagName = target.tagName.toLowerCase();
   return tagName === 'input' || tagName === 'select' || tagName === 'textarea' || tagName === 'button' || target.isContentEditable;
-}
-
-function statusPillClassName(status: string) {
-  if (status === 'healthy') {
-    return 'shrink-0 rounded-full border border-[rgba(52,199,89,0.22)] bg-[rgba(52,199,89,0.1)] px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase text-[#248a3d]';
-  }
-  if (status === 'warning') {
-    return 'shrink-0 rounded-full border border-[rgba(255,149,0,0.24)] bg-[rgba(255,149,0,0.1)] px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase text-[#a05a00]';
-  }
-  if (status === 'error') {
-    return 'shrink-0 rounded-full border border-[rgba(255,59,48,0.24)] bg-[rgba(255,59,48,0.1)] px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase text-[#c01f17]';
-  }
-  return 'shrink-0 rounded-full border border-[rgba(142,142,147,0.22)] bg-[rgba(142,142,147,0.1)] px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase text-[#636366]';
 }
 
 function unique(values: string[]) {
