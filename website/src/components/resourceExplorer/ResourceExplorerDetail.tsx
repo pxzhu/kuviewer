@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Activity, FileText, Tags } from "lucide-react";
 import type { ResourceExplorerItem } from "../../types/resourceExplorer";
 import {
@@ -33,8 +33,6 @@ import {
   sectionCount,
 } from './resourceDetailHealth';
 import {
-  defaultOpenDetailSections,
-  detailKeyboardSections,
   maxCollapsedRelations,
   type DetailSectionId,
   type DetailSectionTone,
@@ -48,14 +46,7 @@ import { ResourceEventsSection } from './ResourceEventsSection';
 import { ResourceLogsSection } from './ResourceLogsSection';
 import { ResourceExplorerDetailHeader } from './ResourceExplorerDetailHeader';
 import { ResourceSafePreviewSection } from './ResourceSafePreviewSection';
-
-function isEditableTarget(target: EventTarget | null) {
-  if (!(target instanceof HTMLElement)) {
-    return false;
-  }
-  const tagName = target.tagName.toLowerCase();
-  return tagName === 'input' || tagName === 'select' || tagName === 'textarea' || tagName === 'button' || target.isContentEditable;
-}
+import { useResourceDetailSectionsController } from './useResourceDetailSectionsController';
 
 function EmptyResourceDetail() {
   return (
@@ -181,23 +172,31 @@ function ResourceExplorerDetailBody({
   const [resourceDetailDensity, setResourceDetailDensity] = useState<ResourceDetailDensity>(() => readResourceDetailDensityPreference());
   const [relationFilter, setRelationFilter] = useState('');
   const [relationsExpanded, setRelationsExpanded] = useState(false);
-  const [activeDetailSectionId, setActiveDetailSectionId] = useState<DetailSectionId>('metadata');
-  const detailPanelRef = useRef<HTMLDivElement | null>(null);
-  const detailPanelActiveRef = useRef(false);
-  const detailSectionRefs = useRef<Partial<Record<DetailSectionId, HTMLElement | null>>>({});
-  const [openSections, setOpenSections] = useState<Set<DetailSectionId>>(() => new Set(defaultOpenDetailSections));
+  const {
+    activateDetailPanel,
+    activeDetailSectionId,
+    detailPanelRef,
+    focusDetailSection,
+    handleCollapseAllDetailSections,
+    handleExpandAllDetailSections,
+    handleResetDetailSections,
+    isSectionOpen,
+    openSection,
+    openSections,
+    setActiveDetailSectionId,
+    setDetailSectionRef,
+    toggleSection,
+  } = useResourceDetailSectionsController({ focusRequest, resourceId: resource.id });
 
-  const resetResourceDetailUiState = useCallback(() => {
+  const resetResourceScopedUiState = useCallback(() => {
     setRelationFilter('');
     setRelationsExpanded(false);
     resetResourceEventUiState();
-    setActiveDetailSectionId('metadata');
-    setOpenSections(new Set(defaultOpenDetailSections));
   }, [resetResourceEventUiState]);
 
   useEffect(() => {
-    resetResourceDetailUiState();
-  }, [resetResourceDetailUiState, resource.id]);
+    resetResourceScopedUiState();
+  }, [resetResourceScopedUiState, resource.id]);
   const baseFilteredEvents = useMemo(
     () => sortEventListItems(filterEvents(events, eventFilter, eventSeverityFilter, eventTimeRangeFilter, Date.now()), eventSortOrder, pinnedEventKeys),
     [eventFilter, eventSeverityFilter, eventSortOrder, eventTimeRangeFilter, events, pinnedEventKeys],
@@ -232,16 +231,6 @@ function ResourceExplorerDetailBody({
   useEffect(() => {
     writeResourceDetailDensityPreference(resourceDetailDensity);
   }, [resourceDetailDensity]);
-
-  useEffect(() => {
-    if (focusRequest <= 0) {
-      return;
-    }
-    detailPanelActiveRef.current = true;
-    window.requestAnimationFrame(() => {
-      detailPanelRef.current?.focus({ preventScroll: false });
-    });
-  }, [focusRequest]);
 
   const metadataPreview = resource ? recordFromUnknown(resource.preview.metadata) : {};
   const statusPreview = resource ? recordFromUnknown(resource.preview.status) : {};
@@ -307,119 +296,6 @@ function ResourceExplorerDetailBody({
     logDensity === 'compact'
       ? 'grid grid-cols-[38px_minmax(0,1fr)] gap-1 rounded-[5px] px-0.5 py-0'
       : 'grid grid-cols-[44px_minmax(0,1fr)] gap-2 rounded-[6px] px-1 py-0.5';
-  const isSectionOpen = useCallback((id: DetailSectionId) => openSections.has(id), [openSections]);
-  const toggleSection = useCallback((id: DetailSectionId) => {
-    setOpenSections((current) => {
-      const next = new Set(current);
-      if (next.has(id)) {
-        next.delete(id);
-      } else {
-        next.add(id);
-      }
-      return next;
-    });
-  }, []);
-  const openSection = useCallback((id: DetailSectionId) => {
-    setOpenSections((current) => {
-      if (current.has(id)) {
-        return current;
-      }
-      const next = new Set(current);
-      next.add(id);
-      return next;
-    });
-  }, []);
-  const focusDetailSection = useCallback((id: DetailSectionId) => {
-    setActiveDetailSectionId(id);
-    openSection(id);
-    window.requestAnimationFrame(() => {
-      const section = detailSectionRefs.current[id];
-      section?.scrollIntoView({ block: 'start', behavior: 'smooth' });
-      section?.focus({ preventScroll: true });
-    });
-  }, [openSection]);
-  const moveDetailSection = useCallback((offset: number) => {
-    const currentIndex = detailKeyboardSections.indexOf(activeDetailSectionId);
-    const nextIndex = currentIndex >= 0 ? (currentIndex + offset + detailKeyboardSections.length) % detailKeyboardSections.length : 0;
-    focusDetailSection(detailKeyboardSections[nextIndex]);
-  }, [activeDetailSectionId, focusDetailSection]);
-  const handleExpandAllDetailSections = useCallback(() => {
-    setOpenSections(new Set(detailKeyboardSections));
-  }, []);
-  const handleCollapseAllDetailSections = useCallback(() => {
-    setOpenSections(new Set());
-  }, []);
-  const handleResetDetailSections = useCallback(() => {
-    setOpenSections(new Set(defaultOpenDetailSections));
-  }, []);
-  const handleDetailShortcut = useCallback((event: globalThis.KeyboardEvent) => {
-    const eventPath = event.composedPath();
-    const editableTargetHasFocus = Boolean(detailPanelRef.current?.querySelector('input:focus, select:focus, textarea:focus, button:focus, [contenteditable="true"]:focus'));
-    if (
-      event.altKey ||
-      event.ctrlKey ||
-      event.metaKey ||
-      editableTargetHasFocus ||
-      isEditableTarget(event.target) ||
-      isEditableTarget(document.activeElement) ||
-      eventPath.some((target) => isEditableTarget(target))
-    ) {
-      return;
-    }
-    const key = event.key.toLowerCase();
-    if (key === 'j') {
-      event.preventDefault();
-      moveDetailSection(1);
-    } else if (key === 'k') {
-      event.preventDefault();
-      moveDetailSection(-1);
-    } else if (key === 'o') {
-      event.preventDefault();
-      toggleSection(activeDetailSectionId);
-    } else if (key === 'e') {
-      event.preventDefault();
-      handleExpandAllDetailSections();
-    } else if (key === 'c') {
-      event.preventDefault();
-      handleCollapseAllDetailSections();
-    } else if (key === 'r') {
-      event.preventDefault();
-      handleResetDetailSections();
-    } else if (/^[1-9]$/.test(key)) {
-      const targetSection = detailKeyboardSections[Number(key) - 1];
-      if (targetSection) {
-        event.preventDefault();
-        focusDetailSection(targetSection);
-      }
-    }
-  }, [activeDetailSectionId, focusDetailSection, handleCollapseAllDetailSections, handleExpandAllDetailSections, handleResetDetailSections, moveDetailSection, toggleSection]);
-  const setDetailSectionRef = useCallback((id: DetailSectionId) => (node: HTMLElement | null) => {
-    detailSectionRefs.current[id] = node;
-  }, []);
-  useEffect(() => {
-    const handleDocumentPointerDown = (event: MouseEvent | TouchEvent) => {
-      detailPanelActiveRef.current = Boolean(detailPanelRef.current?.contains(event.target as Node));
-    };
-    const handleDocumentFocusIn = (event: FocusEvent) => {
-      detailPanelActiveRef.current = Boolean(detailPanelRef.current?.contains(event.target as Node));
-    };
-    const handleDocumentKeyDown = (event: globalThis.KeyboardEvent) => {
-      if (detailPanelActiveRef.current) {
-        handleDetailShortcut(event);
-      }
-    };
-    document.addEventListener('mousedown', handleDocumentPointerDown, true);
-    document.addEventListener('touchstart', handleDocumentPointerDown, true);
-    document.addEventListener('focusin', handleDocumentFocusIn);
-    document.addEventListener('keydown', handleDocumentKeyDown);
-    return () => {
-      document.removeEventListener('mousedown', handleDocumentPointerDown, true);
-      document.removeEventListener('touchstart', handleDocumentPointerDown, true);
-      document.removeEventListener('focusin', handleDocumentFocusIn);
-      document.removeEventListener('keydown', handleDocumentKeyDown);
-    };
-  }, [handleDetailShortcut]);
-
   const handleFetchLogs = async () => {
     if (!canFetchLogs) {
       return;
@@ -528,12 +404,8 @@ function ResourceExplorerDetailBody({
       ref={detailPanelRef}
       className="ku-panel overflow-hidden"
       tabIndex={0}
-      onFocusCapture={() => {
-        detailPanelActiveRef.current = true;
-      }}
-      onMouseDownCapture={() => {
-        detailPanelActiveRef.current = true;
-      }}
+      onFocusCapture={activateDetailPanel}
+      onMouseDownCapture={activateDetailPanel}
       aria-label="리소스 상세 패널"
       data-testid="resource-detail-panel"
     >
