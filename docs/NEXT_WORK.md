@@ -20,10 +20,12 @@
    - Events/Logs 요청·취소·stream 상태는 controller hook으로 분리됐다.
    - Relations, Events, Logs의 section/control/output은 표시 전용 component로 분리됐다.
    - Resource list와 resource bulk toolbar는 표시 전용 component로 분리됐다.
+   - Resource list sort/density/column toolbar와 query/facet/active-filter panel은 표시 전용 component로 분리됐다.
+   - Active filter chip 계산은 pure helper와 direct unit test로 분리됐다.
    - Saved-view validation, storage, order/group, import/merge/conflict, team compare 모델은 feature module과 unit test로 분리됐다.
    - Saved-view UI state와 save/import/conflict/team sync/reorder action은 controller hook으로 분리됐다.
    - Saved-view control/summary/folder/search/bulk/list JSX는 표시 전용 panel component로 분리됐다.
-   - API/storage/wire shape 변경 없이 렌더링 범위와 회귀 위험을 줄인다.
+   - API/storage/wire shape 변경 없이 shell은 controller 조정과 detail/list 연결만 담당한다.
 
 3. Frontend regression coverage
    - `npm run test:unit`은 Desktop safe view, snapshot metadata, CSV 방어, Resource detail activity, saved-view model/storage helper를 검증한다.
