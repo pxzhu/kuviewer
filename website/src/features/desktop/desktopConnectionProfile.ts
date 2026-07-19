@@ -4,35 +4,6 @@ import { desktopCmDefaultRemoteApiHost, desktopCmDefaultRemoteApiPort } from './
 export { isDesktopRuntime } from './desktopRuntime';
 export { desktopCmDefaultRemoteApiHost, desktopCmDefaultRemoteApiPort } from './desktopCmSessionDefaults';
 
-export interface DesktopConnectionProfile {
-  serverUrl: string;
-  updatedAt: number;
-}
-
-export interface DesktopSidecarProfile {
-  serverUrl: string;
-  adminToken: string;
-  source: string;
-  kubernetesProfileId?: string;
-}
-
-export interface DesktopSidecarStatus {
-  serverUrl: string;
-  source: string;
-  kubernetesProfileId?: string;
-}
-
-export interface DesktopKubernetesProfile {
-  id: string;
-  displayName: string;
-  apiServer: string;
-  authType: string;
-  credentialStore: string;
-  credentialAvailable: boolean;
-  selected: boolean;
-  status: string;
-}
-
 export interface DesktopCmSession {
   id: string;
   name: string;
@@ -105,8 +76,6 @@ export interface DesktopCmSessionRuntimeProfile {
   diagnosticHint?: string;
 }
 
-const desktopConnectionProfileStorageKey = 'kuviewer_desktop_connection_profile';
-const desktopConnectionProfileChangedEvent = 'kuviewer-desktop-connection-profile-changed';
 const desktopCmRuntimeProfileStorageKey = 'kuviewer_desktop_cm_runtime_profile';
 const desktopCmRuntimeProfileChangedEvent = 'kuviewer-desktop-cm-runtime-profile-changed';
 const maxServerUrlLength = 220;
@@ -127,63 +96,6 @@ type DesktopWindow = Window & {
     invoke?: TauriInvoke;
   };
 };
-
-export function getDesktopConnectionProfile(): DesktopConnectionProfile | null {
-  if (!isDesktopRuntime()) {
-    return null;
-  }
-
-  try {
-    const rawValue = window.localStorage.getItem(desktopConnectionProfileStorageKey);
-    if (!rawValue) {
-      return null;
-    }
-    const parsedValue = JSON.parse(rawValue) as Partial<DesktopConnectionProfile>;
-    if (typeof parsedValue.serverUrl !== 'string' || typeof parsedValue.updatedAt !== 'number') {
-      clearDesktopConnectionProfile();
-      return null;
-    }
-    const normalizedServerUrl = normalizeDesktopServerUrl(parsedValue.serverUrl);
-    return {
-      serverUrl: normalizedServerUrl,
-      updatedAt: parsedValue.updatedAt,
-    };
-  } catch {
-    clearDesktopConnectionProfile();
-    return null;
-  }
-}
-
-export function storeDesktopConnectionProfile(serverUrl: string): DesktopConnectionProfile {
-  const profile = {
-    serverUrl: normalizeDesktopServerUrl(serverUrl),
-    updatedAt: Date.now(),
-  };
-  window.localStorage.setItem(desktopConnectionProfileStorageKey, JSON.stringify(profile));
-  dispatchDesktopConnectionProfileChanged();
-  return profile;
-}
-
-export function clearDesktopConnectionProfile() {
-  window.localStorage.removeItem(desktopConnectionProfileStorageKey);
-  dispatchDesktopConnectionProfileChanged();
-}
-
-export function subscribeDesktopConnectionProfile(listener: () => void) {
-  const handleStorage = (event: StorageEvent) => {
-    if (event.key === desktopConnectionProfileStorageKey) {
-      listener();
-    }
-  };
-  const handleLocalChange = () => listener();
-
-  window.addEventListener('storage', handleStorage);
-  window.addEventListener(desktopConnectionProfileChangedEvent, handleLocalChange);
-  return () => {
-    window.removeEventListener('storage', handleStorage);
-    window.removeEventListener(desktopConnectionProfileChangedEvent, handleLocalChange);
-  };
-}
 
 export function getDesktopCmRuntimeProfile(): DesktopCmSessionRuntimeProfile | null {
   if (!isDesktopRuntime()) {
@@ -237,80 +149,6 @@ export function subscribeDesktopCmRuntimeProfile(listener: () => void) {
     window.removeEventListener('storage', handleStorage);
     window.removeEventListener(desktopCmRuntimeProfileChangedEvent, handleLocalChange);
   };
-}
-
-export async function getDesktopSidecarProfile(): Promise<DesktopSidecarProfile | null> {
-  if (!isDesktopRuntime()) {
-    return null;
-  }
-
-  const invoke = getTauriInvoke();
-  if (!invoke) {
-    return null;
-  }
-
-  const profile = await invoke<Partial<DesktopSidecarProfile> | null>('desktop_sidecar_profile');
-  if (!profile || typeof profile.serverUrl !== 'string' || typeof profile.adminToken !== 'string' || typeof profile.source !== 'string') {
-    return null;
-  }
-
-  const adminToken = profile.adminToken.trim();
-  if (!adminToken) {
-    return null;
-  }
-
-  return {
-    serverUrl: normalizeDesktopServerUrl(profile.serverUrl),
-    adminToken,
-    source: profile.source.trim() || 'unknown',
-    kubernetesProfileId:
-      typeof profile.kubernetesProfileId === 'string' && profile.kubernetesProfileId.trim() ? profile.kubernetesProfileId.trim() : undefined,
-  };
-}
-
-export async function getDesktopKubernetesProfiles(): Promise<DesktopKubernetesProfile[]> {
-  if (!isDesktopRuntime()) {
-    return [];
-  }
-
-  const invoke = getTauriInvoke();
-  if (!invoke) {
-    return [];
-  }
-
-  const profiles = await invoke<unknown[]>('desktop_kubernetes_profiles');
-  if (!Array.isArray(profiles)) {
-    return [];
-  }
-  return profiles.map(parseDesktopKubernetesProfile).filter((profile): profile is DesktopKubernetesProfile => Boolean(profile));
-}
-
-export async function selectDesktopKubernetesProfile(profileId: string): Promise<DesktopKubernetesProfile | null> {
-  if (!isDesktopRuntime()) {
-    return null;
-  }
-
-  const invoke = getTauriInvoke();
-  if (!invoke) {
-    return null;
-  }
-
-  const profile = await invoke<unknown>('desktop_select_kubernetes_profile', { profileId });
-  return parseDesktopKubernetesProfile(profile);
-}
-
-export async function deleteDesktopKubernetesProfileCredential(profileId: string): Promise<DesktopKubernetesProfile | null> {
-  if (!isDesktopRuntime()) {
-    return null;
-  }
-
-  const invoke = getTauriInvoke();
-  if (!invoke) {
-    return null;
-  }
-
-  const profile = await invoke<unknown>('desktop_delete_kubernetes_profile_credential', { profileId });
-  return parseDesktopKubernetesProfile(profile);
 }
 
 export async function getDesktopCmSessions(): Promise<DesktopCmSession[]> {
@@ -651,39 +489,6 @@ export function normalizeDesktopCmPrivateKeyPath(value: string) {
   return normalizeBoundedText(value, maxCmSessionKeyFilePathLength, 'desktop_cm_private_key_path');
 }
 
-function parseDesktopKubernetesProfile(value: unknown): DesktopKubernetesProfile | null {
-  if (!value || typeof value !== 'object') {
-    return null;
-  }
-  const profile = value as Partial<DesktopKubernetesProfile>;
-  if (
-    typeof profile.id !== 'string' ||
-    typeof profile.displayName !== 'string' ||
-    typeof profile.apiServer !== 'string' ||
-    typeof profile.authType !== 'string' ||
-    typeof profile.credentialStore !== 'string' ||
-    typeof profile.credentialAvailable !== 'boolean' ||
-    typeof profile.selected !== 'boolean' ||
-    typeof profile.status !== 'string'
-  ) {
-    return null;
-  }
-  try {
-    return {
-      id: profile.id,
-      displayName: profile.displayName,
-      apiServer: normalizeDesktopServerUrl(profile.apiServer),
-      authType: profile.authType,
-      credentialStore: profile.credentialStore,
-      credentialAvailable: profile.credentialAvailable,
-      selected: profile.selected,
-      status: profile.status,
-    };
-  } catch {
-    return null;
-  }
-}
-
 function parseDesktopCmSession(value: unknown): DesktopCmSession | null {
   if (!value || typeof value !== 'object') {
     return null;
@@ -867,10 +672,6 @@ function isLoopbackHostname(hostname: string) {
 function getTauriInvoke(): TauriInvoke | null {
   const desktopWindow = window as DesktopWindow;
   return desktopWindow.__TAURI__?.core?.invoke || desktopWindow.__TAURI_INTERNALS__?.invoke || null;
-}
-
-function dispatchDesktopConnectionProfileChanged() {
-  window.dispatchEvent(new Event(desktopConnectionProfileChangedEvent));
 }
 
 function dispatchDesktopCmRuntimeProfileChanged() {

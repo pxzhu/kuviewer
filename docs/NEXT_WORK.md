@@ -36,7 +36,7 @@
 
 3. Frontend regression coverage
    - App/Vite TypeScript config는 `noUnusedLocals`와 `noUnusedParameters`를 강제해 미사용 import, type, helper, controller return을 CI에서 차단한다.
-   - `npm run test:unit`은 Desktop safe view, snapshot metadata, CSV 방어, Resource detail activity, saved-view model/storage helper를 검증한다.
+   - `npm run test:unit`은 Desktop safe view와 diagnostic preset/reorder history, snapshot metadata/report summary, CSV 방어, Resource detail activity, saved-view model/storage helper를 검증한다.
    - Resource primary/page request generation, abort, stale completion 방지는 coordinator direct unit test로 검증한다.
    - Server pagination/filter/cursor/facet 계산은 별도 Go module과 direct unit test로 분리됐다.
    - Snapshot comparison reducer는 resource/relation/cluster 변화, clone 안정성, Secret-safe diff를 direct unit test로 검증한다.
@@ -45,18 +45,22 @@
 4. Desktop prototype scope reduction
    - Web product path는 standalone web/server를 유지하며 SSH/CM controls를 노출하지 않는다.
    - Desktop CM/SSH는 public installer가 없는 local prototype이다.
+   - Local sidecar, direct Kubernetes bearer profile command, legacy browser server profile UI와 stale keychain smoke는 제거됐다.
    - Session layout validation/storage/import/export/reorder 모델은 panel에서 feature module로 분리되고 direct unit test가 추가됐다.
+   - Diagnostic filter preset storage/normalization과 reorder history filter/time/test-id helper도 feature module로 분리됐다.
    - Connection profile form, selected session summary, safe diagnostics primitive와 presentation helper가 panel에서 분리됐다.
    - Session/layout UI를 더 분리할지, prototype archive로 축소할지 실제 사용 후 결정한다.
 
 5. Snapshot comparison follow-up
    - Metadata-only history export는 완료됐다.
-   - Diff report-to-report summary 비교는 실제 사용 요구가 확인될 때만 추가한다.
+   - 검증된 Diff JSON 두 개의 exported/resource/relation/cluster 및 change-type 요약 증감 비교를 지원한다.
+   - Report 비교 모델은 raw item payload를 전달하지 않고 safe count summary만 생성한다.
    - History와 선택값은 저장하지 않고 Secret 값은 모든 비교/export/import에서 제외한다.
 
 6. Local automation hygiene
    - Telegram CLI는 reusable helper, direct unit test, bounded remote error code, required token-source guard를 사용한다.
    - SSH banner/endpoint diagnostics는 공용 probe helper와 allowlisted network reason code를 사용한다.
+   - Desktop browser smoke의 HTTP readiness는 공용 helper에서 URL scheme과 timeout을 제한하고 원격 오류 원문을 버린다.
    - 다른 scripts도 보안/회귀 필요가 확인될 때 같은 CLI/helper 분리 패턴을 적용한다.
    - CI는 pull request와 수동 fallback에서만 실행하고, protected `main` merge 뒤의 중복 run은 만들지 않는다.
 

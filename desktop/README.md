@@ -6,6 +6,7 @@ This directory contains a local Tauri prototype for read-only CM/SSH multiple-se
 
 - Web Kuviewer must not expose SSH or desktop CM controls.
 - Desktop CM/SSH is local-prototype-only.
+- Desktop connections use saved CM/SSH sessions only; local sidecar, direct API profiles, and Kubernetes bearer-profile commands are not included.
 - Operations remain read-only: no exec, port-forward, restart, scale, delete, apply, or edit.
 - Private keys stay in the OS credential store and are never returned to browser JavaScript.
 - Token, kubeconfig, cloud credential, Secret value, raw SSH stderr, Events, and logs are excluded from session/layout exports.
@@ -26,12 +27,11 @@ Safe local preferences may contain session ids, group/folder names, favorites, c
 
 ```bash
 node scripts/check-desktop-packaging-spec.mjs
-node scripts/build-desktop-sidecar.mjs --dry-run
 cargo fmt --manifest-path desktop/src-tauri/Cargo.toml --check
 cargo check --manifest-path desktop/src-tauri/Cargo.toml
 ```
 
-Run the desktop shell only for explicit prototype work. The local sidecar is not enabled by default in the web product path.
+Run the desktop shell only for explicit CM/SSH prototype work.
 
 ## Structure
 
@@ -40,4 +40,4 @@ Run the desktop shell only for explicit prototype work. The local sidecar is not
 - `packaging-spec.json`: concise machine-readable prototype contract
 - `BUILD_PREREQUISITES.md`: local toolchain and verification requirements
 
-Generated `desktop/src-tauri/binaries` content is temporary and must not be committed.
+The prototype has no active installer/download workflow and does not bundle a local API sidecar.

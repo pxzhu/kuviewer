@@ -8,42 +8,12 @@ use std::sync::Mutex;
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Manager, State};
-use tauri_plugin_shell::{
-    process::{CommandChild, CommandEvent},
-    ShellExt,
-};
 
-const SIDECAR_SERVER_URL: &str = "http://127.0.0.1:18086";
-const SIDECAR_LISTEN_ADDR: &str = "127.0.0.1:18086";
-const DESKTOP_KUBE_CREDENTIAL_SERVICE: &str = "com.kuviewer.desktop.kubernetes";
 const DESKTOP_CM_SSH_CREDENTIAL_SERVICE: &str = "com.kuviewer.desktop.cm-ssh";
-const MAX_DESKTOP_KUBE_TOKEN_BYTES: u64 = 64 * 1024;
 const MAX_DESKTOP_CM_PRIVATE_KEY_BYTES: u64 = 128 * 1024;
 const DESKTOP_CM_DEFAULT_REMOTE_API_HOST: &str = "127.0.0.1";
 const DESKTOP_CM_DEFAULT_REMOTE_API_PORT: u16 = 18085;
 const DESKTOP_CM_RUNTIME_HEALTH_TIMEOUT_SECS: u64 = 10;
-
-#[derive(Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct DesktopSidecarProfile {
-    server_url: String,
-    admin_token: String,
-    source: String,
-    kubernetes_profile_id: Option<String>,
-}
-
-#[derive(Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct DesktopKubernetesProfileMetadata {
-    id: String,
-    display_name: String,
-    api_server: String,
-    auth_type: String,
-    credential_store: String,
-    credential_available: bool,
-    selected: bool,
-    status: String,
-}
 
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -107,24 +77,12 @@ struct DesktopCmSessionRuntimeProfile {
 }
 
 #[derive(Default)]
-struct DesktopSidecarState {
-    child: Mutex<Option<CommandChild>>,
-    profile: Mutex<Option<DesktopSidecarProfile>>,
-    kubernetes_profiles: Mutex<Vec<DesktopKubernetesProfileMetadata>>,
-    selected_kubernetes_profile_id: Mutex<Option<String>>,
+struct DesktopCmRuntimeState {
     cm_sessions: Mutex<Vec<DesktopCmSessionMetadata>>,
     selected_cm_session_id: Mutex<Option<String>>,
-    runtime_temp_files: Mutex<Vec<PathBuf>>,
     cm_runtime_child: Mutex<Option<Child>>,
     cm_runtime_profile: Mutex<Option<DesktopCmSessionRuntimeProfile>>,
     cm_runtime_temp_files: Mutex<Vec<PathBuf>>,
-}
-
-struct DesktopSidecarRuntimeConfig {
-    source: String,
-    kubernetes_profile_id: Option<String>,
-    kube_api_server: Option<String>,
-    kube_token_file: Option<PathBuf>,
 }
 
 struct DesktopCmSessionCheckOutcome {
@@ -133,119 +91,13 @@ struct DesktopCmSessionCheckOutcome {
 }
 
 #[tauri::command]
-fn desktop_sidecar_profile(state: State<'_, DesktopSidecarState>) -> Option<DesktopSidecarProfile> {
-    state.profile.lock().ok().and_then(|profile| profile.clone())
-}
-
-#[tauri::command]
-fn desktop_kubernetes_profiles(state: State<'_, DesktopSidecarState>) -> Vec<DesktopKubernetesProfileMetadata> {
-    let selected_id = state
-        .selected_kubernetes_profile_id
-        .lock()
-        .ok()
-        .and_then(|selected| selected.clone());
-
-    state
-        .kubernetes_profiles
-        .lock()
-        .map(|profiles| {
-            profiles
-                .iter()
-                .map(|profile| profile_with_selected(profile, selected_id.as_deref()))
-                .collect()
-        })
-        .unwrap_or_default()
-}
-
-#[tauri::command]
-fn desktop_select_kubernetes_profile(
-    profile_id: String,
-    app: AppHandle,
-    state: State<'_, DesktopSidecarState>,
-) -> Result<DesktopKubernetesProfileMetadata, String> {
-    let profile_id = normalize_profile_id(&profile_id)?;
-
-    let profile = {
-        let profiles = state
-            .kubernetes_profiles
-            .lock()
-            .map_err(|_| "desktop_kubernetes_profiles_unavailable".to_string())?;
-        profiles.iter().find(|profile| profile.id == profile_id).cloned()
-    }
-    .ok_or_else(|| "desktop_kubernetes_profile_not_found".to_string())?;
-
-    let mut selected_profile = profile.clone();
-    selected_profile.selected = true;
-    if selected_profile.credential_available {
-        restart_desktop_sidecar_for_kubernetes_profile(&app, &selected_profile)?;
-        selected_profile.status = "sidecar-kubernetes-active".to_string();
-    }
-
-    update_selected_desktop_kubernetes_profile(&state, &selected_profile)?;
-    Ok(selected_profile)
-}
-
-#[tauri::command]
-fn desktop_delete_kubernetes_profile_credential(
-    profile_id: String,
-    app: AppHandle,
-    state: State<'_, DesktopSidecarState>,
-) -> Result<DesktopKubernetesProfileMetadata, String> {
-    let profile_id = normalize_profile_id(&profile_id)?;
-    {
-        let profiles = state
-            .kubernetes_profiles
-            .lock()
-            .map_err(|_| "desktop_kubernetes_profiles_unavailable".to_string())?;
-        if !profiles.iter().any(|profile| profile.id == profile_id) {
-            return Err("desktop_kubernetes_profile_not_found".to_string());
-        }
-    }
-
-    os_credential_store::delete_bearer_token(DESKTOP_KUBE_CREDENTIAL_SERVICE, &profile_id)?;
-    let was_selected = state
-        .selected_kubernetes_profile_id
-        .lock()
-        .ok()
-        .and_then(|selected| selected.clone())
-        .is_some_and(|selected| selected == profile_id);
-    if was_selected {
-        stop_desktop_sidecar(&app);
-        let _ = start_desktop_sidecar(&app);
-        if let Ok(mut selected_id) = state.selected_kubernetes_profile_id.lock() {
-            *selected_id = None;
-        }
-    }
-
-    let mut profiles = state
-        .kubernetes_profiles
-        .lock()
-        .map_err(|_| "desktop_kubernetes_profiles_unavailable".to_string())?;
-    let profile = profiles
-        .iter_mut()
-        .find(|profile| profile.id == profile_id)
-        .ok_or_else(|| "desktop_kubernetes_profile_not_found".to_string())?;
-    profile.credential_available = false;
-    profile.status = "credential-deleted".to_string();
-    Ok(profile_with_selected(
-        profile,
-        state
-            .selected_kubernetes_profile_id
-            .lock()
-            .ok()
-            .and_then(|selected| selected.clone())
-            .as_deref(),
-    ))
-}
-
-#[tauri::command]
-fn desktop_cm_sessions(state: State<'_, DesktopSidecarState>) -> Vec<DesktopCmSessionMetadata> {
+fn desktop_cm_sessions(state: State<'_, DesktopCmRuntimeState>) -> Vec<DesktopCmSessionMetadata> {
     state.cm_sessions.lock().map(|sessions| sessions.clone()).unwrap_or_default()
 }
 
 #[tauri::command]
 fn desktop_cm_session_runtime(
-    state: State<'_, DesktopSidecarState>,
+    state: State<'_, DesktopCmRuntimeState>,
 ) -> Result<Option<DesktopCmSessionRuntimeProfile>, String> {
     check_cm_session_runtime_state(&state)
 }
@@ -253,7 +105,7 @@ fn desktop_cm_session_runtime(
 #[tauri::command]
 fn desktop_start_cm_session_runtime(
     session_id: String,
-    state: State<'_, DesktopSidecarState>,
+    state: State<'_, DesktopCmRuntimeState>,
 ) -> Result<DesktopCmSessionRuntimeProfile, String> {
     let session_id = normalize_cm_session_id(&session_id)?;
     let session_snapshot = {
@@ -283,14 +135,14 @@ fn desktop_start_cm_session_runtime(
 }
 
 #[tauri::command]
-fn desktop_stop_cm_session_runtime(state: State<'_, DesktopSidecarState>) -> Result<Option<DesktopCmSessionRuntimeProfile>, String> {
+fn desktop_stop_cm_session_runtime(state: State<'_, DesktopCmRuntimeState>) -> Result<Option<DesktopCmSessionRuntimeProfile>, String> {
     stop_cm_session_runtime_state(&state);
     Ok(None)
 }
 
 #[tauri::command]
 fn desktop_check_cm_session_runtime(
-    state: State<'_, DesktopSidecarState>,
+    state: State<'_, DesktopCmRuntimeState>,
 ) -> Result<Option<DesktopCmSessionRuntimeProfile>, String> {
     check_cm_session_runtime_state(&state)
 }
@@ -298,7 +150,7 @@ fn desktop_check_cm_session_runtime(
 #[tauri::command]
 fn desktop_save_cm_session(
     session: DesktopCmSessionInput,
-    state: State<'_, DesktopSidecarState>,
+    state: State<'_, DesktopCmRuntimeState>,
 ) -> Result<DesktopCmSessionMetadata, String> {
     let mut next_session = normalize_cm_session_input(session)?;
     let selected_id = state
@@ -326,7 +178,7 @@ fn desktop_save_cm_session(
 #[tauri::command]
 fn desktop_select_cm_session(
     session_id: String,
-    state: State<'_, DesktopSidecarState>,
+    state: State<'_, DesktopCmRuntimeState>,
 ) -> Result<DesktopCmSessionMetadata, String> {
     let session_id = normalize_cm_session_id(&session_id)?;
     let mut sessions = state
@@ -360,7 +212,7 @@ fn desktop_select_cm_session(
 #[tauri::command]
 fn desktop_delete_cm_session(
     session_id: String,
-    state: State<'_, DesktopSidecarState>,
+    state: State<'_, DesktopCmRuntimeState>,
 ) -> Result<Vec<DesktopCmSessionMetadata>, String> {
     let session_id = normalize_cm_session_id(&session_id)?;
     if is_active_cm_runtime_session(&state, &session_id) {
@@ -397,7 +249,7 @@ fn desktop_delete_cm_session(
 fn desktop_import_cm_session_private_key(
     session_id: String,
     key_file_path: String,
-    state: State<'_, DesktopSidecarState>,
+    state: State<'_, DesktopCmRuntimeState>,
 ) -> Result<DesktopCmSessionMetadata, String> {
     let session_id = normalize_cm_session_id(&session_id)?;
     let private_key = read_desktop_cm_private_key_file(&key_file_path)?;
@@ -422,7 +274,7 @@ fn desktop_import_cm_session_private_key(
 #[tauri::command]
 fn desktop_delete_cm_session_credential(
     session_id: String,
-    state: State<'_, DesktopSidecarState>,
+    state: State<'_, DesktopCmRuntimeState>,
 ) -> Result<DesktopCmSessionMetadata, String> {
     let session_id = normalize_cm_session_id(&session_id)?;
     if is_active_cm_runtime_session(&state, &session_id) {
@@ -450,7 +302,7 @@ fn desktop_delete_cm_session_credential(
 #[tauri::command]
 fn desktop_check_cm_session(
     session_id: String,
-    state: State<'_, DesktopSidecarState>,
+    state: State<'_, DesktopCmRuntimeState>,
 ) -> Result<DesktopCmSessionMetadata, String> {
     let session_id = normalize_cm_session_id(&session_id)?;
     let session_snapshot = {
@@ -498,13 +350,8 @@ fn desktop_check_cm_session(
 
 fn main() {
     tauri::Builder::default()
-        .plugin(tauri_plugin_shell::init())
-        .manage(DesktopSidecarState::default())
+        .manage(DesktopCmRuntimeState::default())
         .invoke_handler(tauri::generate_handler![
-            desktop_sidecar_profile,
-            desktop_kubernetes_profiles,
-            desktop_select_kubernetes_profile,
-            desktop_delete_kubernetes_profile_credential,
             desktop_cm_sessions,
             desktop_cm_session_runtime,
             desktop_start_cm_session_runtime,
@@ -519,177 +366,15 @@ fn main() {
         ])
         .setup(|app| {
             initialize_desktop_cm_sessions(app.handle());
-            initialize_desktop_kubernetes_profiles(app.handle());
-            if env_flag_enabled("KUVIEWER_DESKTOP_ENABLE_PROTOTYPE_SIDECAR") {
-                if let Err(error) = start_desktop_sidecar(app.handle()) {
-                    eprintln!("kuviewer desktop sidecar not started: {error}");
-                }
-            }
             Ok(())
         })
         .on_window_event(|window, event| {
             if matches!(event, tauri::WindowEvent::CloseRequested { .. }) {
                 stop_cm_session_runtime(window.app_handle());
-                stop_desktop_sidecar(window.app_handle());
             }
         })
         .run(tauri::generate_context!())
         .expect("failed to run Kuviewer desktop shell");
-}
-
-fn start_desktop_sidecar(app: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Error>> {
-    start_desktop_sidecar_with_config(app, default_desktop_sidecar_runtime_config())
-}
-
-fn start_desktop_sidecar_with_config(
-    app: &tauri::AppHandle,
-    config: DesktopSidecarRuntimeConfig,
-) -> Result<(), Box<dyn std::error::Error>> {
-    if env_flag_enabled("KUVIEWER_DESKTOP_DISABLE_SIDECAR") {
-        return Ok(());
-    }
-
-    let admin_token = generate_admin_token().map_err(|_| {
-        std::io::Error::new(std::io::ErrorKind::Other, "desktop_admin_token_random_failed")
-    })?;
-    let runtime_token_file = config.kube_token_file.clone();
-    let mut command = app
-        .shell()
-        .sidecar("kuviewer-sidecar")?
-        .env("KUVIEWER_LISTEN_ADDR", SIDECAR_LISTEN_ADDR)
-        .env("KUVIEWER_ADMIN_TOKEN", &admin_token)
-        .env("KUVIEWER_SOURCE", &config.source);
-    if let Some(api_server) = config.kube_api_server.as_deref() {
-        command = command.env("KUVIEWER_KUBE_API_SERVER", api_server);
-    }
-    if let Some(token_file) = config.kube_token_file.as_ref() {
-        command = command.env("KUVIEWER_KUBE_TOKEN_FILE", token_file.to_string_lossy().to_string());
-    }
-    let (mut receiver, child) = command.spawn()?;
-
-    let state = app.state::<DesktopSidecarState>();
-    if let Ok(mut profile) = state.profile.lock() {
-        *profile = Some(DesktopSidecarProfile {
-            server_url: SIDECAR_SERVER_URL.to_string(),
-            admin_token,
-            source: config.source,
-            kubernetes_profile_id: config.kubernetes_profile_id,
-        });
-    }
-    if let Ok(mut stored_child) = state.child.lock() {
-        *stored_child = Some(child);
-    }
-    if let Some(token_file) = config.kube_token_file {
-        if let Ok(mut runtime_files) = state.runtime_temp_files.lock() {
-            runtime_files.push(token_file);
-        }
-    }
-
-    let cleanup_token_file = runtime_token_file.clone();
-    tauri::async_runtime::spawn(async move {
-        while let Some(event) = receiver.recv().await {
-            match event {
-                CommandEvent::Stdout(line) => {
-                    let line = String::from_utf8_lossy(&line);
-                    if !line.trim().is_empty() {
-                        println!("kuviewer sidecar: {line}");
-                    }
-                }
-                CommandEvent::Stderr(line) => {
-                    let line = String::from_utf8_lossy(&line);
-                    if !line.trim().is_empty() {
-                        eprintln!("kuviewer sidecar: {line}");
-                    }
-                }
-                CommandEvent::Error(error) => {
-                    eprintln!("kuviewer sidecar error: {error}");
-                }
-                CommandEvent::Terminated(payload) => {
-                    eprintln!("kuviewer sidecar terminated: {payload:?}");
-                    if let Some(path) = cleanup_token_file.as_deref() {
-                        remove_runtime_file(path);
-                    }
-                }
-                _ => {}
-            }
-        }
-    });
-
-    Ok(())
-}
-
-fn default_desktop_sidecar_runtime_config() -> DesktopSidecarRuntimeConfig {
-    let source = std::env::var("KUVIEWER_DESKTOP_SIDECAR_SOURCE")
-        .ok()
-        .map(|value| value.trim().to_string())
-        .filter(|value| !value.is_empty())
-        .unwrap_or_else(|| "mock".to_string());
-    DesktopSidecarRuntimeConfig {
-        source,
-        kubernetes_profile_id: None,
-        kube_api_server: None,
-        kube_token_file: None,
-    }
-}
-
-fn restart_desktop_sidecar_for_kubernetes_profile(
-    app: &tauri::AppHandle,
-    profile: &DesktopKubernetesProfileMetadata,
-) -> Result<(), String> {
-    let token = os_credential_store::read_bearer_token(DESKTOP_KUBE_CREDENTIAL_SERVICE, &profile.id)?
-        .filter(|token| !token.trim().is_empty())
-        .ok_or_else(|| "desktop_kubernetes_credential_unavailable".to_string())?;
-    let token_file = write_runtime_kubernetes_token_file(&profile.id, &token)?;
-    stop_desktop_sidecar(app);
-    let config = DesktopSidecarRuntimeConfig {
-        source: "kubernetes".to_string(),
-        kubernetes_profile_id: Some(profile.id.clone()),
-        kube_api_server: Some(profile.api_server.clone()),
-        kube_token_file: Some(token_file.clone()),
-    };
-    if let Err(error) = start_desktop_sidecar_with_config(app, config) {
-        remove_runtime_file(&token_file);
-        return Err(format!("desktop_kubernetes_sidecar_restart_failed:{error}"));
-    }
-    Ok(())
-}
-
-fn write_runtime_kubernetes_token_file(profile_id: &str, token: &str) -> Result<PathBuf, String> {
-    let dir_name = format!(
-        "kuviewer-desktop-{}-{}",
-        profile_id,
-        generate_admin_token().map_err(|_| "desktop_runtime_token_file_random_failed".to_string())?
-    );
-    let runtime_dir = std::env::temp_dir().join(dir_name);
-    fs::create_dir_all(&runtime_dir).map_err(|_| "desktop_runtime_token_dir_unavailable".to_string())?;
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        fs::set_permissions(&runtime_dir, fs::Permissions::from_mode(0o700))
-            .map_err(|_| "desktop_runtime_token_dir_permissions_failed".to_string())?;
-    }
-
-    let token_file = runtime_dir.join("kubernetes-token");
-    #[cfg(unix)]
-    let mut file = {
-        use std::os::unix::fs::OpenOptionsExt;
-        OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .mode(0o600)
-            .open(&token_file)
-            .map_err(|_| "desktop_runtime_token_file_unavailable".to_string())?
-    };
-    #[cfg(not(unix))]
-    let mut file = OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(&token_file)
-        .map_err(|_| "desktop_runtime_token_file_unavailable".to_string())?;
-
-    file.write_all(token.as_bytes())
-        .map_err(|_| "desktop_runtime_token_file_write_failed".to_string())?;
-    Ok(token_file)
 }
 
 fn remove_runtime_file(path: &Path) {
@@ -699,20 +384,12 @@ fn remove_runtime_file(path: &Path) {
     }
 }
 
-fn cleanup_runtime_files(state: &DesktopSidecarState) {
-    if let Ok(mut runtime_files) = state.runtime_temp_files.lock() {
-        for path in runtime_files.drain(..) {
-            remove_runtime_file(&path);
-        }
-    }
-}
-
 fn stop_cm_session_runtime(app: &tauri::AppHandle) {
-    let state = app.state::<DesktopSidecarState>();
+    let state = app.state::<DesktopCmRuntimeState>();
     stop_cm_session_runtime_state(&state);
 }
 
-fn stop_cm_session_runtime_state(state: &DesktopSidecarState) {
+fn stop_cm_session_runtime_state(state: &DesktopCmRuntimeState) {
     let stopped_profile = state
         .cm_runtime_profile
         .lock()
@@ -733,7 +410,7 @@ fn stop_cm_session_runtime_state(state: &DesktopSidecarState) {
     }
 }
 
-fn cleanup_cm_runtime_files(state: &DesktopSidecarState) {
+fn cleanup_cm_runtime_files(state: &DesktopCmRuntimeState) {
     if let Ok(mut runtime_files) = state.cm_runtime_temp_files.lock() {
         for path in runtime_files.drain(..) {
             remove_runtime_file(&path);
@@ -741,7 +418,7 @@ fn cleanup_cm_runtime_files(state: &DesktopSidecarState) {
     }
 }
 
-fn is_active_cm_runtime_session(state: &DesktopSidecarState, session_id: &str) -> bool {
+fn is_active_cm_runtime_session(state: &DesktopCmRuntimeState, session_id: &str) -> bool {
     state
         .cm_runtime_profile
         .lock()
@@ -750,7 +427,7 @@ fn is_active_cm_runtime_session(state: &DesktopSidecarState, session_id: &str) -
         .is_some_and(|profile| profile.session_id == session_id)
 }
 
-fn mark_cm_session_runtime_stopped(state: &DesktopSidecarState, session_id: &str) {
+fn mark_cm_session_runtime_stopped(state: &DesktopCmRuntimeState, session_id: &str) {
     if let Ok(mut sessions) = state.cm_sessions.lock() {
         if let Some(session) = sessions.iter_mut().find(|session| session.id == session_id) {
             session.runtime_status = "stopped".to_string();
@@ -765,7 +442,7 @@ fn mark_cm_session_runtime_stopped(state: &DesktopSidecarState, session_id: &str
     }
 }
 
-fn mark_cm_session_runtime_lost(state: &DesktopSidecarState, session_id: &str) {
+fn mark_cm_session_runtime_lost(state: &DesktopCmRuntimeState, session_id: &str) {
     if let Ok(mut sessions) = state.cm_sessions.lock() {
         if let Some(session) = sessions.iter_mut().find(|session| session.id == session_id) {
             session.runtime_status = "runtime-lost".to_string();
@@ -776,7 +453,7 @@ fn mark_cm_session_runtime_lost(state: &DesktopSidecarState, session_id: &str) {
     }
 }
 
-fn mark_cm_session_runtime_start_failed(state: &DesktopSidecarState, session_id: &str, error: &str) {
+fn mark_cm_session_runtime_start_failed(state: &DesktopCmRuntimeState, session_id: &str, error: &str) {
     if let Ok(mut sessions) = state.cm_sessions.lock() {
         if let Some(session) = sessions.iter_mut().find(|session| session.id == session_id) {
             session.runtime_status = "runtime-unhealthy".to_string();
@@ -788,7 +465,7 @@ fn mark_cm_session_runtime_start_failed(state: &DesktopSidecarState, session_id:
 }
 
 fn check_cm_session_runtime_state(
-    state: &DesktopSidecarState,
+    state: &DesktopCmRuntimeState,
 ) -> Result<Option<DesktopCmSessionRuntimeProfile>, String> {
     let profile_snapshot = state
         .cm_runtime_profile
@@ -881,7 +558,7 @@ fn check_cm_session_runtime_state(
 }
 
 fn start_cm_session_ssh_tunnel(
-    state: &DesktopSidecarState,
+    state: &DesktopCmRuntimeState,
     session: DesktopCmSessionMetadata,
     private_key: &str,
 ) -> Result<DesktopCmSessionRuntimeProfile, String> {
@@ -1055,7 +732,7 @@ fn probe_cm_runtime_health(local_port: u16) -> bool {
 fn initialize_desktop_cm_sessions(app: &tauri::AppHandle) {
     let sessions = load_desktop_cm_sessions_from_env();
     let selected_session_id = sessions.first().map(|session| session.id.clone());
-    let state = app.state::<DesktopSidecarState>();
+    let state = app.state::<DesktopCmRuntimeState>();
     if let Ok(mut stored_sessions) = state.cm_sessions.lock() {
         *stored_sessions = sessions;
     }
@@ -1651,155 +1328,11 @@ fn current_unix_millis() -> u64 {
         .unwrap_or(0)
 }
 
-fn initialize_desktop_kubernetes_profiles(app: &tauri::AppHandle) {
-    let profiles = load_desktop_kubernetes_profiles_from_env();
-    let selected_profile_id = profiles.first().map(|profile| profile.id.clone());
-    let state = app.state::<DesktopSidecarState>();
-    if let Ok(mut stored_profiles) = state.kubernetes_profiles.lock() {
-        *stored_profiles = profiles;
-    }
-    if let Ok(mut selected) = state.selected_kubernetes_profile_id.lock() {
-        *selected = selected_profile_id;
-    };
-}
-
-fn load_desktop_kubernetes_profiles_from_env() -> Vec<DesktopKubernetesProfileMetadata> {
-    let Some(api_server) = read_safe_env("KUVIEWER_DESKTOP_KUBE_API_SERVER") else {
-        return Vec::new();
-    };
-
-    let id = read_safe_env("KUVIEWER_DESKTOP_KUBE_PROFILE_ID")
-        .and_then(|value| normalize_profile_id(&value).ok())
-        .unwrap_or_else(|| "env-bearer-profile".to_string());
-    let display_name = read_safe_env("KUVIEWER_DESKTOP_KUBE_PROFILE_NAME")
-        .unwrap_or_else(|| "Environment bearer profile".to_string());
-    let (credential_store, credential_available, status) = resolve_desktop_kubernetes_credential_state(&id);
-    vec![DesktopKubernetesProfileMetadata {
-        id,
-        display_name,
-        api_server,
-        auth_type: "bearer-token".to_string(),
-        credential_store,
-        credential_available,
-        selected: true,
-        status,
-    }]
-}
-
-fn resolve_desktop_kubernetes_credential_state(profile_id: &str) -> (String, bool, String) {
-    let store_name = os_credential_store::store_name().to_string();
-    if env_flag_enabled("KUVIEWER_DESKTOP_KUBE_IMPORT_TOKEN_FILE") {
-        return match read_safe_env("KUVIEWER_DESKTOP_KUBE_TOKEN_FILE")
-            .ok_or_else(|| "desktop_kubernetes_token_file_required".to_string())
-            .and_then(|path| read_desktop_kubernetes_token_file(&path))
-            .and_then(|token| os_credential_store::write_bearer_token(DESKTOP_KUBE_CREDENTIAL_SERVICE, profile_id, &token))
-        {
-            Ok(()) => (store_name, true, "stored-secret-available".to_string()),
-            Err(_) => (store_name, false, "credential-store-write-failed".to_string()),
-        };
-    }
-
-    match os_credential_store::has_bearer_token(DESKTOP_KUBE_CREDENTIAL_SERVICE, profile_id) {
-        Ok(true) => (store_name, true, "stored-secret-available".to_string()),
-        Ok(false) => (
-            "runtime-env-metadata-fixture".to_string(),
-            false,
-            "metadata-only".to_string(),
-        ),
-        Err(_) => (store_name, false, "credential-store-unavailable".to_string()),
-    }
-}
-
-fn read_desktop_kubernetes_token_file(path: &str) -> Result<String, String> {
-    let metadata = fs::metadata(path).map_err(|_| "desktop_kubernetes_token_file_unavailable".to_string())?;
-    if !metadata.is_file() {
-        return Err("desktop_kubernetes_token_file_invalid".to_string());
-    }
-    if metadata.len() == 0 || metadata.len() > MAX_DESKTOP_KUBE_TOKEN_BYTES {
-        return Err("desktop_kubernetes_token_file_size".to_string());
-    }
-
-    let token = fs::read_to_string(path)
-        .map_err(|_| "desktop_kubernetes_token_file_unreadable".to_string())?
-        .trim()
-        .to_string();
-    if token.is_empty() {
-        return Err("desktop_kubernetes_token_file_empty".to_string());
-    }
-    Ok(token)
-}
-
 fn read_safe_env(name: &str) -> Option<String> {
     std::env::var(name)
         .ok()
         .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty())
-}
-
-fn normalize_profile_id(value: &str) -> Result<String, String> {
-    let profile_id = value.trim();
-    if profile_id.is_empty() {
-        return Err("desktop_kubernetes_profile_required".to_string());
-    }
-    if profile_id.len() > 80
-        || !profile_id
-            .chars()
-            .all(|character| character.is_ascii_alphanumeric() || matches!(character, '-' | '_' | '.'))
-    {
-        return Err("desktop_kubernetes_profile_invalid".to_string());
-    }
-    Ok(profile_id.to_string())
-}
-
-fn profile_with_selected(
-    profile: &DesktopKubernetesProfileMetadata,
-    selected_id: Option<&str>,
-) -> DesktopKubernetesProfileMetadata {
-    let mut next_profile = profile.clone();
-    next_profile.selected = selected_id.is_some_and(|id| id == profile.id);
-    next_profile
-}
-
-fn update_selected_desktop_kubernetes_profile(
-    state: &State<'_, DesktopSidecarState>,
-    selected_profile: &DesktopKubernetesProfileMetadata,
-) -> Result<(), String> {
-    if let Ok(mut selected_id) = state.selected_kubernetes_profile_id.lock() {
-        *selected_id = Some(selected_profile.id.clone());
-    }
-    let mut profiles = state
-        .kubernetes_profiles
-        .lock()
-        .map_err(|_| "desktop_kubernetes_profiles_unavailable".to_string())?;
-    for profile in profiles.iter_mut() {
-        profile.selected = profile.id == selected_profile.id;
-        if profile.id == selected_profile.id {
-            profile.status = selected_profile.status.clone();
-            profile.credential_available = selected_profile.credential_available;
-            profile.credential_store = selected_profile.credential_store.clone();
-        }
-    }
-    Ok(())
-}
-
-fn stop_desktop_sidecar(app: &tauri::AppHandle) {
-    let state = app.state::<DesktopSidecarState>();
-    if let Ok(mut child) = state.child.lock() {
-        if let Some(child) = child.take() {
-            let _ = child.kill();
-        }
-    }
-    if let Ok(mut profile) = state.profile.lock() {
-        *profile = None;
-    }
-    cleanup_runtime_files(&*state);
-}
-
-fn env_flag_enabled(name: &str) -> bool {
-    std::env::var(name)
-        .ok()
-        .map(|value| matches!(value.trim().to_ascii_lowercase().as_str(), "1" | "true" | "yes" | "on"))
-        .unwrap_or(false)
 }
 
 fn generate_admin_token() -> Result<String, getrandom::Error> {
@@ -1851,22 +1384,6 @@ mod os_credential_store {
 
     pub fn store_name() -> &'static str {
         "macos-keychain"
-    }
-
-    pub fn write_bearer_token(service: &str, account: &str, token: &str) -> Result<(), String> {
-        write_secret(service, account, token)
-    }
-
-    pub fn has_bearer_token(service: &str, account: &str) -> Result<bool, String> {
-        has_secret(service, account)
-    }
-
-    pub fn delete_bearer_token(service: &str, account: &str) -> Result<(), String> {
-        delete_secret(service, account)
-    }
-
-    pub fn read_bearer_token(service: &str, account: &str) -> Result<Option<String>, String> {
-        read_secret(service, account)
     }
 
     pub fn write_secret(service: &str, account: &str, secret: &str) -> Result<(), String> {
@@ -2016,22 +1533,6 @@ mod os_credential_store {
         "windows-credential-manager"
     }
 
-    pub fn write_bearer_token(service: &str, account: &str, token: &str) -> Result<(), String> {
-        write_secret(service, account, token)
-    }
-
-    pub fn has_bearer_token(service: &str, account: &str) -> Result<bool, String> {
-        has_secret(service, account)
-    }
-
-    pub fn delete_bearer_token(service: &str, account: &str) -> Result<(), String> {
-        delete_secret(service, account)
-    }
-
-    pub fn read_bearer_token(service: &str, account: &str) -> Result<Option<String>, String> {
-        read_secret(service, account)
-    }
-
     pub fn write_secret(service: &str, account: &str, secret: &str) -> Result<(), String> {
         let mut target_name = wide_null(&target_name(service, account));
         let mut user_name = wide_null("kuviewer");
@@ -2119,22 +1620,6 @@ mod os_credential_store {
 mod os_credential_store {
     pub fn store_name() -> &'static str {
         "unsupported-os-credential-store"
-    }
-
-    pub fn write_bearer_token(_service: &str, _account: &str, _token: &str) -> Result<(), String> {
-        Err("desktop_credential_store_unsupported".to_string())
-    }
-
-    pub fn has_bearer_token(_service: &str, _account: &str) -> Result<bool, String> {
-        Err("desktop_credential_store_unsupported".to_string())
-    }
-
-    pub fn read_bearer_token(_service: &str, _account: &str) -> Result<Option<String>, String> {
-        Err("desktop_credential_store_unsupported".to_string())
-    }
-
-    pub fn delete_bearer_token(_service: &str, _account: &str) -> Result<(), String> {
-        Err("desktop_credential_store_unsupported".to_string())
     }
 
     pub fn write_secret(_service: &str, _account: &str, _secret: &str) -> Result<(), String> {

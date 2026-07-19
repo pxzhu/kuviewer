@@ -19,7 +19,12 @@ requireCondition(spec.product?.desktopDownloadWorkflow === false, 'desktop downl
 requireCondition(spec.product?.webExposesSsh === false, 'web must not expose SSH');
 requireCondition(spec.runtime?.framework === 'tauri', 'desktop prototype framework must be Tauri');
 requireCondition(spec.runtime?.desktopOnly === true, 'desktop CM controls must stay desktop-only');
-requireCondition(spec.runtime?.localSidecarDefaultEnabled === false, 'prototype sidecar must not start by default');
+requireCondition(spec.runtime?.localSidecarIncluded === false, 'local sidecar must stay excluded');
+requireCondition(spec.runtime?.directKubernetesProfileIncluded === false, 'direct Kubernetes profiles must stay excluded');
+requireCondition(
+  Array.isArray(spec.connectionModes) && spec.connectionModes.length === 1 && spec.connectionModes[0] === 'cm-ssh-session',
+  'desktop connection mode must remain CM/SSH only',
+);
 
 const security = spec.security || {};
 requireCondition(security.readOnly === true, 'desktop prototype must stay read-only');
@@ -50,6 +55,11 @@ for (const relativePath of spec.requiredFiles || []) {
 const sourceModeBar = await readFile(path.join(repoRoot, 'website/src/components/SourceModeBar.tsx'), 'utf8');
 requireCondition(sourceModeBar.includes('desktopConnectionAvailable'), 'SourceModeBar must keep an explicit desktop runtime guard');
 requireCondition(sourceModeBar.includes('DesktopCmSessionPanel'), 'desktop session panel integration is missing');
+
+const tauriMain = await readFile(path.join(repoRoot, 'desktop/src-tauri/src/main.rs'), 'utf8');
+for (const forbiddenCommand of ['desktop_sidecar_profile', 'desktop_kubernetes_profiles', 'desktop_select_kubernetes_profile']) {
+  requireCondition(!tauriMain.includes(forbiddenCommand), `removed native command returned: ${forbiddenCommand}`);
+}
 
 const docs = await Promise.all([
   'README.md',

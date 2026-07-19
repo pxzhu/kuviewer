@@ -11,13 +11,11 @@
   "runtime": {
     "framework": "tauri",
     "desktopOnly": true,
-    "localSidecarDefaultEnabled": false,
-    "prototypeSidecarFlag": "KUVIEWER_DESKTOP_ENABLE_PROTOTYPE_SIDECAR"
+    "localSidecarIncluded": false,
+    "directKubernetesProfileIncluded": false
   },
   "connectionModes": [
-    "cm-ssh-session",
-    "remote-api-prototype",
-    "local-sidecar-prototype"
+    "cm-ssh-session"
   ],
   "security": {
     "readOnly": true,

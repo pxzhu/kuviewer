@@ -379,6 +379,31 @@ async function verifySnapshotComparison(page, initialMode, viewportName) {
   await page.setInputFiles('[data-testid="snapshot-diff-import-input"]', jsonDownloadPath);
   await expect(page.getByTestId('snapshot-diff-import-preview')).toBeVisible({ timeout: 10_000 });
   await expect(page.getByTestId('snapshot-diff-import-error')).toHaveCount(0);
+  const comparisonDiffPath = path.join(outputDir, `${viewportName}-comparison-snapshot-diff.json`);
+  await writeFile(comparisonDiffPath, JSON.stringify({
+    ...snapshotDiffPayload,
+    exportedAt: snapshotDiffPayload.exportedAt + 1_000,
+    current: {
+      ...snapshotDiffPayload.current,
+      label: 'visual comparison report',
+      resourceCount: snapshotDiffPayload.current.resourceCount + 2,
+      relationCount: snapshotDiffPayload.current.relationCount + 1,
+    },
+    counts: {
+      ...snapshotDiffPayload.counts,
+      resources: snapshotDiffPayload.counts.resources + 2,
+      relations: snapshotDiffPayload.counts.relations + 1,
+    },
+  }), 'utf8');
+  await page.setInputFiles('[data-testid="snapshot-diff-compare-input"]', comparisonDiffPath);
+  await expect(page.getByTestId('snapshot-diff-report-comparison')).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByTestId('snapshot-diff-report-delta-resources')).toContainText('+2');
+  await expect(page.getByTestId('snapshot-diff-report-delta-relations')).toContainText('+1');
+  await expect(page.getByTestId('snapshot-diff-report-delta-exported')).toContainText('0');
+  const reportComparisonText = await page.getByTestId('snapshot-diff-report-comparison').innerText();
+  if (reportComparisonText.includes(sensitiveFixtureValue)) {
+    throw new Error('snapshot diff report comparison exposed a sensitive fixture value');
+  }
 
   const csvDownload = await Promise.all([
     page.waitForEvent('download'),

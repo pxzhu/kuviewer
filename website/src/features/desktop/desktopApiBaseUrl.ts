@@ -1,6 +1,5 @@
 import { isDesktopRuntime } from './desktopRuntime';
 
-const desktopConnectionProfileStorageKey = 'kuviewer_desktop_connection_profile';
 const desktopCmRuntimeProfileStorageKey = 'kuviewer_desktop_cm_runtime_profile';
 const maxServerUrlLength = 220;
 
@@ -8,8 +7,7 @@ export function getDesktopApiBaseUrl() {
   if (!isDesktopRuntime()) {
     return '';
   }
-  return readStoredServerUrl(window.sessionStorage, desktopCmRuntimeProfileStorageKey)
-    || readStoredServerUrl(window.localStorage, desktopConnectionProfileStorageKey);
+  return readStoredServerUrl(window.sessionStorage, desktopCmRuntimeProfileStorageKey);
 }
 
 function readStoredServerUrl(storage: Storage, key: string) {

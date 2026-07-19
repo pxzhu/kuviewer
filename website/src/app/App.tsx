@@ -166,8 +166,7 @@ function Dashboard() {
     if (!desktopConnectionAvailable) {
       return;
     }
-    void loadDesktopConnectionApi().then(({ clearDesktopCmRuntimeProfile, clearDesktopConnectionProfile }) => {
-      clearDesktopConnectionProfile();
+    void loadDesktopConnectionApi().then(({ clearDesktopCmRuntimeProfile }) => {
       clearDesktopCmRuntimeProfile();
     });
     clearAdminToken();

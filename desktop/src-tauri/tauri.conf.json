@@ -4,8 +4,8 @@
   "version": "0.1.0",
   "identifier": "com.kuviewer.desktop",
   "build": {
-    "beforeDevCommand": "node ../scripts/build-desktop-sidecar.mjs && npm --prefix ../website run dev",
-    "beforeBuildCommand": "node ../scripts/build-desktop-sidecar.mjs && npm --prefix ../website run build",
+    "beforeDevCommand": "npm --prefix ../website run dev",
+    "beforeBuildCommand": "npm --prefix ../website run build",
     "devUrl": "http://127.0.0.1:5174/kuviewer/",
     "frontendDist": "../../website/dist"
   },
@@ -38,7 +38,6 @@
     ],
     "category": "DeveloperTool",
     "shortDescription": "Read-only Kubernetes cluster explorer",
-    "longDescription": "Kuviewer desktop shell for read-only Kubernetes topology, resource, event, and log exploration.",
-    "externalBin": ["binaries/kuviewer-sidecar"]
+    "longDescription": "Kuviewer desktop shell for read-only CM/SSH session exploration."
   }
 }

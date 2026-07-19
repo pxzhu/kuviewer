@@ -81,11 +81,16 @@ jobs:
       - name: Desktop packaging spec check
         run: node scripts/check-desktop-packaging-spec.mjs
 
+      - name: Install desktop compile dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev
+
+      - name: Desktop Rust compile check
+        run: cargo check --manifest-path desktop/src-tauri/Cargo.toml
+
       - name: Deploy workflow preflight check
         run: node scripts/check-deploy-workflow.mjs
-
-      - name: Desktop sidecar build plan check
-        run: node scripts/build-desktop-sidecar.mjs --target aarch64-apple-darwin --dry-run
 
       - name: Setup Go
         uses: actions/setup-go@v5
