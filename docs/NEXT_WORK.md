@@ -15,7 +15,8 @@
    - Relations, Events, Logs의 section/control/output은 표시 전용 component로 분리됐다.
    - Resource list와 resource bulk toolbar는 표시 전용 component로 분리됐다.
    - Saved-view validation, storage, order/group, import/merge/conflict, team compare 모델은 feature module과 unit test로 분리됐다.
-   - 다음은 `ResourceExplorer.tsx`의 saved-view UI state/action orchestration을 controller hook으로 분리한다.
+   - Saved-view UI state와 save/import/conflict/team sync/reorder action은 controller hook으로 분리됐다.
+   - 다음은 `ResourceExplorer.tsx`의 saved-view control/summary/list JSX를 표시 전용 panel component로 분리한다.
    - API/storage/wire shape 변경 없이 렌더링 범위와 회귀 위험을 줄인다.
 
 3. Frontend regression coverage
