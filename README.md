@@ -121,6 +121,7 @@ Protected endpoints require `Authorization: Bearer <admin-token>`:
 - Constant-time admin token comparison
 - Logs and Events are fetched only on explicit live-mode actions and are not stored by Kuviewer
 - Export files are user-click generated and contain safe metadata only
+- CSV exports neutralize spreadsheet formula prefixes and strip NUL bytes
 
 Kubernetes application logs may contain sensitive application output. Grant `pods/log` only where that exposure is acceptable.
 

@@ -28,7 +28,8 @@
 
 - `website/src/components/ResourceExplorer.tsx`는 list와 saved-view orchestration을 담당한다.
 - Resource detail state는 `useResourceEventsController`와 `useResourceLogsController`로 분리돼 있다.
-- Resource detail 표시 helper는 `website/src/components/resourceExplorer/` 아래에 둔다.
+- Relations, Event groups, Log rows와 highlight renderer는 `website/src/components/resourceExplorer/` 아래 표시 component로 분리돼 있다.
+- CSV export는 `website/src/features/export/safeCsv.ts`를 공통 사용해 formula injection과 NUL을 차단한다.
 - Topology는 dispatcher, shared layout, mobile SVG, desktop React Flow renderer로 분리돼 있다.
 - Desktop CM grouping/search/diagnostic view model은 `website/src/features/desktop/desktopCmSessionView.ts`에 둔다.
 - Frontend pure helper regression은 `npm run test:unit`, end-to-end UI는 `npm run test:visual`로 검증한다.
@@ -72,7 +73,7 @@ go test ./...
 ## Remaining Work
 
 1. 실제 native Kubernetes, k3s, AKS에서 capability/RBAC/Events/logs/pagination 검증
-2. Resource Explorer의 큰 JSX section을 표시 전용 panel component로 추가 분리
+2. Resource Explorer Events/Logs의 남은 control surface를 표시 전용 section component로 추가 분리
 3. Desktop CM local prototype의 layout/session UI 추가 모듈화 또는 archive 범위 축소
 4. 필요성이 확인되면 snapshot diff report-to-report summary 비교 추가
 5. scripts의 reusable helper/CLI entrypoint 분리 확대

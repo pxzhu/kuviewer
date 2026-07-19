@@ -12,11 +12,12 @@
 
 2. Resource Explorer panel extraction
    - Events/Logs 요청·취소·stream 상태는 controller hook으로 분리됐다.
-   - 다음은 Events, Logs, Relations의 큰 JSX를 표시 전용 panel component로 분리한다.
+   - Relations section, Events card groups, Logs output rows는 표시 전용 component로 분리됐다.
+   - 다음은 Events/Logs의 남은 control surface를 section component로 분리한다.
    - API/storage/wire shape 변경 없이 렌더링 범위와 회귀 위험을 줄인다.
 
 3. Frontend regression coverage
-   - `npm run test:unit`은 Desktop safe view model과 snapshot metadata export를 검증한다.
+   - `npm run test:unit`은 Desktop safe view, snapshot metadata, CSV 방어, Resource detail activity helper를 검증한다.
    - 다음은 server pagination/filter helper와 snapshot comparison reducer를 pure module로 분리해 단위 테스트한다.
    - Visual smoke는 주요 화면과 브라우저 통합에 집중해 CI 시간을 관리한다.
 

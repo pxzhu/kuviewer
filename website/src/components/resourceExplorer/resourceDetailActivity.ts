@@ -1,5 +1,6 @@
-import type { Dispatch, ReactNode, SetStateAction } from 'react';
+import type { Dispatch, SetStateAction } from 'react';
 import type { ResourceEvent, ResourceExplorerItem } from '../../types/resourceExplorer';
+import { safeCsvCell } from '../../features/export/safeCsv.ts';
 import {
   eventTimeRangeOptions,
   eventsAutoRefreshStorageKey,
@@ -25,7 +26,7 @@ import {
   type ParsedLogLine,
   type RelationGroup,
   type ResourceDetailDensity,
-} from './resourceDetailTypes';
+} from './resourceDetailTypes.ts';
 
 export function parseLogLines(lines: string[]): ParsedLogLine[] {
   return lines.map((line, index) => parseLogLine(line, index));
@@ -177,20 +178,12 @@ export function eventExportRows(items: EventListItem[]): EventExportRow[] {
 
 export function eventExportCsv(items: EventListItem[]) {
   const header: Array<keyof EventExportRow> = ['timestamp', 'type', 'severity', 'reason', 'source', 'message', 'pinned'];
-  const rows = eventExportRows(items).map((row) => header.map((key) => eventCsvCell(row[key])).join(','));
+  const rows = eventExportRows(items).map((row) => header.map((key) => safeCsvCell(row[key])).join(','));
   return `${header.join(',')}\n${rows.join('\n')}\n`;
 }
 
 export function eventExportJson(items: EventListItem[]) {
   return `${JSON.stringify(eventExportRows(items), null, 2)}\n`;
-}
-
-export function eventCsvCell(value: unknown) {
-  const text = String(value);
-  if (/[",\n\r]/.test(text)) {
-    return `"${text.replace(/"/g, '""')}"`;
-  }
-  return text;
 }
 
 export function downloadTextFile(content: string, mimeType: string, fileName: string) {
@@ -456,40 +449,6 @@ export function groupRelatedResources(relations: ResourceExplorerItem['related']
     groups.set(key, group);
   }
   return Array.from(groups.values()).filter((group) => group.items.length > 0);
-}
-
-export function renderHighlightedText(text: string, filter: string, activeMatch?: Pick<LogSearchMatch, 'start' | 'end'>, activeTestId = 'active-log-search-match'): ReactNode {
-  const normalizedFilter = filter.trim().toLowerCase();
-  if (!normalizedFilter) {
-    return text || ' ';
-  }
-
-  const lowerText = text.toLowerCase();
-  const fragments: ReactNode[] = [];
-  let cursor = 0;
-  let matchIndex = lowerText.indexOf(normalizedFilter, cursor);
-  while (matchIndex >= 0) {
-    if (matchIndex > cursor) {
-      fragments.push(text.slice(cursor, matchIndex));
-    }
-    const matchEnd = matchIndex + normalizedFilter.length;
-    const active = activeMatch?.start === matchIndex && activeMatch.end === matchEnd;
-    fragments.push(
-      <mark
-        key={`${matchIndex}:${matchEnd}`}
-        className={`rounded-[3px] px-0.5 text-[#1d1d1f] ${active ? 'bg-[#ff9500] ring-1 ring-[#ffd60a]' : 'bg-[#ffd60a]'}`}
-        data-testid={active ? activeTestId : undefined}
-      >
-        {text.slice(matchIndex, matchEnd)}
-      </mark>,
-    );
-    cursor = matchEnd;
-    matchIndex = lowerText.indexOf(normalizedFilter, cursor);
-  }
-  if (cursor < text.length) {
-    fragments.push(text.slice(cursor));
-  }
-  return fragments.length > 0 ? fragments : ' ';
 }
 
 export function keyValueEntries(values: Record<string, unknown>): KeyValueEntry[] {

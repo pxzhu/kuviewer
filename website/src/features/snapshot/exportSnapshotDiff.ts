@@ -7,6 +7,7 @@ import type {
   SnapshotNodeChange,
 } from './compareSnapshots';
 import type { ClusterSummary, TopologySnapshot } from '../../types/topology';
+import { safeCsvDocument } from '../export/safeCsv';
 
 export type SnapshotDiffScope = 'resources' | 'relations' | 'clusters';
 export type SnapshotDiffChangeFilter = 'all' | SnapshotChangeType;
@@ -201,15 +202,7 @@ function clusterCsvValues(cluster?: ClusterSummary): Array<string | number> {
 }
 
 function csvDocument(headers: string[], rows: Array<Array<string | number>>) {
-  return `${headers.map(csvCell).join(',')}\n${rows.map((row) => row.map(csvCell).join(',')).join('\n')}\n`;
-}
-
-function csvCell(value: string | number) {
-  let text = String(value).replace(/\0/g, '');
-  if (/^[\t\r\n ]*[=+\-@]/.test(text)) {
-    text = `'${text}`;
-  }
-  return /[",\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+  return safeCsvDocument(headers, rows);
 }
 
 function snapshotDiffFileName(input: SnapshotDiffExportInput, format: SnapshotDiffExportFormat, exportedAt: number) {
