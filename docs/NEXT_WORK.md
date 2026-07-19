@@ -42,6 +42,7 @@
 
 6. Local automation hygiene
    - Telegram CLI는 reusable helper, direct unit test, bounded remote error code, required token-source guard를 사용한다.
+   - SSH banner/endpoint diagnostics는 공용 probe helper와 allowlisted network reason code를 사용한다.
    - 다른 scripts도 보안/회귀 필요가 확인될 때 같은 CLI/helper 분리 패턴을 적용한다.
    - CI는 pull request와 수동 fallback에서만 실행하고, protected `main` merge 뒤의 중복 run은 만들지 않는다.
 
