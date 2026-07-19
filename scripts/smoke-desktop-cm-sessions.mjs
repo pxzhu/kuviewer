@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL, fileURLToPath } from 'node:url';
+import { waitForHttpReady } from './lib/http-ready.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const playwrightUrl = pathToFileURL(path.join(repoRoot, 'website/node_modules/playwright/index.mjs')).href;
@@ -8,7 +9,7 @@ const { chromium } = await import(playwrightUrl);
 const args = parseArgs(process.argv.slice(2));
 const baseUrl = args.url || process.env.KUVIEWER_DESKTOP_SMOKE_URL || 'http://127.0.0.1:4174/kuviewer/';
 
-await waitForPreview(baseUrl);
+await waitForHttpReady(baseUrl, { timeoutMs: 10_000 });
 const browser = await chromium.launch();
 try {
   await smokeDesktopRuntime(browser, baseUrl);
@@ -132,19 +133,6 @@ function parseArgs(values) {
     }
   }
   return parsed;
-}
-
-async function waitForPreview(url) {
-  for (let attempt = 0; attempt < 20; attempt += 1) {
-    try {
-      const response = await fetch(url);
-      if (response.ok) return;
-    } catch {
-      // Preview may still be starting.
-    }
-    await new Promise((resolve) => setTimeout(resolve, 250));
-  }
-  throw new Error(`desktop smoke preview unavailable: ${url}`);
 }
 
 function requireCondition(condition, message) {

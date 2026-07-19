@@ -51,9 +51,11 @@
 - Topology는 dispatcher, shared layout, mobile SVG, desktop React Flow renderer로 분리돼 있다.
 - Desktop CM grouping/search/diagnostic view model은 `website/src/features/desktop/desktopCmSessionView.ts`에 둔다.
 - Desktop CM layout의 validation, storage, import/export, folder/preset ordering은 `website/src/features/desktop/desktopCmSessionLayouts.ts`에 두고 direct unit test로 검증한다.
+- Desktop CM diagnostic preset과 reorder history의 safe UI metadata 정규화는 각각 독립 feature module과 direct unit test로 검증한다.
 - Desktop CM 연결 폼과 선택 세션 요약은 `website/src/components/desktopCm/` 표시 컴포넌트로 분리하고, safe error/status/validation은 `desktopCmSessionPresentation.ts` direct unit test로 고정한다.
 - Frontend pure helper regression은 `npm run test:unit`, end-to-end UI는 `npm run test:visual`로 검증한다.
 - Local automation helper regression은 `node --test scripts/lib/*.test.mjs`로 검증하며 Telegram 원격 오류 원문은 출력하지 않는다.
+- Desktop smoke preview readiness도 공용 helper를 사용하고 HTTP(S) URL과 bounded timeout만 허용한다.
 - SSH endpoint probe는 공용 helper에서 입력·응답 크기·오류 코드를 제한하고 대상 host를 로그에 출력하지 않는다.
 - Kubernetes API client 오류는 safe reason/status code만 유지하며 endpoint path와 원격 응답 body를 전달하지 않는다.
 - Kubernetes list는 `continue` pagination을 사용하고 page/item/byte 상한 내에서 완료된 결과만 snapshot에 반영한다.
@@ -64,7 +66,7 @@
 
 - Web: upload/mock/live Kubernetes API only. SSH controls 금지.
 - Desktop: CM/SSH multiple-session prototype. Safe metadata만 local preference에 저장한다.
-- Local sidecar/direct credential path는 explicit prototype flag가 없으면 기본 제품 경로에서 사용하지 않는다.
+- Desktop prototype은 CM/SSH session만 지원하며 local sidecar/direct Kubernetes credential command와 legacy browser profile UI는 제거됐다.
 - Events/logs/snapshot history는 브라우저 메모리 중심이며 명시적 export 외에는 저장하지 않는다.
 
 ## Verification Baseline
@@ -100,5 +102,5 @@ go test ./...
 
 1. k3s와 AKS에서 capability/RBAC/Events/logs/pagination 검증 (Native Kubernetes 1차 실검증 완료)
 2. Desktop CM local prototype의 layout/session UI 추가 모듈화 또는 archive 범위 축소
-3. 필요성이 확인되면 snapshot diff report-to-report summary 비교 추가
-4. scripts의 reusable helper/CLI entrypoint 분리 확대
+3. Desktop CM panel의 남은 session/layout JSX를 실제 사용성에 맞춰 추가 분리하거나 prototype archive 범위를 결정
+4. scripts의 반복 코드가 다시 확인될 때 reusable helper/CLI entrypoint 분리 확대

@@ -10,6 +10,7 @@ Kuviewer is a read-only Kubernetes topology and resource explorer. It turns uplo
 - Upload mode parses YAML/JSON/ZIP in the browser and does not send manifests to the backend
 - Secret values, kubeconfigs, private keys, cloud credentials, and raw SSH errors are never displayed or persisted
 - Desktop CM/SSH support is a local Tauri prototype only; the web app must not expose SSH
+- The desktop prototype supports CM/SSH sessions only and does not bundle a local sidecar or direct Kubernetes credential profile
 - No public desktop installer or download workflow is active
 
 ## Features
@@ -22,7 +23,7 @@ Kuviewer is a read-only Kubernetes topology and resource explorer. It turns uplo
 - Resource Explorer with server-side filters, cursor pagination, facets, safe detail preview, Events, and Pod logs
 - Pod logs with container selection, previous logs, follow, pause/resume, local search, time range, sort, copy, and download
 - Saved resource views with grouping, search, reorder, bulk actions, import/export, URL sharing, and optional team sync
-- Snapshot history and resource/relation/cluster diff with large-result windowing and safe JSON/CSV export
+- Snapshot history and resource/relation/cluster diff with large-result windowing, safe JSON/CSV export, and count-only comparison between two validated diff reports
 - Snapshot history metadata-only export without topology payloads
 - Native workloads, storage, Ingress, Gateway API routes, NetworkPolicy selectors, CRDs, and safe custom-resource relation inference
 - Bounded concurrent live collection with safe partial-result diagnostics; incomplete resource lists are never merged into a snapshot

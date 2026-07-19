@@ -38,9 +38,12 @@ export function SnapshotHistoryControls({
 }: SnapshotHistoryControlsProps) {
   const baselineFileInputRef = useRef<HTMLInputElement>(null);
   const diffFileInputRef = useRef<HTMLInputElement>(null);
+  const diffComparisonFileInputRef = useRef<HTMLInputElement>(null);
   const [baselineImportError, setBaselineImportError] = useState('');
   const [diffImportError, setDiffImportError] = useState('');
   const [importedDiff, setImportedDiff] = useState<{ fileName: string; report: ImportedSnapshotDiff } | null>(null);
+  const [comparedDiff, setComparedDiff] = useState<{ fileName: string; report: ImportedSnapshotDiff } | null>(null);
+  const [diffComparisonError, setDiffComparisonError] = useState('');
 
   const handleBaselineImport = async (file?: File) => {
     if (!file) {
@@ -63,6 +66,8 @@ export function SnapshotHistoryControls({
       return;
     }
     setDiffImportError('');
+    setDiffComparisonError('');
+    setComparedDiff(null);
     try {
       setImportedDiff({ fileName: file.name.slice(0, 160), report: await importSnapshotDiffFile(file) });
     } catch {
@@ -71,6 +76,23 @@ export function SnapshotHistoryControls({
     } finally {
       if (diffFileInputRef.current) {
         diffFileInputRef.current.value = '';
+      }
+    }
+  };
+
+  const handleDiffComparisonImport = async (file?: File) => {
+    if (!file || !importedDiff) {
+      return;
+    }
+    setDiffComparisonError('');
+    try {
+      setComparedDiff({ fileName: file.name.slice(0, 160), report: await importSnapshotDiffFile(file) });
+    } catch {
+      setComparedDiff(null);
+      setDiffComparisonError('비교할 Kuviewer diff JSON이 유효하지 않습니다.');
+    } finally {
+      if (diffComparisonFileInputRef.current) {
+        diffComparisonFileInputRef.current.value = '';
       }
     }
   };
@@ -114,6 +136,14 @@ export function SnapshotHistoryControls({
             data-testid="snapshot-diff-import-input"
             onChange={(event) => void handleDiffImport(event.target.files?.[0])}
           />
+          <input
+            ref={diffComparisonFileInputRef}
+            className="hidden"
+            type="file"
+            accept="application/json,.json"
+            data-testid="snapshot-diff-compare-input"
+            onChange={(event) => void handleDiffComparisonImport(event.target.files?.[0])}
+          />
           {history.length > 0 ? (
             <button className="ku-control" type="button" onClick={() => downloadSnapshotHistoryMetadata(history)} data-testid="snapshot-history-metadata-export">
               <Download size={15} aria-hidden="true" />
@@ -130,7 +160,23 @@ export function SnapshotHistoryControls({
       </div>
 
       {importedDiff ? (
-        <SnapshotDiffImportPreview fileName={importedDiff.fileName} report={importedDiff.report} onClose={() => setImportedDiff(null)} />
+        <SnapshotDiffImportPreview
+          comparisonError={diffComparisonError}
+          comparisonFileName={comparedDiff?.fileName}
+          comparisonReport={comparedDiff?.report}
+          fileName={importedDiff.fileName}
+          report={importedDiff.report}
+          onClose={() => {
+            setImportedDiff(null);
+            setComparedDiff(null);
+            setDiffComparisonError('');
+          }}
+          onCloseComparison={() => {
+            setComparedDiff(null);
+            setDiffComparisonError('');
+          }}
+          onSelectComparison={() => diffComparisonFileInputRef.current?.click()}
+        />
       ) : null}
       {diffImportError ? <p className="border-b border-[rgba(60,60,67,0.12)] px-4 py-2 text-sm font-semibold text-[#b26a00]" data-testid="snapshot-diff-import-error">{diffImportError}</p> : null}
 

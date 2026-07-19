@@ -36,6 +36,36 @@ import {
   type DesktopCmSessionViewPreferences,
 } from '../features/desktop/desktopCmSessionView';
 import {
+  maxDesktopCmDiagnosticFilterPresetNameLength,
+  maxDesktopCmDiagnosticFilterPresets,
+  normalizeDesktopCmDiagnosticFilterPresetName,
+  readDesktopCmDiagnosticFilterPresets,
+  writeDesktopCmDiagnosticFilterPresets,
+  type DesktopCmDiagnosticFilterPreset,
+} from '../features/desktop/desktopCmDiagnosticFilterPresets';
+import {
+  desktopCmSessionLayoutReorderHistoryDensityOptions,
+  desktopCmSessionLayoutReorderHistoryFilterPresetIds,
+  desktopCmSessionLayoutReorderHistoryFilterPresets,
+  desktopCmSessionLayoutReorderHistoryFilterPresetShortcuts,
+  desktopCmSessionLayoutReorderHistoryScopeFilterOptions,
+  desktopCmSessionLayoutReorderHistoryStatusFilterOptions,
+  formatDesktopCmSessionLayoutReorderHistoryAge,
+  formatDesktopCmSessionLayoutReorderHistoryExactTime,
+  formatDesktopCmSessionLayoutReorderHistoryIsoTime,
+  formatDesktopCmSessionLayoutReorderHistoryScopeLabel,
+  isDesktopCmKeyboardIgnoredTarget,
+  matchesDesktopCmSessionLayoutReorderHistoryScope,
+  matchesDesktopCmSessionLayoutReorderHistoryStatus,
+  maxDesktopCmSessionLayoutReorderHistoryEntries,
+  slugifyDesktopCmTestId,
+  type DesktopCmSessionLayoutReorderHistoryDensity,
+  type DesktopCmSessionLayoutReorderHistoryEntry,
+  type DesktopCmSessionLayoutReorderHistoryFilterPreset,
+  type DesktopCmSessionLayoutReorderHistoryScopeFilter,
+  type DesktopCmSessionLayoutReorderHistoryStatusFilter,
+} from '../features/desktop/desktopCmReorderHistory';
+import {
   buildDesktopCmSessionLayoutDuplicateName,
   buildDesktopCmSessionLayoutFolderFilterOptions,
   buildDesktopCmSessionLayoutFolders,
@@ -140,61 +170,6 @@ interface DesktopCmSessionLayoutImportConflictPreview {
   renamedResolved: number;
   conflicts: DesktopCmSessionLayoutImportConflict[];
 }
-
-interface DesktopCmDiagnosticFilterPreset {
-  name: string;
-  diagnosticStage: CmDiagnosticStageFilter;
-  diagnosticSeverity: CmDiagnosticSeverityFilter;
-  updatedAt: number;
-}
-
-interface DesktopCmSessionLayoutReorderHistoryEntry {
-  id: string;
-  scope: 'folder' | 'preset' | 'focus' | 'system';
-  message: string;
-  createdAt: number;
-}
-
-type DesktopCmSessionLayoutReorderHistoryScopeFilter = 'all' | DesktopCmSessionLayoutReorderHistoryEntry['scope'];
-type DesktopCmSessionLayoutReorderHistoryStatusFilter =
-  | 'all'
-  | 'reorder-complete'
-  | 'reorder-unavailable'
-  | 'reorder-unchanged'
-  | 'focus-restored'
-  | 'focus-unavailable';
-type DesktopCmSessionLayoutReorderHistoryDensity = 'comfortable' | 'compact';
-
-interface DesktopCmSessionLayoutReorderHistoryFilterPreset {
-  id: string;
-  label: string;
-  scope: DesktopCmSessionLayoutReorderHistoryScopeFilter;
-  status: DesktopCmSessionLayoutReorderHistoryStatusFilter;
-  density: DesktopCmSessionLayoutReorderHistoryDensity;
-}
-
-const desktopCmDiagnosticFilterPresetStorageKey = 'kuviewer_desktop_cm_diagnostic_filter_presets';
-const maxDesktopCmDiagnosticFilterPresets = 8;
-const maxDesktopCmDiagnosticFilterPresetNameLength = 40;
-const maxDesktopCmSessionLayoutReorderHistoryEntries = 5;
-const desktopCmSessionLayoutReorderHistoryScopeFilterOptions: DesktopCmSessionLayoutReorderHistoryScopeFilter[] = ['all', 'folder', 'preset', 'focus', 'system'];
-const desktopCmSessionLayoutReorderHistoryStatusFilterOptions: DesktopCmSessionLayoutReorderHistoryStatusFilter[] = [
-  'all',
-  'reorder-complete',
-  'reorder-unavailable',
-  'reorder-unchanged',
-  'focus-restored',
-  'focus-unavailable',
-];
-const desktopCmSessionLayoutReorderHistoryDensityOptions: DesktopCmSessionLayoutReorderHistoryDensity[] = ['comfortable', 'compact'];
-const desktopCmSessionLayoutReorderHistoryFilterPresets: DesktopCmSessionLayoutReorderHistoryFilterPreset[] = [
-  { id: 'all-comfortable', label: 'All', scope: 'all', status: 'all', density: 'comfortable' },
-  { id: 'complete-compact', label: 'Complete', scope: 'all', status: 'reorder-complete', density: 'compact' },
-  { id: 'focus-compact', label: 'Focus', scope: 'focus', status: 'focus-restored', density: 'compact' },
-  { id: 'blocked-compact', label: 'Blocked', scope: 'all', status: 'reorder-unavailable', density: 'compact' },
-];
-const desktopCmSessionLayoutReorderHistoryFilterPresetIds = desktopCmSessionLayoutReorderHistoryFilterPresets.map((preset) => preset.id);
-const desktopCmSessionLayoutReorderHistoryFilterPresetShortcuts = 'ArrowLeft ArrowRight ArrowUp ArrowDown Home End Enter Space';
 
 export function DesktopCmSessionPanel({
   message,
@@ -1116,7 +1091,7 @@ export function DesktopCmSessionPanel({
     setSessionLayoutFolderRenameTarget(folder);
     setSessionLayoutFolderRenameDraft(folder);
     window.requestAnimationFrame(() => {
-      document.querySelector<HTMLInputElement>(`[data-testid="desktop-cm-session-layout-folder-rename-input-${slugifyTestId(folder)}"]`)?.focus();
+      document.querySelector<HTMLInputElement>(`[data-testid="desktop-cm-session-layout-folder-rename-input-${slugifyDesktopCmTestId(folder)}"]`)?.focus();
     });
   };
 
@@ -1173,8 +1148,8 @@ export function DesktopCmSessionPanel({
     setSessionLayoutReorderFocusTargetLabel(targetLabel);
   };
 
-  const sessionLayoutFolderDragHandleTestId = (folderName: string) => `desktop-cm-session-layout-folder-drag-handle-${slugifyTestId(folderName)}`;
-  const sessionLayoutPresetDragHandleTestId = (presetName: string) => `desktop-cm-session-layout-drag-handle-${slugifyTestId(presetName)}`;
+  const sessionLayoutFolderDragHandleTestId = (folderName: string) => `desktop-cm-session-layout-folder-drag-handle-${slugifyDesktopCmTestId(folderName)}`;
+  const sessionLayoutPresetDragHandleTestId = (presetName: string) => `desktop-cm-session-layout-drag-handle-${slugifyDesktopCmTestId(presetName)}`;
   const sessionLayoutReorderMovementLabel = (direction: -1 | 1 | 'first' | 'last') =>
     direction === 'first' ? 'moved to first' : direction === 'last' ? 'moved to last' : direction < 0 ? 'moved up' : 'moved down';
   const sessionLayoutReorderPositionLabel = (index: number, total: number) => `position ${index + 1} of ${total}`;
@@ -2256,7 +2231,7 @@ export function DesktopCmSessionPanel({
                     <span
                       key={preset.name}
                       className={`ku-chip max-w-full gap-1 ${active ? 'border-[rgba(52,199,89,0.22)] bg-[rgba(52,199,89,0.1)] text-[#248a3d]' : ''}`}
-                      data-testid={`desktop-cm-diagnostic-filter-preset-${slugifyTestId(preset.name)}`}
+                      data-testid={`desktop-cm-diagnostic-filter-preset-${slugifyDesktopCmTestId(preset.name)}`}
                     >
                       <button className="flex min-w-0 items-center gap-1 truncate" type="button" onClick={() => handleApplyDiagnosticFilterPreset(preset)}>
                         <Bookmark size={12} aria-hidden="true" />
@@ -2267,7 +2242,7 @@ export function DesktopCmSessionPanel({
                       </button>
                       <button
                         className="ml-1 rounded-full p-0.5 hover:bg-[rgba(60,60,67,0.08)]"
-                        data-testid={`desktop-cm-diagnostic-filter-preset-delete-${slugifyTestId(preset.name)}`}
+                        data-testid={`desktop-cm-diagnostic-filter-preset-delete-${slugifyDesktopCmTestId(preset.name)}`}
                         type="button"
                         title={`${preset.name} 삭제`}
                         onClick={() => handleDeleteDiagnosticFilterPreset(preset.name)}
@@ -2866,7 +2841,7 @@ export function DesktopCmSessionPanel({
                 <div aria-label="Layout import conflicts" className="grid gap-1" role="list">
                   {sessionLayoutImportConflicts.conflicts.map((conflict) => {
                     const active = activeSessionLayoutConflictName.toLowerCase() === conflict.name.toLowerCase();
-                    const conflictSlug = slugifyTestId(conflict.name);
+                    const conflictSlug = slugifyDesktopCmTestId(conflict.name);
                     const currentSummary = formatDesktopCmSessionLayoutSummary(conflict.current.viewPreferences);
                     const incomingSummary = formatDesktopCmSessionLayoutSummary(conflict.incoming.viewPreferences);
                     return (
@@ -2966,7 +2941,7 @@ export function DesktopCmSessionPanel({
                 <div
                   ref={sessionLayoutFolderListRef}
                   aria-activedescendant={
-                    activeSessionLayoutFolder ? `desktop-cm-session-layout-folder-row-${slugifyTestId(activeSessionLayoutFolder.folder)}` : undefined
+                    activeSessionLayoutFolder ? `desktop-cm-session-layout-folder-row-${slugifyDesktopCmTestId(activeSessionLayoutFolder.folder)}` : undefined
                   }
                   aria-describedby={`${sessionLayoutFolderKeyboardDescriptionId} ${sessionLayoutReorderKeyboardDescriptionId} ${sessionLayoutReorderDisabledDescriptionId} ${sessionLayoutReorderDisabledReasonId} ${sessionLayoutReorderFocusDescriptionId} ${sessionLayoutFolderKeyboardLiveStatusId} ${sessionLayoutReorderKeyboardStatusId} ${sessionLayoutReorderFocusStatusId}`}
                   aria-keyshortcuts="ArrowUp ArrowDown Home End Enter S R Escape Shift+ArrowUp Shift+ArrowDown Shift+Home Shift+End"
@@ -3170,7 +3145,7 @@ export function DesktopCmSessionPanel({
                         ) : null}
                         {folder.presets.map((preset, presetIndex) => {
                           const active = preset.name === activeSessionLayoutPresetName;
-                          const presetSlug = slugifyTestId(preset.name);
+                          const presetSlug = slugifyDesktopCmTestId(preset.name);
                           const renaming = sessionLayoutRenameTargetName.toLowerCase() === preset.name.toLowerCase();
                           const canReorderPresetInFolder = canReorderSessionLayoutPresets && folder.presets.length > 1;
                           const canMovePresetUp = canReorderPresetInFolder && presetIndex > 0;
@@ -3736,172 +3711,4 @@ export function DesktopCmSessionPanel({
       )}
     </div>
   );
-}
-
-function readDesktopCmDiagnosticFilterPresets(): DesktopCmDiagnosticFilterPreset[] {
-  if (typeof window === 'undefined') {
-    return [];
-  }
-  try {
-    const rawValue = window.localStorage.getItem(desktopCmDiagnosticFilterPresetStorageKey);
-    if (!rawValue) {
-      return [];
-    }
-    const parsedValue = JSON.parse(rawValue);
-    if (!Array.isArray(parsedValue)) {
-      window.localStorage.removeItem(desktopCmDiagnosticFilterPresetStorageKey);
-      return [];
-    }
-    return normalizeDesktopCmDiagnosticFilterPresets(parsedValue);
-  } catch {
-    window.localStorage.removeItem(desktopCmDiagnosticFilterPresetStorageKey);
-    return [];
-  }
-}
-
-function writeDesktopCmDiagnosticFilterPresets(presets: DesktopCmDiagnosticFilterPreset[]) {
-  if (typeof window === 'undefined') {
-    return;
-  }
-  try {
-    window.localStorage.setItem(desktopCmDiagnosticFilterPresetStorageKey, JSON.stringify(normalizeDesktopCmDiagnosticFilterPresets(presets)));
-  } catch {
-    // Saved diagnostic filters are only a UI preference; storage failures should not break sessions.
-  }
-}
-
-function normalizeDesktopCmDiagnosticFilterPresets(value: unknown[]): DesktopCmDiagnosticFilterPreset[] {
-  const seenNames = new Set<string>();
-  const presets: DesktopCmDiagnosticFilterPreset[] = [];
-  for (const item of value) {
-    if (!item || typeof item !== 'object') {
-      continue;
-    }
-    const candidate = item as Partial<DesktopCmDiagnosticFilterPreset>;
-    const name = normalizeDesktopCmDiagnosticFilterPresetName(candidate.name || '');
-    const nameKey = name.toLowerCase();
-    const diagnosticStage = normalizeCmDiagnosticStageFilter(candidate.diagnosticStage);
-    const diagnosticSeverity = normalizeCmDiagnosticSeverityFilter(candidate.diagnosticSeverity);
-    if (!name || seenNames.has(nameKey)) {
-      continue;
-    }
-    seenNames.add(nameKey);
-    presets.push({
-      name,
-      diagnosticStage,
-      diagnosticSeverity,
-      updatedAt: typeof candidate.updatedAt === 'number' && Number.isFinite(candidate.updatedAt) ? candidate.updatedAt : Date.now(),
-    });
-    if (presets.length >= maxDesktopCmDiagnosticFilterPresets) {
-      break;
-    }
-  }
-  return presets;
-}
-
-function normalizeDesktopCmDiagnosticFilterPresetName(value: string) {
-  const normalized = value.trim().replace(/\s+/g, ' ').slice(0, maxDesktopCmDiagnosticFilterPresetNameLength);
-  return normalized || 'all stages · all severities';
-}
-
-function normalizeCmDiagnosticStageFilter(value: unknown): CmDiagnosticStageFilter {
-  return typeof value === 'string' && cmDiagnosticStageFilterOptions.includes(value as CmDiagnosticStageFilter) ? (value as CmDiagnosticStageFilter) : 'all';
-}
-
-function normalizeCmDiagnosticSeverityFilter(value: unknown): CmDiagnosticSeverityFilter {
-  return typeof value === 'string' && cmDiagnosticSeverityFilterOptions.includes(value as CmDiagnosticSeverityFilter) ? (value as CmDiagnosticSeverityFilter) : 'all';
-}
-
-function matchesDesktopCmSessionLayoutReorderHistoryScope(
-  entry: DesktopCmSessionLayoutReorderHistoryEntry,
-  scopeFilter: DesktopCmSessionLayoutReorderHistoryScopeFilter,
-) {
-  return scopeFilter === 'all' || entry.scope === scopeFilter;
-}
-
-function matchesDesktopCmSessionLayoutReorderHistoryStatus(
-  entry: DesktopCmSessionLayoutReorderHistoryEntry,
-  statusFilter: DesktopCmSessionLayoutReorderHistoryStatusFilter,
-) {
-  if (statusFilter === 'all') {
-    return true;
-  }
-  const message = entry.message.toLowerCase();
-  if (statusFilter === 'reorder-complete') {
-    return message.startsWith('reorder complete:');
-  }
-  if (statusFilter === 'reorder-unavailable') {
-    return message.startsWith('reorder unavailable:');
-  }
-  if (statusFilter === 'reorder-unchanged') {
-    return message.startsWith('reorder unchanged:');
-  }
-  if (statusFilter === 'focus-restored') {
-    return message.startsWith('focus restored:');
-  }
-  return message.startsWith('focus target unavailable');
-}
-
-function formatDesktopCmSessionLayoutReorderHistoryScopeLabel(scope: DesktopCmSessionLayoutReorderHistoryEntry['scope']) {
-  return scope === 'folder' ? 'Folder' : scope === 'preset' ? 'Preset' : scope === 'focus' ? 'Focus' : 'System';
-}
-
-function formatDesktopCmSessionLayoutReorderHistoryAge(createdAt: number, now: number) {
-  if (!Number.isFinite(createdAt) || !Number.isFinite(now)) {
-    return 'timestamp unknown';
-  }
-  const seconds = Math.max(0, Math.floor((now - createdAt) / 1000));
-  if (seconds < 10) {
-    return 'just now';
-  }
-  if (seconds < 60) {
-    return `${seconds}s ago`;
-  }
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) {
-    return `${minutes}m ago`;
-  }
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) {
-    return `${hours}h ago`;
-  }
-  return `${Math.floor(hours / 24)}d ago`;
-}
-
-function formatDesktopCmSessionLayoutReorderHistoryExactTime(createdAt: number) {
-  if (!Number.isFinite(createdAt)) {
-    return 'timestamp unknown';
-  }
-  const date = new Date(createdAt);
-  if (Number.isNaN(date.getTime())) {
-    return 'timestamp unknown';
-  }
-  return date.toLocaleString([], {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-  });
-}
-
-function formatDesktopCmSessionLayoutReorderHistoryIsoTime(createdAt: number) {
-  if (!Number.isFinite(createdAt)) {
-    return '';
-  }
-  const date = new Date(createdAt);
-  return Number.isNaN(date.getTime()) ? '' : date.toISOString();
-}
-
-function isDesktopCmKeyboardIgnoredTarget(target: EventTarget | null) {
-  if (!(target instanceof HTMLElement)) {
-    return false;
-  }
-  const tagName = target.tagName.toLowerCase();
-  return target.isContentEditable || tagName === 'input' || tagName === 'textarea' || tagName === 'select' || tagName === 'button' || tagName === 'label';
-}
-
-function slugifyTestId(value: string) {
-  return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'preset';
 }
