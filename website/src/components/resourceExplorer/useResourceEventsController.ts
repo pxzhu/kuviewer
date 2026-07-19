@@ -62,6 +62,10 @@ export function useResourceEventsController({ liveEnabled, resource }: ResourceE
     resetEventMarkerState();
   }, [resetEventMarkerState]);
 
+  useEffect(() => {
+    resetResourceEventUiState();
+  }, [resetResourceEventUiState, resourceEventsKey]);
+
   const loadResourceEvents = useCallback((options: { preserveExistingEvents?: boolean } = {}) => {
     const requestId = eventsRequestIdRef.current + 1;
     eventsRequestIdRef.current = requestId;
@@ -181,7 +185,6 @@ export function useResourceEventsController({ liveEnabled, resource }: ResourceE
     newEventKeys,
     pinnedEventKeys,
     resetEventMarkerState,
-    resetResourceEventUiState,
     setEventFilter,
     setEventNotificationNotice,
     setEventsAutoRefreshEnabled,
