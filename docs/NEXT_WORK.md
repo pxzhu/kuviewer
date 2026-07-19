@@ -11,6 +11,7 @@
    - 출력은 safe metadata로 제한하고 Secret value, token, kubeconfig, private key를 기록하지 않는다.
 
 2. Resource Explorer panel extraction
+   - Resource fetch/pagination abort, selection anchor, keyboard/bulk action은 controller hook으로 분리됐다.
    - Resource list filtering/sorting/preferences/selection/export 모델은 feature module과 direct unit test로 분리됐다.
    - Events/Logs 요청·취소·stream 상태는 controller hook으로 분리됐다.
    - Relations, Events, Logs의 section/control/output은 표시 전용 component로 분리됐다.

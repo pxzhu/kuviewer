@@ -2,15 +2,19 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { ResourceExplorerItem } from '../../types/resourceExplorer.ts';
 import {
+  buildResourceListRequest,
   defaultResourceListColumns,
   filterResourceList,
   getResourceSelectionRange,
   normalizeResourceListColumnPreference,
   normalizeResourceListSortPreference,
+  mergeResourcePages,
+  normalizeResourceListRequestError,
   reconcileResourceSelection,
   resourceBulkExportCsv,
   resourceBulkExportFileName,
   resourceBulkExportJson,
+  resolveResourceListKeyboardCommand,
   sortResourceList,
 } from './resourceListModel.ts';
 
@@ -30,6 +34,51 @@ test('resource list preferences reject malformed values and preserve explicit co
     cluster: true,
     age: false,
   });
+});
+
+test('resource requests normalize sort fields and page merges skip duplicate ids', () => {
+  const filters = { query: 'api', cluster: 'cluster-a', namespace: 'prod', kind: 'Pod', status: 'healthy' };
+  assert.deepEqual(buildResourceListRequest(filters, { field: 'invalid' as never, direction: 'invalid' as never }, 'next-cursor'), {
+    ...filters,
+    sort: 'kind',
+    direction: 'asc',
+    limit: 200,
+    cursor: 'next-cursor',
+  });
+  assert.deepEqual(mergeResourcePages(resources.slice(0, 2), [resources[1], resources[2]]).map((item) => item.id), [
+    'pod-10',
+    'pod-2',
+    'namespace-prod',
+  ]);
+});
+
+test('resource request errors expose bounded reason codes only', () => {
+  assert.equal(normalizeResourceListRequestError(new Error('resources_request_failed:403')), 'resources_request_failed:403');
+  assert.equal(normalizeResourceListRequestError(new Error('raw upstream error: redacted-detail')), 'resources_request_failed');
+  assert.equal(normalizeResourceListRequestError('unexpected'), 'resources_request_failed');
+});
+
+test('resource keyboard commands respect editable targets, modifiers, movement, and detail actions', () => {
+  const defaults = {
+    altKey: false,
+    ctrlKey: false,
+    hasSelectedResource: true,
+    hasSelectionOrMessage: true,
+    key: '',
+    metaKey: false,
+    resourceCount: 3,
+    selectedResourceIndex: 1,
+    shiftKey: false,
+    shortcutTarget: false,
+  };
+  assert.deepEqual(resolveResourceListKeyboardCommand({ ...defaults, ctrlKey: true, key: 'a' }), { type: 'select-all' });
+  assert.deepEqual(resolveResourceListKeyboardCommand({ ...defaults, key: 'Escape' }), { type: 'clear-selection' });
+  assert.deepEqual(resolveResourceListKeyboardCommand({ ...defaults, key: 'ArrowDown', shiftKey: true }), { type: 'move', index: 2, range: true });
+  assert.deepEqual(resolveResourceListKeyboardCommand({ ...defaults, key: 'Home' }), { type: 'move', index: 0, range: false });
+  assert.deepEqual(resolveResourceListKeyboardCommand({ ...defaults, key: 'Enter' }), { type: 'focus-detail' });
+  assert.deepEqual(resolveResourceListKeyboardCommand({ ...defaults, key: ' ' }), { type: 'toggle-selection' });
+  assert.equal(resolveResourceListKeyboardCommand({ ...defaults, key: 'ArrowDown', shortcutTarget: true }), null);
+  assert.equal(resolveResourceListKeyboardCommand({ ...defaults, altKey: true, key: 'ArrowDown' }), null);
 });
 
 test('resource filtering searches safe metadata and keeps namespace resources in namespace filters', () => {

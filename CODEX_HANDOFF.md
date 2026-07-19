@@ -27,7 +27,8 @@
 
 ## Architecture Notes
 
-- `website/src/components/ResourceExplorer.tsx`는 resource fetch/filter와 resource list/detail 조정을 담당한다.
+- `website/src/components/ResourceExplorer.tsx`는 resource filter/preset과 list/detail 표시 조정을 담당한다.
+- Resource fetch/pagination abort, selection anchor, keyboard/bulk action은 `website/src/features/resources/useResourceListController.ts`가 담당한다.
 - Resource list/bulk rendering은 `website/src/components/resourceExplorer/ResourceExplorerListPanel.tsx`로 분리돼 있다.
 - Resource list filtering/sorting/preferences/selection/export 모델은 `website/src/features/resources/resourceListModel.ts`에 두고 direct unit test로 검증한다.
 - Saved-view validation/storage/order/import/conflict/team compare 모델은 `website/src/features/resources/resourceViewPresets.ts`에 둔다.
