@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -124,6 +125,140 @@ func TestKubernetesProviderCapabilitiesClassifiesSafeAccessResults(t *testing.T)
 	}
 	if capability := capabilities["policy/secret-values"]; capability.Status != "protected" || capability.Reason != "secret_values_hidden" {
 		t.Fatalf("Secret policy capability = %+v", capability)
+	}
+}
+
+func TestKubeAPIClientGatewayRouteUsesV1WithoutAlphaFallback(t *testing.T) {
+	requestedPaths := []string{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestedPaths = append(requestedPaths, r.URL.Path)
+		if r.URL.Path != "/apis/gateway.networking.k8s.io/v1/tlsroutes" {
+			t.Fatalf("unexpected fallback request: %s", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"items":[{"metadata":{"name":"tls-v1","namespace":"edge"}}]}`))
+	}))
+	defer server.Close()
+
+	client := &kubeAPIClient{baseURL: server.URL, bearer: "test-token", httpClient: server.Client()}
+	routes := gatewayRouteList{}
+	if err := client.getGatewayRouteJSON(context.Background(), "tlsroutes", &routes); err != nil {
+		t.Fatalf("getGatewayRouteJSON() error = %v", err)
+	}
+	if len(requestedPaths) != 1 || len(routes.Items) != 1 || routes.Items[0].Metadata.Name != "tls-v1" {
+		t.Fatalf("paths/routes = %#v/%+v, want one v1 response", requestedPaths, routes.Items)
+	}
+}
+
+func TestKubeAPIClientGatewayRouteFallsBackToV1Alpha2(t *testing.T) {
+	requestedPaths := []string{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestedPaths = append(requestedPaths, r.URL.Path)
+		switch r.URL.Path {
+		case "/apis/gateway.networking.k8s.io/v1/tcproutes":
+			http.NotFound(w, r)
+		case "/apis/gateway.networking.k8s.io/v1alpha2/tcproutes":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"items":[{"metadata":{"name":"tcp-alpha","namespace":"edge"}}]}`))
+		default:
+			t.Fatalf("unexpected request: %s", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	client := &kubeAPIClient{baseURL: server.URL, bearer: "test-token", httpClient: server.Client()}
+	routes := gatewayRouteList{}
+	if err := client.getGatewayRouteJSON(context.Background(), "tcproutes", &routes); err != nil {
+		t.Fatalf("getGatewayRouteJSON() error = %v", err)
+	}
+	wantPaths := []string{
+		"/apis/gateway.networking.k8s.io/v1/tcproutes",
+		"/apis/gateway.networking.k8s.io/v1alpha2/tcproutes",
+	}
+	if len(requestedPaths) != len(wantPaths) || strings.Join(requestedPaths, ",") != strings.Join(wantPaths, ",") {
+		t.Fatalf("paths = %#v, want %#v", requestedPaths, wantPaths)
+	}
+	if len(routes.Items) != 1 || routes.Items[0].Metadata.Name != "tcp-alpha" {
+		t.Fatalf("routes = %+v, want v1alpha2 response", routes.Items)
+	}
+}
+
+func TestKubeAPIClientErrorsDoNotExposeEndpointOrResponseBody(t *testing.T) {
+	const responseMarker = "private upstream token=redaction-fixture"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, responseMarker, http.StatusBadGateway)
+	}))
+	defer server.Close()
+
+	client := &kubeAPIClient{baseURL: server.URL, bearer: "test-token", httpClient: server.Client()}
+	tests := []struct {
+		name string
+		call func() error
+	}{
+		{
+			name: "json",
+			call: func() error {
+				_, err := client.getJSONStatus(context.Background(), "/private-json", &map[string]interface{}{}, false)
+				return err
+			},
+		},
+		{
+			name: "text",
+			call: func() error {
+				_, _, err := client.getTextStatus(context.Background(), "/private-text", false, 1024)
+				return err
+			},
+		},
+		{
+			name: "stream",
+			call: func() error {
+				_, err := client.streamText(context.Background(), "/private-stream", false, 1024, func(string) error { return nil })
+				return err
+			},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			err := test.call()
+			if err == nil || err.Error() != "kubernetes_api_status_502" {
+				t.Fatalf("error = %v, want bounded status code", err)
+			}
+			for _, forbidden := range []string{server.URL, "private-", responseMarker, "redaction-fixture"} {
+				if strings.Contains(err.Error(), forbidden) {
+					t.Fatalf("error %q exposes %q", err, forbidden)
+				}
+			}
+		})
+	}
+}
+
+func TestKubeAPIClientInvalidJSONReturnsSafeError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"secret":"redaction-fixture"`))
+	}))
+	defer server.Close()
+
+	client := &kubeAPIClient{baseURL: server.URL, bearer: "test-token", httpClient: server.Client()}
+	_, err := client.getJSONStatus(context.Background(), "/invalid-json", &map[string]interface{}{}, false)
+	if !errors.Is(err, errKubeAPIInvalidResponse) || strings.Contains(err.Error(), "redaction-fixture") {
+		t.Fatalf("error = %v, want safe invalid response code", err)
+	}
+}
+
+func TestKubeAPIClientRequestAndTransportErrorsAreBounded(t *testing.T) {
+	client := &kubeAPIClient{baseURL: "://private-host"}
+	if _, err := client.newRequest(context.Background(), "/private-path", "application/json"); !errors.Is(err, errKubeAPIInvalidRequest) {
+		t.Fatalf("newRequest() error = %v, want safe invalid request code", err)
+	}
+	if err := safeKubeAPITransportError(context.Background()); !errors.Is(err, errKubeAPIUnavailable) {
+		t.Fatalf("transport error = %v, want safe unavailable code", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if err := safeKubeAPITransportError(ctx); !errors.Is(err, context.Canceled) {
+		t.Fatalf("canceled transport error = %v, want context cancellation", err)
 	}
 }
 
