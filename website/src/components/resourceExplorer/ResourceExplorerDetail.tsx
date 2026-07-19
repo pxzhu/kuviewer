@@ -1,11 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { Activity, FileText, Tags } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 import type { ResourceExplorerItem } from "../../types/resourceExplorer";
-import {
-  DetailSection,
-  HealthSignalPanel,
-  KeyValueGrid,
-} from './ResourceDetailPrimitives';
 import {
   countEventSeverities,
   countNewEvents,
@@ -17,9 +11,7 @@ import {
   eventIdentityKey,
   eventSectionSummary,
   filterEvents,
-  filterRelatedResources,
   groupEventsBySeverity,
-  groupRelatedResources,
   readResourceDetailDensityPreference,
   recordFromUnknown,
   sortEventListItems,
@@ -33,7 +25,6 @@ import {
   sectionCount,
 } from './resourceDetailHealth';
 import {
-  maxCollapsedRelations,
   type DetailSectionId,
   type DetailSectionTone,
   type EventExportFormat,
@@ -45,8 +36,9 @@ import { ResourceRelationsSection } from './ResourceRelationsSection';
 import { ResourceEventsSection } from './ResourceEventsSection';
 import { ResourceLogsSection } from './ResourceLogsSection';
 import { ResourceExplorerDetailHeader } from './ResourceExplorerDetailHeader';
-import { ResourceSafePreviewSection } from './ResourceSafePreviewSection';
+import { ResourceCoreDetailSections } from './ResourceCoreDetailSections';
 import { useResourceDetailSectionsController } from './useResourceDetailSectionsController';
+import { useResourceRelationsController } from './useResourceRelationsController';
 
 function EmptyResourceDetail() {
   return (
@@ -113,7 +105,6 @@ function ResourceExplorerDetailBody({
     loadResourceEvents,
     newEventKeys,
     pinnedEventKeys,
-    resetResourceEventUiState,
     setEventFilter,
     setEventNotificationNotice,
     setEventsAutoRefreshEnabled,
@@ -167,8 +158,17 @@ function ResourceExplorerDetailBody({
     toggleLogStream,
   } = useResourceLogsController({ liveEnabled, resource });
   const [resourceDetailDensity, setResourceDetailDensity] = useState<ResourceDetailDensity>(() => readResourceDetailDensityPreference());
-  const [relationFilter, setRelationFilter] = useState('');
-  const [relationsExpanded, setRelationsExpanded] = useState(false);
+  const {
+    expanded: relationsExpanded,
+    filter: relationFilter,
+    filteredRelations,
+    groups: relationGroups,
+    hiddenCount: hiddenRelationCount,
+    normalizedFilter: normalizedRelationFilter,
+    setFilter: setRelationFilter,
+    summary: relationSummary,
+    toggleExpanded: toggleRelationsExpanded,
+  } = useResourceRelationsController(resource);
   const {
     activateDetailPanel,
     activeDetailSectionId,
@@ -185,15 +185,6 @@ function ResourceExplorerDetailBody({
     toggleSection,
   } = useResourceDetailSectionsController({ focusRequest, resourceId: resource.id });
 
-  const resetResourceScopedUiState = useCallback(() => {
-    setRelationFilter('');
-    setRelationsExpanded(false);
-    resetResourceEventUiState();
-  }, [resetResourceEventUiState]);
-
-  useEffect(() => {
-    resetResourceScopedUiState();
-  }, [resetResourceScopedUiState, resource.id]);
   const baseFilteredEvents = useMemo(
     () => sortEventListItems(filterEvents(events, eventFilter, eventSeverityFilter, eventTimeRangeFilter, Date.now()), eventSortOrder, pinnedEventKeys),
     [eventFilter, eventSeverityFilter, eventSortOrder, eventTimeRangeFilter, events, pinnedEventKeys],
@@ -209,16 +200,8 @@ function ResourceExplorerDetailBody({
   const hasNewEvents = newEventCount > 0;
   const eventWarningCount = eventSeverityCounts.warning;
   const eventHasWarning = eventWarningCount > 0;
-  const filteredRelations = useMemo(() => filterRelatedResources(resource?.related || [], relationFilter), [relationFilter, resource?.related]);
   const normalizedLogFilter = logFilter.trim();
   const normalizedEventFilter = eventFilter.trim();
-  const normalizedRelationFilter = relationFilter.trim();
-  const relationGroups = useMemo(
-    () => groupRelatedResources(filteredRelations, relationsExpanded ? Number.POSITIVE_INFINITY : maxCollapsedRelations),
-    [filteredRelations, relationsExpanded],
-  );
-  const visibleRelationCount = relationGroups.reduce((total, group) => total + group.items.length, 0);
-  const hiddenRelationCount = Math.max(filteredRelations.length - visibleRelationCount, 0);
   const eventControlsActive = eventFilter || eventSeverityFilter !== 'all' || eventTimeRangeFilter !== 'all' || eventSortOrder !== 'newest' || pinnedEventKeys.size > 0 || showNewEventsOnly;
   const eventFilterSummary = eventControlSummary(eventFilter, eventSeverityFilter, eventTimeRangeFilter, eventSortOrder, pinnedEventKeys.size, showNewEventsOnly);
   const canRefreshEvents = liveEnabled && Boolean(resource);
@@ -249,7 +232,6 @@ function ResourceExplorerDetailBody({
   const logControlsActive = logFilterActive || logTimeRangeFilter !== 'all' || logSortOrder !== 'received';
   const canCopyAllLogs = logControlsActive && logLines.length > 0;
   const canDownloadAllLogs = logControlsActive && logLines.length > 0;
-  const relationSummary = normalizedRelationFilter ? `${filteredRelations.length} / ${resource.related.length}` : `${resource.related.length}`;
   const detailSectionSummaries: Record<DetailSectionId, string> = {
     metadata: sectionCount(metadataPreview),
     status: healthSectionSummary(resource, healthSignals, statusPreview),
@@ -424,38 +406,23 @@ function ResourceExplorerDetailBody({
       />
 
       <div className="grid gap-3 p-3">
-        <DetailSection id="metadata" icon={FileText} title="Metadata" summary={detailSectionSummaries.metadata} open={isSectionOpen('metadata')} active={activeDetailSectionId === 'metadata'} sectionRef={setDetailSectionRef('metadata')} onFocusSection={() => setActiveDetailSectionId('metadata')} onToggle={() => toggleSection('metadata')}>
-          <KeyValueGrid density={resourceDetailDensity} testId="metadata" values={metadataPreview} />
-        </DetailSection>
-        <DetailSection id="status" icon={Activity} title="Status" summary={detailSectionSummaries.status} tone={healthSectionTone} open={isSectionOpen('status')} active={activeDetailSectionId === 'status'} sectionRef={setDetailSectionRef('status')} onFocusSection={() => setActiveDetailSectionId('status')} onToggle={() => toggleSection('status')}>
-          <HealthSignalPanel signals={healthSignals} />
-          <KeyValueGrid density={resourceDetailDensity} testId="status" values={statusPreview} />
-        </DetailSection>
-        <ResourceSafePreviewSection
-          key={resource.id}
-          active={activeDetailSectionId === 'safe'}
+        <ResourceCoreDetailSections
+          activeSectionId={activeDetailSectionId}
           density={resourceDetailDensity}
-          onEnsureOpen={() => openSection('safe')}
-          onFocusSection={() => setActiveDetailSectionId('safe')}
-          onToggle={() => toggleSection('safe')}
-          open={isSectionOpen('safe')}
-          sectionRef={setDetailSectionRef('safe')}
-          summary={detailSectionSummaries.safe}
-          values={summaryPreview}
+          healthSectionTone={healthSectionTone}
+          healthSignals={healthSignals}
+          isSectionOpen={isSectionOpen}
+          metadataPreview={metadataPreview}
+          onFocusSection={setActiveDetailSectionId}
+          onOpenSection={openSection}
+          onToggleSection={toggleSection}
+          resource={resource}
+          sectionRef={setDetailSectionRef}
+          sectionSummaries={detailSectionSummaries}
+          statusPreview={statusPreview}
+          summaryPreview={summaryPreview}
+          yamlPreview={yamlPreview}
         />
-        <DetailSection id="yaml" icon={FileText} title="YAML Preview" summary={detailSectionSummaries.yaml} open={isSectionOpen('yaml')} active={activeDetailSectionId === 'yaml'} sectionRef={setDetailSectionRef('yaml')} onFocusSection={() => setActiveDetailSectionId('yaml')} onToggle={() => toggleSection('yaml')}>
-          {yamlPreview ? (
-            <pre className={`max-h-[360px] overflow-auto rounded-[10px] border border-[rgba(60,60,67,0.12)] bg-[#111827] font-mono text-[#d1d5db] ${resourceDetailDensity === 'compact' ? 'p-2 text-[10px] leading-4' : 'p-3 text-[11px] leading-5'}`}>{yamlPreview}</pre>
-          ) : (
-            <p className="ku-meta">표시할 YAML preview가 없습니다.</p>
-          )}
-        </DetailSection>
-        <DetailSection id="labels" icon={Tags} title="Labels" summary={detailSectionSummaries.labels} open={isSectionOpen('labels')} active={activeDetailSectionId === 'labels'} sectionRef={setDetailSectionRef('labels')} onFocusSection={() => setActiveDetailSectionId('labels')} onToggle={() => toggleSection('labels')}>
-          <KeyValueGrid density={resourceDetailDensity} empty="labels 없음" testId="labels" values={resource.labels} />
-        </DetailSection>
-        <DetailSection id="annotations" icon={Tags} title="Annotations" summary={detailSectionSummaries.annotations} open={isSectionOpen('annotations')} active={activeDetailSectionId === 'annotations'} sectionRef={setDetailSectionRef('annotations')} onFocusSection={() => setActiveDetailSectionId('annotations')} onToggle={() => toggleSection('annotations')}>
-          <KeyValueGrid density={resourceDetailDensity} empty="annotations 없음" testId="annotations" values={resource.annotations} />
-        </DetailSection>
         <ResourceRelationsSection
           active={activeDetailSectionId === 'relations'}
           expanded={relationsExpanded}
@@ -469,7 +436,7 @@ function ResourceExplorerDetailBody({
           onOpenTopologyNode={onOpenTopologyNode}
           onSelectNode={onSelectNode}
           onToggle={() => toggleSection('relations')}
-          onToggleExpanded={() => setRelationsExpanded((current) => !current)}
+          onToggleExpanded={toggleRelationsExpanded}
           open={isSectionOpen('relations')}
           resource={resource}
           sectionRef={setDetailSectionRef('relations')}

@@ -39,8 +39,9 @@
 - Saved-view UI state와 save/import/conflict/team sync/reorder action은 `website/src/features/resources/useResourceViewPresetsController.ts`가 담당한다.
 - Saved-view action/summary/folder/search/bulk/list rendering은 `website/src/components/resourceExplorer/ResourceViewPresetsPanel.tsx`가 담당한다.
 - Resource API filter/sort/cursor/facet 계산은 `server/internal/httpapi/resource_list.go`에 두고 HTTP integration과 순수 helper test를 함께 유지한다.
-- Resource detail state는 `useResourceEventsController`와 `useResourceLogsController`로 분리돼 있다.
+- Resource detail state는 `useResourceEventsController`, `useResourceLogsController`, `useResourceRelationsController`로 분리되며 각 controller가 resource-bound reset을 소유한다.
 - Resource detail section open/active/focus와 document keyboard listener는 `useResourceDetailSectionsController.ts`가 담당하고 shortcut 해석은 `resourceDetailShortcut.ts` pure helper로 검증한다.
+- Metadata/Status/Safe/YAML/Labels/Annotations rendering은 `ResourceCoreDetailSections.tsx`가 담당한다.
 - Resource detail identity/density, section navigation/jump controls, overview header는 `ResourceExplorerDetailHeader.tsx` 표시 component가 담당한다.
 - Safe Preview 검색/match 상태와 rendering은 `ResourceSafePreviewSection.tsx`가 담당하며, 저장하지 않고 resource id가 바뀌면 초기화한다.
 - Relations, Events, Logs section과 highlight renderer는 `website/src/components/resourceExplorer/` 아래 표시 component로 분리돼 있다.

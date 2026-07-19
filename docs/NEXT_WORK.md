@@ -19,6 +19,8 @@
    - Resource list filtering/sorting/preferences/selection/export 모델은 feature module과 direct unit test로 분리됐다.
    - Events/Logs 요청·취소·stream 상태는 controller hook으로 분리됐다.
    - Detail section open/active/focus 상태와 document keyboard listener는 controller hook으로 분리되고 shortcut 해석은 direct unit test로 검증한다.
+   - Metadata/Status/Safe/YAML/Labels/Annotations rendering은 core detail component로 분리됐다.
+   - Relations 검색/group/collapse/resource reset은 controller hook이 소유하고, Events resource reset도 Events controller 내부에서 처리한다.
    - Safe Preview 검색/match 상태와 section rendering은 resource id 경계의 독립 component로 분리됐다.
    - Relations, Events, Logs의 section/control/output은 표시 전용 component로 분리됐다.
    - Detail identity/density, section navigator/jump controls, overview header는 표시 전용 component로 분리됐다.
