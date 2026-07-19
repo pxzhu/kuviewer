@@ -10,6 +10,7 @@
    - 10초 snapshot cache, in-flight sharing, server filter/cursor pagination을 실제 규모에서 측정한다.
    - 출력은 safe metadata로 제한하고 Secret value, token, kubeconfig, private key를 기록하지 않는다.
    - Gateway route는 v1 성공 시 종료하고 unavailable일 때만 v1alpha2 fallback하며, API 오류는 원격 body/path 없이 bounded code로 처리한다.
+   - Core, workload, Gateway, CRD/CR, Events list는 selector를 보존한 `continue` pagination과 page/item/byte cap을 사용한다.
 
 2. Resource Explorer panel extraction
    - Resource fetch/pagination abort, selection anchor, keyboard/bulk action은 controller hook으로 분리됐다.

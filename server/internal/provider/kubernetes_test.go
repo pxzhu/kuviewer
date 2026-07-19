@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -128,6 +129,62 @@ func TestKubernetesProviderCapabilitiesClassifiesSafeAccessResults(t *testing.T)
 	}
 }
 
+func TestKubernetesProviderSnapshotPaginatesRequiredLists(t *testing.T) {
+	namespaceRequests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get("Authorization"); got != "Bearer test-token" {
+			t.Fatalf("Authorization = %q, want bearer token", got)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path == "/version" {
+			_, _ = w.Write([]byte(`{"gitVersion":"v1.test"}`))
+			return
+		}
+		if got := r.URL.Query().Get("limit"); got != "500" {
+			t.Fatalf("%s limit = %q, want 500", r.URL.Path, got)
+		}
+		switch r.URL.Path {
+		case "/api/v1/namespaces":
+			namespaceRequests++
+			if r.URL.Query().Get("continue") == "" {
+				_, _ = w.Write([]byte(`{"metadata":{"continue":"namespace-next"},"items":[{"metadata":{"name":"checkout"}}]}`))
+				return
+			}
+			if r.URL.Query().Get("continue") != "namespace-next" {
+				t.Fatalf("namespace continue = %q", r.URL.Query().Get("continue"))
+			}
+			_, _ = w.Write([]byte(`{"items":[{"metadata":{"name":"platform"}}]}`))
+		case "/api/v1/nodes", "/api/v1/pods", "/api/v1/services":
+			_, _ = w.Write([]byte(`{"items":[]}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	provider := KubernetesProvider{
+		client:      &kubeAPIClient{baseURL: server.URL, bearer: "test-token", httpClient: server.Client()},
+		clusterID:   "live-test",
+		clusterName: "Live Test",
+	}
+	snapshot, err := provider.Snapshot(context.Background())
+	if err != nil {
+		t.Fatalf("Snapshot() error = %v", err)
+	}
+	if namespaceRequests != 2 || len(snapshot.Clusters) != 1 || snapshot.Clusters[0].Namespaces != 2 || snapshot.Clusters[0].Version != "v1.test" {
+		t.Fatalf("snapshot summary = requests %d clusters %+v", namespaceRequests, snapshot.Clusters)
+	}
+	namespaceNames := map[string]bool{}
+	for _, node := range snapshot.Nodes {
+		if node.Kind == "Namespace" {
+			namespaceNames[node.Name] = true
+		}
+	}
+	if !namespaceNames["checkout"] || !namespaceNames["platform"] || len(namespaceNames) != 2 {
+		t.Fatalf("namespace nodes = %#v, want both paginated namespaces", namespaceNames)
+	}
+}
+
 func TestKubeAPIClientGatewayRouteUsesV1WithoutAlphaFallback(t *testing.T) {
 	requestedPaths := []string{}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -180,6 +237,190 @@ func TestKubeAPIClientGatewayRouteFallsBackToV1Alpha2(t *testing.T) {
 	}
 	if len(routes.Items) != 1 || routes.Items[0].Metadata.Name != "tcp-alpha" {
 		t.Fatalf("routes = %+v, want v1alpha2 response", routes.Items)
+	}
+}
+
+func TestKubeAPIClientListPaginationPreservesQueryAndItems(t *testing.T) {
+	const continueToken = "opaque/token+value="
+	type requestQuery struct {
+		Continue      string
+		FieldSelector string
+		Limit         string
+	}
+	requests := []requestQuery{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		query := r.URL.Query()
+		requests = append(requests, requestQuery{
+			Continue:      query.Get("continue"),
+			FieldSelector: query.Get("fieldSelector"),
+			Limit:         query.Get("limit"),
+		})
+		w.Header().Set("Content-Type", "application/json")
+		if query.Get("continue") == "" {
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"metadata": map[string]string{"continue": continueToken},
+				"items":    []map[string]interface{}{{"metadata": map[string]string{"name": "first"}}},
+			})
+			return
+		}
+		if query.Get("continue") != continueToken {
+			t.Fatalf("continue = %q, want opaque token", query.Get("continue"))
+		}
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"metadata": map[string]string{"continue": ""},
+			"items":    []map[string]interface{}{{"metadata": map[string]string{"name": "second"}}},
+		})
+	}))
+	defer server.Close()
+
+	client := &kubeAPIClient{baseURL: server.URL, bearer: "test-token", httpClient: server.Client()}
+	list := namespaceList{}
+	limits := kubeListLimits{PageSize: 2, MaxPages: 3, MaxItems: 4, MaxPageBytes: 1024, MaxTotalBytes: 2048}
+	found, err := getKubeListJSONStatusWithLimits(context.Background(), client, "/api/v1/namespaces?fieldSelector=metadata.name%21%3Dsystem", &list, false, limits)
+	if err != nil || !found {
+		t.Fatalf("paginated list = found %t error %v, want success", found, err)
+	}
+	if len(requests) != 2 {
+		t.Fatalf("requests = %d, want 2", len(requests))
+	}
+	for _, request := range requests {
+		if request.FieldSelector != "metadata.name!=system" || request.Limit != "2" {
+			t.Fatalf("request query = %+v, want preserved selector and limit", request)
+		}
+	}
+	if requests[0].Continue != "" || requests[1].Continue != continueToken {
+		t.Fatalf("continue sequence = %#v, want empty then opaque token", requests)
+	}
+	if len(list.Items) != 2 || list.Items[0].Metadata.Name != "first" || list.Items[1].Metadata.Name != "second" || list.Metadata.Continue != "" {
+		t.Fatalf("list = %+v, want merged completed pages", list)
+	}
+}
+
+func TestKubeAPIClientListPaginationRejectsTokenLoops(t *testing.T) {
+	requests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		requests++
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"metadata":{"continue":"repeat"},"items":[{"metadata":{"name":"partial"}}]}`))
+	}))
+	defer server.Close()
+
+	client := &kubeAPIClient{baseURL: server.URL, bearer: "test-token", httpClient: server.Client()}
+	list := namespaceList{Items: []namespace{{Metadata: metadata{Name: "stale"}}}}
+	limits := kubeListLimits{PageSize: 1, MaxPages: 4, MaxItems: 10, MaxPageBytes: 1024, MaxTotalBytes: 4096}
+	_, err := getKubeListJSONStatusWithLimits(context.Background(), client, "/api/v1/namespaces", &list, false, limits)
+	if !errors.Is(err, errKubeAPIListTokenLoop) || requests != 2 {
+		t.Fatalf("pagination = requests %d error %v, want token loop after two pages", requests, err)
+	}
+	if len(list.Items) != 0 {
+		t.Fatalf("list = %+v, want no stale or partial items after failure", list)
+	}
+}
+
+func TestKubeAPIClientListPaginationEnforcesBounds(t *testing.T) {
+	t.Run("items", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"items":[{"metadata":{"name":"one"}},{"metadata":{"name":"two"}}]}`))
+		}))
+		defer server.Close()
+
+		client := &kubeAPIClient{baseURL: server.URL, httpClient: server.Client()}
+		list := namespaceList{}
+		limits := kubeListLimits{PageSize: 2, MaxPages: 2, MaxItems: 1, MaxPageBytes: 1024, MaxTotalBytes: 2048}
+		_, err := getKubeListJSONStatusWithLimits(context.Background(), client, "/api/v1/namespaces", &list, false, limits)
+		if !errors.Is(err, errKubeAPIListItemLimit) || len(list.Items) != 0 {
+			t.Fatalf("items bound = error %v list %+v", err, list)
+		}
+	})
+
+	t.Run("pages", func(t *testing.T) {
+		requests := 0
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			requests++
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"metadata":{"continue":"next-` + strconv.Itoa(requests) + `"},"items":[]}`))
+		}))
+		defer server.Close()
+
+		client := &kubeAPIClient{baseURL: server.URL, httpClient: server.Client()}
+		list := namespaceList{}
+		limits := kubeListLimits{PageSize: 1, MaxPages: 2, MaxItems: 10, MaxPageBytes: 1024, MaxTotalBytes: 2048}
+		_, err := getKubeListJSONStatusWithLimits(context.Background(), client, "/api/v1/namespaces", &list, false, limits)
+		if !errors.Is(err, errKubeAPIListPageLimit) || requests != 2 {
+			t.Fatalf("page bound = requests %d error %v", requests, err)
+		}
+	})
+
+	t.Run("total bytes", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"items":[{"metadata":{"name":"long-enough-for-total-limit"}}]}`))
+		}))
+		defer server.Close()
+
+		client := &kubeAPIClient{baseURL: server.URL, httpClient: server.Client()}
+		list := namespaceList{}
+		limits := kubeListLimits{PageSize: 1, MaxPages: 2, MaxItems: 10, MaxPageBytes: 1024, MaxTotalBytes: 32}
+		_, err := getKubeListJSONStatusWithLimits(context.Background(), client, "/api/v1/namespaces", &list, false, limits)
+		if !errors.Is(err, errKubeAPIListTotalBytesLimit) {
+			t.Fatalf("total byte bound error = %v", err)
+		}
+	})
+
+	t.Run("incomplete", func(t *testing.T) {
+		requests := 0
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			requests++
+			if r.URL.Query().Get("continue") != "" {
+				http.NotFound(w, r)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"metadata":{"continue":"next"},"items":[{"metadata":{"name":"partial"}}]}`))
+		}))
+		defer server.Close()
+
+		client := &kubeAPIClient{baseURL: server.URL, httpClient: server.Client()}
+		list := namespaceList{}
+		limits := kubeListLimits{PageSize: 1, MaxPages: 3, MaxItems: 10, MaxPageBytes: 1024, MaxTotalBytes: 2048}
+		_, err := getKubeListJSONStatusWithLimits(context.Background(), client, "/api/v1/namespaces", &list, false, limits)
+		if !errors.Is(err, errKubeAPIListIncomplete) || requests != 2 || len(list.Items) != 0 {
+			t.Fatalf("incomplete list = requests %d error %v list %+v", requests, err, list)
+		}
+	})
+
+	t.Run("continue token", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"metadata": map[string]string{"continue": strings.Repeat("x", kubeListMaxTokenBytes+1)},
+				"items":    []interface{}{},
+			})
+		}))
+		defer server.Close()
+
+		client := &kubeAPIClient{baseURL: server.URL, httpClient: server.Client()}
+		list := namespaceList{}
+		limits := kubeListLimits{PageSize: 1, MaxPages: 2, MaxItems: 10, MaxPageBytes: 8192, MaxTotalBytes: 8192}
+		_, err := getKubeListJSONStatusWithLimits(context.Background(), client, "/api/v1/namespaces", &list, false, limits)
+		if !errors.Is(err, errKubeAPIListTokenInvalid) {
+			t.Fatalf("continue token bound error = %v", err)
+		}
+	})
+}
+
+func TestKubeAPIClientJSONResponseSizeIsBounded(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"value":"` + strings.Repeat("x", 64) + `"}`))
+	}))
+	defer server.Close()
+
+	client := &kubeAPIClient{baseURL: server.URL, httpClient: server.Client()}
+	found, bytesRead, err := client.getJSONStatusBounded(context.Background(), "/oversized", &map[string]interface{}{}, false, 32)
+	if found || !errors.Is(err, errKubeAPIResponseTooLarge) || bytesRead != 33 {
+		t.Fatalf("bounded JSON = found %t bytes %d error %v", found, bytesRead, err)
 	}
 }
 

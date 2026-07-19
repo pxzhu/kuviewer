@@ -28,14 +28,35 @@ const (
 	podLogTailLines         = 200
 	podLogMaxBytes          = 256 * 1024
 	podLogMaxLineBytes      = 4096
+	kubeJSONMaxBytes        = 16 * 1024 * 1024
+	kubeListPageSize        = 500
+	kubeListMaxPages        = 200
+	kubeListMaxItems        = 100_000
+	kubeListMaxTotalBytes   = 128 * 1024 * 1024
+	kubeListMaxTokenBytes   = 4096
 )
 
 var (
-	errKubeAPIInvalidRequest  = errors.New("kubernetes_api_request_invalid")
-	errKubeAPIInvalidResponse = errors.New("kubernetes_api_invalid_response")
-	errKubeAPIReadFailed      = errors.New("kubernetes_api_read_failed")
-	errKubeAPIUnavailable     = errors.New("kubernetes_api_unavailable")
+	errKubeAPIInvalidRequest      = errors.New("kubernetes_api_request_invalid")
+	errKubeAPIInvalidResponse     = errors.New("kubernetes_api_invalid_response")
+	errKubeAPIReadFailed          = errors.New("kubernetes_api_read_failed")
+	errKubeAPIUnavailable         = errors.New("kubernetes_api_unavailable")
+	errKubeAPIResponseTooLarge    = errors.New("kubernetes_api_response_too_large")
+	errKubeAPIListIncomplete      = errors.New("kubernetes_api_list_incomplete")
+	errKubeAPIListTokenLoop       = errors.New("kubernetes_api_list_token_loop")
+	errKubeAPIListTokenInvalid    = errors.New("kubernetes_api_list_token_invalid")
+	errKubeAPIListPageLimit       = errors.New("kubernetes_api_list_page_limit")
+	errKubeAPIListItemLimit       = errors.New("kubernetes_api_list_item_limit")
+	errKubeAPIListTotalBytesLimit = errors.New("kubernetes_api_list_total_bytes_limit")
 )
+
+type kubeListLimits struct {
+	PageSize      int
+	MaxPages      int
+	MaxItems      int
+	MaxPageBytes  int64
+	MaxTotalBytes int64
+}
 
 type KubernetesProvider struct {
 	client      *kubeAPIClient
@@ -168,40 +189,40 @@ func (p KubernetesProvider) Snapshot(ctx context.Context) (topology.Snapshot, er
 	storageClasses := storageClassList{}
 	crds := customResourceDefinitionList{}
 
-	if err := p.client.getJSON(ctx, "/api/v1/namespaces", &namespaces, false); err != nil {
+	if err := getKubeListJSON(ctx, p.client, "/api/v1/namespaces", &namespaces, false); err != nil {
 		return topology.Snapshot{}, err
 	}
-	if err := p.client.getJSON(ctx, "/api/v1/nodes", &nodes, false); err != nil {
+	if err := getKubeListJSON(ctx, p.client, "/api/v1/nodes", &nodes, false); err != nil {
 		return topology.Snapshot{}, err
 	}
-	if err := p.client.getJSON(ctx, "/api/v1/pods", &pods, false); err != nil {
+	if err := getKubeListJSON(ctx, p.client, "/api/v1/pods", &pods, false); err != nil {
 		return topology.Snapshot{}, err
 	}
-	if err := p.client.getJSON(ctx, "/api/v1/services", &services, false); err != nil {
+	if err := getKubeListJSON(ctx, p.client, "/api/v1/services", &services, false); err != nil {
 		return topology.Snapshot{}, err
 	}
 
-	_ = p.client.getJSON(ctx, "/api/v1/serviceaccounts", &serviceAccounts, true)
-	_ = p.client.getJSON(ctx, "/api/v1/configmaps", &configMaps, true)
-	_ = p.client.getJSON(ctx, "/apis/discovery.k8s.io/v1/endpointslices", &endpointSlices, true)
-	_ = p.client.getJSON(ctx, "/apis/apps/v1/deployments", &deployments, true)
-	_ = p.client.getJSON(ctx, "/apis/apps/v1/replicasets", &replicaSets, true)
-	_ = p.client.getJSON(ctx, "/apis/apps/v1/statefulsets", &statefulSets, true)
-	_ = p.client.getJSON(ctx, "/apis/apps/v1/daemonsets", &daemonSets, true)
-	_ = p.client.getJSON(ctx, "/apis/batch/v1/jobs", &jobs, true)
-	_ = p.client.getJSON(ctx, "/apis/batch/v1/cronjobs", &cronJobs, true)
-	_ = p.client.getJSON(ctx, "/apis/autoscaling/v2/horizontalpodautoscalers", &hpas, true)
-	_ = p.client.getJSON(ctx, "/apis/networking.k8s.io/v1/ingresses", &ingresses, true)
-	_ = p.client.getJSON(ctx, "/apis/gateway.networking.k8s.io/v1/gateways", &gateways, true)
-	_ = p.client.getJSON(ctx, "/apis/gateway.networking.k8s.io/v1/httproutes", &httpRoutes, true)
-	_ = p.client.getJSON(ctx, "/apis/gateway.networking.k8s.io/v1/grpcroutes", &grpcRoutes, true)
+	_ = getKubeListJSON(ctx, p.client, "/api/v1/serviceaccounts", &serviceAccounts, true)
+	_ = getKubeListJSON(ctx, p.client, "/api/v1/configmaps", &configMaps, true)
+	_ = getKubeListJSON(ctx, p.client, "/apis/discovery.k8s.io/v1/endpointslices", &endpointSlices, true)
+	_ = getKubeListJSON(ctx, p.client, "/apis/apps/v1/deployments", &deployments, true)
+	_ = getKubeListJSON(ctx, p.client, "/apis/apps/v1/replicasets", &replicaSets, true)
+	_ = getKubeListJSON(ctx, p.client, "/apis/apps/v1/statefulsets", &statefulSets, true)
+	_ = getKubeListJSON(ctx, p.client, "/apis/apps/v1/daemonsets", &daemonSets, true)
+	_ = getKubeListJSON(ctx, p.client, "/apis/batch/v1/jobs", &jobs, true)
+	_ = getKubeListJSON(ctx, p.client, "/apis/batch/v1/cronjobs", &cronJobs, true)
+	_ = getKubeListJSON(ctx, p.client, "/apis/autoscaling/v2/horizontalpodautoscalers", &hpas, true)
+	_ = getKubeListJSON(ctx, p.client, "/apis/networking.k8s.io/v1/ingresses", &ingresses, true)
+	_ = getKubeListJSON(ctx, p.client, "/apis/gateway.networking.k8s.io/v1/gateways", &gateways, true)
+	_ = getKubeListJSON(ctx, p.client, "/apis/gateway.networking.k8s.io/v1/httproutes", &httpRoutes, true)
+	_ = getKubeListJSON(ctx, p.client, "/apis/gateway.networking.k8s.io/v1/grpcroutes", &grpcRoutes, true)
 	_ = p.client.getGatewayRouteJSON(ctx, "tlsroutes", &tlsRoutes)
 	_ = p.client.getGatewayRouteJSON(ctx, "tcproutes", &tcpRoutes)
-	_ = p.client.getJSON(ctx, "/apis/networking.k8s.io/v1/networkpolicies", &networkPolicies, true)
-	_ = p.client.getJSON(ctx, "/api/v1/persistentvolumeclaims", &pvcs, true)
-	_ = p.client.getJSON(ctx, "/api/v1/persistentvolumes", &pvs, true)
-	_ = p.client.getJSON(ctx, "/apis/storage.k8s.io/v1/storageclasses", &storageClasses, true)
-	_ = p.client.getJSON(ctx, "/apis/apiextensions.k8s.io/v1/customresourcedefinitions", &crds, true)
+	_ = getKubeListJSON(ctx, p.client, "/apis/networking.k8s.io/v1/networkpolicies", &networkPolicies, true)
+	_ = getKubeListJSON(ctx, p.client, "/api/v1/persistentvolumeclaims", &pvcs, true)
+	_ = getKubeListJSON(ctx, p.client, "/api/v1/persistentvolumes", &pvs, true)
+	_ = getKubeListJSON(ctx, p.client, "/apis/storage.k8s.io/v1/storageclasses", &storageClasses, true)
+	_ = getKubeListJSON(ctx, p.client, "/apis/apiextensions.k8s.io/v1/customresourcedefinitions", &crds, true)
 	customResources := p.customResourceInstances(ctx, crds)
 
 	builder := newKubeGraphBuilder(p.clusterID)
@@ -594,7 +615,7 @@ func (p KubernetesProvider) ResourceEvents(ctx context.Context, ref ResourceRef)
 	if ref.Namespace != "" {
 		path = "/api/v1/namespaces/" + url.PathEscape(ref.Namespace) + "/events?fieldSelector=" + selector
 	}
-	found, err := p.client.getJSONStatus(ctx, path, &events, true)
+	found, err := getKubeListJSONStatus(ctx, p.client, path, &events, true)
 	if err != nil {
 		return topology.ResourceEvents{}, err
 	}
@@ -684,7 +705,7 @@ func (p KubernetesProvider) customResourceInstances(ctx context.Context, crds cu
 		}
 
 		list := customResourceInstanceList{}
-		found, err := p.client.getJSONStatus(ctx, customResourceListPath(crd, version), &list, true)
+		found, err := getKubeListJSONStatus(ctx, p.client, customResourceListPath(crd, version), &list, true)
 		if err != nil || !found {
 			continue
 		}
@@ -874,30 +895,42 @@ func capabilityStatusPriority(status string) int {
 }
 
 func (c *kubeAPIClient) getJSONStatus(ctx context.Context, path string, out interface{}, optional bool) (bool, error) {
+	found, _, err := c.getJSONStatusBounded(ctx, path, out, optional, kubeJSONMaxBytes)
+	return found, err
+}
+
+func (c *kubeAPIClient) getJSONStatusBounded(ctx context.Context, path string, out interface{}, optional bool, maxBytes int64) (bool, int64, error) {
 	request, err := c.newRequest(ctx, path, "application/json")
 	if err != nil {
-		return false, err
+		return false, 0, err
 	}
 
 	response, err := c.httpClient.Do(request)
 	if err != nil {
-		return false, safeKubeAPITransportError(ctx)
+		return false, 0, safeKubeAPITransportError(ctx)
 	}
 	defer response.Body.Close()
 
 	if optional && (response.StatusCode == http.StatusNotFound || response.StatusCode == http.StatusForbidden) {
 		discardKubeAPIResponseBody(response.Body)
-		return false, nil
+		return false, 0, nil
 	}
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		discardKubeAPIResponseBody(response.Body)
-		return false, kubeAPIStatusError(response.StatusCode)
+		return false, 0, kubeAPIStatusError(response.StatusCode)
 	}
 
-	if err := json.NewDecoder(response.Body).Decode(out); err != nil {
-		return false, errKubeAPIInvalidResponse
+	body, err := io.ReadAll(io.LimitReader(response.Body, maxBytes+1))
+	if err != nil {
+		return false, 0, errKubeAPIReadFailed
 	}
-	return true, nil
+	if int64(len(body)) > maxBytes {
+		return false, int64(len(body)), errKubeAPIResponseTooLarge
+	}
+	if err := json.Unmarshal(body, out); err != nil {
+		return false, int64(len(body)), errKubeAPIInvalidResponse
+	}
+	return true, int64(len(body)), nil
 }
 
 func (c *kubeAPIClient) getTextStatus(ctx context.Context, path string, optional bool, maxBytes int64) (bool, string, error) {
@@ -965,13 +998,101 @@ func (c *kubeAPIClient) streamText(ctx context.Context, path string, optional bo
 	return true, nil
 }
 
-func (c *kubeAPIClient) getGatewayRouteJSON(ctx context.Context, resource string, out interface{}) error {
-	found, err := c.getJSONStatus(ctx, "/apis/gateway.networking.k8s.io/v1/"+resource, out, true)
+func (c *kubeAPIClient) getGatewayRouteJSON(ctx context.Context, resource string, out *gatewayRouteList) error {
+	found, err := getKubeListJSONStatus(ctx, c, "/apis/gateway.networking.k8s.io/v1/"+resource, out, true)
 	if err != nil || found {
 		return err
 	}
-	_, err = c.getJSONStatus(ctx, "/apis/gateway.networking.k8s.io/v1alpha2/"+resource, out, true)
+	_, err = getKubeListJSONStatus(ctx, c, "/apis/gateway.networking.k8s.io/v1alpha2/"+resource, out, true)
 	return err
+}
+
+func getKubeListJSON[T any](ctx context.Context, client *kubeAPIClient, path string, out *kubeList[T], optional bool) error {
+	_, err := getKubeListJSONStatus(ctx, client, path, out, optional)
+	return err
+}
+
+func getKubeListJSONStatus[T any](ctx context.Context, client *kubeAPIClient, path string, out *kubeList[T], optional bool) (bool, error) {
+	return getKubeListJSONStatusWithLimits(ctx, client, path, out, optional, defaultKubeListLimits())
+}
+
+func defaultKubeListLimits() kubeListLimits {
+	return kubeListLimits{
+		PageSize:      kubeListPageSize,
+		MaxPages:      kubeListMaxPages,
+		MaxItems:      kubeListMaxItems,
+		MaxPageBytes:  kubeJSONMaxBytes,
+		MaxTotalBytes: kubeListMaxTotalBytes,
+	}
+}
+
+func getKubeListJSONStatusWithLimits[T any](ctx context.Context, client *kubeAPIClient, path string, out *kubeList[T], optional bool, limits kubeListLimits) (bool, error) {
+	*out = kubeList[T]{}
+	if limits.PageSize < 1 || limits.MaxPages < 1 || limits.MaxItems < 1 || limits.MaxPageBytes < 1 || limits.MaxTotalBytes < 1 {
+		return false, errKubeAPIInvalidRequest
+	}
+
+	items := make([]T, 0)
+	seenTokens := map[string]struct{}{}
+	nextToken := ""
+	totalBytes := int64(0)
+	for pageIndex := 0; pageIndex < limits.MaxPages; pageIndex++ {
+		pagePath, err := kubeListPagePath(path, nextToken, limits.PageSize)
+		if err != nil {
+			return false, err
+		}
+		page := kubeList[T]{}
+		requestOptional := optional || pageIndex > 0
+		found, pageBytes, err := client.getJSONStatusBounded(ctx, pagePath, &page, requestOptional, limits.MaxPageBytes)
+		if err != nil {
+			return false, err
+		}
+		if !found {
+			if pageIndex == 0 {
+				return false, nil
+			}
+			return false, errKubeAPIListIncomplete
+		}
+
+		totalBytes += pageBytes
+		if totalBytes > limits.MaxTotalBytes {
+			return false, errKubeAPIListTotalBytesLimit
+		}
+		if len(items)+len(page.Items) > limits.MaxItems {
+			return false, errKubeAPIListItemLimit
+		}
+		items = append(items, page.Items...)
+		if page.Metadata.Continue == "" {
+			out.Metadata = page.Metadata
+			out.Items = items
+			return true, nil
+		}
+		if len(page.Metadata.Continue) > kubeListMaxTokenBytes {
+			return false, errKubeAPIListTokenInvalid
+		}
+		if _, exists := seenTokens[page.Metadata.Continue]; exists {
+			return false, errKubeAPIListTokenLoop
+		}
+		seenTokens[page.Metadata.Continue] = struct{}{}
+		nextToken = page.Metadata.Continue
+	}
+	return false, errKubeAPIListPageLimit
+}
+
+func kubeListPagePath(path string, continueToken string, pageSize int) (string, error) {
+	parsed, err := url.Parse(path)
+	if err != nil {
+		return "", errKubeAPIInvalidRequest
+	}
+	query := parsed.Query()
+	query.Set("limit", strconv.Itoa(pageSize))
+	if continueToken == "" {
+		query.Del("continue")
+	} else {
+		query.Set("continue", continueToken)
+	}
+	parsed.RawQuery = query.Encode()
+	return parsed.String(), nil
 }
 
 func (c *kubeAPIClient) newRequest(ctx context.Context, path string, accept string) (*http.Request, error) {
@@ -1408,9 +1529,16 @@ type condition struct {
 	Status string `json:"status"`
 }
 
-type eventList struct {
-	Items []eventResource `json:"items"`
+type kubeListMetadata struct {
+	Continue string `json:"continue"`
 }
+
+type kubeList[T any] struct {
+	Metadata kubeListMetadata `json:"metadata"`
+	Items    []T              `json:"items"`
+}
+
+type eventList = kubeList[eventResource]
 
 type eventResource struct {
 	Metadata           metadata `json:"metadata"`
@@ -1427,17 +1555,13 @@ type eventResource struct {
 	} `json:"source"`
 }
 
-type namespaceList struct {
-	Items []namespace `json:"items"`
-}
+type namespaceList = kubeList[namespace]
 
 type namespace struct {
 	Metadata metadata `json:"metadata"`
 }
 
-type nodeList struct {
-	Items []nodeResource `json:"items"`
-}
+type nodeList = kubeList[nodeResource]
 
 type nodeResource struct {
 	Metadata metadata `json:"metadata"`
@@ -1450,9 +1574,7 @@ type nodeResource struct {
 	} `json:"status"`
 }
 
-type podList struct {
-	Items []podResource `json:"items"`
-}
+type podList = kubeList[podResource]
 
 type podResource struct {
 	Metadata metadata `json:"metadata"`
@@ -1469,17 +1591,13 @@ type podSpec struct {
 	ImagePullSecret    []localObjectRef `json:"imagePullSecrets"`
 }
 
-type serviceAccountList struct {
-	Items []serviceAccountResource `json:"items"`
-}
+type serviceAccountList = kubeList[serviceAccountResource]
 
 type serviceAccountResource struct {
 	Metadata metadata `json:"metadata"`
 }
 
-type configMapList struct {
-	Items []configMapResource `json:"items"`
-}
+type configMapList = kubeList[configMapResource]
 
 type configMapResource struct {
 	Metadata   metadata          `json:"metadata"`
@@ -1541,9 +1659,7 @@ type containerStatus struct {
 	RestartCount int  `json:"restartCount"`
 }
 
-type serviceList struct {
-	Items []serviceResource `json:"items"`
-}
+type serviceList = kubeList[serviceResource]
 
 type serviceResource struct {
 	Metadata metadata `json:"metadata"`
@@ -1557,9 +1673,7 @@ type serviceResource struct {
 	} `json:"spec"`
 }
 
-type endpointSliceList struct {
-	Items []endpointSliceResource `json:"items"`
-}
+type endpointSliceList = kubeList[endpointSliceResource]
 
 type endpointSliceResource struct {
 	Metadata  metadata   `json:"metadata"`
@@ -1578,9 +1692,7 @@ type objectReference struct {
 	Name string `json:"name"`
 }
 
-type deploymentList struct {
-	Items []deploymentResource `json:"items"`
-}
+type deploymentList = kubeList[deploymentResource]
 
 type deploymentResource struct {
 	Metadata metadata `json:"metadata"`
@@ -1590,9 +1702,7 @@ type deploymentResource struct {
 	Status replicaStatus `json:"status"`
 }
 
-type replicaSetList struct {
-	Items []replicaSetResource `json:"items"`
-}
+type replicaSetList = kubeList[replicaSetResource]
 
 type replicaSetResource struct {
 	Metadata metadata `json:"metadata"`
@@ -1602,9 +1712,7 @@ type replicaSetResource struct {
 	Status replicaStatus `json:"status"`
 }
 
-type statefulSetList struct {
-	Items []statefulSetResource `json:"items"`
-}
+type statefulSetList = kubeList[statefulSetResource]
 
 type statefulSetResource struct {
 	Metadata metadata `json:"metadata"`
@@ -1614,9 +1722,7 @@ type statefulSetResource struct {
 	Status replicaStatus `json:"status"`
 }
 
-type daemonSetList struct {
-	Items []daemonSetResource `json:"items"`
-}
+type daemonSetList = kubeList[daemonSetResource]
 
 type daemonSetResource struct {
 	Metadata metadata `json:"metadata"`
@@ -1632,9 +1738,7 @@ type replicaStatus struct {
 	AvailableReplicas int `json:"availableReplicas"`
 }
 
-type jobList struct {
-	Items []jobResource `json:"items"`
-}
+type jobList = kubeList[jobResource]
 
 type jobResource struct {
 	Metadata metadata `json:"metadata"`
@@ -1648,9 +1752,7 @@ type jobResource struct {
 	} `json:"status"`
 }
 
-type cronJobList struct {
-	Items []cronJobResource `json:"items"`
-}
+type cronJobList = kubeList[cronJobResource]
 
 type cronJobResource struct {
 	Metadata metadata `json:"metadata"`
@@ -1663,9 +1765,7 @@ type cronJobResource struct {
 	} `json:"status"`
 }
 
-type horizontalPodAutoscalerList struct {
-	Items []horizontalPodAutoscalerResource `json:"items"`
-}
+type horizontalPodAutoscalerList = kubeList[horizontalPodAutoscalerResource]
 
 type horizontalPodAutoscalerResource struct {
 	Metadata metadata `json:"metadata"`
@@ -1680,9 +1780,7 @@ type horizontalPodAutoscalerResource struct {
 	} `json:"status"`
 }
 
-type ingressList struct {
-	Items []ingressResource `json:"items"`
-}
+type ingressList = kubeList[ingressResource]
 
 type ingressResource struct {
 	Metadata metadata `json:"metadata"`
@@ -1707,9 +1805,7 @@ type ingressBackend struct {
 	} `json:"service"`
 }
 
-type gatewayList struct {
-	Items []gatewayResource `json:"items"`
-}
+type gatewayList = kubeList[gatewayResource]
 
 type gatewayResource struct {
 	Metadata metadata `json:"metadata"`
@@ -1724,9 +1820,7 @@ type gatewayResource struct {
 	} `json:"spec"`
 }
 
-type gatewayRouteList struct {
-	Items []gatewayRouteResource `json:"items"`
-}
+type gatewayRouteList = kubeList[gatewayRouteResource]
 
 type gatewayRouteResource struct {
 	Metadata metadata `json:"metadata"`
@@ -1754,9 +1848,7 @@ type gatewayRouteRule struct {
 	} `json:"matches"`
 }
 
-type pvcList struct {
-	Items []pvcResource `json:"items"`
-}
+type pvcList = kubeList[pvcResource]
 
 type pvcResource struct {
 	Metadata metadata `json:"metadata"`
@@ -1772,9 +1864,7 @@ type pvcResource struct {
 	} `json:"status"`
 }
 
-type pvList struct {
-	Items []pvResource `json:"items"`
-}
+type pvList = kubeList[pvResource]
 
 type pvResource struct {
 	Metadata metadata `json:"metadata"`
@@ -1787,9 +1877,7 @@ type pvResource struct {
 	} `json:"status"`
 }
 
-type storageClassList struct {
-	Items []storageClassResource `json:"items"`
-}
+type storageClassList = kubeList[storageClassResource]
 
 type storageClassResource struct {
 	Metadata             metadata `json:"metadata"`
@@ -1798,9 +1886,7 @@ type storageClassResource struct {
 	AllowVolumeExpansion *bool    `json:"allowVolumeExpansion"`
 }
 
-type customResourceDefinitionList struct {
-	Items []customResourceDefinitionResource `json:"items"`
-}
+type customResourceDefinitionList = kubeList[customResourceDefinitionResource]
 
 type customResourceDefinitionResource struct {
 	Metadata metadata `json:"metadata"`
@@ -1825,9 +1911,7 @@ type customResourceDefinitionResource struct {
 	} `json:"status"`
 }
 
-type customResourceInstanceList struct {
-	Items []customResourceInstanceResource `json:"items"`
-}
+type customResourceInstanceList = kubeList[customResourceInstanceResource]
 
 type customResourceInstanceResource struct {
 	APIVersion string                 `json:"apiVersion"`
@@ -1845,9 +1929,7 @@ type customResourceInstance struct {
 	CRDScope   string
 }
 
-type networkPolicyList struct {
-	Items []networkPolicyResource `json:"items"`
-}
+type networkPolicyList = kubeList[networkPolicyResource]
 
 type networkPolicyResource struct {
 	Metadata metadata          `json:"metadata"`
