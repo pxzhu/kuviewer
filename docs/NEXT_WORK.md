@@ -18,6 +18,7 @@
    - Resource fetch/pagination abort, selection anchor, keyboard/bulk action은 controller hook으로 분리됐다.
    - Resource list filtering/sorting/preferences/selection/export 모델은 feature module과 direct unit test로 분리됐다.
    - Events/Logs 요청·취소·stream 상태는 controller hook으로 분리됐다.
+   - Events 필터/group/notification/export와 section model/action 조립은 Events section controller가 담당한다.
    - Detail section open/active/focus 상태와 document keyboard listener는 controller hook으로 분리되고 shortcut 해석은 direct unit test로 검증한다.
    - Metadata/Status/Safe/YAML/Labels/Annotations rendering은 core detail component로 분리됐다.
    - Relations 검색/group/collapse/resource reset은 controller hook이 소유하고, Events resource reset도 Events controller 내부에서 처리한다.

@@ -1,20 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import type { ResourceExplorerItem } from "../../types/resourceExplorer";
 import {
-  countEventSeverities,
-  countNewEvents,
-  downloadTextFile,
-  eventControlSummary,
-  eventExportCsv,
-  eventExportFileName,
-  eventExportJson,
-  eventIdentityKey,
-  eventSectionSummary,
-  filterEvents,
-  groupEventsBySeverity,
   readResourceDetailDensityPreference,
   recordFromUnknown,
-  sortEventListItems,
   writeResourceDetailDensityPreference,
 } from './resourceDetailActivity';
 import {
@@ -27,10 +15,8 @@ import {
 import {
   type DetailSectionId,
   type DetailSectionTone,
-  type EventExportFormat,
   type ResourceDetailDensity,
 } from './resourceDetailTypes';
-import { useResourceEventsController } from './useResourceEventsController';
 import { useResourceLogsController } from './useResourceLogsController';
 import { ResourceRelationsSection } from './ResourceRelationsSection';
 import { ResourceEventsSection } from './ResourceEventsSection';
@@ -39,6 +25,7 @@ import { ResourceExplorerDetailHeader } from './ResourceExplorerDetailHeader';
 import { ResourceCoreDetailSections } from './ResourceCoreDetailSections';
 import { useResourceDetailSectionsController } from './useResourceDetailSectionsController';
 import { useResourceRelationsController } from './useResourceRelationsController';
+import { useResourceEventsSectionController } from './useResourceEventsSectionController';
 
 function EmptyResourceDetail() {
   return (
@@ -89,34 +76,6 @@ function ResourceExplorerDetailBody({
   onOpenTopologyNode: (nodeId: string) => void;
   onSelectNode: (nodeId: string) => void;
 }) {
-  const {
-    events,
-    eventsAutoRefreshEnabled,
-    eventsError,
-    eventsLastUpdatedAt,
-    eventsLoading,
-    eventsWarning,
-    eventsWarningNotificationsEnabled,
-    eventFilter,
-    eventNotificationNotice,
-    eventSeverityFilter,
-    eventSortOrder,
-    eventTimeRangeFilter,
-    loadResourceEvents,
-    newEventKeys,
-    pinnedEventKeys,
-    setEventFilter,
-    setEventNotificationNotice,
-    setEventsAutoRefreshEnabled,
-    setEventsWarningNotificationsEnabled,
-    setEventSeverityFilter,
-    setEventSortOrder,
-    setEventTimeRangeFilter,
-    setNewEventKeys,
-    setPinnedEventKeys,
-    setShowNewEventsOnly,
-    showNewEventsOnly,
-  } = useResourceEventsController({ liveEnabled, resource });
   const {
     activeLogMatch,
     activeLogMatchIndex,
@@ -184,29 +143,17 @@ function ResourceExplorerDetailBody({
     setDetailSectionRef,
     toggleSection,
   } = useResourceDetailSectionsController({ focusRequest, resourceId: resource.id });
-
-  const baseFilteredEvents = useMemo(
-    () => sortEventListItems(filterEvents(events, eventFilter, eventSeverityFilter, eventTimeRangeFilter, Date.now()), eventSortOrder, pinnedEventKeys),
-    [eventFilter, eventSeverityFilter, eventSortOrder, eventTimeRangeFilter, events, pinnedEventKeys],
-  );
-  const filteredEvents = useMemo(
-    () => (showNewEventsOnly ? baseFilteredEvents.filter((item) => newEventKeys.has(eventIdentityKey(item.event))) : baseFilteredEvents),
-    [baseFilteredEvents, newEventKeys, showNewEventsOnly],
-  );
-  const pinnedEvents = useMemo(() => filteredEvents.filter((item) => item.pinned), [filteredEvents]);
-  const eventGroups = useMemo(() => groupEventsBySeverity(filteredEvents.filter((item) => !item.pinned)), [filteredEvents]);
-  const eventSeverityCounts = useMemo(() => countEventSeverities(events), [events]);
-  const newEventCount = useMemo(() => countNewEvents(events, newEventKeys), [events, newEventKeys]);
-  const hasNewEvents = newEventCount > 0;
-  const eventWarningCount = eventSeverityCounts.warning;
-  const eventHasWarning = eventWarningCount > 0;
+  const eventsSection = useResourceEventsSectionController({
+    active: activeDetailSectionId === 'events',
+    liveEnabled,
+    onEnsureOpen: () => openSection('events'),
+    onFocusSection: () => setActiveDetailSectionId('events'),
+    onToggleSection: () => toggleSection('events'),
+    open: isSectionOpen('events'),
+    resource,
+    sectionRef: setDetailSectionRef('events'),
+  });
   const normalizedLogFilter = logFilter.trim();
-  const normalizedEventFilter = eventFilter.trim();
-  const eventControlsActive = eventFilter || eventSeverityFilter !== 'all' || eventTimeRangeFilter !== 'all' || eventSortOrder !== 'newest' || pinnedEventKeys.size > 0 || showNewEventsOnly;
-  const eventFilterSummary = eventControlSummary(eventFilter, eventSeverityFilter, eventTimeRangeFilter, eventSortOrder, pinnedEventKeys.size, showNewEventsOnly);
-  const canRefreshEvents = liveEnabled && Boolean(resource);
-  const eventsAutoRefreshActive = canRefreshEvents && eventsAutoRefreshEnabled;
-  const canExportEvents = filteredEvents.length > 0;
 
   useEffect(() => {
     writeResourceDetailDensityPreference(resourceDetailDensity);
@@ -240,7 +187,7 @@ function ResourceExplorerDetailBody({
     labels: sectionCount(resource.labels),
     annotations: sectionCount(resource.annotations),
     relations: relationSummary,
-    events: eventSectionSummary(filteredEvents.length, events.length, eventSeverityCounts),
+    events: eventsSection.summary,
     logs: logLines.length > 0 ? `${filteredLogLines.length} / ${logLines.length}` : canFetchLogs ? 'ready' : 'empty',
   };
   const detailSectionTones: Record<DetailSectionId, DetailSectionTone> = {
@@ -251,13 +198,13 @@ function ResourceExplorerDetailBody({
     labels: 'default',
     annotations: 'default',
     relations: 'default',
-    events: eventsError || eventHasWarning ? 'warning' : 'default',
+    events: eventsSection.navigatorTone,
     logs: logsError ? 'error' : logsWarning ? 'warning' : 'default',
   };
   const overviewItems = resourceDetailOverviewItems({
     canFetchLogs,
     effectiveLogContainer,
-    eventSeverityCounts,
+    eventSeverityCounts: eventsSection.severityCounts,
     eventSummary: detailSectionSummaries.events,
     logSummary: detailSectionSummaries.logs,
     labels: resource.labels,
@@ -281,61 +228,6 @@ function ResourceExplorerDetailBody({
     }
     openSection('logs');
     await fetchLogs();
-  };
-
-  const handleRefreshEvents = () => {
-    if (!canRefreshEvents || eventsLoading) {
-      return;
-    }
-    openSection('events');
-    loadResourceEvents({ preserveExistingEvents: true });
-  };
-
-  const handleEventsAutoRefreshToggle = () => {
-    if (!canRefreshEvents) {
-      return;
-    }
-    openSection('events');
-    setEventsAutoRefreshEnabled((current) => !current);
-  };
-
-  const handleEventsWarningNotificationsToggle = () => {
-    if (!canRefreshEvents) {
-      return;
-    }
-    openSection('events');
-    setEventsWarningNotificationsEnabled((current) => {
-      const next = !current;
-      if (!next) {
-        setEventNotificationNotice(null);
-        setNewEventKeys(new Set());
-        setShowNewEventsOnly(false);
-      }
-      return next;
-    });
-  };
-
-  const handleShowNewEvents = () => {
-    if (!hasNewEvents) {
-      return;
-    }
-    openSection('events');
-    setShowNewEventsOnly(true);
-  };
-
-  const handleClearNewEvents = () => {
-    setEventNotificationNotice(null);
-    setNewEventKeys(new Set());
-    setShowNewEventsOnly(false);
-  };
-
-  const handleDownloadEvents = (format: EventExportFormat) => {
-    if (!canExportEvents) {
-      return;
-    }
-    const content = format === 'csv' ? eventExportCsv(filteredEvents) : eventExportJson(filteredEvents);
-    const mimeType = format === 'csv' ? 'text/csv;charset=utf-8' : 'application/json;charset=utf-8';
-    downloadTextFile(content, mimeType, eventExportFileName(resource, format));
   };
 
   const handlePauseLogStream = () => {
@@ -367,17 +259,6 @@ function ResourceExplorerDetailBody({
     openSection('logs');
     moveActiveLogMatchController(offset);
   };
-  const togglePinnedEvent = (eventId: string) => {
-    setPinnedEventKeys((current) => {
-      const next = new Set(current);
-      if (next.has(eventId)) {
-        next.delete(eventId);
-      } else {
-        next.add(eventId);
-      }
-      return next;
-    });
-  };
   return (
     <div
       ref={detailPanelRef}
@@ -391,7 +272,7 @@ function ResourceExplorerDetailBody({
       <ResourceExplorerDetailHeader
         activeSectionId={activeDetailSectionId}
         density={resourceDetailDensity}
-        eventHasWarning={eventHasWarning}
+        eventHasWarning={eventsSection.model.tone === 'warning'}
         healthSectionTone={healthSectionTone}
         onCollapseAll={handleCollapseAllDetailSections}
         onDensityChange={setResourceDetailDensity}
@@ -442,67 +323,7 @@ function ResourceExplorerDetailBody({
           sectionRef={setDetailSectionRef('relations')}
           summary={detailSectionSummaries.relations}
         />
-        <ResourceEventsSection
-          actions={{
-            clearNewEvents: handleClearNewEvents,
-            dismissNotification: () => setEventNotificationNotice(null),
-            download: handleDownloadEvents,
-            focusSection: () => setActiveDetailSectionId('events'),
-            refresh: handleRefreshEvents,
-            resetControls: () => {
-              setEventFilter('');
-              setEventSeverityFilter('all');
-              setEventTimeRangeFilter('all');
-              setEventSortOrder('newest');
-              setPinnedEventKeys(new Set());
-              setShowNewEventsOnly(false);
-            },
-            setFilter: setEventFilter,
-            setSeverityFilter: setEventSeverityFilter,
-            setShowNewOnly: setShowNewEventsOnly,
-            setSortOrder: setEventSortOrder,
-            setTimeRangeFilter: setEventTimeRangeFilter,
-            showNewEvents: handleShowNewEvents,
-            toggleAutoRefresh: handleEventsAutoRefreshToggle,
-            toggleNotifications: handleEventsWarningNotificationsToggle,
-            togglePinned: togglePinnedEvent,
-            toggleSection: () => toggleSection('events'),
-          }}
-          model={{
-            active: activeDetailSectionId === 'events',
-            autoRefreshActive: eventsAutoRefreshActive,
-            canExport: canExportEvents,
-            canRefresh: canRefreshEvents,
-            controlsActive: Boolean(eventControlsActive),
-            error: eventsError,
-            eventFilter,
-            events,
-            filterSummary: eventFilterSummary,
-            filteredCount: filteredEvents.length,
-            groups: eventGroups,
-            hasNewEvents,
-            lastUpdatedAt: eventsLastUpdatedAt,
-            liveEnabled,
-            loading: eventsLoading,
-            newEventCount,
-            newEventKeys,
-            notificationNotice: eventNotificationNotice,
-            notificationsEnabled: eventsWarningNotificationsEnabled,
-            normalizedFilter: normalizedEventFilter,
-            open: isSectionOpen('events'),
-            pinnedEventKeys,
-            pinnedEvents,
-            sectionRef: setDetailSectionRef('events'),
-            severityCounts: eventSeverityCounts,
-            severityFilter: eventSeverityFilter,
-            showNewOnly: showNewEventsOnly,
-            sortOrder: eventSortOrder,
-            summary: detailSectionSummaries.events,
-            timeRangeFilter: eventTimeRangeFilter,
-            tone: eventHasWarning ? 'warning' : 'default',
-            warning: eventsWarning,
-          }}
-        />
+        <ResourceEventsSection actions={eventsSection.actions} model={eventsSection.model} />
         <ResourceLogsSection
           actions={{
             changeContainer: (value) => {
