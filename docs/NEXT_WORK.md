@@ -5,7 +5,9 @@
 ## Recommended Order
 
 1. Live Kubernetes connection verification
-   - Native Kubernetes 1차 검증은 완료했다. k3s와 AKS에서 same-origin/API-base live mode를 추가 검증한다.
+   - Native Kubernetes와 local k3s 검증은 완료했다. AKS에서 same-origin/API-base live mode를 추가 검증한다.
+   - k3s smoke는 capability/RBAC, Events, fixed Pod logs, cache miss/hit, cursor pagination, CRD discovery와 Secret value 비노출을 실제 API로 검증한다.
+   - 임시 namespace/ClusterRole/Binding/token/log에는 식별 가능한 smoke 범위와 trap 정리를 적용하며 기본적으로 잔여물을 남기지 않는다.
    - Capability/RBAC/reachability, Events, Pod logs, Gateway/CRD optional resources를 확인한다.
    - 10초 snapshot cache, in-flight sharing, server filter/cursor pagination을 실제 규모에서 측정한다.
    - 출력은 safe metadata로 제한하고 Secret value, token, kubeconfig, private key를 기록하지 않는다.

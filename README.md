@@ -5,7 +5,7 @@ Kuviewer is a read-only Kubernetes topology and resource explorer. It turns uplo
 ## Product Direction
 
 - Primary product: standalone web UI plus Go server
-- First live target: native Kubernetes; k3s and AKS remain validation targets
+- First live target: native Kubernetes; local k3s validation is complete and AKS remains a validation target
 - Authentication: no user accounts, one server-side admin token for protected live APIs
 - Upload mode parses YAML/JSON/ZIP in the browser and does not send manifests to the backend
 - Secret values, kubeconfigs, private keys, cloud credentials, and raw SSH errors are never displayed or persisted
@@ -87,9 +87,12 @@ go vet ./...
 
 cd ..
 node scripts/check-desktop-packaging-spec.mjs
+
+# Requires a disposable/current kubectl context and creates temporary labeled RBAC.
+scripts/smoke-kubernetes-api.sh
 ```
 
-Visual smoke writes temporary files under `website/artifacts/visual-smoke`. Generated build and smoke directories should be removed after local work.
+The Kubernetes smoke verifies capability/RBAC, snapshot cache reuse, cursor pagination, Events, fixed Pod logs, and Secret value exclusion. It removes its temporary namespace, cluster RBAC, token files, and server log by default. Visual smoke writes temporary files under `website/artifacts/visual-smoke`. Generated build and smoke directories should be removed after local work.
 
 ## Server Configuration
 
@@ -149,6 +152,7 @@ See [desktop/README.md](desktop/README.md), [desktop/BUILD_PREREQUISITES.md](des
 
 - Next work: [docs/NEXT_WORK.md](docs/NEXT_WORK.md)
 - Current handoff: [CODEX_HANDOFF.md](CODEX_HANDOFF.md)
+- k3s live validation: [docs/K3S_VALIDATION.md](docs/K3S_VALIDATION.md)
 - Completed-work summary: [docs/archive/2026-07-completed-work-summary.md](docs/archive/2026-07-completed-work-summary.md)
 - Sample manifests: `samples/`
 - Kubernetes deployment: `deploy/kubernetes/`
