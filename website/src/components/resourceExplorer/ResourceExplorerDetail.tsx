@@ -1,12 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent as ReactKeyboardEvent } from "react";
-import { Activity, AlertTriangle, ArrowDown, ArrowUp, Boxes, CheckCircle2, Copy, Download, FileText, RefreshCw, RotateCcw, Search, Tags, X } from "lucide-react";
+import { Activity, CheckCircle2, FileText, RotateCcw, Search, Tags, X } from "lucide-react";
 import type { ResourceExplorerItem } from "../../types/resourceExplorer";
 import {
   DetailSection,
-  EventSeverityChips,
   HealthSignalPanel,
-  InlineWarning,
   KeyValueGrid,
   ResourceDetailOverview,
   ResourceDetailSectionNavigator,
@@ -24,8 +22,6 @@ import {
   eventSectionSummary,
   filterEvents,
   filterRelatedResources,
-  formatEventTimestamp,
-  formatRefreshTimestamp,
   groupEventsBySeverity,
   groupRelatedResources,
   keyValueEntries,
@@ -48,22 +44,17 @@ import {
   detailJumpSections,
   detailKeyboardSections,
   detailNavigatorSections,
-  eventTimeRangeOptions,
-  logSortOptions,
   maxCollapsedRelations,
   type DetailSectionId,
   type DetailSectionTone,
   type EventExportFormat,
-  type EventSeverityFilter,
-  type EventSortOrder,
-  type EventTimeRangeFilter,
   type ResourceDetailDensity,
 } from './resourceDetailTypes';
 import { useResourceEventsController } from './useResourceEventsController';
 import { useResourceLogsController } from './useResourceLogsController';
 import { ResourceRelationsSection } from './ResourceRelationsSection';
-import { ResourceEventGroups } from './ResourceEventGroups';
-import { ResourceLogLines } from './ResourceLogLines';
+import { ResourceEventsSection } from './ResourceEventsSection';
+import { ResourceLogsSection } from './ResourceLogsSection';
 
 function isEditableTarget(target: EventTarget | null) {
   if (!(target instanceof HTMLElement)) {
@@ -844,557 +835,148 @@ function ResourceExplorerDetailBody({
           sectionRef={setDetailSectionRef('relations')}
           summary={detailSectionSummaries.relations}
         />
-        <DetailSection id="events" icon={Boxes} title="Events" summary={detailSectionSummaries.events} tone={eventHasWarning ? 'warning' : 'default'} open={isSectionOpen('events')} active={activeDetailSectionId === 'events'} sectionRef={setDetailSectionRef('events')} onFocusSection={() => setActiveDetailSectionId('events')} onToggle={() => toggleSection('events')}>
-          {liveEnabled ? (
-            <div className="mb-2 flex flex-wrap items-center justify-between gap-2 rounded-[10px] border border-[rgba(60,60,67,0.12)] bg-white/70 p-2">
-              <div className="flex flex-wrap items-center gap-1.5">
-                <p className="ku-meta">live Events · 읽기 전용 · 저장 안 함</p>
-                {eventsLoading ? <span className="ku-chip">조회 중</span> : null}
-                {eventsLastUpdatedAt ? <span className="ku-chip">마지막 조회 {formatRefreshTimestamp(eventsLastUpdatedAt)}</span> : null}
-                {eventsAutoRefreshActive ? <span className="ku-chip">자동 갱신 켜짐</span> : null}
-                {eventsWarningNotificationsEnabled && canRefreshEvents ? <span className="ku-chip border-[rgba(255,149,0,0.24)] bg-[rgba(255,149,0,0.1)] text-[#9a5a00]">Warning 알림 켜짐</span> : null}
-                {hasNewEvents ? (
-                  <>
-                    <button
-                      className="rounded-full border border-[rgba(255,149,0,0.28)] bg-[rgba(255,149,0,0.14)] px-2 py-1 font-mono text-[10px] font-semibold uppercase text-[#9a5a00] transition hover:bg-[rgba(255,149,0,0.2)]"
-                      type="button"
-                      onClick={handleShowNewEvents}
-                      data-testid="events-new-count"
-                      title="새 Warning/Error Events만 보기"
-                    >
-                      NEW {newEventCount}
-                    </button>
-                    <button
-                      className="rounded-full border border-[rgba(255,149,0,0.22)] bg-white/75 px-2 py-1 text-[10px] font-semibold text-[#8a4d00] transition hover:bg-white"
-                      type="button"
-                      onClick={handleClearNewEvents}
-                      data-testid="events-new-clear"
-                      title="새 Event 표시 지우기"
-                    >
-                      NEW 지우기
-                    </button>
-                  </>
-                ) : null}
-                {events.length > 0 ? <EventSeverityChips counts={eventSeverityCounts} /> : null}
-              </div>
-              <div className="flex flex-wrap items-center gap-1.5">
-                <button
-                  className={`inline-flex items-center gap-1.5 rounded-[9px] border px-2.5 py-1.5 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 ${
-                    eventsWarningNotificationsEnabled && canRefreshEvents
-                      ? 'border-[rgba(255,149,0,0.28)] bg-[rgba(255,149,0,0.12)] text-[#8a4d00] hover:bg-[rgba(255,149,0,0.16)]'
-                      : 'border-[rgba(60,60,67,0.14)] bg-white/75 text-[rgba(60,60,67,0.72)] hover:bg-white'
-                  }`}
-                  type="button"
-                  onClick={handleEventsWarningNotificationsToggle}
-                  disabled={!canRefreshEvents}
-                  aria-pressed={eventsWarningNotificationsEnabled && canRefreshEvents}
-                  data-testid="events-warning-notifications-toggle"
-                  title="새 Warning/Error Events를 앱 내부 알림으로 표시"
-                >
-                  <AlertTriangle size={14} aria-hidden="true" />
-                  Warning 알림
-                </button>
-                <button
-                  className={`inline-flex items-center gap-1.5 rounded-[9px] border px-2.5 py-1.5 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 ${
-                    eventsAutoRefreshActive
-                      ? 'border-[rgba(52,199,89,0.24)] bg-[rgba(52,199,89,0.1)] text-[#248a3d] hover:bg-[rgba(52,199,89,0.14)]'
-                      : 'border-[rgba(60,60,67,0.14)] bg-white/75 text-[rgba(60,60,67,0.72)] hover:bg-white'
-                  }`}
-                  type="button"
-                  onClick={handleEventsAutoRefreshToggle}
-                  disabled={!canRefreshEvents}
-                  aria-pressed={eventsAutoRefreshActive}
-                  title="선택한 리소스의 Events를 30초마다 다시 조회"
-                >
-                  <RefreshCw size={14} aria-hidden="true" />
-                  자동 30초
-                </button>
-                <button
-                  className="inline-flex items-center gap-1.5 rounded-[9px] border border-[rgba(0,122,255,0.22)] bg-[rgba(0,122,255,0.08)] px-2.5 py-1.5 text-xs font-semibold text-[#0057b8] transition hover:bg-[rgba(0,122,255,0.13)] disabled:cursor-not-allowed disabled:opacity-50"
-                  type="button"
-                  onClick={handleRefreshEvents}
-                  disabled={!canRefreshEvents || eventsLoading}
-                  data-testid="events-refresh"
-                  title="선택한 리소스의 Events를 다시 조회"
-                >
-                  <RefreshCw className={eventsLoading ? 'animate-spin' : undefined} size={14} aria-hidden="true" />
-                  {eventsLoading ? '조회 중' : '새로고침'}
-                </button>
-              </div>
-            </div>
-          ) : null}
-          {eventNotificationNotice ? (
-            <div
-              className="mb-2 flex flex-wrap items-start justify-between gap-2 rounded-[10px] border border-[rgba(255,149,0,0.24)] bg-[rgba(255,149,0,0.1)] p-2"
-              data-testid="events-notification-banner"
-            >
-              <div className="min-w-0">
-                <div className="flex flex-wrap items-center gap-1.5">
-                  <AlertTriangle size={15} className="text-[#9a5a00]" aria-hidden="true" />
-                  <p className="text-xs font-semibold text-[#7a4300]">새 Warning/Error Events {eventNotificationNotice.count}개</p>
-                </div>
-                <p className="mt-1 break-words text-xs text-[rgba(60,60,67,0.72)]">
-                  {eventNotificationNotice.reason || 'Event'} · {eventNotificationNotice.source || 'source unknown'} · {formatEventTimestamp(eventNotificationNotice.timestamp)}
-                </p>
-              </div>
-              <div className="flex flex-wrap items-center justify-end gap-1.5">
-                <button
-                  className="rounded-[9px] border border-[rgba(255,149,0,0.24)] bg-white/75 px-2.5 py-1.5 text-xs font-semibold text-[#8a4d00] transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-50"
-                  type="button"
-                  onClick={handleShowNewEvents}
-                  disabled={!hasNewEvents}
-                  data-testid="events-notification-show-new"
-                >
-                  새 이벤트 보기
-                </button>
-                <button
-                  className="rounded-[9px] border border-[rgba(255,149,0,0.24)] bg-white/75 px-2.5 py-1.5 text-xs font-semibold text-[#8a4d00] transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-50"
-                  type="button"
-                  onClick={handleClearNewEvents}
-                  disabled={!hasNewEvents && !eventNotificationNotice}
-                  data-testid="events-notification-clear"
-                >
-                  표시 지우기
-                </button>
-                <button
-                  className="rounded-[9px] border border-[rgba(255,149,0,0.24)] bg-white/75 px-2.5 py-1.5 text-xs font-semibold text-[#8a4d00] transition hover:bg-white"
-                  type="button"
-                  onClick={() => setEventNotificationNotice(null)}
-                  data-testid="events-notification-dismiss"
-                >
-                  닫기
-                </button>
-              </div>
-            </div>
-          ) : null}
-          {eventsWarning ? <InlineWarning message="이벤트 조회 권한이 없거나 API가 없어 빈 목록으로 표시합니다." /> : null}
-          {eventsError ? <InlineWarning message={`이벤트 조회 실패: ${eventsError}`} /> : null}
-          {events.length > 0 ? (
-            <div className="mb-2 grid gap-2 rounded-[10px] border border-[rgba(60,60,67,0.12)] bg-white/70 p-2 lg:grid-cols-[minmax(220px,0.9fr)_minmax(0,1fr)_auto] lg:items-center">
-              <div className="grid gap-1.5">
-                <div className="grid grid-cols-3 rounded-[9px] border border-[rgba(60,60,67,0.12)] bg-white/70 p-0.5">
-                  {([
-                    { value: 'all', label: '전체', count: events.length },
-                    { value: 'warning', label: 'Warning', count: eventSeverityCounts.warning },
-                    { value: 'normal', label: 'Normal', count: eventSeverityCounts.normal },
-                  ] as const).map((option) => (
-                    <button
-                      key={option.value}
-                      className={`rounded-[7px] px-2.5 py-1 text-xs font-semibold transition ${
-                        eventSeverityFilter === option.value ? 'bg-[#1d1d1f] text-white shadow-sm' : 'text-[rgba(60,60,67,0.72)] hover:bg-white'
-                      }`}
-                      type="button"
-                      onClick={() => setEventSeverityFilter(option.value)}
-                      aria-pressed={eventSeverityFilter === option.value}
-                      title={`${option.label} 이벤트만 보기`}
-                    >
-                      {option.label} {option.count}
-                    </button>
-                  ))}
-                </div>
-                <div className="grid grid-cols-5 rounded-[9px] border border-[rgba(60,60,67,0.12)] bg-white/70 p-0.5">
-                  {eventTimeRangeOptions.map((option) => (
-                    <button
-                      key={option.value}
-                      className={`rounded-[7px] px-2 py-1 text-xs font-semibold transition ${
-                        eventTimeRangeFilter === option.value ? 'bg-[#1d1d1f] text-white shadow-sm' : 'text-[rgba(60,60,67,0.72)] hover:bg-white'
-                      }`}
-                      type="button"
-                      onClick={() => setEventTimeRangeFilter(option.value)}
-                      aria-pressed={eventTimeRangeFilter === option.value}
-                      title={option.value === 'all' ? '모든 이벤트 보기' : `최근 ${option.label} 이벤트만 보기`}
-                    >
-                      {option.label}
-                    </button>
-                  ))}
-                </div>
-                <div className="grid grid-cols-2 rounded-[9px] border border-[rgba(60,60,67,0.12)] bg-white/70 p-0.5">
-                  {([
-                    { value: 'newest', label: '최신순' },
-                    { value: 'oldest', label: '오래된순' },
-                  ] as const).map((option) => (
-                    <button
-                      key={option.value}
-                      className={`rounded-[7px] px-2 py-1 text-xs font-semibold transition ${
-                        eventSortOrder === option.value ? 'bg-[#1d1d1f] text-white shadow-sm' : 'text-[rgba(60,60,67,0.72)] hover:bg-white'
-                      }`}
-                      type="button"
-                      onClick={() => setEventSortOrder(option.value)}
-                      aria-pressed={eventSortOrder === option.value}
-                      title={`이벤트 ${option.label} 정렬`}
-                    >
-                      {option.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <label className="relative block">
-                <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[rgba(60,60,67,0.45)]" size={15} />
-                <input className="ku-input w-full pl-9" placeholder="이벤트 필터" value={eventFilter} onChange={(event) => setEventFilter(event.target.value)} />
-              </label>
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="flex flex-wrap items-center gap-1.5">
-                  <span className="ku-chip">
-                    {filteredEvents.length} / {events.length}
-                  </span>
-                  {pinnedEventKeys.size > 0 ? <span className="ku-chip">고정 {pinnedEventKeys.size}</span> : null}
-                  {showNewEventsOnly ? <span className="ku-chip border-[rgba(255,149,0,0.24)] bg-[rgba(255,149,0,0.1)] text-[#9a5a00]">새 이벤트만</span> : null}
-                </div>
-                <div className="flex flex-wrap items-center justify-end gap-1.5">
-                  <button
-                    className={`inline-flex items-center gap-1.5 rounded-[9px] border px-2.5 py-1.5 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 ${
-                      showNewEventsOnly
-                        ? 'border-[rgba(255,149,0,0.28)] bg-[rgba(255,149,0,0.12)] text-[#8a4d00] hover:bg-[rgba(255,149,0,0.16)]'
-                        : 'border-[rgba(60,60,67,0.12)] bg-white text-[rgba(60,60,67,0.72)] hover:bg-[rgba(242,242,247,0.9)]'
-                    }`}
-                    type="button"
-                    onClick={() => setShowNewEventsOnly((current) => !current)}
-                    disabled={!hasNewEvents}
-                    aria-pressed={showNewEventsOnly}
-                    data-testid="events-new-only-toggle"
-                    title="새 Warning/Error Events만 보기"
-                  >
-                    NEW만
-                  </button>
-                  <button
-                    className="inline-flex items-center gap-1.5 rounded-[9px] border border-[rgba(60,60,67,0.12)] bg-white px-2.5 py-1.5 text-xs font-semibold text-[rgba(60,60,67,0.72)] transition hover:bg-[rgba(242,242,247,0.9)] disabled:cursor-not-allowed disabled:opacity-50"
-                    type="button"
-                    onClick={() => handleDownloadEvents('csv')}
-                    disabled={!canExportEvents}
-                    data-testid="events-export-csv"
-                    title="현재 표시된 Events를 CSV로 다운로드"
-                  >
-                    <Download size={14} aria-hidden="true" />
-                    CSV
-                  </button>
-                  <button
-                    className="inline-flex items-center gap-1.5 rounded-[9px] border border-[rgba(60,60,67,0.12)] bg-white px-2.5 py-1.5 text-xs font-semibold text-[rgba(60,60,67,0.72)] transition hover:bg-[rgba(242,242,247,0.9)] disabled:cursor-not-allowed disabled:opacity-50"
-                    type="button"
-                    onClick={() => handleDownloadEvents('json')}
-                    disabled={!canExportEvents}
-                    data-testid="events-export-json"
-                    title="현재 표시된 Events를 JSON으로 다운로드"
-                  >
-                    <Download size={14} aria-hidden="true" />
-                    JSON
-                  </button>
-                  {eventControlsActive ? (
-                    <button
-                      className="rounded-[9px] border border-[rgba(60,60,67,0.12)] bg-white px-2.5 py-1.5 text-xs font-semibold text-[rgba(60,60,67,0.72)] transition hover:bg-[rgba(242,242,247,0.9)]"
-                      type="button"
-                      onClick={() => {
-                        setEventFilter('');
-                        setEventSeverityFilter('all');
-                        setEventTimeRangeFilter('all');
-                        setEventSortOrder('newest');
-                        setPinnedEventKeys(new Set());
-                        setShowNewEventsOnly(false);
-                      }}
-                    >
-                      초기화
-                    </button>
-                  ) : null}
-                </div>
-              </div>
-            </div>
-          ) : null}
-          {eventsLoading && events.length === 0 ? (
-            <p className="ku-meta">이벤트 조회 중...</p>
-          ) : events.length === 0 ? (
-            <p className="ku-meta">표시할 이벤트가 없습니다.</p>
-          ) : filteredEvents.length === 0 ? (
-            <p className="ku-meta">
-              필터와 일치하는 이벤트가 없습니다.
-              {eventFilterSummary ? ` · ${eventFilterSummary}` : ''}
-            </p>
-          ) : (
-            <ResourceEventGroups
-              groups={eventGroups}
-              newEventKeys={newEventKeys}
-              normalizedFilter={normalizedEventFilter}
-              onTogglePinned={togglePinnedEvent}
-              pinnedEvents={pinnedEvents}
-            />
-          )}
-        </DetailSection>
-        <DetailSection id="logs" icon={FileText} title="Logs" summary={detailSectionSummaries.logs} open={isSectionOpen('logs')} active={activeDetailSectionId === 'logs'} sectionRef={setDetailSectionRef('logs')} onFocusSection={() => setActiveDetailSectionId('logs')} onToggle={() => toggleSection('logs')}>
-          {!canFetchLogs ? (
-            <p className="ku-meta">Pod 로그 없음</p>
-          ) : (
-            <div className="grid gap-2">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <p className="ku-meta">최근 200줄 · 따라가기 최대 500줄 · 읽기 전용 · 저장 안 함</p>
-                {logContainerOptions.length > 1 ? (
-                  <select
-                    className="ku-select min-w-[180px]"
-                    value={effectiveLogContainer}
-                    onChange={(event) => {
-                      stopLogStream();
-                      setSelectedLogContainer(event.target.value);
-                      clearLogOutput();
-                    }}
-                    disabled={logsLoading || logsStreaming}
-                  >
-                    {logContainerOptions.map((option) => (
-                      <option key={`${option.init ? 'init' : 'app'}:${option.name}`} value={option.name}>
-                        {option.init ? `init: ${option.name}` : option.name}
-                      </option>
-                    ))}
-                  </select>
-                ) : null}
-                <label className="flex items-center gap-2 rounded-[9px] border border-[rgba(60,60,67,0.12)] bg-white/70 px-2.5 py-1.5 text-xs font-semibold text-[rgba(60,60,67,0.72)]">
-                  <input
-                    className="h-3.5 w-3.5 accent-[#007aff]"
-                    type="checkbox"
-                    checked={previousLogs}
-                    onChange={(event) => {
-                      stopLogStream();
-                      setPreviousLogs(event.target.checked);
-                      clearLogOutput();
-                    }}
-                    disabled={logsLoading || logsStreaming}
-                  />
-                  이전 로그
-                </label>
-                <button
-                  className="rounded-[9px] border border-[rgba(0,122,255,0.22)] bg-[rgba(0,122,255,0.08)] px-2.5 py-1.5 text-xs font-semibold text-[#0057b8] transition hover:bg-[rgba(0,122,255,0.13)] disabled:cursor-not-allowed disabled:opacity-55"
-                  type="button"
-                  onClick={handleFetchLogs}
-                  disabled={logsLoading || logsStreaming}
-                >
-                  {logsLoading ? '불러오는 중' : '로그 불러오기'}
-                </button>
-                <button
-                  className="rounded-[9px] border border-[rgba(52,199,89,0.28)] bg-[rgba(52,199,89,0.10)] px-2.5 py-1.5 text-xs font-semibold text-[#19783b] transition hover:bg-[rgba(52,199,89,0.16)] disabled:cursor-not-allowed disabled:opacity-55"
-                  type="button"
-                  onClick={handleStreamLogs}
-                  disabled={logsLoading || previousLogs}
-                  title={previousLogs ? '이전 로그는 고정 조회만 지원합니다.' : undefined}
-                >
-                  {logsStreaming ? '중지' : '따라가기'}
-                </button>
-                {logsStreaming ? (
-                  <button
-                    className="rounded-[9px] border border-[rgba(255,149,0,0.22)] bg-[rgba(255,149,0,0.08)] px-2.5 py-1.5 text-xs font-semibold text-[#8a4d00] transition hover:bg-[rgba(255,149,0,0.13)]"
-                    type="button"
-                    onClick={logsPaused ? handleResumeLogStream : handlePauseLogStream}
-                    data-testid="log-stream-pause-toggle"
-                  >
-                    {logsPaused ? '재개' : '일시정지'}
-                  </button>
-                ) : null}
-                <div className="grid grid-cols-2 rounded-[9px] border border-[rgba(60,60,67,0.12)] bg-white/70 p-0.5">
-                  {(['comfortable', 'compact'] as const).map((density) => (
-                    <button
-                      key={density}
-                      className={`rounded-[7px] px-2.5 py-1 text-xs font-semibold transition ${
-                        logDensity === density ? 'bg-[#1d1d1f] text-white shadow-sm' : 'text-[rgba(60,60,67,0.72)] hover:bg-white'
-                      }`}
-                      type="button"
-                      onClick={() => setLogDensity(density)}
-                      aria-pressed={logDensity === density}
-                    >
-                      {density === 'comfortable' ? '기본' : '촘촘'}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              {effectiveLogContainer ? (
-                <div className="flex flex-wrap items-center gap-2">
-                  <p className="ku-meta">컨테이너: {effectiveLogContainer}{previousLogs ? ' · 이전 종료 인스턴스' : logsStreaming ? ' · 실시간 따라가기' : ''}</p>
-                  {logsPaused ? <span className="ku-chip">일시정지 · {pendingLogCount}줄 대기</span> : null}
-                </div>
-              ) : null}
-              {logLines.length > 0 ? (
-                <div className="grid gap-2 rounded-[10px] border border-[rgba(60,60,67,0.12)] bg-white/70 p-2 xl:grid-cols-[minmax(0,1fr)_auto_auto_auto] xl:items-center">
-                  <div className="grid gap-1.5">
-                    <label className="relative block">
-                      <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[rgba(60,60,67,0.45)]" size={15} />
-                      <input
-                        className="ku-input w-full pl-9"
-                        placeholder="로그 필터"
-                        value={logFilter}
-                        onChange={(event) => {
-                          setLogFilter(event.target.value);
-                          setActiveLogMatchIndex(0);
-                          setLogCopyStatus(null);
-                        }}
-                        onKeyDown={(event) => {
-                          if (event.key === 'Enter' && logFilterActive) {
-                            event.preventDefault();
-                            moveActiveLogMatch(event.shiftKey ? -1 : 1);
-                          }
-                        }}
-                      />
-                    </label>
-                    {logFilterActive ? (
-                      <div className="flex flex-wrap items-center gap-1.5">
-                        <span className="ku-chip" data-testid="log-search-match-summary">
-                          {logSearchMatches.length > 0 ? `${activeLogMatchNumber} / ${logSearchMatches.length} matches` : '0 matches'}
-                        </span>
-                        <div className="grid grid-cols-2 rounded-[8px] border border-[rgba(60,60,67,0.12)] bg-white/75 p-0.5" aria-label="로그 검색 매치 이동">
-                          <button
-                            className="inline-flex items-center justify-center gap-1 rounded-[6px] px-2 py-1 text-[10px] font-semibold text-[rgba(60,60,67,0.72)] transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-45"
-                            type="button"
-                            onClick={() => moveActiveLogMatch(-1)}
-                            disabled={logSearchMatches.length === 0}
-                            aria-label="이전 로그 검색 매치"
-                            data-testid="log-search-previous"
-                          >
-                            <ArrowUp size={12} aria-hidden="true" />
-                            이전
-                          </button>
-                          <button
-                            className="inline-flex items-center justify-center gap-1 rounded-[6px] px-2 py-1 text-[10px] font-semibold text-[rgba(60,60,67,0.72)] transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-45"
-                            type="button"
-                            onClick={() => moveActiveLogMatch(1)}
-                            disabled={logSearchMatches.length === 0}
-                            aria-label="다음 로그 검색 매치"
-                            data-testid="log-search-next"
-                          >
-                            <ArrowDown size={12} aria-hidden="true" />
-                            다음
-                          </button>
-                        </div>
-                      </div>
-                    ) : null}
-                  </div>
-                  <div className="grid grid-cols-5 rounded-[9px] border border-[rgba(60,60,67,0.12)] bg-white/70 p-0.5" aria-label="로그 시간 범위">
-                    {eventTimeRangeOptions.map((option) => (
-                      <button
-                        key={option.value}
-                        className={`rounded-[7px] px-2 py-1 text-xs font-semibold transition ${
-                          logTimeRangeFilter === option.value ? 'bg-[#1d1d1f] text-white shadow-sm' : 'text-[rgba(60,60,67,0.72)] hover:bg-white'
-                        }`}
-                        type="button"
-                        onClick={() => {
-                          setLogTimeRangeFilter(option.value);
-                          setActiveLogMatchIndex(0);
-                          setLogCopyStatus(null);
-                        }}
-                        aria-pressed={logTimeRangeFilter === option.value}
-                        data-testid={`log-time-range-${option.value}`}
-                        title={option.value === 'all' ? '모든 로그 보기' : `최근 ${option.label} 로그만 보기`}
-                      >
-                        {option.label}
-                      </button>
-                    ))}
-                  </div>
-                  <div className="grid grid-cols-3 rounded-[9px] border border-[rgba(60,60,67,0.12)] bg-white/70 p-0.5" aria-label="로그 정렬">
-                    {logSortOptions.map((option) => (
-                      <button
-                        key={option.value}
-                        className={`rounded-[7px] px-2 py-1 text-xs font-semibold transition ${
-                          logSortOrder === option.value ? 'bg-[#1d1d1f] text-white shadow-sm' : 'text-[rgba(60,60,67,0.72)] hover:bg-white'
-                        }`}
-                        type="button"
-                        onClick={() => {
-                          setLogSortOrder(option.value);
-                          setActiveLogMatchIndex(0);
-                          setLogCopyStatus(null);
-                        }}
-                        aria-pressed={logSortOrder === option.value}
-                        data-testid={`log-sort-${option.value}`}
-                        title={`로그 ${option.label} 보기`}
-                      >
-                        {option.label}
-                      </button>
-                    ))}
-                  </div>
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="ku-chip">
-                      {filteredLogLines.length} / {logLines.length}
-                    </span>
-                    {logControlsActive ? (
-                      <button
-                        className="rounded-[9px] border border-[rgba(60,60,67,0.12)] bg-white px-2.5 py-1.5 text-xs font-semibold text-[rgba(60,60,67,0.72)] transition hover:bg-[rgba(242,242,247,0.9)]"
-                        type="button"
-                        onClick={() => {
-                          setLogFilter('');
-                          setActiveLogMatchIndex(0);
-                          setLogTimeRangeFilter('all');
-                          setLogSortOrder('received');
-                          setLogCopyStatus(null);
-                        }}
-                      >
-                        초기화
-                      </button>
-                    ) : null}
-                  </div>
-                </div>
-              ) : null}
-              {logLines.length > 0 ? (
-                <div className="flex flex-wrap items-center gap-2">
-                  <button
-                    className="inline-flex items-center gap-1.5 rounded-[9px] border border-[rgba(60,60,67,0.12)] bg-white px-2.5 py-1.5 text-xs font-semibold text-[rgba(60,60,67,0.72)] transition hover:bg-[rgba(242,242,247,0.9)] disabled:cursor-not-allowed disabled:opacity-55"
-                    type="button"
-                    onClick={() => void handleCopyLogs('visible')}
-                    disabled={!canCopyVisibleLogs}
-                  >
-                    <Copy size={13} aria-hidden="true" />
-                    표시 로그 복사
-                  </button>
-                  {canCopyAllLogs ? (
-                    <button
-                      className="inline-flex items-center gap-1.5 rounded-[9px] border border-[rgba(60,60,67,0.12)] bg-white px-2.5 py-1.5 text-xs font-semibold text-[rgba(60,60,67,0.72)] transition hover:bg-[rgba(242,242,247,0.9)]"
-                      type="button"
-                      onClick={() => void handleCopyLogs('all')}
-                    >
-                      <Copy size={13} aria-hidden="true" />
-                      전체 로그 복사
-                    </button>
-                  ) : null}
-                  <button
-                    className="inline-flex items-center gap-1.5 rounded-[9px] border border-[rgba(60,60,67,0.12)] bg-white px-2.5 py-1.5 text-xs font-semibold text-[rgba(60,60,67,0.72)] transition hover:bg-[rgba(242,242,247,0.9)] disabled:cursor-not-allowed disabled:opacity-55"
-                    type="button"
-                    onClick={() => handleDownloadLogs('visible')}
-                    disabled={!canDownloadVisibleLogs}
-                  >
-                    <Download size={13} aria-hidden="true" />
-                    표시 로그 다운로드
-                  </button>
-                  {canDownloadAllLogs ? (
-                    <button
-                      className="inline-flex items-center gap-1.5 rounded-[9px] border border-[rgba(60,60,67,0.12)] bg-white px-2.5 py-1.5 text-xs font-semibold text-[rgba(60,60,67,0.72)] transition hover:bg-[rgba(242,242,247,0.9)]"
-                      type="button"
-                      onClick={() => handleDownloadLogs('all')}
-                    >
-                      <Download size={13} aria-hidden="true" />
-                      전체 로그 다운로드
-                    </button>
-                  ) : null}
-                  {logCopyStatus ? (
-                    <span
-                      className={`rounded-[9px] border px-2.5 py-1.5 text-xs font-semibold ${
-                        logCopyStatus.tone === 'success'
-                          ? 'border-[rgba(52,199,89,0.24)] bg-[rgba(52,199,89,0.1)] text-[#19783b]'
-                          : 'border-[rgba(255,149,0,0.22)] bg-[rgba(255,149,0,0.08)] text-[#8a4d00]'
-                      }`}
-                    >
-                      {logCopyStatus.message}
-                    </span>
-                  ) : null}
-                </div>
-              ) : null}
-              {logsWarning ? <InlineWarning message="로그 조회 권한이 없거나 API가 없어 빈 목록으로 표시합니다." /> : null}
-              {logsError ? <InlineWarning message={`로그 조회 실패: ${logsError}`} /> : null}
-              {logLines.length === 0 ? (
-                <p className="ku-meta">표시할 로그가 없습니다.</p>
-              ) : filteredLogLines.length === 0 ? (
-                <p className="ku-meta">필터와 일치하는 로그가 없습니다.</p>
-              ) : (
-                <ResourceLogLines
-                  activeMatch={activeLogMatch}
-                  lineRefs={logLineRefs}
-                  lines={filteredLogLines}
-                  normalizedFilter={normalizedLogFilter}
-                  rowClassName={logRowClassName}
-                  viewportClassName={logViewportClassName}
-                />
-              )}
-            </div>
-          )}
-        </DetailSection>
+        <ResourceEventsSection
+          actions={{
+            clearNewEvents: handleClearNewEvents,
+            dismissNotification: () => setEventNotificationNotice(null),
+            download: handleDownloadEvents,
+            focusSection: () => setActiveDetailSectionId('events'),
+            refresh: handleRefreshEvents,
+            resetControls: () => {
+              setEventFilter('');
+              setEventSeverityFilter('all');
+              setEventTimeRangeFilter('all');
+              setEventSortOrder('newest');
+              setPinnedEventKeys(new Set());
+              setShowNewEventsOnly(false);
+            },
+            setFilter: setEventFilter,
+            setSeverityFilter: setEventSeverityFilter,
+            setShowNewOnly: setShowNewEventsOnly,
+            setSortOrder: setEventSortOrder,
+            setTimeRangeFilter: setEventTimeRangeFilter,
+            showNewEvents: handleShowNewEvents,
+            toggleAutoRefresh: handleEventsAutoRefreshToggle,
+            toggleNotifications: handleEventsWarningNotificationsToggle,
+            togglePinned: togglePinnedEvent,
+            toggleSection: () => toggleSection('events'),
+          }}
+          model={{
+            active: activeDetailSectionId === 'events',
+            autoRefreshActive: eventsAutoRefreshActive,
+            canExport: canExportEvents,
+            canRefresh: canRefreshEvents,
+            controlsActive: Boolean(eventControlsActive),
+            error: eventsError,
+            eventFilter,
+            events,
+            filterSummary: eventFilterSummary,
+            filteredCount: filteredEvents.length,
+            groups: eventGroups,
+            hasNewEvents,
+            lastUpdatedAt: eventsLastUpdatedAt,
+            liveEnabled,
+            loading: eventsLoading,
+            newEventCount,
+            newEventKeys,
+            notificationNotice: eventNotificationNotice,
+            notificationsEnabled: eventsWarningNotificationsEnabled,
+            normalizedFilter: normalizedEventFilter,
+            open: isSectionOpen('events'),
+            pinnedEventKeys,
+            pinnedEvents,
+            sectionRef: setDetailSectionRef('events'),
+            severityCounts: eventSeverityCounts,
+            severityFilter: eventSeverityFilter,
+            showNewOnly: showNewEventsOnly,
+            sortOrder: eventSortOrder,
+            summary: detailSectionSummaries.events,
+            timeRangeFilter: eventTimeRangeFilter,
+            tone: eventHasWarning ? 'warning' : 'default',
+            warning: eventsWarning,
+          }}
+        />
+        <ResourceLogsSection
+          actions={{
+            changeContainer: (value) => {
+              stopLogStream();
+              setSelectedLogContainer(value);
+              clearLogOutput();
+            },
+            changeFilter: (value) => {
+              setLogFilter(value);
+              setActiveLogMatchIndex(0);
+              setLogCopyStatus(null);
+            },
+            changePrevious: (value) => {
+              stopLogStream();
+              setPreviousLogs(value);
+              clearLogOutput();
+            },
+            changeSortOrder: (value) => {
+              setLogSortOrder(value);
+              setActiveLogMatchIndex(0);
+              setLogCopyStatus(null);
+            },
+            changeTimeRange: (value) => {
+              setLogTimeRangeFilter(value);
+              setActiveLogMatchIndex(0);
+              setLogCopyStatus(null);
+            },
+            copy: (mode) => void handleCopyLogs(mode),
+            download: handleDownloadLogs,
+            fetch: () => void handleFetchLogs(),
+            focusSection: () => setActiveDetailSectionId('logs'),
+            moveMatch: moveActiveLogMatch,
+            resetControls: () => {
+              setLogFilter('');
+              setActiveLogMatchIndex(0);
+              setLogTimeRangeFilter('all');
+              setLogSortOrder('received');
+              setLogCopyStatus(null);
+            },
+            setDensity: setLogDensity,
+            stream: () => void handleStreamLogs(),
+            togglePause: logsPaused ? handleResumeLogStream : handlePauseLogStream,
+            toggleSection: () => toggleSection('logs'),
+          }}
+          model={{
+            active: activeDetailSectionId === 'logs',
+            activeMatch: activeLogMatch || undefined,
+            activeMatchNumber: activeLogMatchNumber,
+            canCopyAll: canCopyAllLogs,
+            canCopyVisible: canCopyVisibleLogs,
+            canDownloadAll: canDownloadAllLogs,
+            canDownloadVisible: canDownloadVisibleLogs,
+            canFetch: canFetchLogs,
+            containerOptions: logContainerOptions,
+            controlsActive: logControlsActive,
+            copyStatus: logCopyStatus,
+            density: logDensity,
+            effectiveContainer: effectiveLogContainer,
+            error: logsError,
+            filter: logFilter,
+            filterActive: logFilterActive,
+            filteredLines: filteredLogLines,
+            lineRefs: logLineRefs,
+            lines: logLines,
+            loading: logsLoading,
+            normalizedFilter: normalizedLogFilter,
+            open: isSectionOpen('logs'),
+            paused: logsPaused,
+            pendingCount: pendingLogCount,
+            previous: previousLogs,
+            rowClassName: logRowClassName,
+            searchMatchCount: logSearchMatches.length,
+            sectionRef: setDetailSectionRef('logs'),
+            sortOrder: logSortOrder,
+            streaming: logsStreaming,
+            summary: detailSectionSummaries.logs,
+            timeRangeFilter: logTimeRangeFilter,
+            viewportClassName: logViewportClassName,
+            warning: logsWarning,
+          }}
+        />
       </div>
     </div>
   );
