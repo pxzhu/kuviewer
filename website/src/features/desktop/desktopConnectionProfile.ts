@@ -1,6 +1,8 @@
 import { isDesktopRuntime } from './desktopRuntime';
+import { desktopCmDefaultRemoteApiHost, desktopCmDefaultRemoteApiPort } from './desktopCmSessionDefaults';
 
 export { isDesktopRuntime } from './desktopRuntime';
+export { desktopCmDefaultRemoteApiHost, desktopCmDefaultRemoteApiPort } from './desktopCmSessionDefaults';
 
 export interface DesktopConnectionProfile {
   serverUrl: string;
@@ -113,9 +115,6 @@ const maxCmSessionHostLength = 180;
 const maxCmSessionUserLength = 80;
 const maxCmSessionDescriptionLength = 160;
 const maxCmSessionKeyFilePathLength = 1024;
-export const desktopCmDefaultRemoteApiHost = '127.0.0.1';
-export const desktopCmDefaultRemoteApiPort = 18085;
-
 type TauriInvoke = <Response>(command: string, args?: Record<string, unknown>) => Promise<Response>;
 
 type DesktopWindow = Window & {
