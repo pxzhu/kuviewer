@@ -1,5 +1,5 @@
 import { type DragEvent as ReactDragEvent, type KeyboardEvent, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowDown, ArrowUp, Bookmark, CheckCircle2, ChevronDown, ChevronRight, Copy, Download, Filter, Folder, GripVertical, KeyRound, Pencil, Play, Search, ServerCog, ShieldCheck, Trash2, Unplug, Upload, XCircle } from 'lucide-react';
+import { Bookmark, CheckCircle2, Download, Filter, Folder, KeyRound, Play, Search, ServerCog, ShieldCheck, Trash2, Unplug, Upload, XCircle } from 'lucide-react';
 import {
   createDesktopCmSessionExportBundle,
   desktopCmDefaultRemoteApiHost,
@@ -52,7 +52,6 @@ import {
   desktopCmSessionLayoutEqual,
   desktopCmSessionLayoutFolderOrder,
   downloadDesktopCmSessionLayoutBundle,
-  formatDesktopCmSessionLayoutSummary,
   matchesDesktopCmSessionLayoutFolderFilter,
   matchesDesktopCmSessionLayoutSearch,
   maxDesktopCmSessionLayoutFolderNameLength,
@@ -90,6 +89,10 @@ import {
   type DesktopCmSessionLayoutImportConflictPreview,
   type DesktopCmSessionLayoutConflictResolution,
 } from './desktopCm/DesktopCmLayoutConflictPanel';
+import {
+  DesktopCmLayoutList,
+  desktopCmSessionLayoutReorderDisabledReasonId,
+} from './desktopCm/DesktopCmLayoutList';
 
 interface DesktopCmSessionPanelProps {
   message: string;
@@ -260,15 +263,6 @@ export function DesktopCmSessionPanel({
   const sessionLayoutReorderBlocked = sessionLayoutSearchActive || sessionLayoutFolderFilterActive;
   const canReorderSessionLayoutFolders = sessionLayoutFolderNames.length > 1 && !sessionLayoutReorderBlocked;
   const canReorderSessionLayoutPresets = visibleSessionLayoutPresets.length > 1 && !sessionLayoutReorderBlocked;
-  const sessionLayoutFolderListTitleId = 'desktop-cm-session-layout-folder-list-title';
-  const sessionLayoutFolderKeyboardDescriptionId = 'desktop-cm-session-layout-folder-keyboard-description';
-  const sessionLayoutFolderKeyboardLiveStatusId = 'desktop-cm-session-layout-folder-keyboard-live-status';
-  const sessionLayoutReorderKeyboardDescriptionId = 'desktop-cm-session-layout-reorder-keyboard-description';
-  const sessionLayoutReorderKeyboardStatusId = 'desktop-cm-session-layout-reorder-keyboard-status';
-  const sessionLayoutReorderDisabledDescriptionId = 'desktop-cm-session-layout-reorder-disabled-description';
-  const sessionLayoutReorderDisabledReasonId = 'desktop-cm-session-layout-reorder-disabled-reason';
-  const sessionLayoutReorderFocusDescriptionId = 'desktop-cm-session-layout-reorder-focus-description';
-  const sessionLayoutReorderFocusStatusId = 'desktop-cm-session-layout-reorder-focus-status';
   const sessionLayoutReorderFilterDisabledReason =
     sessionLayoutSearchActive && sessionLayoutFolderFilterActive
       ? 'Reorder unavailable: layout search and folder filter are active. Clear both filters to reorder.'
@@ -1973,7 +1967,7 @@ export function DesktopCmSessionPanel({
                 aria-live="polite"
                 className={`ku-chip ${sessionLayoutReorderUnavailableReason ? 'border-[rgba(255,149,0,0.24)] bg-[rgba(255,149,0,0.1)] text-[#8a4d00]' : ''}`}
                 data-testid="desktop-cm-session-layout-reorder-state"
-                id={sessionLayoutReorderDisabledReasonId}
+                id={desktopCmSessionLayoutReorderDisabledReasonId}
                 role="status"
                 title={sessionLayoutReorderStateLabel}
               >
@@ -2099,443 +2093,63 @@ export function DesktopCmSessionPanel({
             {sessionLayoutImportConflicts ? (
               <DesktopCmLayoutConflictPanel preview={sessionLayoutImportConflicts} onResolve={handleResolveSessionLayoutImportConflicts} />
             ) : null}
-            {sessionLayoutPresets.length > 0 ? (
-              <>
-                <p className="sr-only" data-testid="desktop-cm-session-layout-folder-list-title" id={sessionLayoutFolderListTitleId}>
-                  Saved session layout folders
-                </p>
-                <p className="sr-only" data-testid="desktop-cm-session-layout-folder-keyboard-description" id={sessionLayoutFolderKeyboardDescriptionId}>
-                  Saved layout folder keyboard state is browser memory only. Use arrow keys, Home, End, Enter, S, R, and Escape when this folder list has focus. Shift plus arrow keys, Home, or End reorders the active folder when search and folder filters are clear.
-                </p>
-                <p className="sr-only" data-testid="desktop-cm-session-layout-reorder-keyboard-description" id={sessionLayoutReorderKeyboardDescriptionId}>
-                  Reorder keyboard state is browser memory only. Focus a folder or layout drag handle and use ArrowUp, ArrowDown, Home, or End to reorder without adding saved fields.
-                </p>
-                <p className="sr-only" data-testid="desktop-cm-session-layout-reorder-disabled-description" id={sessionLayoutReorderDisabledDescriptionId}>
-                  Disabled reorder controls explain whether search, folder filter, item edge position, or not enough folders and presets prevents reordering.
-                </p>
-                <p className="sr-only" data-testid="desktop-cm-session-layout-reorder-focus-description" id={sessionLayoutReorderFocusDescriptionId}>
-                  After a layout folder or preset reorder, focus returns to the moved drag handle or the saved layout folder list without scrolling the panel.
-                </p>
-                <p aria-atomic="true" aria-live="polite" className="sr-only" data-testid="desktop-cm-session-layout-folder-keyboard-live-status" id={sessionLayoutFolderKeyboardLiveStatusId} role="status">
-                  {sessionLayoutFolderKeyboardLiveText}
-                </p>
-                <p aria-atomic="true" aria-live="polite" className="sr-only" data-testid="desktop-cm-session-layout-reorder-keyboard-status" id={sessionLayoutReorderKeyboardStatusId} role="status">
-                  {sessionLayoutReorderKeyboardLiveText}
-                </p>
-                <p aria-atomic="true" aria-live="polite" className="sr-only" data-testid="desktop-cm-session-layout-reorder-focus-status" id={sessionLayoutReorderFocusStatusId} role="status">
-                  {sessionLayoutReorderFocusLiveText}
-                </p>
-                <div
-                  ref={sessionLayoutFolderListRef}
-                  aria-activedescendant={
-                    activeSessionLayoutFolder ? `desktop-cm-session-layout-folder-row-${slugifyDesktopCmTestId(activeSessionLayoutFolder.folder)}` : undefined
-                  }
-                  aria-describedby={`${sessionLayoutFolderKeyboardDescriptionId} ${sessionLayoutReorderKeyboardDescriptionId} ${sessionLayoutReorderDisabledDescriptionId} ${sessionLayoutReorderDisabledReasonId} ${sessionLayoutReorderFocusDescriptionId} ${sessionLayoutFolderKeyboardLiveStatusId} ${sessionLayoutReorderKeyboardStatusId} ${sessionLayoutReorderFocusStatusId}`}
-                  aria-keyshortcuts="ArrowUp ArrowDown Home End Enter S R Escape Shift+ArrowUp Shift+ArrowDown Shift+Home Shift+End"
-                  aria-labelledby={sessionLayoutFolderListTitleId}
-                  className="grid min-w-0 gap-2 outline-none focus-visible:ring-2 focus-visible:ring-[rgba(0,122,255,0.22)]"
-                  data-testid="desktop-cm-session-layout-list"
-                  onKeyDown={handleSessionLayoutFolderKeyDown}
-                  role="list"
-                  tabIndex={0}
-                >
-                {groupedSessionLayoutPresets.map((folder, folderIndex) => {
-                  const folderActive = activeSessionLayoutFolderName === folder.folder;
-                  const folderRowId = `desktop-cm-session-layout-folder-row-${folder.slug}`;
-                  const folderTitleId = `desktop-cm-session-layout-folder-title-${folder.slug}`;
-                  const folderCountId = `desktop-cm-session-layout-folder-a11y-count-${folder.slug}`;
-                  const folderActionsId = `desktop-cm-session-layout-folder-actions-${folder.slug}`;
-                  const folderItemsId = `desktop-cm-session-layout-folder-items-${folder.slug}`;
-                  const canMoveFolderUp = canReorderSessionLayoutFolders && folderIndex > 0;
-                  const canMoveFolderDown = canReorderSessionLayoutFolders && folderIndex < groupedSessionLayoutPresets.length - 1;
-                  const folderDragDisabledReason = sessionLayoutFolderReorderDisabledReason(folder.folder);
-                  const folderMoveUpDisabledReason = sessionLayoutFolderReorderDisabledReason(folder.folder, 'up');
-                  const folderMoveDownDisabledReason = sessionLayoutFolderReorderDisabledReason(folder.folder, 'down');
-                  return (
-                  <div
-                    key={folder.folder}
-                    aria-current={folderActive ? 'true' : undefined}
-                    aria-describedby={`${folderCountId} ${folderActionsId}`}
-                    aria-labelledby={folderTitleId}
-                    className={`grid gap-2 rounded-[8px] border px-2 py-2 transition ${draggingSessionLayoutFolderName === folder.folder ? 'opacity-60' : ''} ${
-                      folderActive
-                        ? 'border-[rgba(0,122,255,0.34)] bg-white/82 shadow-[0_0_0_2px_rgba(0,122,255,0.1)]'
-                        : 'border-[rgba(60,60,67,0.08)] bg-white/56'
-                    }`}
-                    data-testid={`desktop-cm-session-layout-folder-${folder.slug}`}
-                    id={folderRowId}
-                    onClick={() => setActiveSessionLayoutFolderName(folder.folder)}
-                    onDragOver={(event) => {
-                      if (canReorderSessionLayoutFolders) {
-                        event.preventDefault();
-                      }
-                    }}
-                    onDrop={(event) => handleDropSessionLayoutFolder(folder.folder, event)}
-                    role="listitem"
-                  >
-                    <div className="flex min-w-0 flex-wrap items-center gap-2">
-                      <button
-                        aria-label={`${folder.folder} layout folder 순서 드래그`}
-                        aria-describedby={`${sessionLayoutReorderKeyboardDescriptionId} ${sessionLayoutReorderDisabledDescriptionId} ${sessionLayoutReorderDisabledReasonId} ${sessionLayoutReorderFocusDescriptionId} ${sessionLayoutReorderFocusStatusId} ${folderActionsId}`}
-                        aria-keyshortcuts="ArrowUp ArrowDown Home End"
-                        className="ku-control h-8 text-xs"
-                        data-testid={`desktop-cm-session-layout-folder-drag-handle-${folder.slug}`}
-                        disabled={!canReorderSessionLayoutFolders}
-                        draggable={canReorderSessionLayoutFolders}
-                        title={canReorderSessionLayoutFolders ? 'Drag to reorder layout folder' : folderDragDisabledReason}
-                        type="button"
-                        onDragStart={(event) => {
-                          if (!canReorderSessionLayoutFolders) {
-                            event.preventDefault();
-                            return;
-                          }
-                          setDraggingSessionLayoutFolderName(folder.folder);
-                          event.dataTransfer.effectAllowed = 'move';
-                          event.dataTransfer.setData('application/x-kuviewer-layout-folder', folder.folder);
-                          event.dataTransfer.setData('text/plain', folder.folder);
-                        }}
-                        onDragEnd={() => setDraggingSessionLayoutFolderName('')}
-                        onKeyDown={(event) => handleSessionLayoutFolderReorderHandleKeyDown(folder.folder, event)}
-                      >
-                        <GripVertical size={13} aria-hidden="true" />
-                      </button>
-                      <button
-                        aria-label={`${folder.folder} layout folder 위로 이동`}
-                        aria-describedby={`${sessionLayoutReorderDisabledDescriptionId} ${sessionLayoutReorderDisabledReasonId}`}
-                        className="ku-control h-8 text-xs"
-                        data-testid={`desktop-cm-session-layout-folder-reorder-up-${folder.slug}`}
-                        disabled={!canMoveFolderUp}
-                        title={canMoveFolderUp ? `${folder.folder} layout folder move up` : folderMoveUpDisabledReason}
-                        type="button"
-                        onClick={() => handleMoveSessionLayoutFolderOrder(folder.folder, -1)}
-                      >
-                        <ArrowUp size={13} aria-hidden="true" />
-                      </button>
-                      <button
-                        aria-label={`${folder.folder} layout folder 아래로 이동`}
-                        aria-describedby={`${sessionLayoutReorderDisabledDescriptionId} ${sessionLayoutReorderDisabledReasonId}`}
-                        className="ku-control h-8 text-xs"
-                        data-testid={`desktop-cm-session-layout-folder-reorder-down-${folder.slug}`}
-                        disabled={!canMoveFolderDown}
-                        title={canMoveFolderDown ? `${folder.folder} layout folder move down` : folderMoveDownDisabledReason}
-                        type="button"
-                        onClick={() => handleMoveSessionLayoutFolderOrder(folder.folder, 1)}
-                      >
-                        <ArrowDown size={13} aria-hidden="true" />
-                      </button>
-                      <button
-                        aria-controls={folderItemsId}
-                        aria-expanded={!folder.collapsed}
-                        aria-label={`${folder.folder} layout folder ${folder.collapsed ? 'expand' : 'collapse'}`}
-                        className="ku-control h-8 text-xs"
-                        data-testid={`desktop-cm-session-layout-folder-toggle-${folder.slug}`}
-                        type="button"
-                        onClick={() => handleToggleSessionLayoutFolder(folder.folder)}
-                      >
-                        {folder.collapsed ? <ChevronRight size={13} aria-hidden="true" /> : <ChevronDown size={13} aria-hidden="true" />}
-                        <Folder size={13} aria-hidden="true" />
-                        <span className="truncate" id={folderTitleId}>{folder.folder}</span>
-                      </button>
-                      <span className="ku-chip" data-testid={`desktop-cm-session-layout-folder-count-${folder.slug}`} id={folderCountId}>
-                        {folder.presets.length} / {folder.totalCount}
-                      </span>
-                      <span className="sr-only" data-testid={`desktop-cm-session-layout-folder-actions-${folder.slug}`} id={folderActionsId}>
-                        {folder.folder} has {folder.presets.length} visible presets and {folder.totalCount} total presets. Keyboard actions can toggle, select visible presets, rename this folder, or reorder with Shift plus arrow keys. Reorder controls are UI-only and use saved layout preset array order.
-                      </span>
-                      {sessionLayoutFolderRenameTarget === folder.folder ? (
-                        <span
-                          aria-label={`Rename ${folder.folder} layout folder`}
-                          className="flex min-w-[220px] flex-1 flex-wrap items-center gap-1"
-                          data-testid={`desktop-cm-session-layout-folder-rename-editor-${folder.slug}`}
-                          role="group"
-                        >
-                          <input
-                            aria-label={`New name for ${folder.folder} layout folder`}
-                            className="ku-field h-8 min-w-[150px] flex-1 px-2 py-1 text-xs"
-                            data-testid={`desktop-cm-session-layout-folder-rename-input-${folder.slug}`}
-                            maxLength={maxDesktopCmSessionLayoutFolderNameLength}
-                            value={sessionLayoutFolderRenameDraft}
-                            onChange={(event) => setSessionLayoutFolderRenameDraft(event.target.value)}
-                            onKeyDown={(event) => {
-                              if (event.key === 'Enter') {
-                                event.preventDefault();
-                                handleSaveRenamedSessionLayoutFolder();
-                              }
-                              if (event.key === 'Escape') {
-                                event.preventDefault();
-                                handleCancelRenameSessionLayoutFolder();
-                              }
-                            }}
-                          />
-                          <button
-                            aria-label={`Save ${folder.folder} layout folder name`}
-                            className="ku-control h-8 text-xs"
-                            data-testid={`desktop-cm-session-layout-folder-rename-save-${folder.slug}`}
-                            type="button"
-                            onClick={handleSaveRenamedSessionLayoutFolder}
-                          >
-                            <CheckCircle2 size={13} aria-hidden="true" />
-                            저장
-                          </button>
-                          <button
-                            aria-label={`Cancel ${folder.folder} layout folder rename`}
-                            className="ku-control h-8 text-xs"
-                            data-testid={`desktop-cm-session-layout-folder-rename-cancel-${folder.slug}`}
-                            type="button"
-                            onClick={handleCancelRenameSessionLayoutFolder}
-                          >
-                            <XCircle size={13} aria-hidden="true" />
-                            취소
-                          </button>
-                        </span>
-                      ) : (
-                        <>
-                          <button
-                            aria-label={`Select visible layouts in ${folder.folder}`}
-                            className="ku-control h-8 text-xs"
-                            data-testid={`desktop-cm-session-layout-folder-select-${folder.slug}`}
-                            type="button"
-                            disabled={folder.presets.length === 0}
-                            onClick={() => handleSelectSessionLayoutFolderPresets(folder.folder)}
-                          >
-                            <CheckCircle2 size={13} aria-hidden="true" />
-                            Folder 선택
-                          </button>
-                          <button
-                            aria-label={`Rename ${folder.folder} layout folder`}
-                            className="ku-control h-8 text-xs"
-                            data-testid={`desktop-cm-session-layout-folder-rename-${folder.slug}`}
-                            type="button"
-                            onClick={() => handleStartRenameSessionLayoutFolder(folder.folder)}
-                          >
-                            <Pencil size={13} aria-hidden="true" />
-                            Folder 이름
-                          </button>
-                        </>
-                      )}
-                    </div>
-                    <div
-                      aria-hidden={folder.collapsed}
-                      className={`${folder.collapsed ? 'hidden' : 'flex'} min-w-0 flex-wrap items-center gap-2`}
-                      data-testid={`desktop-cm-session-layout-folder-items-${folder.slug}`}
-                      id={folderItemsId}
-                    >
-                        {folder.presets.length === 0 ? (
-                          <span
-                            className="flex min-w-0 items-center gap-2 rounded-[8px] border border-dashed border-[rgba(60,60,67,0.14)] bg-white/52 px-3 py-2 text-xs font-semibold text-[rgba(60,60,67,0.58)]"
-                            data-testid={`desktop-cm-session-layout-folder-empty-${folder.slug}`}
-                            role="status"
-                          >
-                            <Search size={13} aria-hidden="true" />
-                            이 folder에 일치하는 saved layout 없음
-                          </span>
-                        ) : null}
-                        {folder.presets.map((preset, presetIndex) => {
-                          const active = preset.name === activeSessionLayoutPresetName;
-                          const presetSlug = slugifyDesktopCmTestId(preset.name);
-                          const renaming = sessionLayoutRenameTargetName.toLowerCase() === preset.name.toLowerCase();
-                          const canReorderPresetInFolder = canReorderSessionLayoutPresets && folder.presets.length > 1;
-                          const canMovePresetUp = canReorderPresetInFolder && presetIndex > 0;
-                          const canMovePresetDown = canReorderPresetInFolder && presetIndex < folder.presets.length - 1;
-                          const presetDragDisabledReason = sessionLayoutPresetReorderDisabledReason(preset.name, folder.folder);
-                          const presetMoveUpDisabledReason = sessionLayoutPresetReorderDisabledReason(preset.name, folder.folder, 'up');
-                          const presetMoveDownDisabledReason = sessionLayoutPresetReorderDisabledReason(preset.name, folder.folder, 'down');
-                          return (
-                            <span
-                              key={preset.name}
-                              className={`ku-chip max-w-full gap-1 ${draggingSessionLayoutPresetName === preset.name ? 'opacity-60' : ''} ${renaming ? 'items-stretch' : ''} ${active ? 'border-[rgba(52,199,89,0.22)] bg-[rgba(52,199,89,0.1)] text-[#248a3d]' : ''}`}
-                              data-testid={`desktop-cm-session-layout-${presetSlug}`}
-                              onDragOver={(event) => {
-                                if (canReorderPresetInFolder) {
-                                  event.preventDefault();
-                                }
-                              }}
-                              onDrop={(event) => handleDropSessionLayoutPreset(preset.name, event)}
-                            >
-                              {renaming ? (
-                                <span className="flex min-w-0 flex-wrap items-center gap-1">
-                                  <input
-                                    className="ku-field h-7 min-w-[150px] flex-1 px-2 py-1 text-xs"
-                                    data-testid={`desktop-cm-session-layout-rename-input-${presetSlug}`}
-                                    maxLength={maxDesktopCmSessionLayoutPresetNameLength}
-                                    value={sessionLayoutRenameDraftName}
-                                    onChange={(event) => {
-                                      setSessionLayoutRenameDraftName(event.target.value);
-                                      setSessionLayoutRenameError('');
-                                    }}
-                                    onKeyDown={handleSessionLayoutRenameKeyDown}
-                                  />
-                                  <button
-                                    className="rounded-full p-0.5 hover:bg-[rgba(60,60,67,0.08)]"
-                                    data-testid={`desktop-cm-session-layout-rename-save-${presetSlug}`}
-                                    type="button"
-                                    title={`${preset.name} 이름 저장`}
-                                    onClick={handleSaveRenamedSessionLayoutPreset}
-                                  >
-                                    <CheckCircle2 size={12} aria-hidden="true" />
-                                  </button>
-                                  <button
-                                    className="rounded-full p-0.5 hover:bg-[rgba(60,60,67,0.08)]"
-                                    data-testid={`desktop-cm-session-layout-rename-cancel-${presetSlug}`}
-                                    type="button"
-                                    title={`${preset.name} 이름 변경 취소`}
-                                    onClick={handleCancelRenameSessionLayoutPreset}
-                                  >
-                                    <XCircle size={12} aria-hidden="true" />
-                                  </button>
-                                  {sessionLayoutRenameError ? (
-                                    <span className="text-[10px] font-bold text-[#b42318]" data-testid="desktop-cm-session-layout-rename-error">
-                                      {sessionLayoutRenameError}
-                                    </span>
-                                  ) : null}
-                                </span>
-                              ) : (
-                                <>
-                                  <button
-                                    aria-label={`${preset.name} layout 순서 드래그`}
-                                    aria-describedby={`${sessionLayoutReorderKeyboardDescriptionId} ${sessionLayoutReorderDisabledDescriptionId} ${sessionLayoutReorderDisabledReasonId} ${sessionLayoutReorderFocusDescriptionId} ${sessionLayoutReorderFocusStatusId}`}
-                                    aria-keyshortcuts="ArrowUp ArrowDown Home End"
-                                    className="rounded-full p-0.5 hover:bg-[rgba(60,60,67,0.08)] disabled:cursor-not-allowed disabled:opacity-45"
-                                    data-testid={`desktop-cm-session-layout-drag-handle-${presetSlug}`}
-                                    disabled={!canReorderPresetInFolder}
-                                    draggable={canReorderPresetInFolder}
-                                    title={canReorderPresetInFolder ? 'Drag to reorder layout preset' : presetDragDisabledReason}
-                                    type="button"
-                                    onDragStart={(event) => {
-                                      if (!canReorderPresetInFolder) {
-                                        event.preventDefault();
-                                        return;
-                                      }
-                                      setDraggingSessionLayoutPresetName(preset.name);
-                                      event.dataTransfer.effectAllowed = 'move';
-                                      event.dataTransfer.setData('application/x-kuviewer-layout-preset', preset.name);
-                                      event.dataTransfer.setData('text/plain', preset.name);
-                                    }}
-                                    onDragEnd={() => setDraggingSessionLayoutPresetName('')}
-                                    onKeyDown={(event) => handleSessionLayoutPresetReorderHandleKeyDown(preset.name, event)}
-                                  >
-                                    <GripVertical size={12} aria-hidden="true" />
-                                  </button>
-                                  <button
-                                    aria-label={`${preset.name} layout 위로 이동`}
-                                    aria-describedby={`${sessionLayoutReorderDisabledDescriptionId} ${sessionLayoutReorderDisabledReasonId}`}
-                                    className="rounded-full p-0.5 hover:bg-[rgba(60,60,67,0.08)] disabled:cursor-not-allowed disabled:opacity-45"
-                                    data-testid={`desktop-cm-session-layout-reorder-up-${presetSlug}`}
-                                    disabled={!canMovePresetUp}
-                                    title={canMovePresetUp ? `${preset.name} layout move up` : presetMoveUpDisabledReason}
-                                    type="button"
-                                    onClick={() => handleMoveSessionLayoutPresetOrder(preset.name, -1)}
-                                  >
-                                    <ArrowUp size={12} aria-hidden="true" />
-                                  </button>
-                                  <button
-                                    aria-label={`${preset.name} layout 아래로 이동`}
-                                    aria-describedby={`${sessionLayoutReorderDisabledDescriptionId} ${sessionLayoutReorderDisabledReasonId}`}
-                                    className="rounded-full p-0.5 hover:bg-[rgba(60,60,67,0.08)] disabled:cursor-not-allowed disabled:opacity-45"
-                                    data-testid={`desktop-cm-session-layout-reorder-down-${presetSlug}`}
-                                    disabled={!canMovePresetDown}
-                                    title={canMovePresetDown ? `${preset.name} layout move down` : presetMoveDownDisabledReason}
-                                    type="button"
-                                    onClick={() => handleMoveSessionLayoutPresetOrder(preset.name, 1)}
-                                  >
-                                    <ArrowDown size={12} aria-hidden="true" />
-                                  </button>
-                                  <label className="inline-flex shrink-0 items-center gap-1 text-[10px] font-bold" data-testid={`desktop-cm-session-layout-bulk-select-${presetSlug}`}>
-                                    <input
-                                      className="h-3.5 w-3.5 accent-[#007aff]"
-                                      data-testid={`desktop-cm-session-layout-bulk-select-input-${presetSlug}`}
-                                      type="checkbox"
-                                      checked={selectedSessionLayoutPresetNames.has(preset.name)}
-                                      onChange={(event) => handleToggleSessionLayoutPresetSelection(preset.name, event.currentTarget.checked)}
-                                    />
-                                    선택
-                                  </label>
-                                  <button className="flex min-w-0 items-center gap-1 truncate" type="button" onClick={() => handleApplySessionLayoutPreset(preset)}>
-                                    <Folder size={12} aria-hidden="true" />
-                                    <span className="truncate">{preset.name}</span>
-                                    <span className="truncate font-mono text-[10px]">{formatDesktopCmSessionLayoutSummary(preset.viewPreferences)}</span>
-                                  </button>
-                                  <input
-                                    aria-label={`${preset.name} layout folder`}
-                                    className="ku-field h-7 w-[104px] px-2 py-1 text-[11px]"
-                                    data-testid={`desktop-cm-session-layout-folder-input-${presetSlug}`}
-                                    defaultValue={preset.folder}
-                                    key={`${preset.name}:${preset.folder}`}
-                                    maxLength={maxDesktopCmSessionLayoutFolderNameLength}
-                                    onBlur={(event) => handleUpdateSessionLayoutPresetFolder(preset.name, event.currentTarget.value)}
-                                    onKeyDown={(event) => {
-                                      if (event.key === 'Enter') {
-                                        event.preventDefault();
-                                        handleUpdateSessionLayoutPresetFolder(preset.name, event.currentTarget.value);
-                                        event.currentTarget.blur();
-                                      }
-                                    }}
-                                  />
-                                  <button
-                                    className="ml-1 rounded-full p-0.5 hover:bg-[rgba(60,60,67,0.08)]"
-                                    data-testid={`desktop-cm-session-layout-rename-${presetSlug}`}
-                                    type="button"
-                                    title={`${preset.name} 이름 변경`}
-                                    onClick={() => handleStartRenameSessionLayoutPreset(preset)}
-                                  >
-                                    <Pencil size={12} aria-hidden="true" />
-                                  </button>
-                                  <button
-                                    className="rounded-full p-0.5 hover:bg-[rgba(60,60,67,0.08)]"
-                                    data-testid={`desktop-cm-session-layout-duplicate-${presetSlug}`}
-                                    type="button"
-                                    title={`${preset.name} 복제`}
-                                    onClick={() => handleDuplicateSessionLayoutPreset(preset)}
-                                  >
-                                    <Copy size={12} aria-hidden="true" />
-                                  </button>
-                                  <button
-                                    className="rounded-full p-0.5 hover:bg-[rgba(60,60,67,0.08)]"
-                                    data-testid={`desktop-cm-session-layout-delete-${presetSlug}`}
-                                    type="button"
-                                    title={`${preset.name} 삭제`}
-                                    onClick={() => handleDeleteSessionLayoutPreset(preset.name)}
-                                  >
-                                    <XCircle size={12} aria-hidden="true" />
-                                  </button>
-                                </>
-                              )}
-                            </span>
-                          );
-                        })}
-                      </div>
-                  </div>
-                  );
-                })}
-                {sessionLayoutFilteredEmpty ? (
-                  <div
-                    className="flex min-w-0 flex-wrap items-center gap-2 rounded-[8px] border border-dashed border-[rgba(0,122,255,0.18)] bg-[rgba(0,122,255,0.05)] px-3 py-2 text-xs font-semibold text-[rgba(60,60,67,0.68)]"
-                    data-testid={sessionLayoutFolderFilterActive ? 'desktop-cm-session-layout-filter-empty' : 'desktop-cm-session-layout-search-empty'}
-                    role="status"
-                  >
-                    <Filter size={13} aria-hidden="true" />
-                    <span>{sessionLayoutFilteredEmptyLabel}</span>
-                    <span className="font-mono text-[11px]">
-                      search={sessionLayoutSearchActive ? sessionLayoutSearchQuery.trim() : 'all'} · folder={sessionLayoutFolderFilterActive ? sessionLayoutFolderFilter : 'all'}
-                    </span>
-                  </div>
-                ) : null}
-                </div>
-              </>
-            ) : (
-              <div
-                className="flex min-w-0 flex-wrap items-center gap-2 rounded-[8px] border border-dashed border-[rgba(60,60,67,0.14)] bg-white/52 px-3 py-2 text-xs font-semibold text-[rgba(60,60,67,0.62)]"
-                data-testid="desktop-cm-session-layout-empty"
-                role="status"
-              >
-                <Folder size={13} aria-hidden="true" />
-                <span>저장된 session layout 없음</span>
-                <span className="font-mono text-[11px]">현재 layout 저장 후 folder별로 표시됨</span>
-              </div>
-            )}
-            <p className="text-xs font-semibold text-[rgba(60,60,67,0.58)]">
-              folder, session id, group, favorite, collapsed group만 저장 · search/diagnostic/runtime/credential/export session metadata 제외
-            </p>
+            <DesktopCmLayoutList
+              ref={sessionLayoutFolderListRef}
+              presetCount={sessionLayoutPresets.length}
+              folders={groupedSessionLayoutPresets}
+              activeFolderName={activeSessionLayoutFolderName}
+              activePresetName={activeSessionLayoutPresetName}
+              selectedPresetNames={selectedSessionLayoutPresetNames}
+              draggingFolderName={draggingSessionLayoutFolderName}
+              draggingPresetName={draggingSessionLayoutPresetName}
+              folderRenameTarget={sessionLayoutFolderRenameTarget}
+              folderRenameDraft={sessionLayoutFolderRenameDraft}
+              presetRenameTarget={sessionLayoutRenameTargetName}
+              presetRenameDraft={sessionLayoutRenameDraftName}
+              presetRenameError={sessionLayoutRenameError}
+              canReorderFolders={canReorderSessionLayoutFolders}
+              canReorderPresets={canReorderSessionLayoutPresets}
+              filteredEmpty={sessionLayoutFilteredEmpty}
+              filteredEmptyLabel={sessionLayoutFilteredEmptyLabel}
+              searchActive={sessionLayoutSearchActive}
+              searchQuery={sessionLayoutSearchQuery}
+              folderFilterActive={sessionLayoutFolderFilterActive}
+              folderFilter={sessionLayoutFolderFilter}
+              folderKeyboardLiveText={sessionLayoutFolderKeyboardLiveText}
+              reorderKeyboardLiveText={sessionLayoutReorderKeyboardLiveText}
+              reorderFocusLiveText={sessionLayoutReorderFocusLiveText}
+              folderDisabledReason={sessionLayoutFolderReorderDisabledReason}
+              presetDisabledReason={sessionLayoutPresetReorderDisabledReason}
+              actions={{
+                onListKeyDown: handleSessionLayoutFolderKeyDown,
+                onSetActiveFolder: setActiveSessionLayoutFolderName,
+                onSetDraggingFolder: setDraggingSessionLayoutFolderName,
+                onDropFolder: handleDropSessionLayoutFolder,
+                onFolderReorderKeyDown: handleSessionLayoutFolderReorderHandleKeyDown,
+                onMoveFolder: handleMoveSessionLayoutFolderOrder,
+                onToggleFolder: handleToggleSessionLayoutFolder,
+                onFolderRenameDraftChange: setSessionLayoutFolderRenameDraft,
+                onSaveFolderRename: handleSaveRenamedSessionLayoutFolder,
+                onCancelFolderRename: handleCancelRenameSessionLayoutFolder,
+                onSelectFolderPresets: handleSelectSessionLayoutFolderPresets,
+                onStartFolderRename: handleStartRenameSessionLayoutFolder,
+                onSetDraggingPreset: setDraggingSessionLayoutPresetName,
+                onDropPreset: handleDropSessionLayoutPreset,
+                onPresetReorderKeyDown: handleSessionLayoutPresetReorderHandleKeyDown,
+                onMovePreset: handleMoveSessionLayoutPresetOrder,
+                onPresetRenameDraftChange: setSessionLayoutRenameDraftName,
+                onClearPresetRenameError: () => setSessionLayoutRenameError(''),
+                onPresetRenameKeyDown: handleSessionLayoutRenameKeyDown,
+                onSavePresetRename: handleSaveRenamedSessionLayoutPreset,
+                onCancelPresetRename: handleCancelRenameSessionLayoutPreset,
+                onTogglePresetSelection: handleToggleSessionLayoutPresetSelection,
+                onApplyPreset: handleApplySessionLayoutPreset,
+                onUpdatePresetFolder: handleUpdateSessionLayoutPresetFolder,
+                onStartPresetRename: handleStartRenameSessionLayoutPreset,
+                onDuplicatePreset: handleDuplicateSessionLayoutPreset,
+                onDeletePreset: handleDeleteSessionLayoutPreset,
+              }}
+            />
           </div>
 
           <DesktopCmSessionBulkToolbar

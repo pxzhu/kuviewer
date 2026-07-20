@@ -56,7 +56,7 @@ const sourceModeBar = await readFile(path.join(repoRoot, 'website/src/components
 requireCondition(sourceModeBar.includes('desktopConnectionAvailable'), 'SourceModeBar must keep an explicit desktop runtime guard');
 requireCondition(sourceModeBar.includes('DesktopCmSessionPanel'), 'desktop session panel integration is missing');
 const desktopCmSessionPanel = await readFile(path.join(repoRoot, 'website/src/components/DesktopCmSessionPanel.tsx'), 'utf8');
-for (const componentName of ['DesktopCmLayoutConflictPanel', 'DesktopCmSessionList', 'DesktopCmSessionBulkToolbar']) {
+for (const componentName of ['DesktopCmLayoutConflictPanel', 'DesktopCmLayoutList', 'DesktopCmSessionList', 'DesktopCmSessionBulkToolbar']) {
   requireCondition(desktopCmSessionPanel.includes(componentName), `desktop session panel must use ${componentName}`);
 }
 

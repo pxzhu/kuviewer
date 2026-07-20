@@ -69,11 +69,12 @@
     "desktop/src-tauri/src/main.rs",
     "website/src/components/DesktopCmSessionPanel.tsx",
     "website/src/components/desktopCm/DesktopCmLayoutConflictPanel.tsx",
+    "website/src/components/desktopCm/DesktopCmLayoutList.tsx",
     "website/src/components/desktopCm/DesktopCmSessionList.tsx",
     "website/src/features/desktop/desktopCmSessionView.ts"
   ],
   "next": [
-    "split remaining saved-layout folder and preset list JSX into local-prototype modules",
+    "decide whether to extract the remaining saved-layout toolbar controller or archive the local prototype",
     "archive the desktop prototype if real CM workflows do not use it"
   ]
 }

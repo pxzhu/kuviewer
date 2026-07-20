@@ -25,15 +25,15 @@ async function smokeDesktopRuntime(browserInstance, url) {
   await page.addInitScript(() => {
     window.localStorage.clear();
     window.sessionStorage.clear();
-    window.localStorage.setItem('kuviewer_desktop_cm_session_layout_presets', JSON.stringify([{
-      name: 'Operations',
-      folder: 'General',
-      viewPreferences: {
-        sessions: [{ sessionId: 'cm-primary', group: 'General', favorite: false, updatedAt: 1 }],
-        collapsedGroups: [],
-      },
-      updatedAt: 1,
-    }]));
+    const layoutView = (favorite) => ({
+      sessions: [{ sessionId: 'cm-primary', group: 'General', favorite, updatedAt: 1 }],
+      collapsedGroups: [],
+    });
+    window.localStorage.setItem('kuviewer_desktop_cm_session_layout_presets', JSON.stringify([
+      { name: 'Operations', folder: 'General', viewPreferences: layoutView(false), updatedAt: 1 },
+      { name: 'Diagnostics', folder: 'General', viewPreferences: layoutView(false), updatedAt: 1 },
+      { name: 'Observe', folder: 'Ops', viewPreferences: layoutView(false), updatedAt: 1 },
+    ]));
     window.__TAURI__ = {
       core: {
         invoke: async (command) => {
@@ -74,6 +74,34 @@ async function smokeDesktopRuntime(browserInstance, url) {
   await page.getByTestId('desktop-cm-session-panel').waitFor({ state: 'visible', timeout: 10_000 });
   await page.getByTestId('desktop-cm-session-cm-primary').waitFor({ state: 'visible' });
   await page.getByTestId('desktop-cm-session-diagnostics-cm-primary').waitFor({ state: 'visible' });
+  await page.getByTestId('desktop-cm-session-layout-list').waitFor({ state: 'visible' });
+  await page.getByTestId('desktop-cm-session-layout-folder-general').waitFor({ state: 'visible' });
+  await page.getByTestId('desktop-cm-session-layout-operations').waitFor({ state: 'visible' });
+
+  await page.getByTestId('desktop-cm-session-layout-folder-reorder-down-general').click();
+  requireCondition(
+    (await page.getByTestId('desktop-cm-session-layout-list').locator(':scope > [role="listitem"]').first().getAttribute('data-testid')) === 'desktop-cm-session-layout-folder-ops',
+    'layout folder reorder must update the rendered order',
+  );
+  await page.getByTestId('desktop-cm-session-layout-reorder-down-operations').click();
+  const reorderedLayouts = await page.evaluate(() => JSON.parse(window.localStorage.getItem('kuviewer_desktop_cm_session_layout_presets') || '[]'));
+  requireCondition(
+    reorderedLayouts.filter((preset) => preset.folder === 'General').map((preset) => preset.name).join(',') === 'Diagnostics,Operations',
+    'layout preset reorder must update safe stored metadata',
+  );
+
+  await page.getByTestId('desktop-cm-session-layout-folder-toggle-general').click();
+  await page.getByTestId('desktop-cm-session-layout-folder-items-general').waitFor({ state: 'hidden' });
+  await page.getByTestId('desktop-cm-session-layout-folder-toggle-general').click();
+  await page.getByTestId('desktop-cm-session-layout-folder-items-general').waitFor({ state: 'visible' });
+  await page.getByTestId('desktop-cm-session-layout-bulk-select-input-operations').check();
+  await page.getByTestId('desktop-cm-session-layout-bulk-toolbar').waitFor({ state: 'visible' });
+  await page.getByTestId('desktop-cm-session-layout-bulk-clear-toolbar').click();
+  await page.getByTestId('desktop-cm-session-layout-bulk-toolbar').waitFor({ state: 'hidden' });
+  await page.getByTestId('desktop-cm-session-layout-search').fill('missing-layout');
+  await page.getByTestId('desktop-cm-session-layout-search-empty').waitFor({ state: 'visible' });
+  await page.getByTestId('desktop-cm-session-layout-search-clear').click();
+  await page.getByTestId('desktop-cm-session-layout-operations').waitFor({ state: 'visible' });
 
   await page.getByTestId('desktop-cm-session-search').fill('Primary');
   await page.getByTestId('desktop-cm-session-cm-primary').waitFor({ state: 'visible' });
