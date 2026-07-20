@@ -855,7 +855,13 @@ async function verifyResourceViewTeamSyncPolish(page, viewportName) {
     });
   });
 
-  await page.getByTestId('source-mode-live').click();
+  const liveModeButton = page.getByTestId('source-mode-live');
+  if ((await liveModeButton.getAttribute('aria-pressed')) === 'true') {
+    await page.getByTestId('source-mode-upload').click();
+    await expect(page.getByTestId('source-mode-upload')).toHaveAttribute('aria-pressed', 'true', { timeout: 10_000 });
+  }
+  await liveModeButton.click();
+  await expect(liveModeButton).toHaveAttribute('aria-pressed', 'true', { timeout: 10_000 });
   const unlockButton = page.getByTestId('unlock-live');
   if (await unlockButton.isVisible().catch(() => false)) {
     await page.getByTestId('live-token-input').fill(adminToken);
@@ -864,6 +870,7 @@ async function verifyResourceViewTeamSyncPolish(page, viewportName) {
   await expect(page.getByText('실시간 연결됨')).toBeVisible({ timeout: 10_000 });
   await page.getByLabel('주요 보기').getByRole('button', { name: '토폴로지', exact: true }).click();
   await expect(page.getByTestId('connector-capability-matrix')).toBeVisible({ timeout: 10_000 });
+  await page.getByTestId('connector-capability-refresh').click();
   await expect(page.getByTestId('connector-capability-summary')).toContainText('읽기 1 · 인증/권한 1 · 미설치 1 · 확인 실패 0 · 보호 1');
   await expect(page.getByTestId('connector-capability-required-warning')).toContainText('필수 Core 권한 1개');
   await page.getByTestId('connector-capability-details').locator('summary').click();
@@ -1037,14 +1044,14 @@ async function verifyResourceViewSearch(page) {
 
 async function verifyResourceActiveFilterChips(page) {
   const kindSelect = page.getByTestId('resource-filter-kind');
-  const availableKinds = await kindSelect.locator('option').evaluateAll((options) => options.map((option) => option.value));
+  const availableKinds = await readKuSelectOptionValues(page, 'resource-filter-kind');
   const targetKind = availableKinds.includes('Pod') ? 'Pod' : availableKinds.find((value) => value && value !== 'all');
   if (!targetKind) {
     throw new Error('resource kind filter had no selectable value');
   }
 
   await page.getByTestId('resource-view-query').fill('checkout');
-  await kindSelect.selectOption(targetKind);
+  await selectKuOption(page, 'resource-filter-kind', targetKind);
   await expect(page.getByTestId('resource-active-filters')).toBeVisible({ timeout: 10_000 });
   await expect(page.getByTestId('resource-active-filter-query')).toContainText('Search: checkout', { timeout: 10_000 });
   await expect(page.getByTestId('resource-active-filter-kind')).toContainText(`Kind: ${targetKind}`, { timeout: 10_000 });
@@ -1059,7 +1066,7 @@ async function verifyResourceActiveFilterChips(page) {
 
   await page.getByTestId('resource-active-filter-clear-all').click();
   await expect(page.getByTestId('resource-view-query')).toHaveValue('');
-  await expect(kindSelect).toHaveValue('all');
+  await expect(kindSelect).toHaveAttribute('data-selected-value', 'all');
   await expect(page.getByTestId('resource-active-filter-empty')).toBeVisible({ timeout: 10_000 });
   await expect(page.getByTestId('resource-active-filter-clear-all')).toHaveCount(0);
   await expect(page.getByTestId('resource-active-filter-count')).toHaveCount(0);
@@ -1199,7 +1206,14 @@ async function verifyResourceListSorting(page) {
     return;
   }
 
-  await page.getByTestId('resource-list-sort-field').selectOption('name');
+  const sortField = page.getByTestId('resource-list-sort-field');
+  await sortField.focus();
+  await page.keyboard.press('ArrowDown');
+  const sortListbox = page.locator('.ku-select-popover [data-slot="list-box"]');
+  await expect(sortListbox).toBeVisible({ timeout: 10_000 });
+  await page.keyboard.press('ArrowDown');
+  await page.keyboard.press('Enter');
+  await expect(sortField).toHaveAttribute('data-selected-value', 'name');
   await page.getByTestId('resource-list-sort-desc').click();
   await expect(page.getByTestId('resource-list-sort-desc')).toHaveAttribute('aria-pressed', 'true');
   const descendingNames = await visibleResourceNames(page);
@@ -1209,6 +1223,28 @@ async function verifyResourceListSorting(page) {
   await expect(page.getByTestId('resource-list-sort-asc')).toHaveAttribute('aria-pressed', 'true');
   const ascendingNames = await visibleResourceNames(page);
   assertSorted(ascendingNames, 'asc');
+}
+
+async function readKuSelectOptionValues(page, testId) {
+  const trigger = page.getByTestId(testId);
+  await trigger.click();
+  const listbox = page.locator('.ku-select-popover [data-slot="list-box"]');
+  await expect(listbox).toBeVisible({ timeout: 10_000 });
+  const values = await listbox.locator('[data-ku-select-value]').evaluateAll((options) =>
+    options.map((option) => option.getAttribute('data-ku-select-value')).filter(Boolean),
+  );
+  await page.keyboard.press('Escape');
+  await expect(listbox).toBeHidden({ timeout: 10_000 });
+  return values;
+}
+
+async function selectKuOption(page, testId, value) {
+  const trigger = page.getByTestId(testId);
+  await trigger.click();
+  const listbox = page.locator('.ku-select-popover [data-slot="list-box"]');
+  await expect(listbox).toBeVisible({ timeout: 10_000 });
+  await listbox.locator(`[data-ku-select-value="${value}"]`).click();
+  await expect(trigger).toHaveAttribute('data-selected-value', value);
 }
 
 async function verifyResourceListColumns(page) {
