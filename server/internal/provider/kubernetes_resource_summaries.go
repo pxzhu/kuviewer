@@ -170,10 +170,17 @@ func serviceStatus(service serviceResource, counts endpointCounter) string {
 	if len(service.Spec.Selector) == 0 {
 		return "unknown"
 	}
-	if counts.total == 0 || counts.ready < counts.total {
+	if counts.total == 0 || serviceTrafficReadyCount(service, counts) < counts.total {
 		return "warning"
 	}
 	return "healthy"
+}
+
+func serviceTrafficReadyCount(service serviceResource, counts endpointCounter) int {
+	if service.Spec.PublishNotReadyAddresses {
+		return counts.total
+	}
+	return counts.ready
 }
 
 func readyContainers(statuses []containerStatus) int {

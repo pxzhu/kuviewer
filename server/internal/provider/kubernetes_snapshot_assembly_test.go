@@ -129,22 +129,24 @@ func TestBuildKubernetesSnapshotNormalizesServiceEndpointConditions(t *testing.T
 	resources := newKubernetesSnapshotResources()
 	service := serviceResource{Metadata: metadata{Name: "api", Namespace: "app"}}
 	service.Spec.Selector = map[string]string{"app": "api"}
+	service.Spec.PublishNotReadyAddresses = true
 	resources.services.Items = []serviceResource{service}
 	readyFalse := false
 	servingTrue := true
 	terminatingTrue := true
-	draining := endpoint{}
+	draining := endpoint{Addresses: []string{"10.0.0.1"}}
 	draining.Conditions.Ready = &readyFalse
 	draining.Conditions.Serving = &servingTrue
 	draining.Conditions.Terminating = &terminatingTrue
 	resources.endpointSlices.Items = []endpointSliceResource{{
-		Metadata:  metadata{Name: "api-a", Namespace: "app", Labels: map[string]string{"kubernetes.io/service-name": "api"}},
-		Endpoints: []endpoint{draining, {}},
+		Metadata:    metadata{Name: "api-a", Namespace: "app", Labels: map[string]string{"kubernetes.io/service-name": "api"}},
+		AddressType: "IPv4",
+		Endpoints:   []endpoint{draining, {Addresses: []string{"10.0.0.2"}}},
 	}}
 
 	snapshot := buildKubernetesSnapshot("cluster-a", "Cluster A", resources)
 	serviceNode := snapshotNode(t, snapshot, "Service", "app", "api")
-	if serviceNode.Status != "warning" || serviceNode.Summary["readyEndpoints"] != "1/2" || serviceNode.Summary["servingEndpoints"] != "2/2" || serviceNode.Summary["terminatingEndpoints"] != 1 {
+	if serviceNode.Status != "healthy" || serviceNode.Summary["readyEndpoints"] != "1/2" || serviceNode.Summary["trafficReadyEndpoints"] != "2/2" || serviceNode.Summary["servingEndpoints"] != "2/2" || serviceNode.Summary["terminatingEndpoints"] != 1 || serviceNode.Summary["publishNotReadyAddresses"] != true {
 		t.Fatalf("service endpoint summary = %+v", serviceNode)
 	}
 }
