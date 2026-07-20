@@ -12,6 +12,24 @@ import {
   selectorKeySummary as selectorSummary,
   type LabelNamespaceRecord as NamespaceRecord,
 } from './labelSelector.ts';
+import {
+  gatewayHosts,
+  gatewayRouteBackendServices,
+  gatewayRouteParentGateways,
+  grpcRouteMethods,
+  isGatewayRouteKind,
+} from './gatewayRouteReferences.ts';
+import {
+  asArray,
+  asStringArray,
+  boolAt,
+  isRecord,
+  numberAt,
+  readAt,
+  stringAt,
+  uniqueStrings,
+  type KubeObject,
+} from './kubernetesObject.ts';
 import { normalizeUploadResourceKind } from './uploadResourceKinds.ts';
 export { importTopologySnapshot } from './importTopologySnapshot.ts';
 
@@ -25,23 +43,6 @@ export interface UploadedTopologyState {
 export interface UploadParseOptions {
   clusterId?: string;
   clusterName?: string;
-}
-
-interface KubeObject {
-  apiVersion?: string;
-  kind?: string;
-  metadata?: {
-    name?: string;
-    namespace?: string;
-    labels?: Record<string, string>;
-    ownerReferences?: Array<{ kind?: string; name?: string }>;
-    creationTimestamp?: string;
-  };
-  spec?: Record<string, unknown>;
-  status?: Record<string, unknown>;
-  data?: Record<string, unknown>;
-  binaryData?: Record<string, unknown>;
-  items?: KubeObject[];
 }
 
 interface BuildContext {
@@ -590,56 +591,11 @@ function ingressBackends(object: KubeObject) {
   return Array.from(services);
 }
 
-function gatewayRouteParentGateways(object: KubeObject, namespace: string) {
-  return asArray(readAt(object, ['spec', 'parentRefs']))
-    .filter((parentRef) => {
-      const kind = stringAt(parentRef, ['kind']);
-      const group = stringAt(parentRef, ['group']);
-      return (!kind || kind === 'Gateway') && (!group || group === 'gateway.networking.k8s.io');
-    })
-    .map((parentRef) => ({
-      name: stringAt(parentRef, ['name']),
-      namespace: stringAt(parentRef, ['namespace']) || namespace,
-    }))
-    .filter((parentRef) => parentRef.name);
-}
-
-function gatewayRouteBackendServices(object: KubeObject, namespace: string) {
-  const services: Array<{ name: string; namespace: string }> = [];
-  asArray(readAt(object, ['spec', 'rules'])).forEach((rule) => {
-    asArray(readAt(rule, ['backendRefs'])).forEach((backendRef) => {
-      const kind = stringAt(backendRef, ['kind']);
-      const group = stringAt(backendRef, ['group']);
-      const name = stringAt(backendRef, ['name']);
-      if (name && (!kind || kind === 'Service') && !group) {
-        services.push({ name, namespace: stringAt(backendRef, ['namespace']) || namespace });
-      }
-    });
-  });
-  return uniqueRefs(services);
-}
-
-function grpcRouteMethods(object: KubeObject) {
-  return uniqueStrings(
-    asArray(readAt(object, ['spec', 'rules'])).flatMap((rule) =>
-      asArray(rule.matches).map((match) => {
-        const service = stringAt(match, ['method', 'service']);
-        const method = stringAt(match, ['method', 'method']);
-        return service && method ? `${service}/${method}` : service || method;
-      }),
-    ),
-  );
-}
-
 function containerNames(value: unknown) {
   return asArray(value)
     .map((container) => stringAt(container, ['name']))
     .filter(Boolean)
     .sort();
-}
-
-function isGatewayRouteKind(kind: ResourceKind) {
-  return kind === 'HTTPRoute' || kind === 'GRPCRoute' || kind === 'TLSRoute' || kind === 'TCPRoute';
 }
 
 function crdServedVersions(object: KubeObject) {
@@ -736,14 +692,6 @@ function apiVersionParts(apiVersion: string) {
 
 function fieldCount(value: unknown) {
   return isRecord(value) ? Object.keys(value).length : 0;
-}
-
-function gatewayHosts(object: KubeObject) {
-  return uniqueStrings(
-    asArray(readAt(object, ['spec', 'listeners']))
-      .map((listener) => stringAt(listener, ['hostname']))
-      .filter(Boolean),
-  );
 }
 
 function forEachContainer(object: KubeObject, callback: (container: Record<string, unknown>) => void) {
@@ -897,49 +845,6 @@ function limitSummary(values: string[], limit: number) {
   return `${values.slice(0, limit).join(', ')} +${values.length - limit}`;
 }
 
-function readAt(value: unknown, path: string[]): unknown {
-  return path.reduce<unknown>((current, key) => (isRecord(current) ? current[key] : undefined), value);
-}
-
-function stringAt(value: unknown, path: string[]) {
-  const result = readAt(value, path);
-  return typeof result === 'string' ? result : '';
-}
-
-function numberAt(value: unknown, path: string[]) {
-  const result = readAt(value, path);
-  return typeof result === 'number' ? result : undefined;
-}
-
-function boolAt(value: unknown, path: string[]) {
-  const result = readAt(value, path);
-  return typeof result === 'boolean' ? result : undefined;
-}
-
-function asArray(value: unknown): Record<string, unknown>[] {
-  return Array.isArray(value) ? (value.filter(isRecord) as Record<string, unknown>[]) : [];
-}
-
-function asStringArray(value: unknown) {
-  return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
-}
-
-function uniqueRefs(values: Array<{ name: string; namespace: string }>) {
-  const seen = new Set<string>();
-  return values.filter((value) => {
-    const key = `${value.namespace}/${value.name}`;
-    if (seen.has(key)) {
-      return false;
-    }
-    seen.add(key);
-    return true;
-  });
-}
-
-function uniqueStrings(values: string[]) {
-  return Array.from(new Set(values)).sort();
-}
-
 function normalizeUploadOptions(options: UploadParseOptions): Required<UploadParseOptions> {
   const clusterName = options.clusterName?.trim() || defaultUploadedCluster;
   return {
@@ -955,8 +860,4 @@ function normalizeClusterId(value: string) {
     .replace(/[^a-z0-9._-]+/g, '-')
     .replace(/^-+|-+$/g, '');
   return normalized || defaultUploadedCluster;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
