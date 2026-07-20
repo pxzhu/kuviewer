@@ -133,17 +133,10 @@ func (b *graphBuilder) addOwnerEdge(kind string, meta metadata) {
 
 func (b *graphBuilder) addGatewayRouteNodes(kind string, routes gatewayRouteList) {
 	for _, route := range routes.Items {
-		summary := map[string]interface{}{
-			"rules":    len(route.Spec.Rules),
-			"backends": len(gatewayRouteBackendRefs(route)),
+		_, added := b.addTrackedResourceNode(kind, route.Metadata, gatewayRouteStatus(kind, route), gatewayRouteSummary(kind, route))
+		if added && (!validGatewayRouteSpec(kind, route) || !validGatewayRouteStatus(route)) {
+			b.recordResourceIssue(kind)
 		}
-		if kind != "TCPRoute" {
-			summary["hosts"] = joinSafeSummary(gatewayRouteHosts(route), 8, "")
-		}
-		if kind == "GRPCRoute" {
-			summary["methods"] = joinSafeSummary(grpcRouteMethods(route), 8, "")
-		}
-		b.addResourceNode(kind, route.Metadata, "healthy", summary)
 	}
 }
 
@@ -152,6 +145,9 @@ func (b *graphBuilder) addGatewayRouteEdges(kind string, routes gatewayRouteList
 	for _, route := range routes.Items {
 		routeID := b.nodeID(kind, route.Metadata.Namespace, route.Metadata.Name)
 		if !b.claimResourceNode(routeID, seen) {
+			continue
+		}
+		if !validGatewayRouteSpec(kind, route) {
 			continue
 		}
 		for _, parentRef := range gatewayRouteParentRefs(route) {

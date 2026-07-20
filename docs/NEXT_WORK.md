@@ -29,7 +29,8 @@
    - EndpointSlice 분석은 slice와 endpoint target/address identity, canonical address, duplicate, 개별·전체 endpoint/address 상한을 적용하고 partial observed 결과를 만들지 않는다. `ready`, `serving`, `terminating`은 Kubernetes nil 기본값을 포함해 별도 집계하며 Service summary가 관측 readiness, traffic readiness, draining 상태와 `publishNotReadyAddresses` 의도를 구분한다. Service selector와 NetworkPolicy peer는 첫 번째 유효 고유 Service/Pod/Namespace만 평가한다.
    - Workload/Pod status count는 공통 non-negative bounded scalar 경계를 사용하고 malformed 값은 `invalid` summary와 warning 상태로 fail-closed 처리한다.
    - Service schema/summary/status는 live/upload 독립 module에서 type 기본값, canonical single/dual-stack ClusterIP, IP family/policy 대응, ExternalName, port/name/protocol, targetPort/nodePort/appProtocol, internal/external traffic policy, healthCheckNodePort, loadBalancerClass/node-port allocation, ClientIP session timeout과 selector syntax/cardinality를 검증한다. `externalIPs`·source ranges·trafficDistribution은 bounded allowlist/count summary로 처리하고 deprecated `loadBalancerIP`는 주소를 보존하지 않는 marker로만 decode한다. invalid spec과 ExternalName selector는 Pod 비교 전에 차단하고 원격 원문 대신 `invalid`/safe summary와 kind-level diagnostic만 남긴다.
-   - Ingress schema/summary/status도 live/upload 독립 module에서 class, rule/path, Service/resource backend와 port, TLS host/Secret, collection 상한을 검증한다. status load-balancer IP/hostname 원문은 보존하지 않고 address/port/error count만 요약하며 malformed spec/status는 warning과 kind-level diagnostic으로 표시하고 backend edge를 만들지 않는다. 다음 provider 감사는 Gateway listener/route status condition과 address 비노출 경계를 우선한다.
+   - Ingress schema/summary/status도 live/upload 독립 module에서 class, rule/path, Service/resource backend와 port, TLS host/Secret, collection 상한을 검증한다. status load-balancer IP/hostname 원문은 보존하지 않고 address/port/error count만 요약하며 malformed spec/status는 warning과 kind-level diagnostic으로 표시하고 backend edge를 만들지 않는다.
+   - Gateway listener/address와 route parent/backend/status condition도 live/upload 독립 module에서 공식 collection/문법 경계를 검증한다. 주소와 condition message 원문은 보존하지 않고 type/count만 요약하며 malformed spec/status는 warning diagnostic과 edge 추론 중단으로 fail-closed 처리한다. 다음 provider 감사는 HPA metric target/status 또는 workload image/reference summary 경계를 우선한다.
 
 2. Resource Explorer panel extraction
    - Resource fetch/pagination abort, selection anchor, keyboard/bulk action은 controller hook으로 분리됐다.
@@ -61,7 +62,7 @@
    - Snapshot comparison reducer는 resource/relation/cluster 변화, clone 안정성, Secret-safe diff를 direct unit test로 검증한다.
    - Upload topology JSON import는 독립 sanitizer와 direct unit test로 collection cap, duplicate/dangling reference 거부, Secret/민감 metadata redaction을 검증한다.
    - CustomResource reference inference는 독립 bounded traversal과 direct unit test로 native/custom scope, cycle, depth, path, result cap을 검증한다.
-   - Upload Gateway route의 parent/backend 참조와 host/method 요약은 독립 parser module과 malformed-input direct test로 검증한다.
+   - Upload Gateway listener/address와 route parent/backend/status condition은 독립 parser module과 malformed-input/topology integration test로 검증한다.
    - NetworkPolicy LabelSelector 평가는 독립 pure module에서 Kubernetes key/value/operator 문법, namespace scope, malformed/oversized fail-closed 동작을 검증한다.
    - Visual smoke는 주요 화면과 브라우저 통합에 집중해 CI 시간을 관리한다.
 

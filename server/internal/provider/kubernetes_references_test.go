@@ -223,7 +223,7 @@ func TestIngressAndGatewaySummariesValidateRemoteStrings(t *testing.T) {
 	}
 
 	route := gatewayRouteResource{}
-	if err := json.Unmarshal([]byte(`{"metadata":{"namespace":"edge"},"spec":{"hostnames":["api.example.com","BAD.EXAMPLE.COM"],"parentRefs":[{"name":"public","kind":"Gateway"},{"name":"bad name"}],"rules":[{"backendRefs":[{"name":"api"},{"name":"bad name"}],"matches":[{"method":{"service":"checkout.v1.Cart","method":"GetCart"}},{"method":{"service":"credential\nvalue","method":"Bad"}}]}]}}`), &route); err != nil {
+	if err := json.Unmarshal([]byte(`{"metadata":{"namespace":"edge"},"spec":{"hostnames":["api.example.com"],"parentRefs":[{"name":"public","kind":"Gateway"}],"rules":[{"backendRefs":[{"name":"api","port":80}],"matches":[{"method":{"service":"checkout.v1.Cart","method":"GetCart"}}]}]}}`), &route); err != nil {
 		t.Fatalf("decode route: %v", err)
 	}
 	if got := strings.Join(gatewayRouteHosts(route), ","); got != "api.example.com" {
@@ -242,6 +242,7 @@ func TestIngressAndGatewaySummariesValidateRemoteStrings(t *testing.T) {
 
 func TestGatewayReferenceCollectionsAreBoundedAndDeterministic(t *testing.T) {
 	route := gatewayRouteResource{Metadata: metadata{Namespace: "edge"}}
+	route.Spec.Rules = []gatewayRouteRule{{}}
 	route.Spec.ParentRefs = []gatewayReference{
 		{Name: "zeta"},
 		{Name: "alpha"},
@@ -263,11 +264,16 @@ func TestGatewayReferenceCollectionsAreBoundedAndDeterministic(t *testing.T) {
 		route.Spec.Rules[ruleIndex].BackendRefs = make([]gatewayReference, maxGatewayRouteBackendReferences)
 		for refIndex := range route.Spec.Rules[ruleIndex].BackendRefs {
 			index := ruleIndex*maxGatewayRouteBackendReferences + refIndex
-			route.Spec.Rules[ruleIndex].BackendRefs[refIndex] = gatewayReference{Name: "service-" + strconv.Itoa(index)}
+			route.Spec.Rules[ruleIndex].BackendRefs[refIndex] = gatewayReference{Name: "service-" + strconv.Itoa(index), Port: 80}
 		}
 	}
+	if got := gatewayRouteBackendRefs(route); len(got) != 3*maxGatewayRouteBackendReferences {
+		t.Fatalf("gatewayRouteBackendRefs() returned %d refs, want all bounded references", len(got))
+	}
+
+	route.Spec.Rules = make([]gatewayRouteRule, maxGatewayRouteRules+1)
 	if got := gatewayRouteBackendRefs(route); len(got) != 0 {
-		t.Fatalf("gatewayRouteBackendRefs() returned %d refs, want total result cap rejection", len(got))
+		t.Fatalf("gatewayRouteBackendRefs() returned %d refs, want oversized rule collection rejected", len(got))
 	}
 }
 

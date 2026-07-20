@@ -7,23 +7,15 @@ import (
 )
 
 const (
-	maxEndpointSliceEndpoints        = 1000
-	maxEndpointAddresses             = 100
-	maxEndpointSliceEndpointVisits   = 100_000
-	maxSelectorFallbackComparisons   = 250_000
-	maxPodReferenceResults           = 256
-	maxPodReferenceCollectionItems   = 256
-	maxGatewayListeners              = 256
-	maxGatewayRouteHostnames         = 256
-	maxGatewayRouteParentReferences  = 256
-	maxGatewayRouteRules             = 256
-	maxGatewayRouteBackendReferences = 256
-	maxGatewayRouteReferenceResults  = 512
-	maxGatewayRouteMatches           = 256
-	maxGRPCMethodResults             = 512
-	maxServiceEndpointResults        = 8192
-	maxGRPCServiceNameBytes          = 256
-	maxGRPCMethodNameBytes           = 128
+	maxEndpointSliceEndpoints      = 1000
+	maxEndpointAddresses           = 100
+	maxEndpointSliceEndpointVisits = 100_000
+	maxSelectorFallbackComparisons = 250_000
+	maxPodReferenceResults         = 256
+	maxPodReferenceCollectionItems = 256
+	maxServiceEndpointResults      = 8192
+	maxGRPCServiceNameBytes        = 256
+	maxGRPCMethodNameBytes         = 128
 )
 
 type endpointCounter struct {
@@ -392,134 +384,6 @@ func podRefs(pod podResource) []podReference {
 		return refs[i].kind < refs[j].kind
 	})
 	return refs
-}
-
-func gatewayHosts(gateway gatewayResource) []string {
-	if len(gateway.Spec.Listeners) > maxGatewayListeners {
-		return nil
-	}
-	hosts := []string{}
-	for _, listener := range gateway.Spec.Listeners {
-		if validKubernetesHostname(listener.Hostname) {
-			hosts = append(hosts, listener.Hostname)
-		}
-	}
-	return uniqueStrings(hosts)
-}
-
-func gatewayRouteHosts(route gatewayRouteResource) []string {
-	if len(route.Spec.Hostnames) > maxGatewayRouteHostnames {
-		return nil
-	}
-	hosts := []string{}
-	for _, hostname := range route.Spec.Hostnames {
-		if validKubernetesHostname(hostname) {
-			hosts = append(hosts, hostname)
-		}
-	}
-	return uniqueStrings(hosts)
-}
-
-func gatewayRouteParentRefs(route gatewayRouteResource) []gatewayReference {
-	if len(route.Spec.ParentRefs) > maxGatewayRouteParentReferences || !validKubernetesNamespace(route.Metadata.Namespace) {
-		return nil
-	}
-	refs := []gatewayReference{}
-	for _, ref := range route.Spec.ParentRefs {
-		if !validKubernetesReferenceName(ref.Name) {
-			continue
-		}
-		if ref.Kind != "" && ref.Kind != "Gateway" {
-			continue
-		}
-		if ref.Group != "" && ref.Group != "gateway.networking.k8s.io" {
-			continue
-		}
-		if ref.Namespace == "" {
-			ref.Namespace = route.Metadata.Namespace
-		}
-		if !validKubernetesNamespace(ref.Namespace) {
-			continue
-		}
-		refs = append(refs, ref)
-	}
-	return uniqueGatewayReferences(refs)
-}
-
-func gatewayRouteBackendRefs(route gatewayRouteResource) []gatewayReference {
-	if len(route.Spec.Rules) > maxGatewayRouteRules || !validKubernetesNamespace(route.Metadata.Namespace) {
-		return nil
-	}
-	refs := []gatewayReference{}
-	for _, rule := range route.Spec.Rules {
-		if len(rule.BackendRefs) > maxGatewayRouteBackendReferences {
-			return nil
-		}
-		for _, ref := range rule.BackendRefs {
-			if !validKubernetesReferenceName(ref.Name) {
-				continue
-			}
-			if ref.Kind != "" && ref.Kind != "Service" {
-				continue
-			}
-			if ref.Group != "" {
-				continue
-			}
-			if ref.Namespace == "" {
-				ref.Namespace = route.Metadata.Namespace
-			}
-			if !validKubernetesNamespace(ref.Namespace) {
-				continue
-			}
-			if len(refs) >= maxGatewayRouteReferenceResults {
-				return nil
-			}
-			refs = append(refs, ref)
-		}
-	}
-	return uniqueGatewayReferences(refs)
-}
-
-func grpcRouteMethods(route gatewayRouteResource) []string {
-	if len(route.Spec.Rules) > maxGatewayRouteRules {
-		return nil
-	}
-	methods := []string{}
-	for _, rule := range route.Spec.Rules {
-		if len(rule.Matches) > maxGatewayRouteMatches {
-			return nil
-		}
-		for _, match := range rule.Matches {
-			service := match.Method.Service
-			method := match.Method.Method
-			if service != "" && !validGRPCServiceName(service) {
-				continue
-			}
-			if method != "" && !validGRPCMethodName(method) {
-				continue
-			}
-			if service != "" && method != "" {
-				if len(methods) >= maxGRPCMethodResults {
-					return nil
-				}
-				methods = append(methods, service+"/"+method)
-				continue
-			}
-			if service != "" {
-				if len(methods) >= maxGRPCMethodResults {
-					return nil
-				}
-				methods = append(methods, service)
-			}
-			if method != "" {
-				if len(methods) >= maxGRPCMethodResults {
-					return nil
-				}
-				methods = append(methods, method)
-			}
-		}
-	}
-	return uniqueStrings(methods)
 }
 
 func uniqueGatewayReferences(values []gatewayReference) []gatewayReference {

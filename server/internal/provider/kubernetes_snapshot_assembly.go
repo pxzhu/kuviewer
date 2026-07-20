@@ -206,11 +206,10 @@ func buildKubernetesSnapshot(clusterID string, clusterName string, resources kub
 		}
 	}
 	for _, gateway := range resources.gateways.Items {
-		builder.addResourceNode("Gateway", gateway.Metadata, "healthy", map[string]interface{}{
-			"class":     kubernetesReferenceSummary(gateway.Spec.GatewayClassName),
-			"listeners": len(gateway.Spec.Listeners),
-			"hosts":     joinSafeSummary(gatewayHosts(gateway), 8, ""),
-		})
+		_, added := builder.addTrackedResourceNode("Gateway", gateway.Metadata, gatewayStatus(gateway), gatewaySummary(gateway))
+		if added && (!validGatewaySpec(gateway) || !validGatewayStatus(gateway)) {
+			builder.recordResourceIssue("Gateway")
+		}
 	}
 
 	builder.addGatewayRouteNodes("HTTPRoute", resources.httpRoutes)
