@@ -68,11 +68,12 @@
     "desktop/src-tauri/tauri.conf.json",
     "desktop/src-tauri/src/main.rs",
     "website/src/components/DesktopCmSessionPanel.tsx",
+    "website/src/components/desktopCm/DesktopCmLayoutConflictPanel.tsx",
     "website/src/components/desktopCm/DesktopCmSessionList.tsx",
     "website/src/features/desktop/desktopCmSessionView.ts"
   ],
   "next": [
-    "split remaining desktop session and saved-layout JSX into local-prototype modules",
+    "split remaining saved-layout folder and preset list JSX into local-prototype modules",
     "archive the desktop prototype if real CM workflows do not use it"
   ]
 }

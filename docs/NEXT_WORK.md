@@ -51,7 +51,7 @@
    - Session layout validation/storage/import/export/reorder 모델은 panel에서 feature module로 분리되고 direct unit test가 추가됐다.
    - Diagnostic filter preset storage/normalization은 feature module로 분리됐고, core reorder test-id helper만 유지한다. 비핵심 reorder history/filter/density UI는 제거됐다.
    - Connection profile form, selected session summary, safe diagnostics primitive와 presentation helper가 panel에서 분리됐다.
-   - Session group/card/bulk toolbar는 표시 모듈로 분리됐다. Saved-layout/reorder/conflict UI를 더 분리할지, prototype archive로 축소할지 실제 사용 후 결정한다.
+   - Session group/card/bulk toolbar와 saved-layout import conflict panel은 표시 모듈로 분리됐다. Saved-layout folder/preset list UI를 더 분리할지, prototype archive로 축소할지 실제 사용 후 결정한다.
 
 5. Snapshot comparison follow-up
    - Metadata-only history export는 완료됐다.
