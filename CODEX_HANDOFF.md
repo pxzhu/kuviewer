@@ -72,7 +72,7 @@
 - Kubernetes capability probing은 `kubernetes_capabilities.go`, Events/fixed/follow Pod logs와 line cap은 `kubernetes_activity.go`가 담당한다. 빈 Event ref와 nil stream callback은 네트워크 호출 전에 fail-closed 처리한다.
 - Kubernetes list pagination은 `kubernetes_pagination.go`에서 selector/continue token을 보존하면서 page/item/byte/token cap을 적용한다. malformed query, nil client/output, invalid limits는 HTTP 요청 전에 bounded error로 거부한다.
 - Kubernetes API 설정, TLS transport, bounded JSON/text/stream 처리는 `kubernetes_client.go`에 격리했다. API server URL은 scheme/host/userinfo/query/fragment를 검증하고 token/CA 파일 및 PEM 오류는 로컬 경로를 포함하지 않는 safe code로만 반환한다.
-- Kubernetes graph node/edge dedupe, dangling-edge 방지, reference placeholder, layout lane은 `kubernetes_graph.go`가 담당한다. 전달받은 node metadata를 복제하고 Secret reference는 `values=hidden`만 유지하며 전용 테스트로 불변식을 검증한다.
+- Kubernetes graph node/edge dedupe, dangling-edge 방지, reference placeholder, layout lane은 `kubernetes_graph.go`가 담당한다. 공통 `kubernetes_metadata.go` 경계에서 identity, labels, annotations, summary, UID, status, owner, edge metadata를 검증·제한하고 민감값을 redaction하며 전용 테스트로 불변식을 검증한다.
 - Kubernetes snapshot fetch와 topology assembly는 분리돼 있다. `kubernetes_snapshot_assembly.go`의 순수 조립기는 diagnostics와 metadata를 복제하고, 빈 identity와 Secret value가 결과에 들어가지 않는지 direct test로 검증한다.
 - Kubernetes API resource/list/reference schema는 `kubernetes_types.go`에 모으고, Pod raw value field를 보존하지 않으면서 pagination과 Secret reference 이름만 해석하는 계약을 direct test로 검증한다.
 - Kubernetes CRD discovery, version/status summary와 custom-resource relation inference는 `kubernetes_custom_resources.go`가 담당한다. CRD API path segment와 reference identity를 검증하고 depth/visit/collection/path/result 상한 및 deterministic traversal을 전용 unit/integration test로 고정한다.

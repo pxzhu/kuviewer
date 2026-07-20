@@ -1,10 +1,6 @@
 package provider
 
-import (
-	"strings"
-
-	"kuviewer/server/internal/topology"
-)
+import "kuviewer/server/internal/topology"
 
 type graphBuilder struct {
 	clusterID string
@@ -17,7 +13,7 @@ type graphBuilder struct {
 
 func newKubeGraphBuilder(clusterID string) *graphBuilder {
 	return &graphBuilder{
-		clusterID: clusterID,
+		clusterID: safeClusterID(clusterID),
 		layout:    map[string]int{},
 		nodeSet:   map[string]bool{},
 		edgeSet:   map[string]bool{},
@@ -33,7 +29,10 @@ func (b *graphBuilder) addResourceNode(kind string, meta metadata, status string
 }
 
 func (b *graphBuilder) addNodeWithMetadata(kind string, namespace string, name string, status string, labels map[string]string, annotations map[string]string, uid string, ageValue string, owners []string, summary map[string]interface{}) string {
-	if strings.TrimSpace(name) == "" {
+	if kind == "Cluster" {
+		name = safeClusterName(name, b.clusterID)
+	}
+	if !validGraphNodeIdentity(kind, namespace, name) {
 		return ""
 	}
 	id := b.nodeID(kind, namespace, name)
@@ -47,13 +46,13 @@ func (b *graphBuilder) addNodeWithMetadata(kind string, namespace string, name s
 		Kind:        kind,
 		Namespace:   namespace,
 		Name:        name,
-		Status:      status,
-		Labels:      cloneStringMap(labels),
+		Status:      safeNodeStatus(status),
+		Labels:      safeMetadataLabels(labels),
 		Annotations: safeMetadataAnnotations(annotations),
-		Summary:     cloneSummaryMap(summary),
-		UID:         uid,
-		Age:         ageValue,
-		Owners:      append([]string(nil), owners...),
+		Summary:     safeSummaryMap(summary),
+		UID:         safeUID(uid),
+		Age:         safeAgeSummary(ageValue),
+		Owners:      safeOwnerSummaries(owners),
 		X:           x,
 		Y:           y,
 	})
@@ -70,7 +69,7 @@ func (b *graphBuilder) ensureReferenceNode(kind string, namespace string, name s
 }
 
 func (b *graphBuilder) addEdge(edgeType string, source string, target string, sourceField string, confidence string) string {
-	if source == "" || target == "" || !b.nodeSet[source] || !b.nodeSet[target] {
+	if source == "" || target == "" || !b.nodeSet[source] || !b.nodeSet[target] || !validGraphEdgeMetadata(edgeType, sourceField, confidence) {
 		return ""
 	}
 	id := source + "->" + target + ":" + edgeType + ":" + sourceField
@@ -216,20 +215,4 @@ var kubeGraphLaneX = map[string]int{
 	"StorageClass":             1380,
 	"CustomResourceDefinition": 1540,
 	"CustomResource":           1540,
-}
-
-func cloneStringMap(values map[string]string) map[string]string {
-	cloned := make(map[string]string, len(values))
-	for key, value := range values {
-		cloned[key] = value
-	}
-	return cloned
-}
-
-func cloneSummaryMap(values map[string]interface{}) map[string]interface{} {
-	cloned := make(map[string]interface{}, len(values))
-	for key, value := range values {
-		cloned[key] = value
-	}
-	return cloned
 }

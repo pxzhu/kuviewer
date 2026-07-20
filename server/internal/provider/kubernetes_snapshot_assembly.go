@@ -43,6 +43,9 @@ func newKubernetesSnapshotResources() kubernetesSnapshotResources {
 }
 
 func buildKubernetesSnapshot(clusterID string, clusterName string, resources kubernetesSnapshotResources) topology.Snapshot {
+	clusterID = safeClusterID(clusterID)
+	clusterName = safeClusterName(clusterName, clusterID)
+	clusterVersion := safeClusterVersion(resources.version.GitVersion)
 	builder := newKubeGraphBuilder(clusterID)
 	readyNodes := 0
 	podRunning := 0
@@ -70,7 +73,7 @@ func buildKubernetesSnapshot(clusterID string, clusterName string, resources kub
 		ID:         clusterID,
 		Name:       clusterName,
 		Provider:   "Kubernetes",
-		Version:    resources.version.GitVersion,
+		Version:    clusterVersion,
 		NodeReady:  readyNodes,
 		NodeTotal:  len(resources.nodes.Items),
 		PodRunning: podRunning,
@@ -79,7 +82,7 @@ func buildKubernetesSnapshot(clusterID string, clusterName string, resources kub
 	}
 
 	builder.addNode("Cluster", "", clusterName, "healthy", map[string]string{"provider": "native"}, map[string]interface{}{
-		"version":    resources.version.GitVersion,
+		"version":    clusterVersion,
 		"nodes":      len(resources.nodes.Items),
 		"namespaces": len(resources.namespaces.Items),
 	})

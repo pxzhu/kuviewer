@@ -125,38 +125,6 @@ func labelSelectorExpressionMatches(expression labelSelectorMatchExpression, lab
 	}
 }
 
-func validLabelKey(value string) bool {
-	if value == "" || len(value) > 317 || strings.Count(value, "/") > 1 {
-		return false
-	}
-	parts := strings.SplitN(value, "/", 2)
-	name := parts[len(parts)-1]
-	if !validQualifiedNamePart(name, false) {
-		return false
-	}
-	return len(parts) == 1 || validDNSSubdomain(parts[0])
-}
-
-func validLabelValue(value string) bool {
-	return validQualifiedNamePart(value, true)
-}
-
-func validQualifiedNamePart(value string, allowEmpty bool) bool {
-	if value == "" {
-		return allowEmpty
-	}
-	if len(value) > 63 || !isASCIIAlphanumeric(value[0]) || !isASCIIAlphanumeric(value[len(value)-1]) {
-		return false
-	}
-	for index := 1; index < len(value)-1; index++ {
-		character := value[index]
-		if !isASCIIAlphanumeric(character) && character != '-' && character != '_' && character != '.' {
-			return false
-		}
-	}
-	return true
-}
-
 func namespaceRecords(namespaces namespaceList) []namespaceRecord {
 	records := make([]namespaceRecord, 0, len(namespaces.Items))
 	for _, namespace := range namespaces.Items {
