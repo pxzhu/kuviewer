@@ -1,0 +1,577 @@
+import {
+  ArrowDown,
+  ArrowUp,
+  Bookmark,
+  CheckCircle2,
+  ChevronDown,
+  Download,
+  Folder,
+  FolderOpen,
+  GripVertical,
+  Pencil,
+  Search,
+  Tags,
+  Trash2,
+  X,
+} from 'lucide-react';
+import type { ResourceViewFilters } from '../../features/resources/resourceViewState';
+import {
+  defaultResourceViewGroup,
+  formatPresetUpdatedAt,
+  maxResourceViewGroupLength,
+  resourceViewGroupDomId,
+  resourceViewPresetDomId,
+  resourceViewPresetMatchesFilters,
+  resourceViewPresetSummary,
+} from '../../features/resources/resourceViewPresets';
+import type { ResourceViewPresetsController } from '../../features/resources/useResourceViewPresetsController';
+
+interface ResourceViewPresetCollectionProps {
+  controller: ResourceViewPresetsController;
+  currentFilters: ResourceViewFilters;
+}
+export function ResourceViewPresetCollection({ controller, currentFilters }: ResourceViewPresetCollectionProps) {
+  const {
+    allVisibleViewPresetsSelected,
+    bulkViewPresetDeleteConfirm,
+    bulkViewPresetGroup,
+    canReorderViewPresets,
+    collapsedViewGroups,
+    collapsedVisibleViewPresetFolderCount,
+    draggingViewPresetName,
+    filteredGroupedViewPresets,
+    groupedViewPresets,
+    handleApplyViewPreset,
+    handleBulkDeleteViewPresets,
+    handleBulkMoveViewPresets,
+    handleCancelResourceViewRename,
+    handleClearViewPresetSelection,
+    handleCollapseVisibleViewPresetFolders,
+    handleCommitResourceViewRename,
+    handleDeleteViewPreset,
+    handleDropViewPreset,
+    handleExpandVisibleViewPresetFolders,
+    handleExportSelectedViewPresets,
+    handleMoveViewPreset,
+    handleResourceViewRenameKeyDown,
+    handleSaveViewPreset,
+    handleSetGroupViewPresetSelection,
+    handleSetVisibleViewPresetSelection,
+    handleStartResourceViewRename,
+    handleToggleViewPresetSelection,
+    handleUpdateViewPresetGroup,
+    matchingViewPreset,
+    normalizedViewPresetSearch,
+    presetGroup,
+    presetName,
+    presetNameExists,
+    renamingViewPreset,
+    savePresetLabel,
+    selectedViewPresetCount,
+    selectedViewPresetNames,
+    selectedVisibleViewPresetCount,
+    setBulkViewPresetDeleteConfirm,
+    setBulkViewPresetGroup,
+    setDraggingViewPresetName,
+    setPresetGroup,
+    setPresetName,
+    setRenamingViewPreset,
+    setViewPresetSearch,
+    suggestedPresetName,
+    toggleViewPresetGroup,
+    viewPresetGroupOptions,
+    viewPresetSearch,
+    viewPresets,
+    visibleViewPresetFolderCount,
+    visibleViewPresets,
+  } = controller;
+
+  return (
+    <>
+      {viewPresets.length > 0 ? (
+        <div className="grid gap-2 rounded-[12px] border border-[rgba(60,60,67,0.1)] bg-[rgba(242,242,247,0.42)] p-2" data-testid="resource-view-folder-summary">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="inline-flex items-center gap-1 rounded-full bg-white/82 px-2 py-1 text-[10px] font-semibold text-[rgba(60,60,67,0.72)]" data-testid="resource-view-folder-summary-count">
+                <FolderOpen size={12} aria-hidden="true" />
+                Folders {normalizedViewPresetSearch ? `${visibleViewPresetFolderCount} / ${groupedViewPresets.length}` : visibleViewPresetFolderCount}
+              </span>
+              <span className="ku-chip" data-testid="resource-view-folder-collapsed-count">접힘 {collapsedVisibleViewPresetFolderCount}</span>
+              {selectedViewPresetCount > 0 ? (
+                <span className="ku-chip border-[rgba(0,122,255,0.22)] bg-[rgba(0,122,255,0.08)] text-[#0057b8]" data-testid="resource-view-folder-selected-count">
+                  선택 {selectedVisibleViewPresetCount} / {selectedViewPresetCount}
+                </span>
+              ) : null}
+            </div>
+            <div className="flex flex-wrap items-center gap-1.5">
+              <button
+                className="rounded-[8px] border border-[rgba(60,60,67,0.12)] bg-white px-2.5 py-1.5 text-xs font-semibold text-[rgba(60,60,67,0.72)] transition hover:bg-[rgba(242,242,247,0.9)] disabled:cursor-not-allowed disabled:opacity-50"
+                type="button"
+                onClick={handleExpandVisibleViewPresetFolders}
+                disabled={visibleViewPresetFolderCount === 0 || collapsedVisibleViewPresetFolderCount === 0}
+                data-testid="resource-view-folder-expand-all"
+              >
+                모두 펼치기
+              </button>
+              <button
+                className="rounded-[8px] border border-[rgba(60,60,67,0.12)] bg-white px-2.5 py-1.5 text-xs font-semibold text-[rgba(60,60,67,0.72)] transition hover:bg-[rgba(242,242,247,0.9)] disabled:cursor-not-allowed disabled:opacity-50"
+                type="button"
+                onClick={handleCollapseVisibleViewPresetFolders}
+                disabled={visibleViewPresetFolderCount === 0 || collapsedVisibleViewPresetFolderCount === visibleViewPresetFolderCount}
+                data-testid="resource-view-folder-collapse-all"
+              >
+                모두 접기
+              </button>
+            </div>
+          </div>
+          {visibleViewPresetFolderCount > 0 ? (
+            <div className="flex gap-1.5 overflow-x-auto pb-0.5" data-testid="resource-view-folder-chips">
+              {filteredGroupedViewPresets.map((group) => {
+                const collapsed = collapsedViewGroups.has(group.name);
+                const groupDomId = resourceViewGroupDomId(group.name);
+                const selectedCount = group.presets.filter((preset) => selectedViewPresetNames.has(preset.name)).length;
+                const active = matchingViewPreset?.group === group.name;
+                const FolderIcon = collapsed ? Folder : FolderOpen;
+                return (
+                  <button
+                    key={group.name}
+                    className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1.5 text-xs font-semibold transition ${
+                      active
+                        ? 'border-[rgba(0,122,255,0.24)] bg-[rgba(0,122,255,0.1)] text-[#0057b8]'
+                        : collapsed
+                          ? 'border-[rgba(60,60,67,0.12)] bg-white/72 text-[rgba(60,60,67,0.62)] hover:bg-white'
+                          : 'border-[rgba(52,199,89,0.16)] bg-white/86 text-[rgba(60,60,67,0.72)] hover:bg-white'
+                    }`}
+                    type="button"
+                    onClick={() => toggleViewPresetGroup(group.name)}
+                    aria-expanded={!collapsed}
+                    data-testid={`resource-view-folder-chip-${groupDomId}`}
+                    title={`${group.name} folder ${collapsed ? '펼치기' : '접기'}`}
+                  >
+                    <FolderIcon size={13} aria-hidden="true" />
+                    <span>{group.name}</span>
+                    <span className="rounded-full bg-[rgba(60,60,67,0.06)] px-1.5 py-0.5 text-[9px] font-semibold">
+                      {normalizedViewPresetSearch ? `${group.presets.length}/${group.total}` : group.presets.length}
+                    </span>
+                    {selectedCount > 0 ? <span className="rounded-full bg-[rgba(0,122,255,0.1)] px-1.5 py-0.5 text-[9px] font-semibold text-[#0057b8]">{selectedCount} selected</span> : null}
+                  </button>
+                );
+              })}
+            </div>
+          ) : (
+            <p className="ku-meta" data-testid="resource-view-folder-empty">일치하는 folder 없음</p>
+          )}
+        </div>
+      ) : null}
+      {viewPresets.length > 0 ? (
+        <div className="grid gap-1.5" aria-label="저장된 뷰 빠른 적용" data-testid="resource-view-quick-groups">
+          {filteredGroupedViewPresets.map((group) => (
+            <div key={group.name} className="grid gap-1">
+              <p className="ku-meta flex items-center gap-1.5" data-testid={`resource-view-quick-group-${resourceViewGroupDomId(group.name)}`}>
+                <FolderOpen size={12} aria-hidden="true" />
+                {group.name} · {normalizedViewPresetSearch ? `${group.presets.length} / ${group.total}` : group.presets.length}
+              </p>
+              <div className="flex gap-1.5 overflow-x-auto pb-0.5">
+                {group.presets.map((preset) => {
+                  const active = resourceViewPresetMatchesFilters(preset, currentFilters);
+                  return (
+                    <button
+                      key={preset.name}
+                      className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1.5 text-xs font-semibold transition ${
+                        active
+                          ? 'border-[rgba(0,122,255,0.24)] bg-[rgba(0,122,255,0.1)] text-[#0057b8]'
+                          : 'border-[rgba(60,60,67,0.12)] bg-white/82 text-[rgba(60,60,67,0.72)] hover:bg-white'
+                      }`}
+                      type="button"
+                      onClick={() => handleApplyViewPreset(preset)}
+                      aria-pressed={active}
+                      title={`${preset.name} · ${preset.group} · ${resourceViewPresetSummary(preset)}`}
+                    >
+                      {active ? <CheckCircle2 size={13} aria-hidden="true" /> : <Bookmark size={13} aria-hidden="true" />}
+                      <span>{preset.name}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : null}
+      {viewPresets.length > 0 ? (
+        <div className="grid gap-1.5 rounded-[12px] border border-[rgba(60,60,67,0.1)] bg-white/72 p-2">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <label className="relative min-w-[220px] flex-1">
+              <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[rgba(60,60,67,0.45)]" size={15} />
+              <input
+                className="ku-input w-full pl-9 pr-9"
+                placeholder="Saved view search"
+                value={viewPresetSearch}
+                onChange={(event) => setViewPresetSearch(event.target.value)}
+                data-testid="resource-view-search"
+              />
+              {viewPresetSearch ? (
+                <button
+                  className="absolute right-2 top-1/2 inline-flex -translate-y-1/2 items-center justify-center rounded-full p-1 text-[rgba(60,60,67,0.56)] transition hover:bg-[rgba(60,60,67,0.08)]"
+                  type="button"
+                  onClick={() => setViewPresetSearch('')}
+                  aria-label="Saved view search clear"
+                  data-testid="resource-view-search-clear"
+                >
+                  <X size={14} aria-hidden="true" />
+                </button>
+              ) : null}
+            </label>
+            {normalizedViewPresetSearch ? (
+              <span className="ku-chip" data-testid="resource-view-search-count">
+                {filteredGroupedViewPresets.reduce((total, group) => total + group.presets.length, 0)} / {viewPresets.length}
+              </span>
+            ) : null}
+            <button
+              className="rounded-[8px] border border-[rgba(60,60,67,0.12)] bg-white px-2.5 py-1.5 text-xs font-semibold text-[rgba(60,60,67,0.72)] transition hover:bg-[rgba(242,242,247,0.9)] disabled:cursor-not-allowed disabled:opacity-50"
+              type="button"
+              onClick={() => handleSetVisibleViewPresetSelection(true)}
+              disabled={visibleViewPresets.length === 0 || allVisibleViewPresetsSelected}
+              data-testid="resource-view-select-visible"
+            >
+              현재 결과 선택
+            </button>
+            <button
+              className="rounded-[8px] border border-[rgba(60,60,67,0.12)] bg-white px-2.5 py-1.5 text-xs font-semibold text-[rgba(60,60,67,0.72)] transition hover:bg-[rgba(242,242,247,0.9)] disabled:cursor-not-allowed disabled:opacity-50"
+              type="button"
+              onClick={handleClearViewPresetSelection}
+              disabled={selectedViewPresetCount === 0}
+              data-testid="resource-view-clear-selection"
+            >
+              선택 해제
+            </button>
+          </div>
+          {normalizedViewPresetSearch ? (
+            <p className="ku-meta" data-testid="resource-view-reorder-disabled">검색 해제 후 순서 변경</p>
+          ) : null}
+        </div>
+      ) : null}
+      {selectedViewPresetCount > 0 ? (
+        <div className="grid gap-2 rounded-[12px] border border-[rgba(0,122,255,0.16)] bg-[rgba(0,122,255,0.055)] p-2" data-testid="resource-view-bulk-toolbar">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="ku-chip border-[rgba(0,122,255,0.22)] bg-[rgba(0,122,255,0.08)] text-[#0057b8]" data-testid="resource-view-bulk-count">
+                선택 {selectedViewPresetCount}개
+              </span>
+              <span className="ku-meta">saved view 선택은 메모리에만 보관</span>
+            </div>
+            <div className="flex flex-wrap items-center justify-end gap-1.5">
+              <button
+                className="inline-flex items-center gap-1.5 rounded-[8px] border border-[rgba(60,60,67,0.12)] bg-white px-2.5 py-1.5 text-xs font-semibold text-[rgba(60,60,67,0.72)] transition hover:bg-[rgba(242,242,247,0.9)]"
+                type="button"
+                onClick={handleExportSelectedViewPresets}
+                data-testid="resource-view-bulk-export"
+                title="선택한 saved view만 JSON으로 내보내기"
+              >
+                <Download size={13} aria-hidden="true" />
+                선택 export
+              </button>
+              <label className="grid min-w-[132px] gap-1">
+                <span className="ku-meta">Group 이동</span>
+                <input
+                  className="ku-input h-8 text-xs"
+                  list="resource-view-group-options"
+                  value={bulkViewPresetGroup}
+                  onChange={(event) => {
+                    setBulkViewPresetGroup(event.target.value.slice(0, maxResourceViewGroupLength));
+                    setBulkViewPresetDeleteConfirm(false);
+                  }}
+                  data-testid="resource-view-bulk-group-input"
+                />
+              </label>
+              <button
+                className="inline-flex items-center gap-1.5 rounded-[8px] border border-[rgba(0,122,255,0.18)] bg-white px-2.5 py-1.5 text-xs font-semibold text-[#0057b8] transition hover:bg-[rgba(0,122,255,0.08)]"
+                type="button"
+                onClick={handleBulkMoveViewPresets}
+                data-testid="resource-view-bulk-move"
+              >
+                <Tags size={13} aria-hidden="true" />
+                Group 이동
+              </button>
+              <button
+                className={`inline-flex items-center gap-1.5 rounded-[8px] border px-2.5 py-1.5 text-xs font-semibold transition ${
+                  bulkViewPresetDeleteConfirm
+                    ? 'border-[rgba(255,59,48,0.28)] bg-[rgba(255,59,48,0.12)] text-[#c01f17] hover:bg-[rgba(255,59,48,0.16)]'
+                    : 'border-[rgba(255,59,48,0.18)] bg-white text-[#c01f17] hover:bg-[rgba(255,59,48,0.08)]'
+                }`}
+                type="button"
+                onClick={handleBulkDeleteViewPresets}
+                data-testid="resource-view-bulk-delete"
+              >
+                <Trash2 size={13} aria-hidden="true" />
+                {bulkViewPresetDeleteConfirm ? '삭제 확인' : '선택 삭제'}
+              </button>
+              <button
+                className="rounded-[8px] border border-[rgba(60,60,67,0.12)] bg-white px-2.5 py-1.5 text-xs font-semibold text-[rgba(60,60,67,0.72)] transition hover:bg-[rgba(242,242,247,0.9)]"
+                type="button"
+                onClick={handleClearViewPresetSelection}
+                data-testid="resource-view-bulk-clear"
+              >
+                선택 해제
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+      {presetNameExists ? <p className="ku-meta">같은 이름으로 저장하면 기존 뷰를 업데이트합니다.</p> : null}
+      <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(150px,0.45fr)_auto]">
+        <label className="grid gap-1">
+          <span className="ku-meta">View name</span>
+          <input
+            className="ku-input w-full"
+            placeholder={suggestedPresetName}
+            value={presetName}
+            onChange={(event) => setPresetName(event.target.value)}
+            data-testid="resource-view-name-input"
+          />
+        </label>
+        <label className="grid gap-1">
+          <span className="ku-meta">Group</span>
+          <input
+            className="ku-input w-full"
+            list="resource-view-group-options"
+            placeholder={defaultResourceViewGroup}
+            value={presetGroup}
+            onChange={(event) => setPresetGroup(event.target.value.slice(0, maxResourceViewGroupLength))}
+            data-testid="resource-view-group-input"
+          />
+          <datalist id="resource-view-group-options">
+            {viewPresetGroupOptions.map((groupName) => (
+              <option key={groupName} value={groupName} />
+            ))}
+          </datalist>
+        </label>
+        <button
+          className="inline-flex h-9 items-center justify-center gap-2 self-end rounded-[9px] border border-[rgba(0,122,255,0.22)] bg-[rgba(0,122,255,0.08)] px-3 text-xs font-semibold text-[#0057b8] transition hover:bg-[rgba(0,122,255,0.13)]"
+          type="button"
+          onClick={handleSaveViewPreset}
+          data-testid="resource-view-save"
+        >
+          <Bookmark size={14} aria-hidden="true" />
+          {savePresetLabel}
+        </button>
+      </div>
+      {viewPresets.length === 0 ? (
+        <p className="ku-meta">저장된 뷰 없음</p>
+      ) : filteredGroupedViewPresets.length === 0 ? (
+        <p className="ku-meta" data-testid="resource-view-search-empty">일치하는 saved view 없음</p>
+      ) : (
+        <div className="grid gap-2" data-testid="resource-view-grouped-list">
+          {filteredGroupedViewPresets.map((group) => {
+            const collapsed = collapsedViewGroups.has(group.name);
+            const groupDomId = resourceViewGroupDomId(group.name);
+            const groupSelectedCount = group.presets.filter((preset) => selectedViewPresetNames.has(preset.name)).length;
+            const groupAllSelected = group.presets.length > 0 && groupSelectedCount === group.presets.length;
+            const groupPartiallySelected = groupSelectedCount > 0 && !groupAllSelected;
+            const HeaderFolderIcon = collapsed ? Folder : FolderOpen;
+            return (
+              <div key={group.name} className="grid gap-1.5 rounded-[12px] border border-[rgba(60,60,67,0.1)] bg-[rgba(242,242,247,0.38)] p-2" data-testid={`resource-view-group-${groupDomId}`}>
+                <div className="flex flex-wrap items-center justify-between gap-2 rounded-[9px] px-1.5 py-1 transition hover:bg-white/70">
+                  <button
+                    className="inline-flex min-w-0 items-center gap-1.5 text-left"
+                    type="button"
+                    onClick={() => toggleViewPresetGroup(group.name)}
+                    aria-expanded={!collapsed}
+                    data-testid={`resource-view-group-toggle-${groupDomId}`}
+                  >
+                    <ChevronDown className={`shrink-0 transition ${collapsed ? '-rotate-90' : ''}`} size={14} aria-hidden="true" />
+                    <HeaderFolderIcon className="shrink-0 text-[rgba(60,60,67,0.56)]" size={13} aria-hidden="true" />
+                    <span className="truncate text-xs font-semibold text-[#1d1d1f]">{group.name}</span>
+                  </button>
+                  <div className="flex items-center gap-1.5">
+                    <label className="inline-flex items-center gap-1.5 rounded-[8px] border border-[rgba(60,60,67,0.1)] bg-white/72 px-2 py-1 text-xs font-semibold text-[rgba(60,60,67,0.72)]">
+                      <input
+                        className="h-3.5 w-3.5 rounded border-[rgba(60,60,67,0.24)] text-[#0057b8] focus:ring-[rgba(0,122,255,0.25)]"
+                        type="checkbox"
+                        checked={groupAllSelected}
+                        ref={(node) => {
+                          if (node) {
+                            node.indeterminate = groupPartiallySelected;
+                          }
+                        }}
+                        onChange={(event) => handleSetGroupViewPresetSelection(group.presets, event.currentTarget.checked)}
+                        data-testid={`resource-view-group-select-${groupDomId}`}
+                        aria-label={`${group.name} saved view 선택`}
+                      />
+                      선택
+                    </label>
+                    {groupSelectedCount > 0 ? <span className="ku-chip border-[rgba(0,122,255,0.2)] bg-[rgba(0,122,255,0.08)] text-[#0057b8]">{groupSelectedCount} selected</span> : null}
+                    <span className="ku-chip">{normalizedViewPresetSearch ? `${group.presets.length} / ${group.total}` : `${group.presets.length} views`}</span>
+                  </div>
+                </div>
+                {collapsed ? null : group.presets.map((preset, presetIndex) => {
+                  const active = resourceViewPresetMatchesFilters(preset, currentFilters);
+                  const isRenaming = renamingViewPreset?.originalName === preset.name;
+                  const presetDomId = resourceViewPresetDomId(preset.name);
+                  const presetBulkSelected = selectedViewPresetNames.has(preset.name);
+                  const canMovePresetUp = canReorderViewPresets && presetIndex > 0;
+                  const canMovePresetDown = canReorderViewPresets && presetIndex < group.presets.length - 1;
+                  return (
+                    <div
+                      key={preset.name}
+                      className={`grid gap-2 rounded-[10px] border p-2 transition sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center ${draggingViewPresetName === preset.name ? 'opacity-60' : ''} ${active ? 'border-[rgba(0,122,255,0.22)] bg-[rgba(0,122,255,0.06)]' : 'border-[rgba(60,60,67,0.1)] bg-white/78'}`}
+                      data-testid={`resource-view-preset-row-${presetDomId}`}
+                      onDragOver={(event) => {
+                        if (canReorderViewPresets) {
+                          event.preventDefault();
+                        }
+                      }}
+                      onDrop={(event) => handleDropViewPreset(preset, event)}
+                    >
+                      <div className="min-w-0">
+                        {isRenaming ? (
+                          <div className="grid gap-1.5">
+                            <label className="grid gap-1">
+                              <span className="ku-meta">saved view 이름</span>
+                              <input
+                                className="ku-input h-8 w-full text-xs"
+                                value={renamingViewPreset.draftName}
+                                onChange={(event) => setRenamingViewPreset((current) => current && current.originalName === preset.name ? { ...current, draftName: event.target.value.slice(0, 80), error: '' } : current)}
+                                onKeyDown={handleResourceViewRenameKeyDown}
+                                data-testid={`resource-view-rename-input-${presetDomId}`}
+                                autoFocus
+                              />
+                            </label>
+                            {renamingViewPreset.error ? (
+                              <p className="rounded-[8px] border border-[rgba(255,149,0,0.22)] bg-[rgba(255,149,0,0.08)] px-2 py-1 text-xs font-semibold text-[#8a4d00]" data-testid={`resource-view-rename-error-${presetDomId}`}>
+                                {renamingViewPreset.error}
+                              </p>
+                            ) : null}
+                            <p className="truncate font-mono text-[10px] font-semibold text-[rgba(60,60,67,0.54)]">{resourceViewPresetSummary(preset)}</p>
+                          </div>
+                        ) : (
+                          <>
+                            <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+                              <input
+                                className="h-4 w-4 rounded border-[rgba(60,60,67,0.24)] text-[#0057b8] focus:ring-[rgba(0,122,255,0.25)]"
+                                type="checkbox"
+                                checked={presetBulkSelected}
+                                onChange={(event) => handleToggleViewPresetSelection(preset.name, event.currentTarget.checked)}
+                                aria-label={`${preset.name} saved view 선택`}
+                                data-testid={`resource-view-select-${presetDomId}`}
+                              />
+                              <p className="truncate text-xs font-semibold text-[#1d1d1f]">{preset.name}</p>
+                              {active ? <span className="rounded-full bg-[rgba(0,122,255,0.1)] px-1.5 py-0.5 text-[9px] font-semibold text-[#0057b8]">적용됨</span> : null}
+                              <span className="rounded-full bg-[rgba(52,199,89,0.1)] px-1.5 py-0.5 text-[9px] font-semibold text-[#248a3d]">{preset.group}</span>
+                              <span className="rounded-full bg-[rgba(60,60,67,0.06)] px-1.5 py-0.5 font-mono text-[9px] font-semibold text-[rgba(60,60,67,0.54)]">{formatPresetUpdatedAt(preset.updatedAt)}</span>
+                            </div>
+                            <p className="mt-0.5 truncate font-mono text-[10px] font-semibold text-[rgba(60,60,67,0.54)]">{resourceViewPresetSummary(preset)}</p>
+                          </>
+                        )}
+                      </div>
+                      <div className="flex flex-wrap items-center gap-1.5 sm:justify-end">
+                        {isRenaming ? (
+                          <>
+                            <button
+                              className="inline-flex items-center gap-1.5 rounded-[8px] border border-[rgba(0,122,255,0.2)] bg-[rgba(0,122,255,0.08)] px-2.5 py-1.5 text-xs font-semibold text-[#0057b8] transition hover:bg-[rgba(0,122,255,0.12)]"
+                              type="button"
+                              onClick={handleCommitResourceViewRename}
+                              data-testid={`resource-view-rename-save-${presetDomId}`}
+                            >
+                              <CheckCircle2 size={13} aria-hidden="true" />
+                              저장
+                            </button>
+                            <button
+                              className="inline-flex items-center gap-1.5 rounded-[8px] border border-[rgba(60,60,67,0.12)] bg-white px-2.5 py-1.5 text-xs font-semibold text-[rgba(60,60,67,0.72)] transition hover:bg-[rgba(242,242,247,0.9)]"
+                              type="button"
+                              onClick={handleCancelResourceViewRename}
+                              data-testid={`resource-view-rename-cancel-${presetDomId}`}
+                            >
+                              <X size={13} aria-hidden="true" />
+                              취소
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <button
+                              className="inline-flex items-center gap-1.5 rounded-[8px] border border-[rgba(60,60,67,0.12)] bg-white px-2 py-1.5 text-xs font-semibold text-[rgba(60,60,67,0.64)] transition hover:bg-[rgba(242,242,247,0.9)] disabled:cursor-not-allowed disabled:opacity-45"
+                              type="button"
+                              draggable={canReorderViewPresets}
+                              onDragStart={(event) => {
+                                if (!canReorderViewPresets) {
+                                  event.preventDefault();
+                                  return;
+                                }
+                                setDraggingViewPresetName(preset.name);
+                                event.dataTransfer.effectAllowed = 'move';
+                                event.dataTransfer.setData('text/plain', preset.name);
+                              }}
+                              onDragEnd={() => setDraggingViewPresetName('')}
+                              disabled={!canReorderViewPresets}
+                              title={canReorderViewPresets ? 'Drag to reorder saved view' : '검색 해제 후 순서 변경'}
+                              aria-label={`${preset.name} 순서 드래그`}
+                              data-testid={`resource-view-drag-handle-${presetDomId}`}
+                            >
+                              <GripVertical size={13} aria-hidden="true" />
+                            </button>
+                            <button
+                              className="rounded-[8px] border border-[rgba(60,60,67,0.12)] bg-white p-1.5 text-[rgba(60,60,67,0.72)] transition hover:bg-[rgba(242,242,247,0.9)] disabled:cursor-not-allowed disabled:opacity-45"
+                              type="button"
+                              onClick={() => handleMoveViewPreset(preset, -1)}
+                              disabled={!canMovePresetUp}
+                              aria-label={`${preset.name} 위로 이동`}
+                              data-testid={`resource-view-reorder-up-${presetDomId}`}
+                            >
+                              <ArrowUp size={13} aria-hidden="true" />
+                            </button>
+                            <button
+                              className="rounded-[8px] border border-[rgba(60,60,67,0.12)] bg-white p-1.5 text-[rgba(60,60,67,0.72)] transition hover:bg-[rgba(242,242,247,0.9)] disabled:cursor-not-allowed disabled:opacity-45"
+                              type="button"
+                              onClick={() => handleMoveViewPreset(preset, 1)}
+                              disabled={!canMovePresetDown}
+                              aria-label={`${preset.name} 아래로 이동`}
+                              data-testid={`resource-view-reorder-down-${presetDomId}`}
+                            >
+                              <ArrowDown size={13} aria-hidden="true" />
+                            </button>
+                            <label className="grid min-w-[126px] gap-1">
+                              <span className="ku-meta">Group</span>
+                              <input
+                                className="ku-input h-8 text-xs"
+                                list="resource-view-group-options"
+                                defaultValue={preset.group}
+                                onBlur={(event) => handleUpdateViewPresetGroup(preset, event.currentTarget.value)}
+                                onKeyDown={(event) => {
+                                  if (event.key === 'Enter') {
+                                    event.preventDefault();
+                                    handleUpdateViewPresetGroup(preset, event.currentTarget.value);
+                                    event.currentTarget.blur();
+                                  }
+                                }}
+                                data-testid={`resource-view-group-input-${presetDomId}`}
+                              />
+                            </label>
+                            <button className="rounded-[8px] border border-[rgba(60,60,67,0.12)] bg-white px-2.5 py-1.5 text-xs font-semibold text-[rgba(60,60,67,0.72)] transition hover:bg-[rgba(242,242,247,0.9)]" type="button" onClick={() => handleApplyViewPreset(preset)}>
+                              적용
+                            </button>
+                            <button
+                              className="inline-flex items-center gap-1.5 rounded-[8px] border border-[rgba(60,60,67,0.12)] bg-white px-2.5 py-1.5 text-xs font-semibold text-[rgba(60,60,67,0.72)] transition hover:bg-[rgba(242,242,247,0.9)]"
+                              type="button"
+                              onClick={() => handleStartResourceViewRename(preset)}
+                              data-testid={`resource-view-rename-start-${presetDomId}`}
+                              aria-label={`${preset.name} 이름 변경`}
+                            >
+                              <Pencil size={13} aria-hidden="true" />
+                              이름 변경
+                            </button>
+                            <button className="rounded-[8px] border border-[rgba(255,59,48,0.18)] bg-[rgba(255,59,48,0.06)] p-1.5 text-[#c01f17] transition hover:bg-[rgba(255,59,48,0.1)]" type="button" onClick={() => handleDeleteViewPreset(preset.name)} aria-label={`${preset.name} 삭제`}>
+                              <Trash2 size={14} aria-hidden="true" />
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </>
+  );
+}
