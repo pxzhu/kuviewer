@@ -42,6 +42,12 @@ test('upload Service schema accepts canonical dual-stack metadata and emits boun
     allocateLoadBalancerNodePorts: 'unset',
     sessionAffinity: 'None',
     sessionAffinityTimeout: 'unset',
+    externalIPs: 0,
+    externalIPsDeprecated: false,
+    loadBalancerSourceRanges: 0,
+    trafficDistribution: 'default',
+    trafficDistributionDeprecated: false,
+    deprecatedLoadBalancerIP: 'unset',
     selector: '1 labels',
   });
 });
@@ -76,6 +82,12 @@ test('upload Service schema validates traffic policy, load balancer, and session
     allocateLoadBalancerNodePorts: false,
     sessionAffinity: 'ClientIP',
     sessionAffinityTimeout: 10800,
+    externalIPs: 0,
+    externalIPsDeprecated: false,
+    loadBalancerSourceRanges: 0,
+    trafficDistribution: 'default',
+    trafficDistributionDeprecated: false,
+    deprecatedLoadBalancerIP: 'unset',
     selector: 'none',
   });
 
@@ -91,6 +103,44 @@ test('upload Service schema validates traffic policy, load balancer, and session
     { sessionAffinity: 'None', sessionAffinityConfig: {} },
     { sessionAffinity: 'ClientIP', sessionAffinityConfig: { clientIP: { timeoutSeconds: 0 } } },
     { sessionAffinity: 'ClientIP', sessionAffinityConfig: { clientIP: { timeoutSeconds: 86401 } } },
+  ];
+  invalidSpecs.forEach((spec) => assert.equal(uploadServiceSpecIsValid(serviceObject(spec)), false));
+});
+
+test('upload Service schema summarizes external exposure without retaining address values', () => {
+  const service = serviceObject({
+    type: 'LoadBalancer',
+    externalIPs: ['192.0.2.20', '2001:db8::20'],
+    loadBalancerSourceRanges: ['192.0.2.0/24', '2001:db8::/64'],
+    trafficDistribution: 'PreferSameNode',
+    loadBalancerIP: '198.51.100.40',
+  });
+  assert.equal(uploadServiceSpecIsValid(service), true);
+  const summary = uploadServiceSummary(service);
+  assert.equal(summary.externalIPs, 2);
+  assert.equal(summary.externalIPsDeprecated, true);
+  assert.equal(summary.loadBalancerSourceRanges, 2);
+  assert.equal(summary.trafficDistribution, 'PreferSameNode');
+  assert.equal(summary.trafficDistributionDeprecated, false);
+  assert.equal(summary.deprecatedLoadBalancerIP, 'configured');
+  assert.doesNotMatch(JSON.stringify(summary), /192\.0\.2\.20|2001:db8::20|198\.51\.100\.40/);
+
+  const deprecatedAlias = uploadServiceSummary(serviceObject({ trafficDistribution: 'PreferClose' }));
+  assert.equal(deprecatedAlias.trafficDistribution, 'PreferClose');
+  assert.equal(deprecatedAlias.trafficDistributionDeprecated, true);
+
+  const invalidSpecs = [
+    { externalIPs: ['192.0.2.20', '192.0.2.20'] },
+    { externalIPs: ['192.00.2.20'] },
+    { externalIPs: Array.from({ length: 17 }, (_, index) => `192.0.2.${index + 1}`) },
+    { type: 'ClusterIP', loadBalancerSourceRanges: ['192.0.2.0/24'] },
+    { type: 'LoadBalancer', loadBalancerSourceRanges: ['not-a-cidr'] },
+    { type: 'LoadBalancer', loadBalancerSourceRanges: ['192.0.2.0/24', '192.0.2.0/24'] },
+    { type: 'LoadBalancer', loadBalancerSourceRanges: Array.from({ length: 65 }, (_, index) => `192.0.${index}.0/24`) },
+    { trafficDistribution: 'Spread' },
+    { type: 'ExternalName', externalName: 'api.example.com', trafficDistribution: 'PreferSameZone' },
+    { type: 'ClusterIP', loadBalancerIP: '198.51.100.40' },
+    { type: 'LoadBalancer', loadBalancerIP: 'credential=remote-value' },
   ];
   invalidSpecs.forEach((spec) => assert.equal(uploadServiceSpecIsValid(serviceObject(spec)), false));
 });
@@ -116,6 +166,10 @@ test('upload Service schema rejects inconsistent IP and port fields without echo
     sessionAffinity: 'InjectedAffinity',
     healthCheckNodePort: -1,
     loadBalancerClass: 'credential.example.com/private',
+    externalIPs: ['credential=remote-value'],
+    loadBalancerSourceRanges: ['credential=remote-value'],
+    trafficDistribution: 'InjectedDistribution',
+    loadBalancerIP: 'credential=remote-value',
     selector: { 'bad key': 'value' },
     ports: [{ port: -1, targetPort: { name: 'remote-value' }, nodePort: -1, appProtocol: 'bad key' }],
   });
@@ -141,6 +195,12 @@ test('upload Service schema rejects inconsistent IP and port fields without echo
     allocateLoadBalancerNodePorts: 'invalid',
     sessionAffinity: 'invalid',
     sessionAffinityTimeout: 'invalid',
+    externalIPs: 'invalid',
+    externalIPsDeprecated: 'invalid',
+    loadBalancerSourceRanges: 'invalid',
+    trafficDistribution: 'invalid',
+    trafficDistributionDeprecated: 'invalid',
+    deprecatedLoadBalancerIP: 'invalid',
     selector: 'invalid',
   });
 });

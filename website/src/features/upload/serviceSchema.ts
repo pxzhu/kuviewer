@@ -4,6 +4,8 @@ import { validSelectorKey, validSelectorValue } from './labelSelector.ts';
 
 const maxServicePorts = 256;
 const maxServiceClusterIPs = 2;
+const maxServiceExternalIPs = 16;
+const maxServiceSourceRanges = 64;
 const maxServiceSelectorLabels = 64;
 const maxSessionAffinitySeconds = 86400;
 
@@ -12,6 +14,7 @@ type IPFamily = 'IPv4' | 'IPv6';
 type IPFamilyPolicy = 'SingleStack' | 'PreferDualStack' | 'RequireDualStack';
 type TrafficPolicy = 'Cluster' | 'Local';
 type SessionAffinity = 'None' | 'ClientIP';
+type TrafficDistribution = 'default' | 'PreferSameZone' | 'PreferSameNode' | 'PreferClose';
 
 interface ParsedServiceSpec {
   type: ServiceType;
@@ -29,6 +32,10 @@ interface ParsedServiceSpec {
   allocateLoadBalancerNodePorts: boolean | null;
   sessionAffinity: SessionAffinity;
   sessionAffinityTimeout: number | null;
+  externalIPs: string[];
+  loadBalancerSourceRanges: string[];
+  trafficDistribution: TrafficDistribution;
+  deprecatedLoadBalancerIPConfigured: boolean;
 }
 
 interface ParsedServicePort {
@@ -70,6 +77,12 @@ export function uploadServiceSummary(object: KubeObject): Record<string, Summary
       allocateLoadBalancerNodePorts: 'invalid',
       sessionAffinity: 'invalid',
       sessionAffinityTimeout: 'invalid',
+      externalIPs: 'invalid',
+      externalIPsDeprecated: 'invalid',
+      loadBalancerSourceRanges: 'invalid',
+      trafficDistribution: 'invalid',
+      trafficDistributionDeprecated: 'invalid',
+      deprecatedLoadBalancerIP: 'invalid',
       selector: 'invalid',
     };
   }
@@ -90,6 +103,12 @@ export function uploadServiceSummary(object: KubeObject): Record<string, Summary
     allocateLoadBalancerNodePorts: spec.type !== 'LoadBalancer' ? 'unset' : spec.allocateLoadBalancerNodePorts ?? true,
     sessionAffinity: spec.type === 'ExternalName' ? 'unset' : spec.sessionAffinity,
     sessionAffinityTimeout: spec.sessionAffinity === 'ClientIP' ? spec.sessionAffinityTimeout ?? 10800 : 'unset',
+    externalIPs: spec.externalIPs.length,
+    externalIPsDeprecated: spec.externalIPs.length > 0,
+    loadBalancerSourceRanges: spec.loadBalancerSourceRanges.length,
+    trafficDistribution: spec.type === 'ExternalName' ? 'unset' : spec.trafficDistribution,
+    trafficDistributionDeprecated: spec.type !== 'ExternalName' && spec.trafficDistribution === 'PreferClose',
+    deprecatedLoadBalancerIP: spec.type === 'LoadBalancer' && spec.deprecatedLoadBalancerIPConfigured ? 'configured' : 'unset',
     selector: Object.keys(spec.selector).length > 0 ? `${Object.keys(spec.selector).length} labels` : 'none',
   };
   if (spec.type === 'ExternalName') {
@@ -125,10 +144,89 @@ function parseServiceSpec(object: KubeObject): ParsedServiceSpec | null {
   }
   const traffic = parseServiceTrafficConfiguration(type, spec);
   const session = parseServiceSessionAffinity(type, spec);
-  if (!traffic || !session) {
+  const exposure = parseServiceExposureConfiguration(type, spec);
+  if (!traffic || !session || !exposure) {
     return null;
   }
-  return { type, clusterIP, clusterIPs, ipFamilies, ipFamilyPolicy, externalName, selector, ports, ...traffic, ...session };
+  return { type, clusterIP, clusterIPs, ipFamilies, ipFamilyPolicy, externalName, selector, ports, ...traffic, ...session, ...exposure };
+}
+
+function parseServiceExposureConfiguration(type: ServiceType, spec: Record<string, unknown>) {
+  const externalIPs = parseCanonicalIPList(spec.externalIPs, maxServiceExternalIPs);
+  const loadBalancerSourceRanges = parseCanonicalCIDRList(spec.loadBalancerSourceRanges, maxServiceSourceRanges);
+  const trafficDistribution = parseTrafficDistribution(spec.trafficDistribution);
+  const deprecatedLoadBalancerIPConfigured = parseDeprecatedLoadBalancerIP(spec.loadBalancerIP);
+  if (!externalIPs || !loadBalancerSourceRanges || !trafficDistribution || deprecatedLoadBalancerIPConfigured === null) {
+    return null;
+  }
+  if (type === 'ExternalName') {
+    return loadBalancerSourceRanges.length === 0 && trafficDistribution === 'default' && !deprecatedLoadBalancerIPConfigured
+      ? { externalIPs, loadBalancerSourceRanges, trafficDistribution, deprecatedLoadBalancerIPConfigured }
+      : null;
+  }
+  if (type !== 'LoadBalancer' && (loadBalancerSourceRanges.length > 0 || deprecatedLoadBalancerIPConfigured)) {
+    return null;
+  }
+  return { externalIPs, loadBalancerSourceRanges, trafficDistribution, deprecatedLoadBalancerIPConfigured };
+}
+
+function parseCanonicalIPList(value: unknown, limit: number): string[] | null {
+  const values = optionalStringArray(value);
+  if (!values || values.length > limit) {
+    return null;
+  }
+  const seen = new Set<string>();
+  for (const address of values) {
+    if (!addressFamily(address) || seen.has(address)) {
+      return null;
+    }
+    seen.add(address);
+  }
+  return values;
+}
+
+function parseCanonicalCIDRList(value: unknown, limit: number): string[] | null {
+  const values = optionalStringArray(value);
+  if (!values || values.length > limit) {
+    return null;
+  }
+  const seen = new Set<string>();
+  for (const cidr of values) {
+    if (!validCanonicalCIDR(cidr) || seen.has(cidr)) {
+      return null;
+    }
+    seen.add(cidr);
+  }
+  return values;
+}
+
+function validCanonicalCIDR(value: string) {
+  const separator = value.lastIndexOf('/');
+  if (separator <= 0 || separator === value.length - 1 || value.indexOf('/') !== separator) {
+    return false;
+  }
+  const address = value.slice(0, separator);
+  const prefixText = value.slice(separator + 1);
+  const family = addressFamily(address);
+  if (!family || !/^(?:0|[1-9]\d{0,2})$/.test(prefixText)) {
+    return false;
+  }
+  const prefix = Number(prefixText);
+  return prefix <= (family === 'IPv4' ? 32 : 128);
+}
+
+function parseTrafficDistribution(value: unknown): TrafficDistribution | null {
+  if (value == null || value === '') {
+    return 'default';
+  }
+  return value === 'PreferSameZone' || value === 'PreferSameNode' || value === 'PreferClose' ? value : null;
+}
+
+function parseDeprecatedLoadBalancerIP(value: unknown): boolean | null {
+  if (value == null || value === '') {
+    return false;
+  }
+  return typeof value === 'string' && addressFamily(value) ? true : null;
 }
 
 function parseServiceTrafficConfiguration(type: ServiceType, spec: Record<string, unknown>) {

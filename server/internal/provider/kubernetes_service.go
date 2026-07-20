@@ -11,7 +11,10 @@ import (
 const (
 	maxServicePorts           = 256
 	maxServiceClusterIPs      = 2
+	maxServiceExternalIPs     = 16
+	maxServiceSourceRanges    = 64
 	maxTargetPortJSONSize     = 128
+	maxServiceIPAddressSize   = 128
 	maxSessionAffinitySeconds = 86400
 )
 
@@ -38,6 +41,31 @@ func (target *serviceTargetPort) UnmarshalJSON(value []byte) error {
 	return nil
 }
 
+func (target *serviceDeprecatedIPAddress) UnmarshalJSON(value []byte) error {
+	*target = serviceDeprecatedIPAddress{Set: true}
+	if string(value) == "null" {
+		target.Valid = true
+		return nil
+	}
+	if len(value) == 0 || len(value) > maxServiceIPAddressSize {
+		return nil
+	}
+	var raw string
+	if json.Unmarshal(value, &raw) != nil {
+		return nil
+	}
+	if raw == "" {
+		target.Valid = true
+		return nil
+	}
+	address, err := netip.ParseAddr(raw)
+	if err == nil && address.Zone() == "" && address.String() == raw {
+		target.Configured = true
+		target.Valid = true
+	}
+	return nil
+}
+
 func normalizedServiceType(value string) (string, bool) {
 	if value == "" {
 		return "ClusterIP", true
@@ -52,13 +80,82 @@ func normalizedServiceType(value string) (string, bool) {
 
 func validServiceSpec(service serviceResource) bool {
 	serviceType, valid := normalizedServiceType(service.Spec.Type)
-	if !valid || !validServiceIPConfiguration(serviceType, service) || !validServicePorts(serviceType, service.Spec.Ports) || !validServiceSelector(service.Spec.Selector) || !validServiceTrafficConfiguration(serviceType, service) || !validServiceSessionAffinity(serviceType, service) {
+	if !valid || !validServiceIPConfiguration(serviceType, service) || !validServicePorts(serviceType, service.Spec.Ports) || !validServiceSelector(service.Spec.Selector) || !validServiceTrafficConfiguration(serviceType, service) || !validServiceSessionAffinity(serviceType, service) || !validServiceExposureConfiguration(serviceType, service) {
 		return false
 	}
 	if serviceType == "ExternalName" {
 		return validDNSSubdomain(service.Spec.ExternalName)
 	}
 	return service.Spec.ExternalName == ""
+}
+
+func normalizedServiceTrafficDistribution(value string) (string, bool) {
+	if value == "" {
+		return "default", true
+	}
+	switch value {
+	case "PreferSameZone", "PreferSameNode", "PreferClose":
+		return value, true
+	default:
+		return "invalid", false
+	}
+}
+
+func validServiceExposureConfiguration(serviceType string, service serviceResource) bool {
+	if !validCanonicalServiceAddresses(service.Spec.ExternalIPs, maxServiceExternalIPs) || !validCanonicalServicePrefixes(service.Spec.LoadBalancerSourceRanges, maxServiceSourceRanges) {
+		return false
+	}
+	_, distributionValid := normalizedServiceTrafficDistribution(service.Spec.TrafficDistribution)
+	deprecatedIP := service.Spec.DeprecatedLoadBalancerIP
+	if !distributionValid || deprecatedIP.Set && !deprecatedIP.Valid {
+		return false
+	}
+	if serviceType == "ExternalName" {
+		return len(service.Spec.LoadBalancerSourceRanges) == 0 && service.Spec.TrafficDistribution == "" && !deprecatedIP.Configured
+	}
+	if serviceType != "LoadBalancer" && (len(service.Spec.LoadBalancerSourceRanges) > 0 || deprecatedIP.Configured) {
+		return false
+	}
+	return true
+}
+
+func validCanonicalServiceAddresses(values []string, limit int) bool {
+	if len(values) > limit {
+		return false
+	}
+	seen := map[string]bool{}
+	for _, value := range values {
+		if len(value) == 0 || len(value) > maxServiceIPAddressSize || seen[value] {
+			return false
+		}
+		address, err := netip.ParseAddr(value)
+		if err != nil || address.Zone() != "" || address.String() != value {
+			return false
+		}
+		seen[value] = true
+	}
+	return true
+}
+
+func validCanonicalServicePrefixes(values []string, limit int) bool {
+	if len(values) > limit {
+		return false
+	}
+	seen := map[string]bool{}
+	for _, value := range values {
+		if len(value) == 0 || len(value) > maxServiceIPAddressSize {
+			return false
+		}
+		prefix, err := netip.ParsePrefix(value)
+		if err != nil || prefix.String() != value {
+			return false
+		}
+		if seen[value] {
+			return false
+		}
+		seen[value] = true
+	}
+	return true
 }
 
 func normalizedServiceTrafficPolicy(value string) (string, bool) {
@@ -399,6 +496,7 @@ func serviceSummary(service serviceResource, counts endpointCounter) map[string]
 	ipConfigurationValid := typeValid && validServiceIPConfiguration(serviceType, service)
 	portsValid := typeValid && validServicePorts(serviceType, service.Spec.Ports)
 	trafficConfigurationValid := typeValid && validServiceTrafficConfiguration(serviceType, service)
+	exposureConfigurationValid := typeValid && validServiceExposureConfiguration(serviceType, service)
 	sessionAffinity, sessionAffinityValid := normalizedServiceSessionAffinity(service.Spec.SessionAffinity)
 	sessionConfigurationValid := typeValid && sessionAffinityValid && validServiceSessionAffinity(serviceType, service)
 	trafficReady := serviceTrafficReadyCount(service, counts)
@@ -417,6 +515,12 @@ func serviceSummary(service serviceResource, counts endpointCounter) map[string]
 		"healthCheckNodePort":           serviceHealthCheckNodePortSummary(service, trafficConfigurationValid),
 		"loadBalancerClass":             serviceLoadBalancerClassSummary(serviceType, service.Spec.LoadBalancerClass, trafficConfigurationValid),
 		"allocateLoadBalancerNodePorts": serviceLoadBalancerNodePortAllocationSummary(serviceType, service.Spec.AllocateLoadBalancerNodePorts, trafficConfigurationValid),
+		"externalIPs":                   serviceCollectionCountSummary(len(service.Spec.ExternalIPs), exposureConfigurationValid),
+		"externalIPsDeprecated":         serviceDeprecatedCollectionSummary(len(service.Spec.ExternalIPs), exposureConfigurationValid),
+		"loadBalancerSourceRanges":      serviceCollectionCountSummary(len(service.Spec.LoadBalancerSourceRanges), exposureConfigurationValid),
+		"trafficDistribution":           serviceTrafficDistributionSummary(serviceType, service.Spec.TrafficDistribution, exposureConfigurationValid),
+		"trafficDistributionDeprecated": serviceTrafficDistributionDeprecatedSummary(serviceType, service.Spec.TrafficDistribution, exposureConfigurationValid),
+		"deprecatedLoadBalancerIP":      serviceDeprecatedIPAddressSummary(serviceType, service.Spec.DeprecatedLoadBalancerIP, exposureConfigurationValid),
 		"sessionAffinity":               serviceSessionAffinitySummary(serviceType, sessionAffinity, sessionConfigurationValid),
 		"sessionAffinityTimeout":        serviceSessionAffinityTimeoutSummary(service, sessionConfigurationValid),
 		"selector":                      serviceSelectorSummary(service.Spec.Selector),
@@ -434,6 +538,41 @@ func serviceSummary(service serviceResource, counts endpointCounter) map[string]
 		}
 	}
 	return summary
+}
+
+func serviceDeprecatedCollectionSummary(count int, valid bool) interface{} {
+	if !valid {
+		return "invalid"
+	}
+	return count > 0
+}
+
+func serviceTrafficDistributionSummary(serviceType string, value string, valid bool) string {
+	if !valid {
+		return "invalid"
+	}
+	if serviceType == "ExternalName" {
+		return "unset"
+	}
+	distribution, _ := normalizedServiceTrafficDistribution(value)
+	return distribution
+}
+
+func serviceTrafficDistributionDeprecatedSummary(serviceType string, value string, valid bool) interface{} {
+	if !valid {
+		return "invalid"
+	}
+	return serviceType != "ExternalName" && value == "PreferClose"
+}
+
+func serviceDeprecatedIPAddressSummary(serviceType string, value serviceDeprecatedIPAddress, valid bool) string {
+	if !valid {
+		return "invalid"
+	}
+	if serviceType != "LoadBalancer" || !value.Configured {
+		return "unset"
+	}
+	return "configured"
 }
 
 func serviceTrafficPolicySummary(serviceType string, rawPolicy string, valid bool) string {
