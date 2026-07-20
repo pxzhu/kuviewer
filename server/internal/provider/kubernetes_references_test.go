@@ -2,6 +2,7 @@ package provider
 
 import (
 	"encoding/json"
+	"fmt"
 	"strconv"
 	"strings"
 	"testing"
@@ -40,12 +41,12 @@ func TestPodReferencesAreValidatedDeduplicatedAndBounded(t *testing.T) {
 
 func TestEndpointCountsRejectMalformedAndOversizedSlices(t *testing.T) {
 	ready := true
-	valid := endpointSliceResource{Metadata: metadata{Name: "api-a", Namespace: "app", Labels: map[string]string{"kubernetes.io/service-name": "api"}}}
-	readyEndpoint := endpoint{}
+	valid := endpointSliceResource{Metadata: metadata{Name: "api-a", Namespace: "app", Labels: map[string]string{"kubernetes.io/service-name": "api"}}, AddressType: "IPv4"}
+	readyEndpoint := endpoint{Addresses: []string{"10.0.0.2"}}
 	readyEndpoint.Conditions.Ready = &ready
-	valid.Endpoints = []endpoint{{}, readyEndpoint}
+	valid.Endpoints = []endpoint{{Addresses: []string{"10.0.0.1"}}, readyEndpoint}
 	malformed := endpointSliceResource{Metadata: metadata{Name: "unsafe", Namespace: "bad namespace", Labels: map[string]string{"kubernetes.io/service-name": "unsafe"}}, Endpoints: []endpoint{{}}}
-	oversized := endpointSliceResource{Metadata: metadata{Name: "oversized", Namespace: "app", Labels: map[string]string{"kubernetes.io/service-name": "oversized"}}, Endpoints: make([]endpoint, maxEndpointSliceEndpoints+1)}
+	oversized := endpointSliceResource{Metadata: metadata{Name: "oversized", Namespace: "app", Labels: map[string]string{"kubernetes.io/service-name": "oversized"}}, AddressType: "IPv4", Endpoints: make([]endpoint, maxEndpointSliceEndpoints+1)}
 
 	counts := endpointCounts(endpointSliceList{Items: []endpointSliceResource{valid, malformed, oversized}})
 	if got := counts["app/api"]; got.ready != 2 || got.total != 2 {
@@ -60,14 +61,15 @@ func TestEndpointSliceAnalysisPreservesReadyServingAndTerminatingSemantics(t *te
 	readyFalse := false
 	servingTrue := true
 	terminatingTrue := true
-	terminating := endpoint{TargetRef: &objectReference{Kind: "Pod", Name: "api-old"}}
+	terminating := endpoint{Addresses: []string{"10.0.0.1"}, TargetRef: &objectReference{Kind: "Pod", Name: "api-old"}}
 	terminating.Conditions.Ready = &readyFalse
 	terminating.Conditions.Serving = &servingTrue
 	terminating.Conditions.Terminating = &terminatingTrue
-	defaulted := endpoint{TargetRef: &objectReference{Kind: "Pod", Name: "api-new"}}
+	defaulted := endpoint{Addresses: []string{"10.0.0.2"}, TargetRef: &objectReference{Kind: "Pod", Name: "api-new"}}
 	slice := endpointSliceResource{
-		Metadata:  metadata{Name: "api-a", Namespace: "app", Labels: map[string]string{"kubernetes.io/service-name": "api"}},
-		Endpoints: []endpoint{terminating, defaulted},
+		Metadata:    metadata{Name: "api-a", Namespace: "app", Labels: map[string]string{"kubernetes.io/service-name": "api"}},
+		AddressType: "IPv4",
+		Endpoints:   []endpoint{terminating, defaulted},
 	}
 
 	analysis := analyzeEndpointSlices(endpointSliceList{Items: []endpointSliceResource{slice}})
@@ -86,9 +88,68 @@ func TestEndpointSliceAnalysisPreservesReadyServingAndTerminatingSemantics(t *te
 	}
 }
 
+func TestEndpointSliceAnalysisDeduplicatesIdentityAndRejectsMalformedAddresses(t *testing.T) {
+	first := endpointSliceResource{
+		Metadata:    metadata{Name: "api-a", Namespace: "app", Labels: map[string]string{"kubernetes.io/service-name": "api"}},
+		AddressType: "IPv4",
+		Endpoints: []endpoint{
+			{Addresses: []string{"10.0.0.1"}, TargetRef: &objectReference{Kind: "Pod", Name: "api-a"}},
+			{Addresses: []string{"10.0.0.2"}},
+			{Addresses: []string{"10.00.0.3"}},
+			{Addresses: []string{"10.0.0.4"}, TargetRef: &objectReference{Kind: "Pod", Namespace: "other", Name: "cross-namespace"}},
+			{Addresses: []string{"10.0.0.5", "10.0.0.5"}},
+		},
+	}
+	second := endpointSliceResource{
+		Metadata:    metadata{Name: "api-b", Namespace: "app", Labels: map[string]string{"kubernetes.io/service-name": "api"}},
+		AddressType: "IPv4",
+		Endpoints: []endpoint{
+			{Addresses: []string{"10.0.0.9"}, TargetRef: &objectReference{Kind: "Pod", Name: "api-a"}},
+			{Addresses: []string{"10.0.0.2"}},
+			{Addresses: []string{"10.0.0.3"}},
+		},
+	}
+
+	analysis := analyzeEndpointSlices(endpointSliceList{Items: []endpointSliceResource{first, second}})
+	if got := analysis.counts["app/api"]; got.total != 3 || got.ready != 3 || got.serving != 3 {
+		t.Fatalf("deduplicated endpoint counts = %+v", got)
+	}
+	if analysis.invalidItems != 5 || len(analysis.references) != 1 || analysis.references[0].pod != "api-a" {
+		t.Fatalf("endpoint identity analysis = %+v", analysis)
+	}
+}
+
+func TestEndpointAddressValidationIsCanonicalAndBounded(t *testing.T) {
+	tests := []struct {
+		addressType string
+		address     string
+		valid       bool
+	}{
+		{addressType: "IPv4", address: "10.0.0.1", valid: true},
+		{addressType: "IPv4", address: "10.00.0.1", valid: false},
+		{addressType: "IPv4", address: "2001:db8::1", valid: false},
+		{addressType: "IPv6", address: "2001:db8::1", valid: true},
+		{addressType: "IPv6", address: "2001:0db8::1", valid: false},
+		{addressType: "FQDN", address: "api.example.com", valid: true},
+		{addressType: "FQDN", address: "API.example.com", valid: false},
+		{addressType: "unknown", address: "10.0.0.1", valid: false},
+	}
+	for _, test := range tests {
+		if got := validEndpointAddress(test.addressType, test.address); got != test.valid {
+			t.Fatalf("validEndpointAddress(%q, %q) = %t", test.addressType, test.address, got)
+		}
+	}
+	if _, valid := endpointPrimaryAddress("IPv4", nil); valid {
+		t.Fatal("empty endpoint addresses were accepted")
+	}
+	if _, valid := endpointPrimaryAddress("IPv4", make([]string, maxEndpointAddresses+1)); valid {
+		t.Fatal("oversized endpoint addresses were accepted")
+	}
+}
+
 func TestEndpointSliceAnalysisRejectsDuplicatesAndFailsClosedOnGlobalBudget(t *testing.T) {
-	first := endpointSliceResource{Metadata: metadata{Name: "api-a", Namespace: "app", Labels: map[string]string{"kubernetes.io/service-name": "api"}}, Endpoints: []endpoint{{TargetRef: &objectReference{Kind: "Pod", Name: "api-a"}}}}
-	duplicate := endpointSliceResource{Metadata: metadata{Name: "api-a", Namespace: "app", Labels: map[string]string{"kubernetes.io/service-name": "other"}}, Endpoints: []endpoint{{TargetRef: &objectReference{Kind: "Pod", Name: "other-a"}}}}
+	first := endpointSliceResource{Metadata: metadata{Name: "api-a", Namespace: "app", Labels: map[string]string{"kubernetes.io/service-name": "api"}}, AddressType: "IPv4", Endpoints: []endpoint{{Addresses: []string{"10.0.0.1"}, TargetRef: &objectReference{Kind: "Pod", Name: "api-a"}}}}
+	duplicate := endpointSliceResource{Metadata: metadata{Name: "api-a", Namespace: "app", Labels: map[string]string{"kubernetes.io/service-name": "other"}}, AddressType: "IPv4", Endpoints: []endpoint{{Addresses: []string{"10.0.0.2"}, TargetRef: &objectReference{Kind: "Pod", Name: "other-a"}}}}
 	analysis := analyzeEndpointSlices(endpointSliceList{Items: []endpointSliceResource{first, duplicate}})
 	if analysis.invalidItems != 1 || analysis.processingLimited || len(analysis.counts) != 1 || analysis.counts["app/api"].total != 1 || len(analysis.references) != 1 {
 		t.Fatalf("duplicate EndpointSlice analysis = %+v", analysis)
@@ -97,7 +158,11 @@ func TestEndpointSliceAnalysisRejectsDuplicatesAndFailsClosedOnGlobalBudget(t *t
 	items := make([]endpointSliceResource, maxEndpointSliceEndpointVisits/maxEndpointSliceEndpoints+1)
 	for index := range items {
 		items[index].Metadata = metadata{Name: "slice-" + paddedNumber(index), Namespace: "app", Labels: map[string]string{"kubernetes.io/service-name": "api"}}
+		items[index].AddressType = "IPv6"
 		items[index].Endpoints = make([]endpoint, maxEndpointSliceEndpoints)
+		for endpointIndex := range items[index].Endpoints {
+			items[index].Endpoints[endpointIndex].Addresses = []string{fmt.Sprintf("2001:db8:%x::%x", index+1, endpointIndex+1)}
+		}
 	}
 	analysis = analyzeEndpointSlices(endpointSliceList{Items: items})
 	if !analysis.processingLimited || len(analysis.counts) != 0 || len(analysis.references) != 0 {
@@ -127,8 +192,8 @@ func TestSelectorEndpointFallbackIsAtomicWhenComparisonBudgetIsExceeded(t *testi
 		t.Fatalf("serviceEndpointReferences() partially returned an over-budget inferred scan: %d entries", len(references))
 	}
 
-	observedSlice := endpointSliceResource{Metadata: metadata{Name: "observed-a", Namespace: "app", Labels: map[string]string{"kubernetes.io/service-name": "observed"}}}
-	observedSlice.Endpoints = []endpoint{{TargetRef: &objectReference{Kind: "Pod", Name: "pod-aa"}}}
+	observedSlice := endpointSliceResource{Metadata: metadata{Name: "observed-a", Namespace: "app", Labels: map[string]string{"kubernetes.io/service-name": "observed"}}, AddressType: "IPv4"}
+	observedSlice.Endpoints = []endpoint{{Addresses: []string{"10.0.0.1"}, TargetRef: &objectReference{Kind: "Pod", Name: "pod-aa"}}}
 	references = serviceEndpointReferences(endpointSliceList{Items: []endpointSliceResource{observedSlice}}, serviceList{Items: services}, podList{Items: pods})
 	if len(references) != 1 || references[0].service != "observed" || references[0].confidence != "observed" {
 		t.Fatalf("serviceEndpointReferences() = %#v, want observed edge preserved without partial inferred edges", references)

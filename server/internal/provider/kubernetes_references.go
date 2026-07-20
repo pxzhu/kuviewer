@@ -1,12 +1,14 @@
 package provider
 
 import (
+	"net/netip"
 	"sort"
 	"strings"
 )
 
 const (
-	maxEndpointSliceEndpoints        = 4096
+	maxEndpointSliceEndpoints        = 1000
+	maxEndpointAddresses             = 100
 	maxEndpointSliceEndpointVisits   = 100_000
 	maxSelectorFallbackComparisons   = 250_000
 	maxPodReferenceResults           = 256
@@ -74,12 +76,13 @@ func endpointCounts(endpointSlices endpointSliceList) map[string]endpointCounter
 func analyzeEndpointSlices(endpointSlices endpointSliceList) endpointSliceAnalysis {
 	analysis := endpointSliceAnalysis{counts: map[string]endpointCounter{}}
 	seenSlices := map[string]bool{}
+	seenEndpoints := map[string]bool{}
 	seenReferences := map[string]bool{}
 	endpointVisits := 0
 	for _, slice := range endpointSlices.Items {
 		serviceName := slice.Metadata.Labels["kubernetes.io/service-name"]
 		endpoints, valid := boundedEndpointSliceEndpoints(slice.Endpoints)
-		if !validKubernetesReferenceName(slice.Metadata.Name) || !validKubernetesReferenceName(serviceName) || !validKubernetesNamespace(slice.Metadata.Namespace) || !valid {
+		if !validKubernetesReferenceName(slice.Metadata.Name) || !validKubernetesReferenceName(serviceName) || !validKubernetesNamespace(slice.Metadata.Namespace) || !validEndpointAddressType(slice.AddressType) || !valid {
 			analysis.invalidItems++
 			continue
 		}
@@ -96,6 +99,17 @@ func analyzeEndpointSlices(endpointSlices endpointSliceList) endpointSliceAnalys
 		key := serviceKey(slice.Metadata.Namespace, serviceName)
 		counter := analysis.counts[key]
 		for _, endpoint := range endpoints {
+			identity, valid := endpointIdentityKey(slice.Metadata.Namespace, slice.AddressType, endpoint)
+			if !valid {
+				analysis.invalidItems++
+				continue
+			}
+			identity = key + "\x00" + identity
+			if seenEndpoints[identity] {
+				analysis.invalidItems++
+				continue
+			}
+			seenEndpoints[identity] = true
 			readiness := endpointConditionState(endpoint)
 			counter.total++
 			if readiness.ready {
@@ -135,6 +149,56 @@ func analyzeEndpointSlices(endpointSlices endpointSliceList) endpointSliceAnalys
 		analysis.counts[key] = counter
 	}
 	return analysis
+}
+
+func endpointIdentityKey(namespace string, addressType string, endpoint endpoint) (string, bool) {
+	address, valid := endpointPrimaryAddress(addressType, endpoint.Addresses)
+	if !valid {
+		return "", false
+	}
+	if endpoint.TargetRef == nil {
+		return "address\x00" + addressType + "\x00" + address, true
+	}
+	if !validKubernetesKind(endpoint.TargetRef.Kind) || !validKubernetesReferenceName(endpoint.TargetRef.Name) {
+		return "", false
+	}
+	if endpoint.TargetRef.Namespace != "" && endpoint.TargetRef.Namespace != namespace {
+		return "", false
+	}
+	return "target\x00" + endpoint.TargetRef.Kind + "\x00" + endpoint.TargetRef.Name, true
+}
+
+func endpointPrimaryAddress(addressType string, addresses []string) (string, bool) {
+	if len(addresses) == 0 || len(addresses) > maxEndpointAddresses {
+		return "", false
+	}
+	seen := map[string]bool{}
+	for _, address := range addresses {
+		if seen[address] || !validEndpointAddress(addressType, address) {
+			return "", false
+		}
+		seen[address] = true
+	}
+	return addresses[0], true
+}
+
+func validEndpointAddress(addressType string, value string) bool {
+	switch addressType {
+	case "IPv4", "IPv6":
+		address, err := netip.ParseAddr(value)
+		if err != nil || address.String() != value {
+			return false
+		}
+		return addressType == "IPv4" && address.Is4() || addressType == "IPv6" && address.Is6()
+	case "FQDN":
+		return validDNSSubdomain(value)
+	default:
+		return false
+	}
+}
+
+func validEndpointAddressType(value string) bool {
+	return value == "IPv4" || value == "IPv6" || value == "FQDN"
 }
 
 func endpointConditionState(endpoint endpoint) endpointReadiness {

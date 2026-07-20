@@ -160,10 +160,11 @@ type serviceList = kubeList[serviceResource]
 type serviceResource struct {
 	Metadata metadata `json:"metadata"`
 	Spec     struct {
-		Type      string            `json:"type"`
-		ClusterIP string            `json:"clusterIP"`
-		Selector  map[string]string `json:"selector"`
-		Ports     []struct {
+		Type                     string            `json:"type"`
+		ClusterIP                string            `json:"clusterIP"`
+		Selector                 map[string]string `json:"selector"`
+		PublishNotReadyAddresses bool              `json:"publishNotReadyAddresses"`
+		Ports                    []struct {
 			Port int `json:"port"`
 		} `json:"ports"`
 	} `json:"spec"`
@@ -172,11 +173,13 @@ type serviceResource struct {
 type endpointSliceList = kubeList[endpointSliceResource]
 
 type endpointSliceResource struct {
-	Metadata  metadata   `json:"metadata"`
-	Endpoints []endpoint `json:"endpoints"`
+	Metadata    metadata   `json:"metadata"`
+	AddressType string     `json:"addressType"`
+	Endpoints   []endpoint `json:"endpoints"`
 }
 
 type endpoint struct {
+	Addresses  []string `json:"addresses"`
 	Conditions struct {
 		Ready       *bool `json:"ready"`
 		Serving     *bool `json:"serving"`
@@ -186,8 +189,9 @@ type endpoint struct {
 }
 
 type objectReference struct {
-	Kind string `json:"kind"`
-	Name string `json:"name"`
+	Kind      string `json:"kind"`
+	Namespace string `json:"namespace"`
+	Name      string `json:"name"`
 }
 
 type deploymentList = kubeList[deploymentResource]
