@@ -54,6 +54,7 @@
 - Desktop CM layout의 validation, storage, import/export, folder/preset ordering은 `website/src/features/desktop/desktopCmSessionLayouts.ts`에 두고 direct unit test로 검증한다.
 - Desktop CM saved-layout UI state, import conflict, selection, keyboard/drag reorder orchestration은 `useDesktopCmSessionLayouts.ts`가 담당한다.
 - Desktop CM saved-layout의 transient focus, keyboard/drag reorder orchestration은 `useDesktopCmSessionLayoutReorder.ts`로 한 단계 더 분리돼 있다.
+- App shell의 Desktop CM session/runtime 수명주기와 safe 상태 전이는 `useDesktopCmSessionController.ts`가 담당하며, 웹 경로는 Tauri API를 dynamic import로만 접근한다.
 - Desktop CM diagnostic preset은 독립 feature module과 direct unit test로 검증하며, core reorder는 test-id 정규화와 실제 desktop smoke로 고정한다.
 - Desktop CM 연결 폼과 선택 세션 요약은 `website/src/components/desktopCm/` 표시 컴포넌트로 분리하고, safe error/status/validation은 `desktopCmSessionPresentation.ts` direct unit test로 고정한다.
 - Frontend pure helper regression은 `npm run test:unit`, end-to-end UI는 `npm run test:visual`로 검증한다.
