@@ -1,6 +1,7 @@
 package provider
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 	"testing"
@@ -39,17 +40,82 @@ func TestServiceTypeClusterIPAndExternalNameValidation(t *testing.T) {
 	if !validServiceSpec(external) || serviceStatus(external, endpointCounter{}) != "healthy" {
 		t.Fatalf("valid ExternalName Service was rejected: %+v", external)
 	}
+	if summary := serviceSummary(external, endpointCounter{}); summary["clusterIP"] != "unset" || summary["ipFamilyPolicy"] != "unset" {
+		t.Fatalf("ExternalName IP summary = %+v", summary)
+	}
 	external.Spec.ExternalName = "API.example.com"
 	if validServiceSpec(external) || serviceStatus(external, endpointCounter{}) != "warning" {
 		t.Fatalf("malformed ExternalName Service was accepted: %+v", external)
 	}
 }
 
+func TestServiceDualStackConfigurationValidation(t *testing.T) {
+	dualStack := serviceResource{}
+	dualStack.Spec.Type = "ClusterIP"
+	dualStack.Spec.ClusterIP = "10.0.0.8"
+	dualStack.Spec.ClusterIPs = []string{"10.0.0.8", "2001:db8::8"}
+	dualStack.Spec.IPFamilies = []string{"IPv4", "IPv6"}
+	dualStack.Spec.IPFamilyPolicy = "RequireDualStack"
+	if !validServiceSpec(dualStack) {
+		t.Fatal("valid dual-stack Service was rejected")
+	}
+	summary := serviceSummary(dualStack, endpointCounter{})
+	if summary["clusterIPs"] != 2 || summary["ipFamilies"] != "IPv4,IPv6" || summary["ipFamilyPolicy"] != "RequireDualStack" {
+		t.Fatalf("dual-stack summary = %+v", summary)
+	}
+
+	fixtures := []struct {
+		name       string
+		clusterIP  string
+		clusterIPs []string
+		families   []string
+		policy     string
+	}{
+		{name: "primary mismatch", clusterIP: "10.0.0.8", clusterIPs: []string{"10.0.0.9"}, families: []string{"IPv4"}},
+		{name: "same family twice", clusterIP: "10.0.0.8", clusterIPs: []string{"10.0.0.8", "10.0.0.9"}, families: []string{"IPv4", "IPv4"}, policy: "PreferDualStack"},
+		{name: "family mismatch", clusterIP: "10.0.0.8", clusterIPs: []string{"10.0.0.8"}, families: []string{"IPv6"}},
+		{name: "single policy with two addresses", clusterIP: "10.0.0.8", clusterIPs: []string{"10.0.0.8", "2001:db8::8"}, families: []string{"IPv4", "IPv6"}, policy: "SingleStack"},
+		{name: "require policy with one address", clusterIP: "10.0.0.8", clusterIPs: []string{"10.0.0.8"}, families: []string{"IPv4"}, policy: "RequireDualStack"},
+		{name: "noncanonical address", clusterIP: "10.0.0.8", clusterIPs: []string{"10.0.0.8", "2001:0db8::8"}, families: []string{"IPv4", "IPv6"}, policy: "PreferDualStack"},
+		{name: "invalid policy", clusterIP: "10.0.0.8", clusterIPs: []string{"10.0.0.8"}, families: []string{"IPv4"}, policy: "Automatic"},
+	}
+	for _, fixture := range fixtures {
+		service := serviceResource{}
+		service.Spec.ClusterIP = fixture.clusterIP
+		service.Spec.ClusterIPs = fixture.clusterIPs
+		service.Spec.IPFamilies = fixture.families
+		service.Spec.IPFamilyPolicy = fixture.policy
+		if validServiceSpec(service) {
+			t.Fatalf("invalid dual-stack fixture %q was accepted", fixture.name)
+		}
+	}
+
+	headless := serviceResource{}
+	headless.Spec.ClusterIP = "None"
+	headless.Spec.ClusterIPs = []string{"None"}
+	headless.Spec.IPFamilies = []string{"IPv6"}
+	if !validServiceSpec(headless) {
+		t.Fatal("valid headless Service IP configuration was rejected")
+	}
+	headless.Spec.IPFamilies = []string{"IPv4", "IPv6"}
+	headless.Spec.IPFamilyPolicy = "RequireDualStack"
+	if !validServiceSpec(headless) {
+		t.Fatal("valid dual-stack headless Service was rejected")
+	}
+	external := serviceResource{}
+	external.Spec.Type = "ExternalName"
+	external.Spec.ExternalName = "api.example.com"
+	external.Spec.ClusterIPs = []string{"10.0.0.8"}
+	if validServiceSpec(external) {
+		t.Fatal("ExternalName Service with clusterIPs was accepted")
+	}
+}
+
 func TestServicePortAndSelectorValidationIsBounded(t *testing.T) {
-	if !validServicePorts([]servicePort{{Port: 80}}) {
+	if !validServicePorts("ClusterIP", []servicePort{{Port: 80}}) {
 		t.Fatal("single default-protocol Service port was rejected")
 	}
-	if !validServicePorts([]servicePort{{Name: "http", Protocol: "TCP", Port: 80}, {Name: "dns", Protocol: "UDP", Port: 53}}) {
+	if !validServicePorts("ClusterIP", []servicePort{{Name: "http", Protocol: "TCP", Port: 80}, {Name: "dns", Protocol: "UDP", Port: 53}}) {
 		t.Fatal("valid named Service ports were rejected")
 	}
 	invalidPorts := [][]servicePort{
@@ -59,10 +125,11 @@ func TestServicePortAndSelectorValidationIsBounded(t *testing.T) {
 		{{Name: "Bad", Port: 80}},
 		{{Port: 80}, {Name: "metrics", Port: 9090}},
 		{{Name: "http", Port: 80}, {Name: "http", Port: 8080}},
+		{{Name: "http", Protocol: "TCP", Port: 80}, {Name: "http-alt", Port: 80}},
 		make([]servicePort, maxServicePorts+1),
 	}
 	for index, ports := range invalidPorts {
-		if validServicePorts(ports) {
+		if validServicePorts("ClusterIP", ports) {
 			t.Fatalf("invalid Service ports fixture %d was accepted", index)
 		}
 	}
@@ -79,16 +146,79 @@ func TestServicePortAndSelectorValidationIsBounded(t *testing.T) {
 	}
 }
 
+func TestServiceTargetNodePortAndAppProtocolValidation(t *testing.T) {
+	numeric := decodeServiceTargetPort(t, "8080")
+	named := decodeServiceTargetPort(t, `"http-web"`)
+	if !numeric.Valid || numeric.Kind != "number" || numeric.IntValue != 8080 {
+		t.Fatalf("numeric targetPort = %+v", numeric)
+	}
+	if !named.Valid || named.Kind != "name" || named.StringValue != "http-web" {
+		t.Fatalf("named targetPort = %+v", named)
+	}
+	for _, value := range []string{"null", "0", "65536", "80.5", `""`, `"UPPER"`, `"1234"`, `"name-that-is-too-long"`, fmt.Sprintf(`"%s"`, strings.Repeat("a", maxTargetPortJSONSize)), `{"name":"http"}`} {
+		if target := decodeServiceTargetPort(t, value); target.Valid || !target.Set {
+			t.Fatalf("invalid targetPort %s = %+v", value, target)
+		}
+	}
+
+	clusterPort := servicePort{Port: 80, TargetPort: named, AppProtocol: "kubernetes.io/h2c"}
+	if !validServicePorts("ClusterIP", []servicePort{clusterPort}) {
+		t.Fatal("valid targetPort and appProtocol were rejected")
+	}
+	portSummary := serviceSummary(serviceResourceWithPorts(clusterPort), endpointCounter{})
+	if portSummary["ports"] != 1 || portSummary["targetPorts"] != 1 || portSummary["nodePorts"] != 0 || portSummary["appProtocols"] != 1 {
+		t.Fatalf("Service port summary = %+v", portSummary)
+	}
+	clusterPort.NodePort = 30080
+	if validServicePorts("ClusterIP", []servicePort{clusterPort}) {
+		t.Fatal("ClusterIP Service nodePort was accepted")
+	}
+	nodePort := servicePort{Port: 80, TargetPort: numeric, NodePort: 30080, AppProtocol: "example.com/http"}
+	if !validServicePorts("NodePort", []servicePort{nodePort}) || validServicePorts("NodePort", []servicePort{{Port: 80}}) {
+		t.Fatal("NodePort allocation policy mismatch")
+	}
+	if !validServicePorts("LoadBalancer", []servicePort{{Port: 443}}) {
+		t.Fatal("LoadBalancer port without nodePort was rejected")
+	}
+	if !validServicePorts("NodePort", []servicePort{{Name: "dns-tcp", Protocol: "TCP", Port: 53, NodePort: 30053}, {Name: "dns-udp", Protocol: "UDP", Port: 53, NodePort: 30053}}) {
+		t.Fatal("same Service and node port across distinct protocols was rejected")
+	}
+	if validServicePorts("NodePort", []servicePort{{Name: "http", Port: 80, NodePort: 30080}, {Name: "metrics", Port: 9090, NodePort: 30080}}) {
+		t.Fatal("duplicate nodePort and protocol was accepted")
+	}
+	if validServicePorts("ClusterIP", []servicePort{{Port: 80, AppProtocol: "bad key"}}) {
+		t.Fatal("invalid appProtocol was accepted")
+	}
+}
+
+func serviceResourceWithPorts(ports ...servicePort) serviceResource {
+	service := serviceResource{}
+	service.Spec.Ports = ports
+	return service
+}
+
+func decodeServiceTargetPort(t *testing.T, value string) serviceTargetPort {
+	t.Helper()
+	var target serviceTargetPort
+	if err := json.Unmarshal([]byte(value), &target); err != nil {
+		t.Fatalf("decode targetPort %s: %v", value, err)
+	}
+	return target
+}
+
 func TestServiceSummaryAndSnapshotFailClosedForMalformedSpec(t *testing.T) {
 	service := serviceResource{Metadata: metadata{Name: "api", Namespace: "app"}}
 	service.Spec.Type = "Injected"
 	service.Spec.ClusterIP = "token=remote-value"
+	service.Spec.ClusterIPs = []string{"credential=remote-value"}
+	service.Spec.IPFamilies = []string{"UnsafeFamily"}
+	service.Spec.IPFamilyPolicy = "InjectedPolicy"
 	service.Spec.ExternalName = "credential.example.com"
-	service.Spec.Ports = []servicePort{{Protocol: "HTTP", Port: -1}}
+	service.Spec.Ports = []servicePort{{Protocol: "HTTP", Port: -1, NodePort: -1, AppProtocol: "credential/value"}}
 	service.Spec.Selector = map[string]string{"bad key": "value"}
 
 	summary := serviceSummary(service, endpointCounter{})
-	for _, key := range []string{"type", "clusterIP", "externalName", "ports", "selector"} {
+	for _, key := range []string{"type", "clusterIP", "clusterIPs", "ipFamilies", "ipFamilyPolicy", "externalName", "ports", "targetPorts", "nodePorts", "appProtocols", "selector"} {
 		if summary[key] != "invalid" {
 			t.Fatalf("Service summary %s = %#v", key, summary[key])
 		}
@@ -106,7 +236,7 @@ func TestServiceSummaryAndSnapshotFailClosedForMalformedSpec(t *testing.T) {
 		t.Fatalf("malformed Service diagnostic = %+v", diagnostic)
 	}
 	encoded := fmt.Sprintf("%+v", node.Summary)
-	if strings.Contains(encoded, "remote-value") || strings.Contains(encoded, "credential.example.com") {
+	if strings.Contains(encoded, "remote-value") || strings.Contains(encoded, "credential.example.com") || strings.Contains(encoded, "UnsafeFamily") || strings.Contains(encoded, "InjectedPolicy") {
 		t.Fatalf("malformed Service values leaked: %s", encoded)
 	}
 }
