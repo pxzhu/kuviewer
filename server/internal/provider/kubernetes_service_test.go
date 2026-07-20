@@ -192,6 +192,76 @@ func TestServiceTrafficPolicyLoadBalancerAndSessionAffinityValidation(t *testing
 	}
 }
 
+func TestServiceExternalExposureFieldsAreBoundedAndRedacted(t *testing.T) {
+	service := decodeServiceResource(t, `{
+		"spec": {
+			"type": "LoadBalancer",
+			"externalIPs": ["192.0.2.20", "2001:db8::20"],
+			"loadBalancerSourceRanges": ["192.0.2.0/24", "2001:db8::/64"],
+			"trafficDistribution": "PreferSameNode",
+			"loadBalancerIP": "198.51.100.40"
+		}
+	}`)
+	if !validServiceSpec(service) {
+		t.Fatal("valid Service external exposure configuration was rejected")
+	}
+	summary := serviceSummary(service, endpointCounter{})
+	if summary["externalIPs"] != 2 || summary["externalIPsDeprecated"] != true || summary["loadBalancerSourceRanges"] != 2 || summary["trafficDistribution"] != "PreferSameNode" || summary["trafficDistributionDeprecated"] != false || summary["deprecatedLoadBalancerIP"] != "configured" {
+		t.Fatalf("Service external exposure summary = %+v", summary)
+	}
+	if encoded := fmt.Sprintf("%+v", service.Spec.DeprecatedLoadBalancerIP); strings.Contains(encoded, "198.51.100.40") {
+		t.Fatalf("deprecated loadBalancerIP was retained: %s", encoded)
+	}
+	nullDeprecatedIP := decodeServiceResource(t, `{"spec":{"type":"LoadBalancer","loadBalancerIP":null}}`)
+	if !validServiceSpec(nullDeprecatedIP) || serviceSummary(nullDeprecatedIP, endpointCounter{})["deprecatedLoadBalancerIP"] != "unset" {
+		t.Fatal("null deprecated loadBalancerIP was not treated as unset")
+	}
+	malformedDeprecatedIP := decodeServiceResource(t, `{"spec":{"type":"LoadBalancer","loadBalancerIP":"credential=remote-value"}}`)
+	if validServiceSpec(malformedDeprecatedIP) || strings.Contains(fmt.Sprintf("%+v", malformedDeprecatedIP.Spec.DeprecatedLoadBalancerIP), "remote-value") {
+		t.Fatal("malformed deprecated loadBalancerIP was accepted or retained")
+	}
+
+	service.Spec.TrafficDistribution = "PreferClose"
+	if summary := serviceSummary(service, endpointCounter{}); summary["trafficDistribution"] != "PreferClose" || summary["trafficDistributionDeprecated"] != true {
+		t.Fatalf("deprecated traffic distribution summary = %+v", summary)
+	}
+
+	invalid := []serviceResource{
+		serviceWithExternalFields("ClusterIP", []string{"192.0.2.20", "192.0.2.20"}, nil, "", serviceDeprecatedIPAddress{}),
+		serviceWithExternalFields("ClusterIP", []string{"192.00.2.20"}, nil, "", serviceDeprecatedIPAddress{}),
+		serviceWithExternalFields("ClusterIP", nil, []string{"192.0.2.0/24"}, "", serviceDeprecatedIPAddress{}),
+		serviceWithExternalFields("LoadBalancer", nil, []string{"not-a-cidr"}, "", serviceDeprecatedIPAddress{}),
+		serviceWithExternalFields("LoadBalancer", nil, []string{"192.0.2.0/24", "192.0.2.0/24"}, "", serviceDeprecatedIPAddress{}),
+		serviceWithExternalFields("ClusterIP", nil, nil, "Spread", serviceDeprecatedIPAddress{}),
+		serviceWithExternalFields("ClusterIP", nil, nil, "", serviceDeprecatedIPAddress{Set: true, Configured: true, Valid: true}),
+		serviceWithExternalFields("LoadBalancer", nil, nil, "", serviceDeprecatedIPAddress{Set: true}),
+	}
+	tooManyExternal := serviceResource{}
+	tooManyExternal.Spec.ExternalIPs = make([]string, maxServiceExternalIPs+1)
+	invalid = append(invalid, tooManyExternal)
+	tooManyRanges := serviceResource{}
+	tooManyRanges.Spec.Type = "LoadBalancer"
+	tooManyRanges.Spec.LoadBalancerSourceRanges = make([]string, maxServiceSourceRanges+1)
+	invalid = append(invalid, tooManyRanges)
+	for index, candidate := range invalid {
+		if validServiceSpec(candidate) {
+			t.Fatalf("invalid Service external exposure fixture %d was accepted", index)
+		}
+	}
+
+	externalName := serviceResource{}
+	externalName.Spec.Type = "ExternalName"
+	externalName.Spec.ExternalName = "api.example.com"
+	externalName.Spec.ExternalIPs = []string{"192.0.2.20"}
+	if !validServiceSpec(externalName) {
+		t.Fatal("ExternalName Service with deprecated externalIPs was rejected")
+	}
+	externalName.Spec.TrafficDistribution = "PreferSameZone"
+	if validServiceSpec(externalName) {
+		t.Fatal("ExternalName Service trafficDistribution was accepted")
+	}
+}
+
 func TestServicePortAndSelectorValidationIsBounded(t *testing.T) {
 	if !validServicePorts("ClusterIP", []servicePort{{Port: 80}}) {
 		t.Fatal("single default-protocol Service port was rejected")
@@ -287,6 +357,25 @@ func decodeServiceTargetPort(t *testing.T, value string) serviceTargetPort {
 	return target
 }
 
+func decodeServiceResource(t *testing.T, value string) serviceResource {
+	t.Helper()
+	var service serviceResource
+	if err := json.Unmarshal([]byte(value), &service); err != nil {
+		t.Fatalf("decode Service resource: %v", err)
+	}
+	return service
+}
+
+func serviceWithExternalFields(serviceType string, externalIPs, sourceRanges []string, trafficDistribution string, deprecatedIP serviceDeprecatedIPAddress) serviceResource {
+	service := serviceResource{}
+	service.Spec.Type = serviceType
+	service.Spec.ExternalIPs = externalIPs
+	service.Spec.LoadBalancerSourceRanges = sourceRanges
+	service.Spec.TrafficDistribution = trafficDistribution
+	service.Spec.DeprecatedLoadBalancerIP = deprecatedIP
+	return service
+}
+
 func TestServiceSummaryAndSnapshotFailClosedForMalformedSpec(t *testing.T) {
 	service := serviceResource{Metadata: metadata{Name: "api", Namespace: "app"}}
 	service.Spec.Type = "Injected"
@@ -299,12 +388,16 @@ func TestServiceSummaryAndSnapshotFailClosedForMalformedSpec(t *testing.T) {
 	service.Spec.SessionAffinity = "InjectedAffinity"
 	service.Spec.HealthCheckNodePort = -1
 	service.Spec.LoadBalancerClass = "credential.example.com/private"
+	service.Spec.ExternalIPs = []string{"credential=remote-value"}
+	service.Spec.LoadBalancerSourceRanges = []string{"credential=remote-value"}
+	service.Spec.TrafficDistribution = "InjectedDistribution"
+	service.Spec.DeprecatedLoadBalancerIP = serviceDeprecatedIPAddress{Set: true}
 	service.Spec.ExternalName = "credential.example.com"
 	service.Spec.Ports = []servicePort{{Protocol: "HTTP", Port: -1, NodePort: -1, AppProtocol: "credential/value"}}
 	service.Spec.Selector = map[string]string{"bad key": "value"}
 
 	summary := serviceSummary(service, endpointCounter{})
-	for _, key := range []string{"type", "clusterIP", "clusterIPs", "ipFamilies", "ipFamilyPolicy", "internalTrafficPolicy", "externalTrafficPolicy", "healthCheckNodePort", "loadBalancerClass", "allocateLoadBalancerNodePorts", "sessionAffinity", "sessionAffinityTimeout", "externalName", "ports", "targetPorts", "nodePorts", "appProtocols", "selector"} {
+	for _, key := range []string{"type", "clusterIP", "clusterIPs", "ipFamilies", "ipFamilyPolicy", "internalTrafficPolicy", "externalTrafficPolicy", "healthCheckNodePort", "loadBalancerClass", "allocateLoadBalancerNodePorts", "externalIPs", "externalIPsDeprecated", "loadBalancerSourceRanges", "trafficDistribution", "trafficDistributionDeprecated", "deprecatedLoadBalancerIP", "sessionAffinity", "sessionAffinityTimeout", "externalName", "ports", "targetPorts", "nodePorts", "appProtocols", "selector"} {
 		if summary[key] != "invalid" {
 			t.Fatalf("Service summary %s = %#v", key, summary[key])
 		}
@@ -322,7 +415,7 @@ func TestServiceSummaryAndSnapshotFailClosedForMalformedSpec(t *testing.T) {
 		t.Fatalf("malformed Service diagnostic = %+v", diagnostic)
 	}
 	encoded := fmt.Sprintf("%+v", node.Summary)
-	if strings.Contains(encoded, "remote-value") || strings.Contains(encoded, "credential.example.com") || strings.Contains(encoded, "UnsafeFamily") || strings.Contains(encoded, "InjectedPolicy") || strings.Contains(encoded, "InjectedInternal") || strings.Contains(encoded, "InjectedExternal") || strings.Contains(encoded, "InjectedAffinity") {
+	if strings.Contains(encoded, "remote-value") || strings.Contains(encoded, "credential.example.com") || strings.Contains(encoded, "UnsafeFamily") || strings.Contains(encoded, "InjectedPolicy") || strings.Contains(encoded, "InjectedInternal") || strings.Contains(encoded, "InjectedExternal") || strings.Contains(encoded, "InjectedAffinity") || strings.Contains(encoded, "InjectedDistribution") {
 		t.Fatalf("malformed Service values leaked: %s", encoded)
 	}
 }

@@ -172,6 +172,10 @@ type serviceResource struct {
 		HealthCheckNodePort           int                           `json:"healthCheckNodePort"`
 		LoadBalancerClass             string                        `json:"loadBalancerClass"`
 		AllocateLoadBalancerNodePorts *bool                         `json:"allocateLoadBalancerNodePorts"`
+		ExternalIPs                   []string                      `json:"externalIPs"`
+		LoadBalancerSourceRanges      []string                      `json:"loadBalancerSourceRanges"`
+		TrafficDistribution           string                        `json:"trafficDistribution"`
+		DeprecatedLoadBalancerIP      serviceDeprecatedIPAddress    `json:"loadBalancerIP"`
 		ExternalName                  string                        `json:"externalName"`
 		Selector                      map[string]string             `json:"selector"`
 		PublishNotReadyAddresses      bool                          `json:"publishNotReadyAddresses"`
@@ -185,6 +189,12 @@ type serviceSessionAffinityConfig struct {
 
 type serviceClientIPConfig struct {
 	TimeoutSeconds *int `json:"timeoutSeconds"`
+}
+
+type serviceDeprecatedIPAddress struct {
+	Set        bool
+	Configured bool
+	Valid      bool
 }
 
 type servicePort struct {
