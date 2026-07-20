@@ -136,16 +136,6 @@ func jobStatus(job jobResource) string {
 	return "warning"
 }
 
-func hpaStatus(hpa horizontalPodAutoscalerResource) string {
-	if !validSummaryCount(hpa.Status.DesiredReplicas) || !validSummaryCount(hpa.Status.CurrentReplicas) {
-		return "warning"
-	}
-	if hpa.Status.DesiredReplicas == 0 || hpa.Status.CurrentReplicas >= hpa.Status.DesiredReplicas {
-		return "healthy"
-	}
-	return "warning"
-}
-
 func pvcStatus(pvc pvcResource) string {
 	if pvc.Status.Phase == "Bound" {
 		return "healthy"
