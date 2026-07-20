@@ -16,6 +16,7 @@
    - Optional API/CR instance는 최대 6개 bounded concurrency로 수집하고, 실패 항목은 safe snapshot diagnostics로 표시한다.
    - Fixed/follow Pod logs는 실제 Native API에서 검증했으며 `Accept: */*`, 200줄/byte/line cap을 유지한다.
    - Provider capability와 Events/Pod logs는 독립 module로 분리됐고, 빈 Event ref와 nil stream callback은 direct test로 fail-closed 동작을 검증한다.
+   - Kubernetes list pagination은 독립 module에서 query/continue 보존과 page/item/byte/token cap, malformed/nil input fail-closed 동작을 direct test로 검증한다.
 
 2. Resource Explorer panel extraction
    - Resource fetch/pagination abort, selection anchor, keyboard/bulk action은 controller hook으로 분리됐다.
