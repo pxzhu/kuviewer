@@ -61,13 +61,21 @@ type nodeList = kubeList[nodeResource]
 
 type nodeResource struct {
 	Metadata metadata `json:"metadata"`
-	Status   struct {
-		Conditions []condition       `json:"conditions"`
-		Capacity   map[string]string `json:"capacity"`
-		NodeInfo   struct {
-			KubeletVersion string `json:"kubeletVersion"`
-		} `json:"nodeInfo"`
-	} `json:"status"`
+	Status   nodeStat `json:"status"`
+}
+
+type nodeStat struct {
+	Conditions  []condition       `json:"conditions"`
+	Capacity    map[string]string `json:"capacity"`
+	Allocatable map[string]string `json:"allocatable"`
+	NodeInfo    nodeSystemInfo    `json:"nodeInfo"`
+}
+
+type nodeSystemInfo struct {
+	KubeletVersion          string `json:"kubeletVersion"`
+	ContainerRuntimeVersion string `json:"containerRuntimeVersion"`
+	OperatingSystem         string `json:"operatingSystem"`
+	Architecture            string `json:"architecture"`
 }
 
 type podList = kubeList[podResource]

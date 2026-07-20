@@ -39,9 +39,9 @@ func (MockProvider) Snapshot(_ context.Context) (topology.Snapshot, error) {
 			node("Cluster", "", "native-dev", "healthy", map[string]string{"provider": "native"}, map[string]interface{}{"version": "v1.30.x", "nodes": 3, "namespaces": 5}, 80, 260),
 			node("Namespace", "", "platform", "healthy", map[string]string{"team": "platform"}, map[string]interface{}{"workloads": 4, "services": 3}, 300, 120),
 			node("Namespace", "", "checkout", "warning", map[string]string{"team": "commerce"}, map[string]interface{}{"workloads": 5, "services": 5}, 300, 390),
-			node("Node", "", "worker-a", "healthy", map[string]string{"zone": "a"}, map[string]interface{}{"cpu": "61%", "memory": "72%", "pods": 8}, 600, 80),
-			node("Node", "", "worker-b", "healthy", map[string]string{"zone": "b"}, map[string]interface{}{"cpu": "48%", "memory": "58%", "pods": 7}, 600, 260),
-			node("Node", "", "worker-c", "warning", map[string]string{"zone": "c"}, map[string]interface{}{"cpu": "82%", "memory": "86%", "pods": 5}, 600, 440),
+			node("Node", "", "worker-a", "healthy", map[string]string{"zone": "a"}, mockNodeStatusSummary("8", "7800m", "32Gi", "30Gi", 110, 100, true), 600, 80),
+			node("Node", "", "worker-b", "healthy", map[string]string{"zone": "b"}, mockNodeStatusSummary("8", "7600m", "32Gi", "29Gi", 110, 96, true), 600, 260),
+			node("Node", "", "worker-c", "warning", map[string]string{"zone": "c"}, mockNodeStatusSummary("4", "3800m", "16Gi", "14Gi", 80, 72, false), 600, 440),
 			node("CustomResourceDefinition", "", "widgets.platform.example.com", "healthy", map[string]string{"group": "platform.example.com"}, map[string]interface{}{"group": "platform.example.com", "kind": "Widget", "plural": "widgets", "scope": "Namespaced", "servedVersions": "v1", "storageVersion": "v1"}, 1500, 120),
 			node("CustomResource", "platform", "Widget:checkout-dashboard", "healthy", map[string]string{"app": "checkout"}, map[string]interface{}{"apiVersion": "platform.example.com/v1", "kind": "Widget", "name": "checkout-dashboard", "crd": "widgets.platform.example.com", "group": "platform.example.com", "scope": "Namespaced", "version": "v1", "specFields": 2, "statusFields": 1, "conditions": "Ready=True"}, 1500, 260),
 			node("Deployment", "platform", "kuviewer-api", "healthy", map[string]string{"app": "kuviewer", "tier": "api"}, map[string]interface{}{"replicas": "2/2", "containers": 1, "initContainers": 1, "imageCount": 1, "images": []string{"kuviewer/api:mock"}}, 900, 120),
@@ -112,6 +112,30 @@ func node(kind string, namespace string, name string, status string, labels map[
 		Summary:   summary,
 		X:         x,
 		Y:         y,
+	}
+}
+
+func mockNodeStatusSummary(capacityCPU string, allocatableCPU string, capacityMemory string, allocatableMemory string, capacityPods int, allocatablePods int, ready bool) map[string]interface{} {
+	conditions := "Ready=False"
+	if ready {
+		conditions = "Ready=True"
+	}
+	return map[string]interface{}{
+		"capacityCpu":                 capacityCPU,
+		"allocatableCpu":              allocatableCPU,
+		"capacityMemory":              capacityMemory,
+		"allocatableMemory":           allocatableMemory,
+		"capacityPods":                capacityPods,
+		"allocatablePods":             allocatablePods,
+		"capacityEphemeralStorage":    "100Gi",
+		"allocatableEphemeralStorage": "90Gi",
+		"capacityResourceCount":       4,
+		"allocatableResourceCount":    4,
+		"kubeletVersion":              "v1.30.4",
+		"containerRuntime":            "containerd://1.7.27",
+		"operatingSystem":             "linux",
+		"architecture":                "amd64",
+		"conditions":                  conditions,
 	}
 }
 

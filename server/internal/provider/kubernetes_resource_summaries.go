@@ -12,25 +12,6 @@ const (
 	maxOwnerSummaryItems     = 64
 )
 
-func nodeStatus(node nodeResource) string {
-	if nodeReady(node.Status.Conditions) {
-		return "healthy"
-	}
-	return "warning"
-}
-
-func nodeReady(conditions []condition) bool {
-	if len(conditions) > maxConditionSummaryItems {
-		return false
-	}
-	for _, condition := range conditions {
-		if condition.Type == "Ready" {
-			return condition.Status == "True"
-		}
-	}
-	return false
-}
-
 func conditionSummary(conditions []condition) string {
 	if len(conditions) == 0 {
 		return ""
