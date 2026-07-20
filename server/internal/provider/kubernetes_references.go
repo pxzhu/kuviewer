@@ -13,9 +13,6 @@ const (
 	maxSelectorFallbackComparisons   = 250_000
 	maxPodReferenceResults           = 256
 	maxPodReferenceCollectionItems   = 256
-	maxIngressRules                  = 256
-	maxIngressPathsPerRule           = 256
-	maxIngressBackendResults         = 512
 	maxGatewayListeners              = 256
 	maxGatewayRouteHostnames         = 256
 	maxGatewayRouteParentReferences  = 256
@@ -395,46 +392,6 @@ func podRefs(pod podResource) []podReference {
 		return refs[i].kind < refs[j].kind
 	})
 	return refs
-}
-
-func ingressServiceNames(ingress ingressResource) []string {
-	if len(ingress.Spec.Rules) > maxIngressRules {
-		return nil
-	}
-	names := []string{}
-	if ingress.Spec.DefaultBackend != nil && ingress.Spec.DefaultBackend.Service != nil && validKubernetesReferenceName(ingress.Spec.DefaultBackend.Service.Name) {
-		names = append(names, ingress.Spec.DefaultBackend.Service.Name)
-	}
-	for _, rule := range ingress.Spec.Rules {
-		if rule.HTTP == nil {
-			continue
-		}
-		if len(rule.HTTP.Paths) > maxIngressPathsPerRule {
-			return nil
-		}
-		for _, path := range rule.HTTP.Paths {
-			if path.Backend.Service != nil && validKubernetesReferenceName(path.Backend.Service.Name) {
-				if len(names) >= maxIngressBackendResults {
-					return nil
-				}
-				names = append(names, path.Backend.Service.Name)
-			}
-		}
-	}
-	return uniqueStrings(names)
-}
-
-func ingressHosts(ingress ingressResource) []string {
-	if len(ingress.Spec.Rules) > maxIngressRules {
-		return nil
-	}
-	hosts := []string{}
-	for _, rule := range ingress.Spec.Rules {
-		if validKubernetesHostname(rule.Host) {
-			hosts = append(hosts, rule.Host)
-		}
-	}
-	return uniqueStrings(hosts)
 }
 
 func gatewayHosts(gateway gatewayResource) []string {
