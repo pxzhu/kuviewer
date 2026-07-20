@@ -52,6 +52,7 @@
 - Topology는 dispatcher, shared layout, mobile SVG, desktop React Flow renderer로 분리돼 있다.
 - Upload topology JSON import의 size/identity/reference validation과 Secret/민감 metadata redaction은 `importTopologySnapshot.ts`의 독립 보안 경계와 direct unit test로 검증한다.
 - Upload CustomResource의 native/custom `*Ref/*Name` 관계 추론은 `customResourceReferences.ts`에서 cycle/depth/value/path/result 상한을 적용하고 direct unit test로 검증한다.
+- Upload Gateway route의 parent/backend 참조와 host/method 요약은 `gatewayRouteReferences.ts`에서 분리하고, 공통 Kubernetes object 접근은 `kubernetesObject.ts`의 fail-closed helper를 사용한다.
 - Upload NetworkPolicy LabelSelector 평가는 `labelSelector.ts`에서 Kubernetes key/value/operator 문법과 size cap을 검증하며 malformed selector는 fail-closed 처리한다.
 - Desktop CM grouping/search/diagnostic view model은 `website/src/features/desktop/desktopCmSessionView.ts`에 둔다.
 - Desktop CM layout의 validation, storage, import/export, folder/preset ordering은 `website/src/features/desktop/desktopCmSessionLayouts.ts`에 두고 direct unit test로 검증한다.
