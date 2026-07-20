@@ -48,7 +48,8 @@ func buildKubernetesSnapshot(clusterID string, clusterName string, resources kub
 	podRunning := 0
 	podWarning := 0
 	serviceEndpointCounts := endpointCounts(resources.endpointSlices)
-	mergeSelectorEndpointCounts(serviceEndpointCounts, resources.services, resources.pods)
+	serviceEndpointRefs := serviceEndpointReferences(resources.endpointSlices, resources.services, resources.pods)
+	mergeReferenceEndpointCounts(serviceEndpointCounts, serviceEndpointRefs)
 	namespaceIndex := namespaceRecords(resources.namespaces)
 
 	for _, node := range resources.nodes.Items {
@@ -134,7 +135,7 @@ func buildKubernetesSnapshot(clusterID string, clusterName string, resources kub
 	}
 	for _, hpa := range resources.hpas.Items {
 		builder.addResourceNode("HorizontalPodAutoscaler", hpa.Metadata, hpaStatus(hpa), map[string]interface{}{
-			"target":   hpa.Spec.ScaleTargetRef.Kind + "/" + hpa.Spec.ScaleTargetRef.Name,
+			"target":   kubernetesScaleTargetSummary(hpa.Spec.ScaleTargetRef.Kind, hpa.Spec.ScaleTargetRef.Name),
 			"replicas": formatReplicas(hpa.Status.CurrentReplicas, hpa.Status.DesiredReplicas),
 			"range":    fmt.Sprintf("%d-%d", valueOrDefault(hpa.Spec.MinReplicas, 1), hpa.Spec.MaxReplicas),
 		})
@@ -193,15 +194,15 @@ func buildKubernetesSnapshot(clusterID string, clusterName string, resources kub
 		builder.addResourceNode("PersistentVolume", pv.Metadata, pvStatus(pv), map[string]interface{}{
 			"phase":        pv.Status.Phase,
 			"storage":      pv.Spec.Capacity["storage"],
-			"storageClass": pv.Spec.StorageClassName,
+			"storageClass": kubernetesReferenceSummary(pv.Spec.StorageClassName),
 		})
 	}
 	for _, pvc := range resources.pvcs.Items {
 		builder.addResourceNode("PersistentVolumeClaim", pvc.Metadata, pvcStatus(pvc), map[string]interface{}{
 			"phase":        pvc.Status.Phase,
 			"storage":      pvc.Spec.Resources.Requests["storage"],
-			"volume":       pvc.Spec.VolumeName,
-			"storageClass": pvc.Spec.StorageClassName,
+			"volume":       kubernetesReferenceSummary(pvc.Spec.VolumeName),
+			"storageClass": kubernetesReferenceSummary(pvc.Spec.StorageClassName),
 		})
 	}
 	for _, service := range resources.services.Items {
@@ -215,15 +216,15 @@ func buildKubernetesSnapshot(clusterID string, clusterName string, resources kub
 	}
 	for _, ingress := range resources.ingresses.Items {
 		builder.addResourceNode("Ingress", ingress.Metadata, "healthy", map[string]interface{}{
-			"hosts": strings.Join(ingressHosts(ingress), ", "),
+			"hosts": joinSafeSummary(ingressHosts(ingress), 8, ""),
 			"rules": len(ingress.Spec.Rules),
 		})
 	}
 	for _, gateway := range resources.gateways.Items {
 		builder.addResourceNode("Gateway", gateway.Metadata, "healthy", map[string]interface{}{
-			"class":     gateway.Spec.GatewayClassName,
+			"class":     kubernetesReferenceSummary(gateway.Spec.GatewayClassName),
 			"listeners": len(gateway.Spec.Listeners),
-			"hosts":     strings.Join(gatewayHosts(gateway), ", "),
+			"hosts":     joinSafeSummary(gatewayHosts(gateway), 8, ""),
 		})
 	}
 
@@ -248,14 +249,14 @@ func buildKubernetesSnapshot(clusterID string, clusterName string, resources kub
 			"phase":          pod.Status.Phase,
 			"ready":          formatReplicas(readyContainers(pod.Status.ContainerStatuses), len(pod.Status.ContainerStatuses)),
 			"restarts":       restartCount(pod.Status.ContainerStatuses),
-			"node":           pod.Spec.NodeName,
+			"node":           kubernetesReferenceSummary(pod.Spec.NodeName),
 			"conditions":     conditionSummary(pod.Status.Conditions),
 			"containerNames": containerNames(pod.Spec.Containers),
 			"initContainers": containerNames(pod.Spec.InitContainers),
 		})
 	}
 
-	addKubernetesSnapshotEdges(builder, resources, namespaceIndex)
+	addKubernetesSnapshotEdges(builder, resources, namespaceIndex, serviceEndpointRefs)
 	return topology.Snapshot{
 		Clusters:    []topology.ClusterSummary{clusterSummary},
 		Nodes:       builder.nodes,
@@ -264,7 +265,7 @@ func buildKubernetesSnapshot(clusterID string, clusterName string, resources kub
 	}
 }
 
-func addKubernetesSnapshotEdges(builder *graphBuilder, resources kubernetesSnapshotResources, namespaceIndex []namespaceRecord) {
+func addKubernetesSnapshotEdges(builder *graphBuilder, resources kubernetesSnapshotResources, namespaceIndex []namespaceRecord, serviceEndpointRefs []serviceEndpointReference) {
 	for _, resource := range resources.customResources {
 		builder.addCustomResourceReferenceEdges(resource, resources.crds)
 	}
@@ -292,10 +293,10 @@ func addKubernetesSnapshotEdges(builder *graphBuilder, resources kubernetesSnaps
 
 	for _, pod := range resources.pods.Items {
 		podID := builder.nodeID("Pod", pod.Metadata.Namespace, pod.Metadata.Name)
-		if pod.Spec.NodeName != "" {
+		if validKubernetesReferenceName(pod.Spec.NodeName) {
 			builder.addEdge("scheduled-on", podID, builder.nodeID("Node", "", pod.Spec.NodeName), "Pod.spec.nodeName", "observed")
 		}
-		if pod.Spec.ServiceAccountName != "" {
+		if validKubernetesReferenceName(pod.Spec.ServiceAccountName) {
 			builder.ensureReferenceNode("ServiceAccount", pod.Metadata.Namespace, pod.Spec.ServiceAccountName)
 			builder.addEdge("uses-service-account", podID, builder.nodeID("ServiceAccount", pod.Metadata.Namespace, pod.Spec.ServiceAccountName), "Pod.spec.serviceAccountName", "observed")
 		}
@@ -307,15 +308,15 @@ func addKubernetesSnapshotEdges(builder *graphBuilder, resources kubernetesSnaps
 
 	for _, pvc := range resources.pvcs.Items {
 		pvcID := builder.nodeID("PersistentVolumeClaim", pvc.Metadata.Namespace, pvc.Metadata.Name)
-		if pvc.Spec.VolumeName != "" {
+		if validKubernetesReferenceName(pvc.Spec.VolumeName) {
 			builder.addEdge("binds-storage", pvcID, builder.nodeID("PersistentVolume", "", pvc.Spec.VolumeName), "PersistentVolumeClaim.spec.volumeName", "observed")
 		}
-		if pvc.Spec.StorageClassName != "" {
+		if validKubernetesReferenceName(pvc.Spec.StorageClassName) {
 			builder.addEdge("binds-storage", pvcID, builder.nodeID("StorageClass", "", pvc.Spec.StorageClassName), "PersistentVolumeClaim.spec.storageClassName", "observed")
 		}
 	}
 	for _, pv := range resources.pvs.Items {
-		if pv.Spec.StorageClassName != "" {
+		if validKubernetesReferenceName(pv.Spec.StorageClassName) {
 			builder.addEdge("binds-storage", builder.nodeID("PersistentVolume", "", pv.Metadata.Name), builder.nodeID("StorageClass", "", pv.Spec.StorageClassName), "PersistentVolume.spec.storageClassName", "observed")
 		}
 	}
@@ -335,7 +336,7 @@ func addKubernetesSnapshotEdges(builder *graphBuilder, resources kubernetesSnaps
 		hpaID := builder.nodeID("HorizontalPodAutoscaler", hpa.Metadata.Namespace, hpa.Metadata.Name)
 		targetKind := hpa.Spec.ScaleTargetRef.Kind
 		targetName := hpa.Spec.ScaleTargetRef.Name
-		if targetKind == "" || targetName == "" {
+		if !validKubernetesKind(targetKind) || !validKubernetesReferenceName(targetName) {
 			continue
 		}
 		builder.ensureReferenceNode(targetKind, hpa.Metadata.Namespace, targetName)
@@ -375,36 +376,13 @@ func addKubernetesSnapshotEdges(builder *graphBuilder, resources kubernetesSnaps
 		}
 	}
 
-	serviceEndpointEdges := map[string]bool{}
-	for _, endpointSlice := range resources.endpointSlices.Items {
-		serviceName := endpointSlice.Metadata.Labels["kubernetes.io/service-name"]
-		if serviceName == "" {
-			continue
-		}
-		serviceID := builder.nodeID("Service", endpointSlice.Metadata.Namespace, serviceName)
-		for _, endpoint := range endpointSlice.Endpoints {
-			if endpoint.TargetRef == nil || endpoint.TargetRef.Kind != "Pod" || endpoint.TargetRef.Name == "" {
-				continue
-			}
-			podID := builder.nodeID("Pod", endpointSlice.Metadata.Namespace, endpoint.TargetRef.Name)
-			edgeID := builder.addEdge("service-endpoint", serviceID, podID, "EndpointSlice.endpoints.targetRef", "observed")
-			serviceEndpointEdges[serviceID+"->"+podID] = edgeID != ""
-		}
-	}
-	for _, service := range resources.services.Items {
-		if len(service.Spec.Selector) == 0 {
-			continue
-		}
-		serviceID := builder.nodeID("Service", service.Metadata.Namespace, service.Metadata.Name)
-		for _, pod := range resources.pods.Items {
-			if pod.Metadata.Namespace != service.Metadata.Namespace || !labelsMatch(service.Spec.Selector, pod.Metadata.Labels) {
-				continue
-			}
-			podID := builder.nodeID("Pod", pod.Metadata.Namespace, pod.Metadata.Name)
-			if serviceEndpointEdges[serviceID+"->"+podID] {
-				continue
-			}
-			builder.addEdge("service-endpoint", serviceID, podID, "Service.spec.selector", "inferred")
-		}
+	for _, reference := range serviceEndpointRefs {
+		builder.addEdge(
+			"service-endpoint",
+			builder.nodeID("Service", reference.namespace, reference.service),
+			builder.nodeID("Pod", reference.namespace, reference.pod),
+			reference.sourceField,
+			reference.confidence,
+		)
 	}
 }
