@@ -88,6 +88,7 @@
 - Workload Pod template의 container image, ServiceAccount, imagePullSecret, ConfigMap/Secret env, PVC volume reference는 live `kubernetes_workloads.go`와 upload `workloadSchema.ts`가 동일한 collection·identity·image 문법 경계를 적용한다. raw env value/key는 보존하지 않고 malformed template은 warning/invalid summary와 관계 추론 중단으로 처리한다.
 - Pod runtime container state/reason/restart/image summary는 live `kubernetes_pods.go`와 upload `podRuntimeSchema.ts`가 같은 phase·state union·count·identity·image 경계를 적용한다. status message, imageID, containerID는 디코딩·요약하지 않고 malformed runtime status는 warning/invalid summary와 kind-level diagnostic으로 처리한다.
 - Node capacity/allocatable/condition/runtime summary는 live `kubernetes_nodes.go`와 upload `nodeStatusSchema.ts`가 같은 quantity·count·version·runtime 경계를 적용한다. 주소와 machine/system/boot identifier, condition message는 디코딩·요약하지 않고 malformed status는 warning/invalid summary와 kind-level diagnostic으로 처리한다.
+- PV/PVC/StorageClass summary는 live `kubernetes_storage.go`와 upload `storageSchema.ts`가 같은 quantity·access mode·volume mode·phase·reclaim/binding/provisioner 경계를 적용한다. CSI volume source, claimRef, parameters, mount option, storage Secret reference와 status message는 디코딩·요약하지 않고 malformed spec은 warning/invalid summary와 storage edge 추론 중단으로 처리한다.
 - Pod/Service endpoint와 native object reference 추론은 `kubernetes_references.go`가 담당하고 Gateway schema/route reference는 `kubernetes_gateway.go`가 담당한다. selector fallback 작업량과 collection/result 수를 제한하고 malformed host/method/name은 summary와 placeholder edge에서 제외한다.
 
 ## Runtime Boundaries

@@ -163,11 +163,11 @@ func buildKubernetesSnapshot(clusterID string, clusterName string, resources kub
 		})
 	}
 	for _, storageClass := range resources.storageClasses.Items {
-		builder.addResourceNode("StorageClass", storageClass.Metadata, "healthy", map[string]interface{}{
-			"provisioner":          storageClass.Provisioner,
-			"volumeBindingMode":    storageClass.VolumeBindingMode,
-			"allowVolumeExpansion": boolSummary(storageClass.AllowVolumeExpansion),
-		})
+		analysis := analyzeStorageClass(storageClass)
+		_, added := builder.addTrackedResourceNode("StorageClass", storageClass.Metadata, analysis.status, analysis.summary)
+		if added && !analysis.valid {
+			builder.recordResourceIssue("StorageClass")
+		}
 	}
 	for _, crd := range resources.crds.Items {
 		builder.addResourceNode("CustomResourceDefinition", crd.Metadata, crdStatus(crd), map[string]interface{}{
@@ -205,19 +205,18 @@ func buildKubernetesSnapshot(clusterID string, clusterName string, resources kub
 		builder.addEdge("owns", builder.nodeID("CustomResourceDefinition", "", resource.CRDName), resourceID, "CustomResourceDefinition.spec.names.kind", "observed")
 	}
 	for _, pv := range resources.pvs.Items {
-		builder.addResourceNode("PersistentVolume", pv.Metadata, pvStatus(pv), map[string]interface{}{
-			"phase":        pv.Status.Phase,
-			"storage":      pv.Spec.Capacity["storage"],
-			"storageClass": kubernetesReferenceSummary(pv.Spec.StorageClassName),
-		})
+		analysis := analyzePersistentVolume(pv)
+		_, added := builder.addTrackedResourceNode("PersistentVolume", pv.Metadata, analysis.status, analysis.summary)
+		if added && !analysis.valid {
+			builder.recordResourceIssue("PersistentVolume")
+		}
 	}
 	for _, pvc := range resources.pvcs.Items {
-		builder.addResourceNode("PersistentVolumeClaim", pvc.Metadata, pvcStatus(pvc), map[string]interface{}{
-			"phase":        pvc.Status.Phase,
-			"storage":      pvc.Spec.Resources.Requests["storage"],
-			"volume":       kubernetesReferenceSummary(pvc.Spec.VolumeName),
-			"storageClass": kubernetesReferenceSummary(pvc.Spec.StorageClassName),
-		})
+		analysis := analyzePersistentVolumeClaim(pvc)
+		_, added := builder.addTrackedResourceNode("PersistentVolumeClaim", pvc.Metadata, analysis.status, analysis.summary)
+		if added && !analysis.valid {
+			builder.recordResourceIssue("PersistentVolumeClaim")
+		}
 	}
 	for _, service := range resources.services.Items {
 		counts := serviceEndpointCounts[serviceKey(service.Metadata.Namespace, service.Metadata.Name)]
@@ -389,6 +388,9 @@ func addKubernetesSnapshotEdges(builder *graphBuilder, resources kubernetesSnaps
 		if !builder.claimResourceNode(pvcID, seenStorageSources) {
 			continue
 		}
+		if !validPVCSpec(pvc.Spec) {
+			continue
+		}
 		if validKubernetesReferenceName(pvc.Spec.VolumeName) {
 			builder.addEdge("binds-storage", pvcID, builder.nodeID("PersistentVolume", "", pvc.Spec.VolumeName), "PersistentVolumeClaim.spec.volumeName", "observed")
 		}
@@ -399,6 +401,9 @@ func addKubernetesSnapshotEdges(builder *graphBuilder, resources kubernetesSnaps
 	for _, pv := range resources.pvs.Items {
 		pvID := builder.nodeID("PersistentVolume", "", pv.Metadata.Name)
 		if !builder.claimResourceNode(pvID, seenStorageSources) {
+			continue
+		}
+		if !validPVSpec(pv.Spec) {
 			continue
 		}
 		if validKubernetesReferenceName(pv.Spec.StorageClassName) {

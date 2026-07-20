@@ -33,8 +33,8 @@ export const mockTopology: TopologySnapshot = {
     node(local, 'Node', '', 'worker-a', 'healthy', { zone: 'a', role: 'system' }, nodeStatusSummary('8', '7800m', '32Gi', '30Gi', 110, 100)),
     node(local, 'Node', '', 'worker-b', 'healthy', { zone: 'b', role: 'app' }, nodeStatusSummary('8', '7600m', '32Gi', '29Gi', 110, 96)),
     node(local, 'Node', '', 'worker-c', 'warning', { zone: 'c', role: 'app' }, nodeStatusSummary('4', '3800m', '16Gi', '14Gi', 80, 72, false)),
-    node(local, 'StorageClass', '', 'local-path', 'healthy', { provisioner: 'rancher.io/local-path' }, { provisioner: 'local-path', mode: 'WaitForFirstConsumer' }),
-    node(local, 'PersistentVolume', '', 'pv-checkout-db', 'healthy', { storage: 'local' }, { capacity: '20Gi', reclaim: 'Delete' }),
+    node(local, 'StorageClass', '', 'local-path', 'healthy', { provisioner: 'rancher.io/local-path' }, storageClassSummary('rancher.io/local-path', 'Delete', 'WaitForFirstConsumer', true)),
+    node(local, 'PersistentVolume', '', 'pv-checkout-db', 'healthy', { storage: 'local' }, persistentVolumeSummary('20Gi', 'local-path', 'Delete')),
     node(local, 'CustomResourceDefinition', '', 'widgets.platform.example.com', 'healthy', { group: 'platform.example.com' }, { group: 'platform.example.com', kind: 'Widget', plural: 'widgets', scope: 'Namespaced', servedVersions: 'v1', storageVersion: 'v1' }),
     node(local, 'CustomResource', 'platform', 'Widget:checkout-dashboard', 'healthy', { app: 'checkout' }, { apiVersion: 'platform.example.com/v1', kind: 'Widget', name: 'checkout-dashboard', crd: 'widgets.platform.example.com', group: 'platform.example.com', scope: 'Namespaced', version: 'v1', specFields: 2, statusFields: 1, conditions: 'Ready=True' }),
 
@@ -63,7 +63,7 @@ export const mockTopology: TopologySnapshot = {
     node(local, 'Pod', 'checkout', 'checkout-api-7c8f9-b', 'warning', { app: 'checkout' }, { phase: 'Running', ready: '1/2', restarts: 4, runtimeStates: ['running:1', 'waiting:1'], runtimeReasonCount: 1, runtimeReasons: ['waiting:CrashLoopBackOff'], runtimeImageCount: 2, runtimeImages: ['checkout/api:mock', 'checkout/sidecar:mock'], node: 'worker-c', containerNames: ['api', 'sidecar'] }),
     node(local, 'StatefulSet', 'checkout', 'checkout-db', 'healthy', { app: 'checkout-db' }, { replicas: '1/1', storage: '20Gi' }),
     node(local, 'Pod', 'checkout', 'checkout-db-0', 'healthy', { app: 'checkout-db' }, { ready: true, restarts: 0, node: 'worker-c' }),
-    node(local, 'PersistentVolumeClaim', 'checkout', 'checkout-db-data', 'healthy', { app: 'checkout-db' }, { capacity: '20Gi', mode: 'ReadWriteOnce' }),
+    node(local, 'PersistentVolumeClaim', 'checkout', 'checkout-db-data', 'healthy', { app: 'checkout-db' }, persistentVolumeClaimSummary('20Gi', 'checkout-db-data', 'local-path')),
     node(local, 'ConfigMap', 'checkout', 'checkout-config', 'healthy', { app: 'checkout' }, { keys: 6 }),
     node(local, 'Secret', 'checkout', 'checkout-api-secret', 'unknown', { app: 'checkout' }, { type: 'Opaque', values: 'hidden' }),
 
@@ -77,7 +77,7 @@ export const mockTopology: TopologySnapshot = {
     node(aks, 'Cluster', '', 'aks-prod-east', 'healthy', { provider: 'aks', region: 'eastus' }, { version: 'v1.30.x', nodes: 2, namespaces: 3 }),
     node(aks, 'Node', '', 'aks-node-a', 'healthy', { zone: '1', pool: 'system' }, nodeStatusSummary('8', '7700m', '32Gi', '29Gi', 110, 100)),
     node(aks, 'Node', '', 'aks-node-b', 'healthy', { zone: '2', pool: 'user' }, nodeStatusSummary('16', '15500m', '64Gi', '60Gi', 110, 100)),
-    node(aks, 'StorageClass', '', 'managed-csi', 'healthy', { provisioner: 'disk.csi.azure.com' }, { sku: 'Premium_LRS', mode: 'WaitForFirstConsumer' }),
+    node(aks, 'StorageClass', '', 'managed-csi', 'healthy', { provisioner: 'disk.csi.azure.com' }, storageClassSummary('disk.csi.azure.com', 'Delete', 'WaitForFirstConsumer', true)),
     node(aks, 'CustomResourceDefinition', '', 'rollouts.argoproj.io', 'healthy', { group: 'argoproj.io' }, { group: 'argoproj.io', kind: 'Rollout', plural: 'rollouts', scope: 'Namespaced', servedVersions: 'v1alpha1', storageVersion: 'v1alpha1' }),
     node(aks, 'CustomResource', 'edge', 'Rollout:edge-gateway', 'healthy', { app: 'edge-gateway' }, { apiVersion: 'argoproj.io/v1alpha1', kind: 'Rollout', name: 'edge-gateway', crd: 'rollouts.argoproj.io', group: 'argoproj.io', scope: 'Namespaced', version: 'v1alpha1', specFields: 2, statusFields: 1, conditions: 'Reconciled=True' }),
 
@@ -105,13 +105,13 @@ export const mockTopology: TopologySnapshot = {
     node(aks, 'Service', 'payments', 'payments-db', 'healthy', { app: 'payments-db' }, { type: 'Headless', port: 5432 }),
     node(aks, 'StatefulSet', 'payments', 'payments-db', 'healthy', { app: 'payments-db' }, { replicas: '1/1', storage: '64Gi' }),
     node(aks, 'Pod', 'payments', 'payments-db-0', 'healthy', { app: 'payments-db' }, { ready: true, restarts: 0, node: 'aks-node-b' }),
-    node(aks, 'PersistentVolumeClaim', 'payments', 'payments-db-data', 'healthy', { app: 'payments-db' }, { capacity: '64Gi', mode: 'ReadWriteOnce' }),
+    node(aks, 'PersistentVolumeClaim', 'payments', 'payments-db-data', 'healthy', { app: 'payments-db' }, persistentVolumeClaimSummary('64Gi', 'payments-db-pv', 'managed-csi')),
 
     node(aks, 'Namespace', '', 'data', 'healthy', { team: 'data' }, { workloads: 1, services: 1 }),
     node(aks, 'Service', 'data', 'redis', 'healthy', { app: 'redis' }, { type: 'ClusterIP', port: 6379 }),
     node(aks, 'StatefulSet', 'data', 'redis', 'healthy', { app: 'redis' }, { replicas: '1/1', storage: '16Gi' }),
     node(aks, 'Pod', 'data', 'redis-0', 'healthy', { app: 'redis' }, { ready: true, restarts: 0, node: 'aks-node-a' }),
-    node(aks, 'PersistentVolumeClaim', 'data', 'redis-data', 'healthy', { app: 'redis' }, { capacity: '16Gi', mode: 'ReadWriteOnce' }),
+    node(aks, 'PersistentVolumeClaim', 'data', 'redis-data', 'healthy', { app: 'redis' }, persistentVolumeClaimSummary('16Gi', 'redis-pv', 'managed-csi')),
   ],
   edges: [
     owns(local, '', 'Cluster', 'native-dev', '', 'Namespace', 'platform'),
@@ -257,6 +257,37 @@ function nodeStatusSummary(
     architecture: 'amd64',
     conditions: ready ? 'Ready=True' : 'Ready=False',
   };
+}
+
+function persistentVolumeClaimSummary(storage: string, volume: string, storageClass: string): Record<string, SummaryValue> {
+  return {
+    phase: 'Bound',
+    requestedStorage: storage,
+    capacityStorage: storage,
+    accessModes: 'ReadWriteOnce',
+    statusAccessModes: 'ReadWriteOnce',
+    volumeMode: 'Filesystem',
+    volume,
+    storageClass,
+    requestResourceCount: 1,
+    capacityResourceCount: 1,
+  };
+}
+
+function persistentVolumeSummary(storage: string, storageClass: string, reclaimPolicy: string): Record<string, SummaryValue> {
+  return {
+    phase: 'Bound',
+    storage,
+    accessModes: 'ReadWriteOnce',
+    volumeMode: 'Filesystem',
+    reclaimPolicy,
+    storageClass,
+    capacityResourceCount: 1,
+  };
+}
+
+function storageClassSummary(provisioner: string, reclaimPolicy: string, volumeBindingMode: string, allowVolumeExpansion: boolean): Record<string, SummaryValue> {
+  return { provisioner, reclaimPolicy, volumeBindingMode, allowVolumeExpansion };
 }
 
 function owns(clusterId: string, sourceNamespace: string, sourceKind: ResourceKind, sourceName: string, targetNamespace: string, targetKind: ResourceKind, targetName: string) {

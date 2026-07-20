@@ -42,6 +42,8 @@ func (MockProvider) Snapshot(_ context.Context) (topology.Snapshot, error) {
 			node("Node", "", "worker-a", "healthy", map[string]string{"zone": "a"}, mockNodeStatusSummary("8", "7800m", "32Gi", "30Gi", 110, 100, true), 600, 80),
 			node("Node", "", "worker-b", "healthy", map[string]string{"zone": "b"}, mockNodeStatusSummary("8", "7600m", "32Gi", "29Gi", 110, 96, true), 600, 260),
 			node("Node", "", "worker-c", "warning", map[string]string{"zone": "c"}, mockNodeStatusSummary("4", "3800m", "16Gi", "14Gi", 80, 72, false), 600, 440),
+			node("StorageClass", "", "local-path", "healthy", map[string]string{"provisioner": "rancher.io/local-path"}, mockStorageClassSummary("rancher.io/local-path", "Delete", "WaitForFirstConsumer", true), 1380, 700),
+			node("PersistentVolume", "", "pv-checkout-db", "healthy", map[string]string{"storage": "local"}, mockPVSummary("20Gi", "local-path", "Delete"), 1380, 820),
 			node("CustomResourceDefinition", "", "widgets.platform.example.com", "healthy", map[string]string{"group": "platform.example.com"}, map[string]interface{}{"group": "platform.example.com", "kind": "Widget", "plural": "widgets", "scope": "Namespaced", "servedVersions": "v1", "storageVersion": "v1"}, 1500, 120),
 			node("CustomResource", "platform", "Widget:checkout-dashboard", "healthy", map[string]string{"app": "checkout"}, map[string]interface{}{"apiVersion": "platform.example.com/v1", "kind": "Widget", "name": "checkout-dashboard", "crd": "widgets.platform.example.com", "group": "platform.example.com", "scope": "Namespaced", "version": "v1", "specFields": 2, "statusFields": 1, "conditions": "Ready=True"}, 1500, 260),
 			node("Deployment", "platform", "kuviewer-api", "healthy", map[string]string{"app": "kuviewer", "tier": "api"}, map[string]interface{}{"replicas": "2/2", "containers": 1, "initContainers": 1, "imageCount": 1, "images": []string{"kuviewer/api:mock"}}, 900, 120),
@@ -63,7 +65,7 @@ func (MockProvider) Snapshot(_ context.Context) (topology.Snapshot, error) {
 			node("Job", "checkout", "checkout-reconcile-286", "healthy", map[string]string{"app": "checkout"}, map[string]interface{}{"completions": 1, "succeeded": 1, "failed": 0}, 1080, 780),
 			node("StatefulSet", "checkout", "checkout-db", "healthy", map[string]string{"app": "checkout-db"}, map[string]interface{}{"replicas": "1/1", "storage": "20Gi"}, 860, 690),
 			node("Pod", "checkout", "checkout-api-7c8f9", "warning", map[string]string{"app": "checkout"}, map[string]interface{}{"phase": "Running", "ready": "1/2", "restarts": 4, "runtimeStates": []string{"running:1", "waiting:1"}, "runtimeReasonCount": 1, "runtimeReasons": []string{"waiting:CrashLoopBackOff"}, "runtimeImageCount": 2, "runtimeImages": []string{"checkout/api:mock", "checkout/sidecar:mock"}, "node": "worker-c", "containerNames": []string{"api", "sidecar"}}, 1080, 690),
-			node("PersistentVolumeClaim", "checkout", "checkout-db-data", "healthy", map[string]string{"app": "checkout-db"}, map[string]interface{}{"capacity": "20Gi", "mode": "ReadWriteOnce"}, 1160, 820),
+			node("PersistentVolumeClaim", "checkout", "checkout-db-data", "healthy", map[string]string{"app": "checkout-db"}, mockPVCSummary("20Gi", "pv-checkout-db", "local-path"), 1160, 820),
 		},
 		Edges: []topology.Edge{
 			edge("cluster-platform", nodeID("Cluster", "", "native-dev"), nodeID("Namespace", "", "platform"), "owns", "metadata.namespace"),
@@ -94,6 +96,9 @@ func (MockProvider) Snapshot(_ context.Context) (topology.Snapshot, error) {
 			edge("cronjob-job", nodeID("CronJob", "checkout", "checkout-reconcile"), nodeID("Job", "checkout", "checkout-reconcile-286"), "owns", "metadata.ownerReferences"),
 			edge("service-checkout-pod", nodeID("Service", "checkout", "checkout-api"), nodeID("Pod", "checkout", "checkout-api-7c8f9"), "service-endpoint", "EndpointSlice.endpoints.targetRef"),
 			edge("stateful-pvc", nodeID("StatefulSet", "checkout", "checkout-db"), nodeID("PersistentVolumeClaim", "checkout", "checkout-db-data"), "binds-storage", "volumeClaimTemplates"),
+			edge("pvc-pv", nodeID("PersistentVolumeClaim", "checkout", "checkout-db-data"), nodeID("PersistentVolume", "", "pv-checkout-db"), "binds-storage", "PersistentVolumeClaim.spec.volumeName"),
+			edge("pvc-storage-class", nodeID("PersistentVolumeClaim", "checkout", "checkout-db-data"), nodeID("StorageClass", "", "local-path"), "binds-storage", "PersistentVolumeClaim.spec.storageClassName"),
+			edge("pv-storage-class", nodeID("PersistentVolume", "", "pv-checkout-db"), nodeID("StorageClass", "", "local-path"), "binds-storage", "PersistentVolume.spec.storageClassName"),
 		},
 	}, nil
 }
@@ -136,6 +141,28 @@ func mockNodeStatusSummary(capacityCPU string, allocatableCPU string, capacityMe
 		"operatingSystem":             "linux",
 		"architecture":                "amd64",
 		"conditions":                  conditions,
+	}
+}
+
+func mockPVCSummary(storage string, volume string, storageClass string) map[string]interface{} {
+	return map[string]interface{}{
+		"phase": "Bound", "requestedStorage": storage, "capacityStorage": storage,
+		"accessModes": "ReadWriteOnce", "statusAccessModes": "ReadWriteOnce", "volumeMode": "Filesystem",
+		"volume": volume, "storageClass": storageClass, "requestResourceCount": 1, "capacityResourceCount": 1,
+	}
+}
+
+func mockPVSummary(storage string, storageClass string, reclaimPolicy string) map[string]interface{} {
+	return map[string]interface{}{
+		"phase": "Bound", "storage": storage, "accessModes": "ReadWriteOnce", "volumeMode": "Filesystem",
+		"reclaimPolicy": reclaimPolicy, "storageClass": storageClass, "capacityResourceCount": 1,
+	}
+}
+
+func mockStorageClassSummary(provisioner string, reclaimPolicy string, volumeBindingMode string, allowVolumeExpansion bool) map[string]interface{} {
+	return map[string]interface{}{
+		"provisioner": provisioner, "reclaimPolicy": reclaimPolicy,
+		"volumeBindingMode": volumeBindingMode, "allowVolumeExpansion": allowVolumeExpansion,
 	}
 }
 

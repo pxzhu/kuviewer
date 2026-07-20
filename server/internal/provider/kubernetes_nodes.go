@@ -12,7 +12,6 @@ const (
 )
 
 var (
-	nodeQuantityPattern       = regexp.MustCompile(`^[0-9]+(?:\.[0-9]+)?(?:n|u|m|k|K|M|G|T|P|E|Ki|Mi|Gi|Ti|Pi|Ei|[eE][+-]?[0-9]+)?$`)
 	nodeKubeletVersionPattern = regexp.MustCompile(`^v[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?$`)
 	nodeRuntimePattern        = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{0,31}://[0-9A-Za-z][0-9A-Za-z.+_-]{0,63}$`)
 	nodeArchitecturePattern   = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,31}$`)
@@ -74,7 +73,7 @@ func validNodeResourceLists(capacity map[string]string, allocatable map[string]s
 	}
 	for _, resources := range []map[string]string{capacity, allocatable} {
 		for _, key := range []string{"cpu", "memory", "ephemeral-storage"} {
-			if value, found := resources[key]; found && !validNodeQuantity(value) {
+			if value, found := resources[key]; found && !validKubernetesQuantity(value) {
 				return false
 			}
 		}
@@ -98,10 +97,6 @@ func validNodeSystemInfo(info nodeSystemInfo) bool {
 
 func validOptionalNodeValue(value string, pattern *regexp.Regexp) bool {
 	return value == "" || len(value) <= maxNodeVersionBytes && strings.TrimSpace(value) == value && pattern.MatchString(value)
-}
-
-func validNodeQuantity(value string) bool {
-	return value != "" && len(value) <= maxNodeVersionBytes && strings.TrimSpace(value) == value && nodeQuantityPattern.MatchString(value)
 }
 
 func nodePodCapacity(value string) (int, bool) {

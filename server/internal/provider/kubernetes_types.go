@@ -530,29 +530,44 @@ type pvcList = kubeList[pvcResource]
 
 type pvcResource struct {
 	Metadata metadata `json:"metadata"`
-	Spec     struct {
-		Resources struct {
-			Requests map[string]string `json:"requests"`
-		} `json:"resources"`
-		VolumeName       string `json:"volumeName"`
-		StorageClassName string `json:"storageClassName"`
-	} `json:"spec"`
-	Status struct {
-		Phase string `json:"phase"`
-	} `json:"status"`
+	Spec     pvcSpec  `json:"spec"`
+	Status   pvcStat  `json:"status"`
+}
+
+type pvcSpec struct {
+	AccessModes []string `json:"accessModes"`
+	Resources   struct {
+		Requests map[string]string `json:"requests"`
+	} `json:"resources"`
+	VolumeName       string `json:"volumeName"`
+	StorageClassName string `json:"storageClassName"`
+	VolumeMode       string `json:"volumeMode"`
+}
+
+type pvcStat struct {
+	Phase       string            `json:"phase"`
+	AccessModes []string          `json:"accessModes"`
+	Capacity    map[string]string `json:"capacity"`
 }
 
 type pvList = kubeList[pvResource]
 
 type pvResource struct {
 	Metadata metadata `json:"metadata"`
-	Spec     struct {
-		Capacity         map[string]string `json:"capacity"`
-		StorageClassName string            `json:"storageClassName"`
-	} `json:"spec"`
-	Status struct {
-		Phase string `json:"phase"`
-	} `json:"status"`
+	Spec     pvSpec   `json:"spec"`
+	Status   pvStat   `json:"status"`
+}
+
+type pvSpec struct {
+	Capacity                      map[string]string `json:"capacity"`
+	AccessModes                   []string          `json:"accessModes"`
+	PersistentVolumeReclaimPolicy string            `json:"persistentVolumeReclaimPolicy"`
+	StorageClassName              string            `json:"storageClassName"`
+	VolumeMode                    string            `json:"volumeMode"`
+}
+
+type pvStat struct {
+	Phase string `json:"phase"`
 }
 
 type storageClassList = kubeList[storageClassResource]
@@ -560,6 +575,7 @@ type storageClassList = kubeList[storageClassResource]
 type storageClassResource struct {
 	Metadata             metadata `json:"metadata"`
 	Provisioner          string   `json:"provisioner"`
+	ReclaimPolicy        string   `json:"reclaimPolicy"`
 	VolumeBindingMode    string   `json:"volumeBindingMode"`
 	AllowVolumeExpansion *bool    `json:"allowVolumeExpansion"`
 }

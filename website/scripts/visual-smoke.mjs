@@ -1596,6 +1596,9 @@ kind: StorageClass
 metadata:
   name: local-fast
 provisioner: kubernetes.io/no-provisioner
+reclaimPolicy: Retain
+volumeBindingMode: WaitForFirstConsumer
+allowVolumeExpansion: false
 ---
 apiVersion: v1
 kind: PersistentVolume
@@ -1603,8 +1606,13 @@ metadata:
   name: orders-pv
 spec:
   storageClassName: local-fast
+  accessModes: [ReadWriteOnce]
+  persistentVolumeReclaimPolicy: Retain
+  volumeMode: Filesystem
   capacity:
     storage: 10Gi
+status:
+  phase: Bound
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -1631,9 +1639,16 @@ metadata:
 spec:
   storageClassName: local-fast
   volumeName: orders-pv
+  accessModes: [ReadWriteOnce]
+  volumeMode: Filesystem
   resources:
     requests:
       storage: 10Gi
+status:
+  phase: Bound
+  accessModes: [ReadWriteOnce]
+  capacity:
+    storage: 10Gi
 ---
 apiVersion: v1
 kind: ServiceAccount
