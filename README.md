@@ -29,6 +29,7 @@ Kuviewer is a read-only Kubernetes topology and resource explorer. It turns uplo
 - Bounded workload image summaries and safe Pod-template references without environment values or Secret contents
 - Bounded Pod runtime state, reason, restart, and image summaries without runtime messages or container/image identifiers
 - Bounded Node capacity, allocatable, condition, and runtime summaries without host identifiers or addresses
+- Bounded PV, PVC, and StorageClass capacity, access, policy, provisioner, and binding summaries without CSI configuration or storage Secret references
 - Bounded concurrent live collection with safe partial-result diagnostics; incomplete resource lists are never merged into a snapshot
 
 ## Source Modes

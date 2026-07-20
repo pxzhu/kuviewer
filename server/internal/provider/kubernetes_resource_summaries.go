@@ -104,26 +104,6 @@ func jobStatus(job jobResource) string {
 	return "warning"
 }
 
-func pvcStatus(pvc pvcResource) string {
-	if pvc.Status.Phase == "Bound" {
-		return "healthy"
-	}
-	if pvc.Status.Phase == "Lost" {
-		return "error"
-	}
-	return "warning"
-}
-
-func pvStatus(pv pvResource) string {
-	if pv.Status.Phase == "Bound" || pv.Status.Phase == "Available" {
-		return "healthy"
-	}
-	if pv.Status.Phase == "Failed" {
-		return "error"
-	}
-	return "warning"
-}
-
 func containerNames(containers []container) []string {
 	if len(containers) > maxContainerSummaryItems {
 		return []string{}

@@ -59,6 +59,12 @@ import {
 } from './workloadSchema.ts';
 import { uploadPodRuntimeStatus, uploadPodRuntimeSummary } from './podRuntimeSchema.ts';
 import { uploadNodeStatus, uploadNodeSummary } from './nodeStatusSchema.ts';
+import {
+  isUploadStorageKind,
+  uploadStorageReferences,
+  uploadStorageStatus,
+  uploadStorageSummary,
+} from './storageSchema.ts';
 export { importTopologySnapshot } from './importTopologySnapshot.ts';
 
 export interface UploadedTopologyState {
@@ -270,24 +276,14 @@ function addObjectEdges(context: BuildContext, object: KubeObject, customResourc
       addEdge(context, 'targets-scale', objectId, id(context.clusterId, namespace, targetKind, targetName), 'HorizontalPodAutoscaler.spec.scaleTargetRef', 'observed');
     }
   }
-  if (kind === 'PersistentVolumeClaim') {
-    const volumeName = stringAt(object, ['spec', 'volumeName']);
-    const storageClassName = stringAt(object, ['spec', 'storageClassName']);
-    if (volumeName) {
-      ensureReferenceNode(context, 'PersistentVolume', '', volumeName);
-      addEdge(context, 'binds-storage', objectId, id(context.clusterId, '', 'PersistentVolume', volumeName), 'PersistentVolumeClaim.spec.volumeName', 'observed');
-    }
-    if (storageClassName) {
-      ensureReferenceNode(context, 'StorageClass', '', storageClassName);
-      addEdge(context, 'binds-storage', objectId, id(context.clusterId, '', 'StorageClass', storageClassName), 'PersistentVolumeClaim.spec.storageClassName', 'observed');
-    }
-  }
-  if (kind === 'PersistentVolume') {
-    const storageClassName = stringAt(object, ['spec', 'storageClassName']);
-    if (storageClassName) {
-      ensureReferenceNode(context, 'StorageClass', '', storageClassName);
-      addEdge(context, 'binds-storage', objectId, id(context.clusterId, '', 'StorageClass', storageClassName), 'PersistentVolume.spec.storageClassName', 'observed');
-    }
+  if (isUploadStorageKind(kind)) {
+    uploadStorageReferences(kind, object).forEach((reference) => {
+      ensureReferenceNode(context, reference.kind, '', reference.name);
+      const sourceField = reference.kind === 'PersistentVolume'
+        ? 'PersistentVolumeClaim.spec.volumeName'
+        : `${kind}.spec.storageClassName`;
+      addEdge(context, 'binds-storage', objectId, id(context.clusterId, '', reference.kind, reference.name), sourceField, 'observed');
+    });
   }
 }
 
@@ -530,14 +526,8 @@ function objectSummary(kind: ResourceKind, object: KubeObject, customResourceDef
   if (isGatewayRouteKind(kind)) {
     return uploadGatewayRouteSummary(kind, object);
   }
-  if (kind === 'PersistentVolumeClaim') {
-    return { storage: stringAt(object, ['spec', 'resources', 'requests', 'storage']) || '-', storageClass: stringAt(object, ['spec', 'storageClassName']) || '-' };
-  }
-  if (kind === 'PersistentVolume') {
-    return { storage: stringAt(object, ['spec', 'capacity', 'storage']) || '-', storageClass: stringAt(object, ['spec', 'storageClassName']) || '-' };
-  }
-  if (kind === 'StorageClass') {
-    return { provisioner: stringAt(object, ['provisioner']) || stringAt(object, ['spec', 'provisioner']) || '-' };
+  if (isUploadStorageKind(kind)) {
+    return uploadStorageSummary(kind, object);
   }
   if (kind === 'CustomResourceDefinition') {
     return {
@@ -602,9 +592,8 @@ function objectStatus(kind: ResourceKind, object: KubeObject): ResourceStatus {
   if (kind === 'HorizontalPodAutoscaler') {
     return uploadHPAStatus(object);
   }
-  if (kind === 'PersistentVolumeClaim') {
-    const phase = stringAt(object, ['status', 'phase']);
-    return !phase || phase === 'Bound' ? 'healthy' : 'warning';
+  if (isUploadStorageKind(kind)) {
+    return uploadStorageStatus(kind, object);
   }
   return 'healthy';
 }
