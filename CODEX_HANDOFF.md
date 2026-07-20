@@ -102,5 +102,5 @@ go test ./...
 
 1. AKS에서 capability/RBAC/Events/logs/pagination 검증 (Native Kubernetes와 local k3s 실검증 완료)
 2. Desktop CM local prototype의 layout/session UI 추가 모듈화 또는 archive 범위 축소
-3. Desktop CM session group/card/bulk toolbar, saved-layout import conflict panel, folder/preset list는 표시 모듈로 분리됐고 비핵심 reorder history UI는 제거됐다. 남은 saved-layout toolbar/controller를 추가 분리할지 prototype을 archive할지 실제 사용 후 결정
+3. Desktop CM session group/card/bulk toolbar와 saved-layout toolbar/conflict/folder/preset list는 표시 모듈로 분리됐고 비핵심 reorder history UI는 제거됐다. 남은 saved-layout state/controller hook을 분리할지 prototype을 archive할지 실제 사용 후 결정
 4. scripts의 반복 코드가 다시 확인될 때 reusable helper/CLI entrypoint 분리 확대

@@ -70,11 +70,12 @@
     "website/src/components/DesktopCmSessionPanel.tsx",
     "website/src/components/desktopCm/DesktopCmLayoutConflictPanel.tsx",
     "website/src/components/desktopCm/DesktopCmLayoutList.tsx",
+    "website/src/components/desktopCm/DesktopCmSavedLayoutsPanel.tsx",
     "website/src/components/desktopCm/DesktopCmSessionList.tsx",
     "website/src/features/desktop/desktopCmSessionView.ts"
   ],
   "next": [
-    "decide whether to extract the remaining saved-layout toolbar controller or archive the local prototype",
+    "decide whether to extract the remaining saved-layout state controller hook or archive the local prototype",
     "archive the desktop prototype if real CM workflows do not use it"
   ]
 }

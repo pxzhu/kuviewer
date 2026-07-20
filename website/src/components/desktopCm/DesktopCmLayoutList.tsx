@@ -70,7 +70,7 @@ export interface DesktopCmLayoutListActions {
   onDeletePreset: (preset: string) => void;
 }
 
-interface DesktopCmLayoutListProps {
+export interface DesktopCmLayoutListProps {
   presetCount: number;
   folders: DesktopCmSessionLayoutFolder[];
   activeFolderName: string;
