@@ -48,57 +48,38 @@ func buildKubernetesSnapshot(clusterID string, clusterName string, resources kub
 	clusterVersion := safeClusterVersion(resources.version.GitVersion)
 	builder := newKubeGraphBuilder(clusterID)
 	readyNodes := 0
+	totalNodes := 0
 	podRunning := 0
 	podWarning := 0
+	namespaceCount := 0
 	serviceEndpointCounts := endpointCounts(resources.endpointSlices)
 	serviceEndpointRefs := serviceEndpointReferences(resources.endpointSlices, resources.services, resources.pods)
 	mergeReferenceEndpointCounts(serviceEndpointCounts, serviceEndpointRefs)
 	namespaceIndex := namespaceRecords(resources.namespaces)
 
-	for _, node := range resources.nodes.Items {
-		if nodeReady(node.Status.Conditions) {
-			readyNodes++
-		}
-	}
-	for _, pod := range resources.pods.Items {
-		if pod.Status.Phase == "Running" || pod.Status.Phase == "Succeeded" {
-			podRunning++
-		}
-		if podStatus(pod) != "healthy" {
-			podWarning++
-		}
-	}
-
-	clusterSummary := topology.ClusterSummary{
-		ID:         clusterID,
-		Name:       clusterName,
-		Provider:   "Kubernetes",
-		Version:    clusterVersion,
-		NodeReady:  readyNodes,
-		NodeTotal:  len(resources.nodes.Items),
-		PodRunning: podRunning,
-		PodWarning: podWarning,
-		Namespaces: len(resources.namespaces.Items),
-	}
-
-	builder.addNode("Cluster", "", clusterName, "healthy", map[string]string{"provider": "native"}, map[string]interface{}{
-		"version":    clusterVersion,
-		"nodes":      len(resources.nodes.Items),
-		"namespaces": len(resources.namespaces.Items),
-	})
+	clusterNode := builder.addNode("Cluster", "", clusterName, "healthy", map[string]string{"provider": "native"}, map[string]interface{}{"version": clusterVersion})
 
 	for _, namespace := range resources.namespaces.Items {
-		builder.addResourceNode("Namespace", namespace.Metadata, "healthy", map[string]interface{}{
+		namespaceID, added := builder.addTrackedResourceNode("Namespace", namespace.Metadata, "healthy", map[string]interface{}{
 			"age": age(namespace.Metadata.CreationTimestamp),
 		})
-		builder.addEdge("owns", clusterNodeID(clusterID, clusterName), builder.nodeID("Namespace", "", namespace.Metadata.Name), "metadata.namespace", "observed")
+		if added {
+			namespaceCount++
+		}
+		builder.addEdge("owns", clusterNode, namespaceID, "metadata.namespace", "observed")
 	}
 	for _, node := range resources.nodes.Items {
-		builder.addResourceNode("Node", node.Metadata, nodeStatus(node), map[string]interface{}{
+		_, added := builder.addTrackedResourceNode("Node", node.Metadata, nodeStatus(node), map[string]interface{}{
 			"kubeletVersion": node.Status.NodeInfo.KubeletVersion,
 			"cpu":            node.Status.Capacity["cpu"],
 			"memory":         node.Status.Capacity["memory"],
 		})
+		if added {
+			totalNodes++
+			if nodeReady(node.Status.Conditions) {
+				readyNodes++
+			}
+		}
 	}
 	for _, deployment := range resources.deployments.Items {
 		builder.addResourceNode("Deployment", deployment.Metadata, deploymentStatus(deployment), map[string]interface{}{
@@ -176,7 +157,7 @@ func buildKubernetesSnapshot(clusterID string, clusterName string, resources kub
 		displayName := customResourceDisplayName(resource)
 		meta := resource.Metadata
 		meta.Name = displayName
-		builder.addResourceNode("CustomResource", meta, customResourceStatus(resource), map[string]interface{}{
+		resourceID, added := builder.addTrackedResourceNode("CustomResource", meta, customResourceStatus(resource), map[string]interface{}{
 			"apiVersion":   resource.APIVersion,
 			"kind":         resource.Kind,
 			"name":         resource.Metadata.Name,
@@ -188,10 +169,13 @@ func buildKubernetesSnapshot(clusterID string, clusterName string, resources kub
 			"statusFields": len(resource.Status),
 			"conditions":   genericConditionSummary(resource.Status),
 		})
-		if resource.Metadata.Namespace != "" {
-			builder.addEdge("owns", builder.nodeID("Namespace", "", resource.Metadata.Namespace), builder.nodeID("CustomResource", resource.Metadata.Namespace, displayName), "metadata.namespace", "observed")
+		if !added {
+			continue
 		}
-		builder.addEdge("owns", builder.nodeID("CustomResourceDefinition", "", resource.CRDName), builder.nodeID("CustomResource", resource.Metadata.Namespace, displayName), "CustomResourceDefinition.spec.names.kind", "observed")
+		if resource.Metadata.Namespace != "" {
+			builder.addEdge("owns", builder.nodeID("Namespace", "", resource.Metadata.Namespace), resourceID, "metadata.namespace", "observed")
+		}
+		builder.addEdge("owns", builder.nodeID("CustomResourceDefinition", "", resource.CRDName), resourceID, "CustomResourceDefinition.spec.names.kind", "observed")
 	}
 	for _, pv := range resources.pvs.Items {
 		builder.addResourceNode("PersistentVolume", pv.Metadata, pvStatus(pv), map[string]interface{}{
@@ -248,7 +232,8 @@ func buildKubernetesSnapshot(clusterID string, clusterName string, resources kub
 		})
 	}
 	for _, pod := range resources.pods.Items {
-		builder.addResourceNode("Pod", pod.Metadata, podStatus(pod), map[string]interface{}{
+		status := podStatus(pod)
+		_, added := builder.addTrackedResourceNode("Pod", pod.Metadata, status, map[string]interface{}{
 			"phase":          pod.Status.Phase,
 			"ready":          formatReplicas(readyContainers(pod.Status.ContainerStatuses), len(pod.Status.ContainerStatuses)),
 			"restarts":       restartCount(pod.Status.ContainerStatuses),
@@ -257,45 +242,102 @@ func buildKubernetesSnapshot(clusterID string, clusterName string, resources kub
 			"containerNames": containerNames(pod.Spec.Containers),
 			"initContainers": containerNames(pod.Spec.InitContainers),
 		})
+		if added {
+			if pod.Status.Phase == "Running" || pod.Status.Phase == "Succeeded" {
+				podRunning++
+			}
+			if status != "healthy" {
+				podWarning++
+			}
+		}
 	}
 
 	addKubernetesSnapshotEdges(builder, resources, namespaceIndex, serviceEndpointRefs)
+	clusterSummary := topology.ClusterSummary{
+		ID:         clusterID,
+		Name:       clusterName,
+		Provider:   "Kubernetes",
+		Version:    clusterVersion,
+		NodeReady:  readyNodes,
+		NodeTotal:  totalNodes,
+		PodRunning: podRunning,
+		PodWarning: podWarning,
+		Namespaces: namespaceCount,
+	}
+	builder.replaceNodeSummary(clusterNode, map[string]interface{}{
+		"version":    clusterVersion,
+		"nodes":      totalNodes,
+		"namespaces": namespaceCount,
+	})
+	diagnostics := append([]topology.SnapshotDiagnostic(nil), resources.diagnostics...)
+	diagnostics = append(diagnostics, builder.resourceIssueDiagnostics()...)
 	return topology.Snapshot{
 		Clusters:    []topology.ClusterSummary{clusterSummary},
 		Nodes:       builder.nodes,
 		Edges:       builder.edges,
-		Diagnostics: append([]topology.SnapshotDiagnostic(nil), resources.diagnostics...),
+		Diagnostics: safeSnapshotDiagnostics(diagnostics),
 	}
 }
 
 func addKubernetesSnapshotEdges(builder *graphBuilder, resources kubernetesSnapshotResources, namespaceIndex []namespaceRecord, serviceEndpointRefs []serviceEndpointReference) {
+	seenCustomResources := map[string]bool{}
 	for _, resource := range resources.customResources {
+		resourceID := builder.nodeID("CustomResource", resource.Metadata.Namespace, customResourceDisplayName(resource))
+		if !builder.claimResourceNode(resourceID, seenCustomResources) {
+			continue
+		}
 		builder.addCustomResourceReferenceEdges(resource, resources.crds)
 	}
+	seenOwnerSources := map[string]bool{}
 	for _, deployment := range resources.deployments.Items {
+		if !builder.claimResourceNode(builder.nodeID("Deployment", deployment.Metadata.Namespace, deployment.Metadata.Name), seenOwnerSources) {
+			continue
+		}
 		builder.addOwnerEdge("Deployment", deployment.Metadata)
 	}
 	for _, replicaSet := range resources.replicaSets.Items {
+		if !builder.claimResourceNode(builder.nodeID("ReplicaSet", replicaSet.Metadata.Namespace, replicaSet.Metadata.Name), seenOwnerSources) {
+			continue
+		}
 		builder.addOwnerEdge("ReplicaSet", replicaSet.Metadata)
 	}
 	for _, statefulSet := range resources.statefulSets.Items {
+		if !builder.claimResourceNode(builder.nodeID("StatefulSet", statefulSet.Metadata.Namespace, statefulSet.Metadata.Name), seenOwnerSources) {
+			continue
+		}
 		builder.addOwnerEdge("StatefulSet", statefulSet.Metadata)
 	}
 	for _, daemonSet := range resources.daemonSets.Items {
+		if !builder.claimResourceNode(builder.nodeID("DaemonSet", daemonSet.Metadata.Namespace, daemonSet.Metadata.Name), seenOwnerSources) {
+			continue
+		}
 		builder.addOwnerEdge("DaemonSet", daemonSet.Metadata)
 	}
 	for _, cronJob := range resources.cronJobs.Items {
+		if !builder.claimResourceNode(builder.nodeID("CronJob", cronJob.Metadata.Namespace, cronJob.Metadata.Name), seenOwnerSources) {
+			continue
+		}
 		builder.addOwnerEdge("CronJob", cronJob.Metadata)
 	}
 	for _, job := range resources.jobs.Items {
+		if !builder.claimResourceNode(builder.nodeID("Job", job.Metadata.Namespace, job.Metadata.Name), seenOwnerSources) {
+			continue
+		}
 		builder.addOwnerEdge("Job", job.Metadata)
 	}
 	for _, pod := range resources.pods.Items {
+		if !builder.claimResourceNode(builder.nodeID("Pod", pod.Metadata.Namespace, pod.Metadata.Name), seenOwnerSources) {
+			continue
+		}
 		builder.addOwnerEdge("Pod", pod.Metadata)
 	}
 
+	seenPods := map[string]bool{}
 	for _, pod := range resources.pods.Items {
 		podID := builder.nodeID("Pod", pod.Metadata.Namespace, pod.Metadata.Name)
+		if !builder.claimResourceNode(podID, seenPods) {
+			continue
+		}
 		if validKubernetesReferenceName(pod.Spec.NodeName) {
 			builder.addEdge("scheduled-on", podID, builder.nodeID("Node", "", pod.Spec.NodeName), "Pod.spec.nodeName", "observed")
 		}
@@ -309,8 +351,12 @@ func addKubernetesSnapshotEdges(builder *graphBuilder, resources kubernetesSnaps
 		}
 	}
 
+	seenStorageSources := map[string]bool{}
 	for _, pvc := range resources.pvcs.Items {
 		pvcID := builder.nodeID("PersistentVolumeClaim", pvc.Metadata.Namespace, pvc.Metadata.Name)
+		if !builder.claimResourceNode(pvcID, seenStorageSources) {
+			continue
+		}
 		if validKubernetesReferenceName(pvc.Spec.VolumeName) {
 			builder.addEdge("binds-storage", pvcID, builder.nodeID("PersistentVolume", "", pvc.Spec.VolumeName), "PersistentVolumeClaim.spec.volumeName", "observed")
 		}
@@ -319,12 +365,20 @@ func addKubernetesSnapshotEdges(builder *graphBuilder, resources kubernetesSnaps
 		}
 	}
 	for _, pv := range resources.pvs.Items {
+		pvID := builder.nodeID("PersistentVolume", "", pv.Metadata.Name)
+		if !builder.claimResourceNode(pvID, seenStorageSources) {
+			continue
+		}
 		if validKubernetesReferenceName(pv.Spec.StorageClassName) {
-			builder.addEdge("binds-storage", builder.nodeID("PersistentVolume", "", pv.Metadata.Name), builder.nodeID("StorageClass", "", pv.Spec.StorageClassName), "PersistentVolume.spec.storageClassName", "observed")
+			builder.addEdge("binds-storage", pvID, builder.nodeID("StorageClass", "", pv.Spec.StorageClassName), "PersistentVolume.spec.storageClassName", "observed")
 		}
 	}
+	seenIngresses := map[string]bool{}
 	for _, ingress := range resources.ingresses.Items {
 		ingressID := builder.nodeID("Ingress", ingress.Metadata.Namespace, ingress.Metadata.Name)
+		if !builder.claimResourceNode(ingressID, seenIngresses) {
+			continue
+		}
 		for _, serviceName := range ingressServiceNames(ingress) {
 			builder.addEdge("routes-to", ingressID, builder.nodeID("Service", ingress.Metadata.Namespace, serviceName), "Ingress.spec.rules.http.paths.backend.service", "observed")
 		}
@@ -335,8 +389,12 @@ func addKubernetesSnapshotEdges(builder *graphBuilder, resources kubernetesSnaps
 	builder.addGatewayRouteEdges("TLSRoute", resources.tlsRoutes)
 	builder.addGatewayRouteEdges("TCPRoute", resources.tcpRoutes)
 
+	seenHPAs := map[string]bool{}
 	for _, hpa := range resources.hpas.Items {
 		hpaID := builder.nodeID("HorizontalPodAutoscaler", hpa.Metadata.Namespace, hpa.Metadata.Name)
+		if !builder.claimResourceNode(hpaID, seenHPAs) {
+			continue
+		}
 		targetKind := hpa.Spec.ScaleTargetRef.Kind
 		targetName := hpa.Spec.ScaleTargetRef.Name
 		if !validKubernetesKind(targetKind) || !validKubernetesReferenceName(targetName) {
@@ -346,8 +404,12 @@ func addKubernetesSnapshotEdges(builder *graphBuilder, resources kubernetesSnaps
 		builder.addEdge("targets-scale", hpaID, builder.nodeID(targetKind, hpa.Metadata.Namespace, targetName), "HorizontalPodAutoscaler.spec.scaleTargetRef", "observed")
 	}
 
+	seenNetworkPolicies := map[string]bool{}
 	for _, networkPolicy := range resources.networkPolicies.Items {
 		networkPolicyID := builder.nodeID("NetworkPolicy", networkPolicy.Metadata.Namespace, networkPolicy.Metadata.Name)
+		if !builder.claimResourceNode(networkPolicyID, seenNetworkPolicies) {
+			continue
+		}
 		matches := 0
 		selectorValid := validLabelSelector(networkPolicy.Spec.PodSelector)
 		if selectorValid {

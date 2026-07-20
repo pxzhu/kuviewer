@@ -24,7 +24,8 @@
    - CRD discovery/version/status와 custom-resource reference inference는 독립 module/test로 분리됐다. CRD API path와 reference identity를 검증하고 depth/visit/collection/path/result 상한, deterministic order, raw value 비노출을 유지한다.
    - NetworkPolicy selector/peer/port/intent는 독립 module/test로 분리됐다. label key/value/operator와 rule/peer/port 수를 제한하고 malformed input은 summary와 inferred edge 모두 fail-closed 처리한다.
    - Workload/storage 상태와 condition/container/owner summary, Pod/Service/Ingress/Gateway/native reference 추론은 독립 module/test로 분리됐다. selector fallback 비교량과 reference collection/result 수를 제한하고 malformed host/method/name은 원문 요약과 phantom edge를 만들지 않는다.
-   - Resource identity, labels, annotations, summary, UID, status, owner와 edge metadata는 공통 sanitizer에서 크기·문법·민감값을 검증한다. malformed/oversized 입력은 fail-closed 처리하고 last-applied manifest와 credential-like metadata는 redaction한다. 다음 provider 감사는 snapshot cluster/resource count와 invalid-item diagnostics 경계를 우선한다.
+   - Resource identity, labels, annotations, summary, UID, status, owner와 edge metadata는 공통 sanitizer에서 크기·문법·민감값을 검증한다. malformed/oversized 입력은 fail-closed 처리하고 last-applied manifest와 credential-like metadata는 redaction한다.
+   - Cluster summary는 graph에 실제 반영된 고유 Namespace/Node/Pod만 집계한다. invalid/duplicate API 항목은 이름 없이 kind별 bounded diagnostic으로 합치고, accepted source가 아닌 항목은 reference placeholder를 만들 수 없다. 다음 provider 감사는 EndpointSlice/service endpoint accounting과 invalid peer 입력 경계를 우선한다.
 
 2. Resource Explorer panel extraction
    - Resource fetch/pagination abort, selection anchor, keyboard/bulk action은 controller hook으로 분리됐다.
