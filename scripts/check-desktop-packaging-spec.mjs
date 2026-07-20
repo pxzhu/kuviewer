@@ -59,6 +59,7 @@ const desktopCmSessionPanel = await readFile(path.join(repoRoot, 'website/src/co
 for (const componentName of ['DesktopCmSavedLayoutsPanel', 'DesktopCmSessionList', 'DesktopCmSessionBulkToolbar']) {
   requireCondition(desktopCmSessionPanel.includes(componentName), `desktop session panel must use ${componentName}`);
 }
+requireCondition(desktopCmSessionPanel.includes('useDesktopCmSessionLayouts'), 'desktop session panel must use the saved-layout controller');
 
 const tauriMain = await readFile(path.join(repoRoot, 'desktop/src-tauri/src/main.rs'), 'utf8');
 for (const forbiddenCommand of ['desktop_sidecar_profile', 'desktop_kubernetes_profiles', 'desktop_select_kubernetes_profile']) {

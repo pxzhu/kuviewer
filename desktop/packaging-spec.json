@@ -72,10 +72,11 @@
     "website/src/components/desktopCm/DesktopCmLayoutList.tsx",
     "website/src/components/desktopCm/DesktopCmSavedLayoutsPanel.tsx",
     "website/src/components/desktopCm/DesktopCmSessionList.tsx",
-    "website/src/features/desktop/desktopCmSessionView.ts"
+    "website/src/features/desktop/desktopCmSessionView.ts",
+    "website/src/features/desktop/useDesktopCmSessionLayouts.ts"
   ],
   "next": [
-    "decide whether to extract the remaining saved-layout state controller hook or archive the local prototype",
+    "validate the extracted saved-layout controller against real desktop CM workflows",
     "archive the desktop prototype if real CM workflows do not use it"
   ]
 }
