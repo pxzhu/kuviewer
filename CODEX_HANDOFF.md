@@ -89,6 +89,7 @@
 - Pod runtime container state/reason/restart/image summary는 live `kubernetes_pods.go`와 upload `podRuntimeSchema.ts`가 같은 phase·state union·count·identity·image 경계를 적용한다. status message, imageID, containerID는 디코딩·요약하지 않고 malformed runtime status는 warning/invalid summary와 kind-level diagnostic으로 처리한다.
 - Node capacity/allocatable/condition/runtime summary는 live `kubernetes_nodes.go`와 upload `nodeStatusSchema.ts`가 같은 quantity·count·version·runtime 경계를 적용한다. 주소와 machine/system/boot identifier, condition message는 디코딩·요약하지 않고 malformed status는 warning/invalid summary와 kind-level diagnostic으로 처리한다.
 - PV/PVC/StorageClass summary는 live `kubernetes_storage.go`와 upload `storageSchema.ts`가 같은 quantity·access mode·volume mode·phase·reclaim/binding/provisioner 경계를 적용한다. CSI volume source, claimRef, parameters, mount option, storage Secret reference와 status message는 디코딩·요약하지 않고 malformed spec은 warning/invalid summary와 storage edge 추론 중단으로 처리한다.
+- ConfigMap summary는 live `kubernetes_configmaps.go`와 upload `configMapSchema.ts`가 data/binaryData key 문법·중복·합계 4,096개·immutable 경계를 적용한다. live provider는 value를 문자열로 디코딩하거나 보존하지 않고 key index만 만들며, upload parser는 topology build 전에 value를 폐기한다. malformed map은 warning/invalid summary와 kind-level diagnostic으로 처리한다.
 - Pod/Service endpoint와 native object reference 추론은 `kubernetes_references.go`가 담당하고 Gateway schema/route reference는 `kubernetes_gateway.go`가 담당한다. selector fallback 작업량과 collection/result 수를 제한하고 malformed host/method/name은 summary와 placeholder edge에서 제외한다.
 
 ## Runtime Boundaries

@@ -1619,8 +1619,11 @@ kind: ConfigMap
 metadata:
   name: checkout-config
   namespace: checkout
+immutable: true
 data:
   PAYMENT_URL: http://payments.checkout.svc.cluster.local
+binaryData:
+  logo.bin: a3V2aWV3ZXI=
 ---
 apiVersion: v1
 kind: Secret

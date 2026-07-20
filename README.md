@@ -30,13 +30,14 @@ Kuviewer is a read-only Kubernetes topology and resource explorer. It turns uplo
 - Bounded Pod runtime state, reason, restart, and image summaries without runtime messages or container/image identifiers
 - Bounded Node capacity, allocatable, condition, and runtime summaries without host identifiers or addresses
 - Bounded PV, PVC, and StorageClass capacity, access, policy, provisioner, and binding summaries without CSI configuration or storage Secret references
+- Bounded ConfigMap key-count and immutable summaries without decoding or retaining `data` or `binaryData` values
 - Bounded concurrent live collection with safe partial-result diagnostics; incomplete resource lists are never merged into a snapshot
 
 ## Source Modes
 
 ### Upload
 
-Upload YAML, JSON, ZIP, or a Kuviewer topology JSON. Manifest parsing happens in the browser. Secret resources expose type and key names only.
+Upload YAML, JSON, ZIP, or a Kuviewer topology JSON. Manifest parsing happens in the browser. Secret resources expose only type, key count, and a values-hidden marker.
 
 ### Mock
 

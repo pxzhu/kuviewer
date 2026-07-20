@@ -104,10 +104,10 @@ type serviceAccountResource struct {
 type configMapList = kubeList[configMapResource]
 
 type configMapResource struct {
-	Metadata   metadata          `json:"metadata"`
-	Data       map[string]string `json:"data"`
-	BinaryData map[string]string `json:"binaryData"`
-	Immutable  *bool             `json:"immutable"`
+	Metadata   metadata           `json:"metadata"`
+	Data       configMapKeyIndex  `json:"data"`
+	BinaryData configMapKeyIndex  `json:"binaryData"`
+	Immutable  configMapImmutable `json:"immutable"`
 }
 
 type container struct {

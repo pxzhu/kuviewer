@@ -12,6 +12,7 @@ export interface KubeObject {
   status?: Record<string, unknown>;
   data?: Record<string, unknown>;
   binaryData?: Record<string, unknown>;
+  immutable?: boolean;
   items?: KubeObject[];
 }
 

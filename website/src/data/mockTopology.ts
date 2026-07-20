@@ -40,7 +40,7 @@ export const mockTopology: TopologySnapshot = {
 
     node(local, 'Namespace', '', 'platform', 'healthy', { team: 'platform' }, { workloads: 3, services: 2 }),
     node(local, 'ServiceAccount', 'platform', 'kuviewer-api', 'healthy', { app: 'kuviewer' }, { tokens: 'bound' }),
-    node(local, 'ConfigMap', 'platform', 'kuviewer-config', 'healthy', { app: 'kuviewer' }, { keys: 5 }),
+    node(local, 'ConfigMap', 'platform', 'kuviewer-config', 'healthy', { app: 'kuviewer' }, { keys: 5, dataKeys: 5, binaryKeys: 0, immutable: 'unset' }),
     node(local, 'Secret', 'platform', 'kuviewer-admin-token', 'unknown', { app: 'kuviewer' }, { type: 'Opaque', values: 'hidden' }),
     node(local, 'Deployment', 'platform', 'kuviewer-api', 'healthy', { app: 'kuviewer', tier: 'api' }, { replicas: '2/2', containers: 1, initContainers: 1, imageCount: 1, images: ['kuviewer/api:mock'] }),
     node(local, 'ReplicaSet', 'platform', 'kuviewer-api-6d9c4', 'healthy', { app: 'kuviewer', hash: '6d9c4' }, { replicas: '2/2' }),
@@ -64,14 +64,14 @@ export const mockTopology: TopologySnapshot = {
     node(local, 'StatefulSet', 'checkout', 'checkout-db', 'healthy', { app: 'checkout-db' }, { replicas: '1/1', storage: '20Gi' }),
     node(local, 'Pod', 'checkout', 'checkout-db-0', 'healthy', { app: 'checkout-db' }, { ready: true, restarts: 0, node: 'worker-c' }),
     node(local, 'PersistentVolumeClaim', 'checkout', 'checkout-db-data', 'healthy', { app: 'checkout-db' }, persistentVolumeClaimSummary('20Gi', 'checkout-db-data', 'local-path')),
-    node(local, 'ConfigMap', 'checkout', 'checkout-config', 'healthy', { app: 'checkout' }, { keys: 6 }),
+    node(local, 'ConfigMap', 'checkout', 'checkout-config', 'healthy', { app: 'checkout' }, { keys: 6, dataKeys: 5, binaryKeys: 1, immutable: true }),
     node(local, 'Secret', 'checkout', 'checkout-api-secret', 'unknown', { app: 'checkout' }, { type: 'Opaque', values: 'hidden' }),
 
     node(local, 'Namespace', '', 'observability', 'healthy', { team: 'platform' }, { workloads: 2, services: 1 }),
     node(local, 'DaemonSet', 'observability', 'node-agent', 'healthy', { app: 'node-agent' }, { ready: '3/3' }),
     node(local, 'Pod', 'observability', 'node-agent-a', 'healthy', { app: 'node-agent' }, { ready: true, restarts: 0, node: 'worker-a' }),
     node(local, 'Pod', 'observability', 'node-agent-b', 'healthy', { app: 'node-agent' }, { ready: true, restarts: 0, node: 'worker-b' }),
-    node(local, 'ConfigMap', 'observability', 'agent-config', 'healthy', { app: 'node-agent' }, { keys: 3 }),
+    node(local, 'ConfigMap', 'observability', 'agent-config', 'healthy', { app: 'node-agent' }, { keys: 3, dataKeys: 3, binaryKeys: 0, immutable: 'unset' }),
     node(local, 'Service', 'observability', 'telemetry', 'healthy', { app: 'node-agent' }, { type: 'ClusterIP', port: 4317 }),
 
     node(aks, 'Cluster', '', 'aks-prod-east', 'healthy', { provider: 'aks', region: 'eastus' }, { version: 'v1.30.x', nodes: 2, namespaces: 3 }),
@@ -95,7 +95,7 @@ export const mockTopology: TopologySnapshot = {
 
     node(aks, 'Namespace', '', 'payments', 'warning', { team: 'payments' }, { workloads: 4, services: 3 }),
     node(aks, 'ServiceAccount', 'payments', 'payments-api', 'healthy', { app: 'payments' }, { tokens: 'bound' }),
-    node(aks, 'ConfigMap', 'payments', 'payments-config', 'healthy', { app: 'payments' }, { keys: 8 }),
+    node(aks, 'ConfigMap', 'payments', 'payments-config', 'healthy', { app: 'payments' }, { keys: 8, dataKeys: 8, binaryKeys: 0, immutable: false }),
     node(aks, 'Secret', 'payments', 'payments-secret', 'unknown', { app: 'payments' }, { type: 'Opaque', values: 'hidden' }),
     node(aks, 'Service', 'payments', 'payments-api', 'healthy', { app: 'payments' }, { type: 'ClusterIP', readyEndpoints: '2/2' }),
     node(aks, 'Deployment', 'payments', 'payments-api', 'healthy', { app: 'payments' }, { replicas: '2/2' }),
