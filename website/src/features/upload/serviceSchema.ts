@@ -5,10 +5,13 @@ import { validSelectorKey, validSelectorValue } from './labelSelector.ts';
 const maxServicePorts = 256;
 const maxServiceClusterIPs = 2;
 const maxServiceSelectorLabels = 64;
+const maxSessionAffinitySeconds = 86400;
 
 type ServiceType = 'ClusterIP' | 'NodePort' | 'LoadBalancer' | 'ExternalName';
 type IPFamily = 'IPv4' | 'IPv6';
 type IPFamilyPolicy = 'SingleStack' | 'PreferDualStack' | 'RequireDualStack';
+type TrafficPolicy = 'Cluster' | 'Local';
+type SessionAffinity = 'None' | 'ClientIP';
 
 interface ParsedServiceSpec {
   type: ServiceType;
@@ -19,6 +22,13 @@ interface ParsedServiceSpec {
   externalName: string;
   selector: Record<string, string>;
   ports: ParsedServicePort[];
+  internalTrafficPolicy: TrafficPolicy;
+  externalTrafficPolicy: TrafficPolicy;
+  healthCheckNodePort: number;
+  loadBalancerClass: string;
+  allocateLoadBalancerNodePorts: boolean | null;
+  sessionAffinity: SessionAffinity;
+  sessionAffinityTimeout: number | null;
 }
 
 interface ParsedServicePort {
@@ -53,6 +63,13 @@ export function uploadServiceSummary(object: KubeObject): Record<string, Summary
       targetPorts: 'invalid',
       nodePorts: 'invalid',
       appProtocols: 'invalid',
+      internalTrafficPolicy: 'invalid',
+      externalTrafficPolicy: 'invalid',
+      healthCheckNodePort: 'invalid',
+      loadBalancerClass: 'invalid',
+      allocateLoadBalancerNodePorts: 'invalid',
+      sessionAffinity: 'invalid',
+      sessionAffinityTimeout: 'invalid',
       selector: 'invalid',
     };
   }
@@ -66,6 +83,13 @@ export function uploadServiceSummary(object: KubeObject): Record<string, Summary
     targetPorts: spec.ports.filter((port) => port.targetPortSet).length,
     nodePorts: spec.ports.filter((port) => port.nodePortSet).length,
     appProtocols: spec.ports.filter((port) => port.appProtocolSet).length,
+    internalTrafficPolicy: spec.type === 'ExternalName' ? 'unset' : spec.internalTrafficPolicy,
+    externalTrafficPolicy: spec.type === 'ExternalName' ? 'unset' : spec.externalTrafficPolicy,
+    healthCheckNodePort: spec.healthCheckNodePort || 'unset',
+    loadBalancerClass: spec.type !== 'LoadBalancer' ? 'unset' : spec.loadBalancerClass || 'default',
+    allocateLoadBalancerNodePorts: spec.type !== 'LoadBalancer' ? 'unset' : spec.allocateLoadBalancerNodePorts ?? true,
+    sessionAffinity: spec.type === 'ExternalName' ? 'unset' : spec.sessionAffinity,
+    sessionAffinityTimeout: spec.sessionAffinity === 'ClientIP' ? spec.sessionAffinityTimeout ?? 10800 : 'unset',
     selector: Object.keys(spec.selector).length > 0 ? `${Object.keys(spec.selector).length} labels` : 'none',
   };
   if (spec.type === 'ExternalName') {
@@ -99,7 +123,90 @@ function parseServiceSpec(object: KubeObject): ParsedServiceSpec | null {
   if (!ports) {
     return null;
   }
-  return { type, clusterIP, clusterIPs, ipFamilies, ipFamilyPolicy, externalName, selector, ports };
+  const traffic = parseServiceTrafficConfiguration(type, spec);
+  const session = parseServiceSessionAffinity(type, spec);
+  if (!traffic || !session) {
+    return null;
+  }
+  return { type, clusterIP, clusterIPs, ipFamilies, ipFamilyPolicy, externalName, selector, ports, ...traffic, ...session };
+}
+
+function parseServiceTrafficConfiguration(type: ServiceType, spec: Record<string, unknown>) {
+  const internalTrafficPolicy = parseTrafficPolicy(spec.internalTrafficPolicy);
+  const externalTrafficPolicy = parseTrafficPolicy(spec.externalTrafficPolicy);
+  const healthCheckNodePort = optionalPortNumber(spec.healthCheckNodePort);
+  const loadBalancerClass = optionalString(spec.loadBalancerClass);
+  const allocateLoadBalancerNodePorts = optionalBoolean(spec.allocateLoadBalancerNodePorts);
+  if (!internalTrafficPolicy || !externalTrafficPolicy || healthCheckNodePort === null || loadBalancerClass === null || allocateLoadBalancerNodePorts === undefined) {
+    return null;
+  }
+  if (type === 'ExternalName') {
+    return isUnsetStringField(spec.internalTrafficPolicy) && isUnsetStringField(spec.externalTrafficPolicy) && healthCheckNodePort === 0 && loadBalancerClass === '' && allocateLoadBalancerNodePorts === null
+      ? { internalTrafficPolicy, externalTrafficPolicy, healthCheckNodePort, loadBalancerClass, allocateLoadBalancerNodePorts }
+      : null;
+  }
+  if (type !== 'LoadBalancer' && (loadBalancerClass !== '' || allocateLoadBalancerNodePorts !== null)) {
+    return null;
+  }
+  if (loadBalancerClass !== '' && !validSelectorKey(loadBalancerClass)) {
+    return null;
+  }
+  if (healthCheckNodePort > 0 && (type !== 'LoadBalancer' || externalTrafficPolicy !== 'Local')) {
+    return null;
+  }
+  if (healthCheckNodePort > 0 && serviceHealthCheckNodePortConflicts(spec.ports, healthCheckNodePort)) {
+    return null;
+  }
+  return { internalTrafficPolicy, externalTrafficPolicy, healthCheckNodePort, loadBalancerClass, allocateLoadBalancerNodePorts };
+}
+
+function serviceHealthCheckNodePortConflicts(value: unknown, healthCheckNodePort: number) {
+  return Array.isArray(value) && value.some((port) => isRecord(port)
+    && (port.protocol == null || port.protocol === '' || port.protocol === 'TCP')
+    && port.nodePort === healthCheckNodePort);
+}
+
+function parseServiceSessionAffinity(type: ServiceType, spec: Record<string, unknown>) {
+  const sessionAffinity = parseSessionAffinity(spec.sessionAffinity);
+  if (!sessionAffinity) {
+    return null;
+  }
+  if (type === 'ExternalName') {
+    return (isUnsetStringField(spec.sessionAffinity) || spec.sessionAffinity === 'None') && spec.sessionAffinityConfig == null
+      ? { sessionAffinity, sessionAffinityTimeout: null }
+      : null;
+  }
+  if (sessionAffinity === 'None') {
+    return spec.sessionAffinityConfig == null ? { sessionAffinity, sessionAffinityTimeout: null } : null;
+  }
+  const config = spec.sessionAffinityConfig;
+  if (config == null) {
+    return { sessionAffinity, sessionAffinityTimeout: null };
+  }
+  if (!isRecord(config) || (config.clientIP != null && !isRecord(config.clientIP))) {
+    return null;
+  }
+  const timeout = isRecord(config.clientIP) ? config.clientIP.timeoutSeconds : undefined;
+  if (timeout == null) {
+    return { sessionAffinity, sessionAffinityTimeout: null };
+  }
+  return typeof timeout === 'number' && Number.isInteger(timeout) && timeout > 0 && timeout <= maxSessionAffinitySeconds
+    ? { sessionAffinity, sessionAffinityTimeout: timeout }
+    : null;
+}
+
+function parseTrafficPolicy(value: unknown): TrafficPolicy | null {
+  if (value == null || value === '') {
+    return 'Cluster';
+  }
+  return value === 'Cluster' || value === 'Local' ? value : null;
+}
+
+function parseSessionAffinity(value: unknown): SessionAffinity | null {
+  if (value == null || value === '') {
+    return 'None';
+  }
+  return value === 'None' || value === 'ClientIP' ? value : null;
 }
 
 function parseServiceType(value: unknown): ServiceType | null {
@@ -312,6 +419,20 @@ function validPortNumber(value: unknown): value is number {
   return typeof value === 'number' && Number.isInteger(value) && value >= 1 && value <= 65535;
 }
 
+function optionalPortNumber(value: unknown): number | null {
+  if (value == null || value === 0) {
+    return 0;
+  }
+  return validPortNumber(value) ? value : null;
+}
+
+function optionalBoolean(value: unknown): boolean | null | undefined {
+  if (value == null) {
+    return null;
+  }
+  return typeof value === 'boolean' ? value : undefined;
+}
+
 function validIANAServiceName(value: string) {
   return value.length <= 15 && /[a-z]/.test(value) && /^[a-z0-9](?:[-a-z0-9]*[a-z0-9])?$/.test(value);
 }
@@ -330,6 +451,10 @@ function validDNSSubdomain(value: string) {
 
 function optionalString(value: unknown): string | null {
   return value == null ? '' : typeof value === 'string' ? value : null;
+}
+
+function isUnsetStringField(value: unknown) {
+  return value == null || value === '';
 }
 
 function optionalStringArray(value: unknown): string[] | null {

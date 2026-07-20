@@ -9,9 +9,10 @@ import (
 )
 
 const (
-	maxServicePorts       = 256
-	maxServiceClusterIPs  = 2
-	maxTargetPortJSONSize = 128
+	maxServicePorts           = 256
+	maxServiceClusterIPs      = 2
+	maxTargetPortJSONSize     = 128
+	maxSessionAffinitySeconds = 86400
 )
 
 func (target *serviceTargetPort) UnmarshalJSON(value []byte) error {
@@ -51,13 +52,90 @@ func normalizedServiceType(value string) (string, bool) {
 
 func validServiceSpec(service serviceResource) bool {
 	serviceType, valid := normalizedServiceType(service.Spec.Type)
-	if !valid || !validServiceIPConfiguration(serviceType, service) || !validServicePorts(serviceType, service.Spec.Ports) || !validServiceSelector(service.Spec.Selector) {
+	if !valid || !validServiceIPConfiguration(serviceType, service) || !validServicePorts(serviceType, service.Spec.Ports) || !validServiceSelector(service.Spec.Selector) || !validServiceTrafficConfiguration(serviceType, service) || !validServiceSessionAffinity(serviceType, service) {
 		return false
 	}
 	if serviceType == "ExternalName" {
 		return validDNSSubdomain(service.Spec.ExternalName)
 	}
 	return service.Spec.ExternalName == ""
+}
+
+func normalizedServiceTrafficPolicy(value string) (string, bool) {
+	if value == "" {
+		return "Cluster", true
+	}
+	if value == "Cluster" || value == "Local" {
+		return value, true
+	}
+	return "invalid", false
+}
+
+func normalizedServiceSessionAffinity(value string) (string, bool) {
+	if value == "" {
+		return "None", true
+	}
+	if value == "None" || value == "ClientIP" {
+		return value, true
+	}
+	return "invalid", false
+}
+
+func validServiceTrafficConfiguration(serviceType string, service serviceResource) bool {
+	if len(service.Spec.Ports) > maxServicePorts {
+		return false
+	}
+	_, internalValid := normalizedServiceTrafficPolicy(service.Spec.InternalTrafficPolicy)
+	externalPolicy, externalValid := normalizedServiceTrafficPolicy(service.Spec.ExternalTrafficPolicy)
+	if !internalValid || !externalValid {
+		return false
+	}
+	if serviceType == "ExternalName" {
+		return service.Spec.InternalTrafficPolicy == "" && service.Spec.ExternalTrafficPolicy == "" && service.Spec.HealthCheckNodePort == 0 && service.Spec.LoadBalancerClass == "" && service.Spec.AllocateLoadBalancerNodePorts == nil
+	}
+	if serviceType != "LoadBalancer" && (service.Spec.LoadBalancerClass != "" || service.Spec.AllocateLoadBalancerNodePorts != nil) {
+		return false
+	}
+	if service.Spec.LoadBalancerClass != "" && !validLabelKey(service.Spec.LoadBalancerClass) {
+		return false
+	}
+	requiresHealthCheck := serviceType == "LoadBalancer" && externalPolicy == "Local"
+	if requiresHealthCheck {
+		return validPortNumber(service.Spec.HealthCheckNodePort) && !serviceHealthCheckNodePortConflicts(service)
+	}
+	return service.Spec.HealthCheckNodePort == 0
+}
+
+func serviceHealthCheckNodePortConflicts(service serviceResource) bool {
+	for _, port := range service.Spec.Ports {
+		protocol := port.Protocol
+		if protocol == "" {
+			protocol = "TCP"
+		}
+		if protocol == "TCP" && port.NodePort == service.Spec.HealthCheckNodePort {
+			return true
+		}
+	}
+	return false
+}
+
+func validServiceSessionAffinity(serviceType string, service serviceResource) bool {
+	if serviceType == "ExternalName" {
+		return (service.Spec.SessionAffinity == "" || service.Spec.SessionAffinity == "None") && service.Spec.SessionAffinityConfig == nil
+	}
+	affinity, valid := normalizedServiceSessionAffinity(service.Spec.SessionAffinity)
+	if !valid {
+		return false
+	}
+	if affinity == "None" {
+		return service.Spec.SessionAffinityConfig == nil
+	}
+	config := service.Spec.SessionAffinityConfig
+	if config == nil || config.ClientIP == nil || config.ClientIP.TimeoutSeconds == nil {
+		return true
+	}
+	timeout := *config.ClientIP.TimeoutSeconds
+	return timeout > 0 && timeout <= maxSessionAffinitySeconds
 }
 
 func normalizedIPFamilyPolicy(value string) (string, bool) {
@@ -320,23 +398,33 @@ func serviceSummary(service serviceResource, counts endpointCounter) map[string]
 	ipFamilyPolicy, policyValid := normalizedIPFamilyPolicy(service.Spec.IPFamilyPolicy)
 	ipConfigurationValid := typeValid && validServiceIPConfiguration(serviceType, service)
 	portsValid := typeValid && validServicePorts(serviceType, service.Spec.Ports)
+	trafficConfigurationValid := typeValid && validServiceTrafficConfiguration(serviceType, service)
+	sessionAffinity, sessionAffinityValid := normalizedServiceSessionAffinity(service.Spec.SessionAffinity)
+	sessionConfigurationValid := typeValid && sessionAffinityValid && validServiceSessionAffinity(serviceType, service)
 	trafficReady := serviceTrafficReadyCount(service, counts)
 	summary := map[string]interface{}{
-		"type":                     serviceType,
-		"clusterIP":                serviceClusterIPSummary(ipConfigurationValid, service.Spec.ClusterIP),
-		"clusterIPs":               serviceCollectionCountSummary(len(service.Spec.ClusterIPs), ipConfigurationValid),
-		"ipFamilies":               serviceIPFamiliesSummary(service.Spec.IPFamilies, ipConfigurationValid),
-		"ipFamilyPolicy":           serviceIPFamilyPolicySummary(serviceType, ipFamilyPolicy, policyValid, ipConfigurationValid),
-		"ports":                    serviceCollectionCountSummary(len(service.Spec.Ports), portsValid),
-		"targetPorts":              servicePortAttributeCountSummary(service.Spec.Ports, portsValid, func(port servicePort) bool { return port.TargetPort.Set }),
-		"nodePorts":                servicePortAttributeCountSummary(service.Spec.Ports, portsValid, func(port servicePort) bool { return port.NodePort > 0 }),
-		"appProtocols":             servicePortAttributeCountSummary(service.Spec.Ports, portsValid, func(port servicePort) bool { return port.AppProtocol != "" }),
-		"selector":                 serviceSelectorSummary(service.Spec.Selector),
-		"readyEndpoints":           formatReplicas(counts.ready, counts.total),
-		"trafficReadyEndpoints":    formatReplicas(trafficReady, counts.total),
-		"servingEndpoints":         formatReplicas(counts.serving, counts.total),
-		"terminatingEndpoints":     summaryCount(counts.terminating),
-		"publishNotReadyAddresses": service.Spec.PublishNotReadyAddresses,
+		"type":                          serviceType,
+		"clusterIP":                     serviceClusterIPSummary(ipConfigurationValid, service.Spec.ClusterIP),
+		"clusterIPs":                    serviceCollectionCountSummary(len(service.Spec.ClusterIPs), ipConfigurationValid),
+		"ipFamilies":                    serviceIPFamiliesSummary(service.Spec.IPFamilies, ipConfigurationValid),
+		"ipFamilyPolicy":                serviceIPFamilyPolicySummary(serviceType, ipFamilyPolicy, policyValid, ipConfigurationValid),
+		"ports":                         serviceCollectionCountSummary(len(service.Spec.Ports), portsValid),
+		"targetPorts":                   servicePortAttributeCountSummary(service.Spec.Ports, portsValid, func(port servicePort) bool { return port.TargetPort.Set }),
+		"nodePorts":                     servicePortAttributeCountSummary(service.Spec.Ports, portsValid, func(port servicePort) bool { return port.NodePort > 0 }),
+		"appProtocols":                  servicePortAttributeCountSummary(service.Spec.Ports, portsValid, func(port servicePort) bool { return port.AppProtocol != "" }),
+		"internalTrafficPolicy":         serviceTrafficPolicySummary(serviceType, service.Spec.InternalTrafficPolicy, trafficConfigurationValid),
+		"externalTrafficPolicy":         serviceTrafficPolicySummary(serviceType, service.Spec.ExternalTrafficPolicy, trafficConfigurationValid),
+		"healthCheckNodePort":           serviceHealthCheckNodePortSummary(service, trafficConfigurationValid),
+		"loadBalancerClass":             serviceLoadBalancerClassSummary(serviceType, service.Spec.LoadBalancerClass, trafficConfigurationValid),
+		"allocateLoadBalancerNodePorts": serviceLoadBalancerNodePortAllocationSummary(serviceType, service.Spec.AllocateLoadBalancerNodePorts, trafficConfigurationValid),
+		"sessionAffinity":               serviceSessionAffinitySummary(serviceType, sessionAffinity, sessionConfigurationValid),
+		"sessionAffinityTimeout":        serviceSessionAffinityTimeoutSummary(service, sessionConfigurationValid),
+		"selector":                      serviceSelectorSummary(service.Spec.Selector),
+		"readyEndpoints":                formatReplicas(counts.ready, counts.total),
+		"trafficReadyEndpoints":         formatReplicas(trafficReady, counts.total),
+		"servingEndpoints":              formatReplicas(counts.serving, counts.total),
+		"terminatingEndpoints":          summaryCount(counts.terminating),
+		"publishNotReadyAddresses":      service.Spec.PublishNotReadyAddresses,
 	}
 	if serviceType == "ExternalName" || service.Spec.ExternalName != "" {
 		if typeValid && serviceType == "ExternalName" && validDNSSubdomain(service.Spec.ExternalName) {
@@ -346,6 +434,78 @@ func serviceSummary(service serviceResource, counts endpointCounter) map[string]
 		}
 	}
 	return summary
+}
+
+func serviceTrafficPolicySummary(serviceType string, rawPolicy string, valid bool) string {
+	if !valid {
+		return "invalid"
+	}
+	if serviceType == "ExternalName" {
+		return "unset"
+	}
+	policy, _ := normalizedServiceTrafficPolicy(rawPolicy)
+	return policy
+}
+
+func serviceHealthCheckNodePortSummary(service serviceResource, valid bool) interface{} {
+	if !valid {
+		return "invalid"
+	}
+	if service.Spec.HealthCheckNodePort == 0 {
+		return "unset"
+	}
+	return service.Spec.HealthCheckNodePort
+}
+
+func serviceLoadBalancerClassSummary(serviceType string, value string, valid bool) string {
+	if !valid {
+		return "invalid"
+	}
+	if serviceType != "LoadBalancer" {
+		return "unset"
+	}
+	if value == "" {
+		return "default"
+	}
+	return value
+}
+
+func serviceLoadBalancerNodePortAllocationSummary(serviceType string, value *bool, valid bool) interface{} {
+	if !valid {
+		return "invalid"
+	}
+	if serviceType != "LoadBalancer" {
+		return "unset"
+	}
+	if value == nil {
+		return true
+	}
+	return *value
+}
+
+func serviceSessionAffinitySummary(serviceType string, affinity string, valid bool) string {
+	if !valid {
+		return "invalid"
+	}
+	if serviceType == "ExternalName" {
+		return "unset"
+	}
+	return affinity
+}
+
+func serviceSessionAffinityTimeoutSummary(service serviceResource, valid bool) interface{} {
+	if !valid {
+		return "invalid"
+	}
+	affinity, _ := normalizedServiceSessionAffinity(service.Spec.SessionAffinity)
+	if affinity != "ClientIP" {
+		return "unset"
+	}
+	config := service.Spec.SessionAffinityConfig
+	if config == nil || config.ClientIP == nil || config.ClientIP.TimeoutSeconds == nil {
+		return 10800
+	}
+	return *config.ClientIP.TimeoutSeconds
 }
 
 func serviceClusterIPSummary(valid bool, value string) string {

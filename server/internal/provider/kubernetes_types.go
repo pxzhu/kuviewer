@@ -160,16 +160,31 @@ type serviceList = kubeList[serviceResource]
 type serviceResource struct {
 	Metadata metadata `json:"metadata"`
 	Spec     struct {
-		Type                     string            `json:"type"`
-		ClusterIP                string            `json:"clusterIP"`
-		ClusterIPs               []string          `json:"clusterIPs"`
-		IPFamilies               []string          `json:"ipFamilies"`
-		IPFamilyPolicy           string            `json:"ipFamilyPolicy"`
-		ExternalName             string            `json:"externalName"`
-		Selector                 map[string]string `json:"selector"`
-		PublishNotReadyAddresses bool              `json:"publishNotReadyAddresses"`
-		Ports                    []servicePort     `json:"ports"`
+		Type                          string                        `json:"type"`
+		ClusterIP                     string                        `json:"clusterIP"`
+		ClusterIPs                    []string                      `json:"clusterIPs"`
+		IPFamilies                    []string                      `json:"ipFamilies"`
+		IPFamilyPolicy                string                        `json:"ipFamilyPolicy"`
+		InternalTrafficPolicy         string                        `json:"internalTrafficPolicy"`
+		ExternalTrafficPolicy         string                        `json:"externalTrafficPolicy"`
+		SessionAffinity               string                        `json:"sessionAffinity"`
+		SessionAffinityConfig         *serviceSessionAffinityConfig `json:"sessionAffinityConfig"`
+		HealthCheckNodePort           int                           `json:"healthCheckNodePort"`
+		LoadBalancerClass             string                        `json:"loadBalancerClass"`
+		AllocateLoadBalancerNodePorts *bool                         `json:"allocateLoadBalancerNodePorts"`
+		ExternalName                  string                        `json:"externalName"`
+		Selector                      map[string]string             `json:"selector"`
+		PublishNotReadyAddresses      bool                          `json:"publishNotReadyAddresses"`
+		Ports                         []servicePort                 `json:"ports"`
 	} `json:"spec"`
+}
+
+type serviceSessionAffinityConfig struct {
+	ClientIP *serviceClientIPConfig `json:"clientIP"`
+}
+
+type serviceClientIPConfig struct {
+	TimeoutSeconds *int `json:"timeoutSeconds"`
 }
 
 type servicePort struct {
