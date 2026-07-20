@@ -65,6 +65,7 @@ import {
   uploadStorageStatus,
   uploadStorageSummary,
 } from './storageSchema.ts';
+import { sanitizeUploadConfigMap, uploadConfigMapStatus, uploadConfigMapSummary } from './configMapSchema.ts';
 export { importTopologySnapshot } from './importTopologySnapshot.ts';
 
 export interface UploadedTopologyState {
@@ -477,7 +478,7 @@ function objectSummary(kind: ResourceKind, object: KubeObject, customResourceDef
     return { type: stringAt(object, ['type']) || 'Opaque', keys: Object.keys(object.data || {}).length, values: 'hidden' };
   }
   if (kind === 'ConfigMap') {
-    return { keys: Object.keys(object.data || {}).length + Object.keys(object.binaryData || {}).length };
+    return uploadConfigMapSummary(object);
   }
   if (isUploadWorkloadKind(kind)) {
     const summary = uploadWorkloadSummary(kind, object);
@@ -561,6 +562,9 @@ function objectSummary(kind: ResourceKind, object: KubeObject, customResourceDef
 function objectStatus(kind: ResourceKind, object: KubeObject): ResourceStatus {
   if (kind === 'Secret') {
     return 'unknown';
+  }
+  if (kind === 'ConfigMap') {
+    return uploadConfigMapStatus(object);
   }
   if (kind === 'CustomResourceDefinition') {
     return crdEstablished(object) ? 'healthy' : 'unknown';
@@ -719,7 +723,7 @@ function collectObject(value: unknown, target: KubeObject[]) {
     return;
   }
   if (object.kind && object.metadata?.name) {
-    target.push(object);
+    target.push(sanitizeUploadConfigMap(object));
   }
 }
 

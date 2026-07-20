@@ -157,10 +157,11 @@ func buildKubernetesSnapshot(clusterID string, clusterName string, resources kub
 		})
 	}
 	for _, configMap := range resources.configMaps.Items {
-		builder.addResourceNode("ConfigMap", configMap.Metadata, "healthy", map[string]interface{}{
-			"keys":      len(configMap.Data) + len(configMap.BinaryData),
-			"immutable": boolSummary(configMap.Immutable),
-		})
+		analysis := analyzeConfigMap(configMap)
+		_, added := builder.addTrackedResourceNode("ConfigMap", configMap.Metadata, analysis.status, analysis.summary)
+		if added && !analysis.valid {
+			builder.recordResourceIssue("ConfigMap")
+		}
 	}
 	for _, storageClass := range resources.storageClasses.Items {
 		analysis := analyzeStorageClass(storageClass)
