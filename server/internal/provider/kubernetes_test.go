@@ -443,6 +443,56 @@ func TestKubeAPIClientListPaginationRejectsTokenLoops(t *testing.T) {
 	}
 }
 
+func TestKubeAPIClientListPaginationRejectsInvalidInputsBeforeRequest(t *testing.T) {
+	validLimits := kubeListLimits{PageSize: 1, MaxPages: 1, MaxItems: 1, MaxPageBytes: 1024, MaxTotalBytes: 1024}
+
+	t.Run("nil client", func(t *testing.T) {
+		list := namespaceList{Items: []namespace{{Metadata: metadata{Name: "stale"}}}}
+		_, err := getKubeListJSONStatusWithLimits(context.Background(), nil, "/api/v1/namespaces", &list, false, validLimits)
+		if !errors.Is(err, errKubeAPIInvalidRequest) || len(list.Items) != 0 {
+			t.Fatalf("nil client = error %v list %+v, want invalid request and cleared output", err, list)
+		}
+	})
+
+	t.Run("nil output", func(t *testing.T) {
+		_, err := getKubeListJSONStatusWithLimits[namespace](context.Background(), &kubeAPIClient{}, "/api/v1/namespaces", nil, false, validLimits)
+		if !errors.Is(err, errKubeAPIInvalidRequest) {
+			t.Fatalf("nil output error = %v, want invalid request", err)
+		}
+	})
+
+	t.Run("nil HTTP client", func(t *testing.T) {
+		list := namespaceList{}
+		_, err := getKubeListJSONStatusWithLimits(context.Background(), &kubeAPIClient{}, "/api/v1/namespaces", &list, false, validLimits)
+		if !errors.Is(err, errKubeAPIInvalidRequest) {
+			t.Fatalf("nil HTTP client error = %v, want invalid request", err)
+		}
+	})
+
+	t.Run("invalid limits", func(t *testing.T) {
+		list := namespaceList{Items: []namespace{{Metadata: metadata{Name: "stale"}}}}
+		_, err := getKubeListJSONStatusWithLimits(context.Background(), &kubeAPIClient{httpClient: http.DefaultClient}, "/api/v1/namespaces", &list, false, kubeListLimits{})
+		if !errors.Is(err, errKubeAPIInvalidRequest) || len(list.Items) != 0 {
+			t.Fatalf("invalid limits = error %v list %+v, want invalid request and cleared output", err, list)
+		}
+	})
+
+	t.Run("malformed path", func(t *testing.T) {
+		list := namespaceList{}
+		_, err := getKubeListJSONStatusWithLimits(context.Background(), &kubeAPIClient{httpClient: http.DefaultClient}, "/api/v1/namespaces?continue=%zz", &list, false, validLimits)
+		if !errors.Is(err, errKubeAPIInvalidRequest) {
+			t.Fatalf("malformed path error = %v, want invalid request", err)
+		}
+	})
+
+	t.Run("invalid page size", func(t *testing.T) {
+		_, err := kubeListPagePath("/api/v1/namespaces", "", 0)
+		if !errors.Is(err, errKubeAPIInvalidRequest) {
+			t.Fatalf("page path error = %v, want invalid request", err)
+		}
+	})
+}
+
 func TestKubeAPIClientListPaginationEnforcesBounds(t *testing.T) {
 	t.Run("items", func(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
