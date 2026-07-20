@@ -202,7 +202,7 @@ function safeSummaryKey(value: string) {
   return value.replace(/[\u0000-\u001f\u007f]/g, '?').slice(0, maxSelectorKeyLength);
 }
 
-function validSelectorKey(value: unknown): value is string {
+export function validSelectorKey(value: unknown): value is string {
   if (typeof value !== 'string' || value.length === 0 || value.length > maxSelectorKeyLength) {
     return false;
   }
@@ -217,7 +217,7 @@ function validSelectorKey(value: unknown): value is string {
   return segments.length === 1 || validDnsPrefix(segments[0] || '');
 }
 
-function validSelectorValue(value: unknown): value is string {
+export function validSelectorValue(value: unknown): value is string {
   return typeof value === 'string'
     && value.length <= maxSelectorValueLength
     && (value.length === 0 || validLabelName(value));

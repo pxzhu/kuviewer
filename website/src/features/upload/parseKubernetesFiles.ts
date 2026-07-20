@@ -31,6 +31,12 @@ import {
   type KubeObject,
 } from './kubernetesObject.ts';
 import { normalizeUploadResourceKind } from './uploadResourceKinds.ts';
+import {
+  uploadServiceSelector,
+  uploadServiceSpecIsValid,
+  uploadServiceSummary,
+  uploadServiceSupportsSelectorInference,
+} from './serviceSchema.ts';
 export { importTopologySnapshot } from './importTopologySnapshot.ts';
 
 export interface UploadedTopologyState {
@@ -306,13 +312,13 @@ function addServiceSelectorEdges(context: BuildContext, services: KubeObject[], 
   services.forEach((service) => {
     const namespace = service.metadata?.namespace || '';
     const serviceName = service.metadata?.name || '';
-    const selector = readAt(service, ['spec', 'selector']);
-    if (!isRecord(selector) || Object.keys(selector).length === 0) {
+    const selector = uploadServiceSelector(service);
+    if (!selector || !uploadServiceSupportsSelectorInference(service)) {
       return;
     }
 
     pods
-      .filter((pod) => (pod.metadata?.namespace || '') === namespace && labelsMatch(labels(pod), selector as Record<string, string>))
+      .filter((pod) => (pod.metadata?.namespace || '') === namespace && labelsMatch(labels(pod), selector))
       .forEach((pod) => {
         addEdge(context, 'service-endpoint', id(context.clusterId, namespace, 'Service', serviceName), id(context.clusterId, namespace, 'Pod', pod.metadata?.name || ''), 'Service.spec.selector', 'inferred');
       });
@@ -482,7 +488,7 @@ function objectSummary(kind: ResourceKind, object: KubeObject, customResourceDef
     return { phase: stringAt(object, ['status', 'phase']) || 'Pending', node: stringAt(object, ['spec', 'nodeName']) || '-', containers: containers.length, containerNames: containers, initContainers };
   }
   if (kind === 'Service') {
-    return { type: stringAt(object, ['spec', 'type']) || 'ClusterIP', ports: asArray(readAt(object, ['spec', 'ports'])).length };
+    return uploadServiceSummary(object);
   }
   if (kind === 'Ingress') {
     return { rules: asArray(readAt(object, ['spec', 'rules'])).length, tls: asArray(readAt(object, ['spec', 'tls'])).length > 0 };
@@ -553,6 +559,9 @@ function objectStatus(kind: ResourceKind, object: KubeObject): ResourceStatus {
   if (kind === 'Pod') {
     const phase = stringAt(object, ['status', 'phase']);
     return phase === 'Running' || phase === 'Succeeded' ? 'healthy' : phase ? 'warning' : 'unknown';
+  }
+  if (kind === 'Service') {
+    return uploadServiceSpecIsValid(object) ? 'healthy' : 'warning';
   }
   if (kind === 'Job') {
     if ((numberAt(object, ['status', 'failed']) ?? 0) > 0) {
