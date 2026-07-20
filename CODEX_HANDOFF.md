@@ -25,6 +25,7 @@
 - NasCR image release deployment과 SSH/self-hosted fallback/rollback diagnostics
 - Pull request `validate` CI와 tag-only deploy를 분리해 merge 후 중복 CI를 실행하지 않으며, `main`은 GitHub branch protection으로 PR과 required check를 강제한다.
 - App/Vite TypeScript는 `noUnusedLocals`와 `noUnusedParameters`를 강제해 dead code가 typecheck/CI를 통과하지 못하게 한다.
+- Frontend는 HeroUI v3, React 19, Tailwind CSS v4 기반이다. 앱 header/source/token/search/segmented control은 `components/ui/`의 얇은 adapter를 사용하고 B/D theme token을 HeroUI light/dark token과 연결한다.
 
 ## Architecture Notes
 
@@ -46,6 +47,7 @@
 - Metadata/Status/Safe/YAML/Labels/Annotations rendering은 `ResourceCoreDetailSections.tsx`가 담당한다.
 - Resource detail identity/density, section navigation/jump controls, overview header는 `ResourceExplorerDetailHeader.tsx` 표시 component가 담당한다.
 - App sticky header의 theme/view controls, sync 상태, refresh/lock rendering은 `AppHeader.tsx`가 담당하고 오류 표시는 `appHeaderPresentation.ts`의 bounded formatter로 제한한다.
+- HeroUI는 component subpath import와 필요한 button/chip/input/surface CSS만 사용해 전체 component bundle CSS를 싣지 않는다. 공통 control 확장은 `website/src/components/ui/`에서 먼저 처리한다.
 - Safe Preview 검색/match 상태와 rendering은 `ResourceSafePreviewSection.tsx`가 담당하며, 저장하지 않고 resource id가 바뀌면 초기화한다.
 - Relations, Events, Logs section과 highlight renderer는 `website/src/components/resourceExplorer/` 아래 표시 component로 분리돼 있다.
 - CSV export는 `website/src/features/export/safeCsv.ts`를 공통 사용해 formula injection과 NUL을 차단한다.
@@ -134,3 +136,4 @@ go test ./...
 2. Desktop CM local prototype의 실제 CM 사용 흐름 검증 후 유지 또는 archive 범위 결정
 3. Desktop CM session group/card/bulk toolbar와 saved-layout toolbar/conflict/folder/preset list는 표시 모듈로 분리됐고, saved-layout state와 reorder controller도 독립 hook으로 분리됐다.
 4. scripts의 반복 코드가 다시 확인될 때 reusable helper/CLI entrypoint 분리 확대
+5. HeroUI 후속 전환: native select/Resource Explorer controls, snapshot/topology controls, desktop-only panel 순서로 진행

@@ -5,6 +5,7 @@ Kuviewer is a read-only Kubernetes topology and resource explorer. It turns uplo
 ## Product Direction
 
 - Primary product: standalone web UI plus Go server
+- Frontend UI foundation: HeroUI v3, React 19, Tailwind CSS v4, and Kuviewer B/D theme tokens
 - First live target: native Kubernetes; local k3s validation is complete and AKS remains a validation target
 - Authentication: no user accounts, one server-side admin token for protected live APIs
 - Upload mode parses YAML/JSON/ZIP in the browser and does not send manifests to the backend
@@ -32,6 +33,7 @@ Kuviewer is a read-only Kubernetes topology and resource explorer. It turns uplo
 - Bounded PV, PVC, and StorageClass capacity, access, policy, provisioner, and binding summaries without CSI configuration or storage Secret references
 - Bounded ConfigMap key-count and immutable summaries without decoding or retaining `data` or `binaryData` values
 - Bounded concurrent live collection with safe partial-result diagnostics; incomplete resource lists are never merged into a snapshot
+- HeroUI-backed application shell controls with accessible pressed/disabled states and responsive source/filter layouts
 
 ## Source Modes
 

@@ -1,6 +1,14 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@layer theme, base, components, utilities;
+
+@import "tailwindcss";
+@import "@heroui/styles/base" layer(base);
+@import "@heroui/styles/themes/default";
+@import "@heroui/styles/utilities";
+@import "@heroui/styles/variants";
+@import "@heroui/styles/components/button.css" layer(components);
+@import "@heroui/styles/components/chip.css" layer(components);
+@import "@heroui/styles/components/input.css" layer(components);
+@import "@heroui/styles/components/surface.css" layer(components);
 
 :root {
   color-scheme: light;
@@ -79,6 +87,18 @@ body {
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
   color: var(--ku-text);
+  --accent: var(--ku-accent);
+  --background: var(--ku-bg);
+  --border: var(--ku-border);
+  --field-background: var(--ku-surface-solid);
+  --field-border: var(--ku-border);
+  --field-foreground: var(--ku-text);
+  --field-placeholder: var(--ku-text-subtle);
+  --foreground: var(--ku-text);
+  --muted: var(--ku-text-muted);
+  --radius: var(--ku-radius-inner);
+  --surface: var(--ku-surface-solid);
+  --surface-foreground: var(--ku-text);
   background:
     linear-gradient(rgba(137, 158, 186, 0.1) 1px, transparent 1px),
     linear-gradient(90deg, rgba(137, 158, 186, 0.1) 1px, transparent 1px),
