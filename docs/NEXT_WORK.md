@@ -27,7 +27,8 @@
    - Resource identity, labels, annotations, summary, UID, status, owner와 edge metadata는 공통 sanitizer에서 크기·문법·민감값을 검증한다. malformed/oversized 입력은 fail-closed 처리하고 last-applied manifest와 credential-like metadata는 redaction한다.
    - Cluster summary는 graph에 실제 반영된 고유 Namespace/Node/Pod만 집계한다. invalid/duplicate API 항목은 이름 없이 kind별 bounded diagnostic으로 합치고, accepted source가 아닌 항목은 reference placeholder를 만들 수 없다.
    - EndpointSlice 분석은 slice와 endpoint target/address identity, canonical address, duplicate, 개별·전체 endpoint/address 상한을 적용하고 partial observed 결과를 만들지 않는다. `ready`, `serving`, `terminating`은 Kubernetes nil 기본값을 포함해 별도 집계하며 Service summary가 관측 readiness, traffic readiness, draining 상태와 `publishNotReadyAddresses` 의도를 구분한다. Service selector와 NetworkPolicy peer는 첫 번째 유효 고유 Service/Pod/Namespace만 평가한다.
-   - Workload/Pod status count는 공통 non-negative bounded scalar 경계를 사용하고 malformed 값은 `invalid` summary와 warning 상태로 fail-closed 처리한다. 다음 provider 감사는 Service type/ClusterIP/port schema와 selector cardinality 경계를 우선한다.
+   - Workload/Pod status count는 공통 non-negative bounded scalar 경계를 사용하고 malformed 값은 `invalid` summary와 warning 상태로 fail-closed 처리한다.
+   - Service schema/summary/status는 독립 module에서 type 기본값, canonical ClusterIP, ExternalName, port/name/protocol, selector syntax/cardinality를 검증한다. invalid spec과 ExternalName selector는 Pod 비교 전에 차단하고 원격 원문 대신 `invalid` summary와 kind-level diagnostic만 남긴다. 다음 provider 감사는 dual-stack `clusterIPs`와 targetPort/nodePort/appProtocol 경계를 우선한다.
 
 2. Resource Explorer panel extraction
    - Resource fetch/pagination abort, selection anchor, keyboard/bulk action은 controller hook으로 분리됐다.

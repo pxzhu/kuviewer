@@ -249,7 +249,7 @@ func serviceEndpointReferencesFromObserved(observedReferences []serviceEndpointR
 	validPods := uniqueValidPods(pods.Items)
 	for _, service := range services.Items {
 		serviceID := serviceKey(service.Metadata.Namespace, service.Metadata.Name)
-		if seenServices[serviceID] || len(service.Spec.Selector) == 0 || !validKubernetesNamespace(service.Metadata.Namespace) || !validKubernetesReferenceName(service.Metadata.Name) {
+		if seenServices[serviceID] || !serviceSupportsSelectorInference(service) || !validKubernetesNamespace(service.Metadata.Namespace) || !validKubernetesReferenceName(service.Metadata.Name) {
 			continue
 		}
 		seenServices[serviceID] = true

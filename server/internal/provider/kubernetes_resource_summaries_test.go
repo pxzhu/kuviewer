@@ -77,22 +77,6 @@ func TestPodSummariesRejectMalformedContainerStatusCounts(t *testing.T) {
 	}
 }
 
-func TestServiceStatusHonorsPublishNotReadyAddressPolicy(t *testing.T) {
-	service := serviceResource{}
-	service.Spec.Selector = map[string]string{"app": "api"}
-	counts := endpointCounter{ready: 0, serving: 1, total: 1}
-	if got := serviceStatus(service, counts); got != "warning" {
-		t.Fatalf("serviceStatus() = %q, want warning for observed not-ready endpoint", got)
-	}
-	service.Spec.PublishNotReadyAddresses = true
-	if got := serviceStatus(service, counts); got != "healthy" {
-		t.Fatalf("serviceStatus() = %q, want healthy when readiness is intentionally ignored", got)
-	}
-	if got := serviceTrafficReadyCount(service, counts); got != 1 {
-		t.Fatalf("serviceTrafficReadyCount() = %d, want total endpoints", got)
-	}
-}
-
 func TestConditionSummaryIsBoundedAndDoesNotEchoMalformedValues(t *testing.T) {
 	malformed := "Ready=token-like\nvalue"
 	conditions := []condition{

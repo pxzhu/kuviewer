@@ -194,17 +194,10 @@ func buildKubernetesSnapshot(clusterID string, clusterName string, resources kub
 	}
 	for _, service := range resources.services.Items {
 		counts := serviceEndpointCounts[serviceKey(service.Metadata.Namespace, service.Metadata.Name)]
-		trafficReady := serviceTrafficReadyCount(service, counts)
-		builder.addResourceNode("Service", service.Metadata, serviceStatus(service, counts), map[string]interface{}{
-			"type":                     service.Spec.Type,
-			"clusterIP":                service.Spec.ClusterIP,
-			"ports":                    len(service.Spec.Ports),
-			"readyEndpoints":           formatReplicas(counts.ready, counts.total),
-			"trafficReadyEndpoints":    formatReplicas(trafficReady, counts.total),
-			"servingEndpoints":         formatReplicas(counts.serving, counts.total),
-			"terminatingEndpoints":     summaryCount(counts.terminating),
-			"publishNotReadyAddresses": service.Spec.PublishNotReadyAddresses,
-		})
+		_, added := builder.addTrackedResourceNode("Service", service.Metadata, serviceStatus(service, counts), serviceSummary(service, counts))
+		if added && !validServiceSpec(service) {
+			builder.recordResourceIssue("Service")
+		}
 	}
 	for _, ingress := range resources.ingresses.Items {
 		builder.addResourceNode("Ingress", ingress.Metadata, "healthy", map[string]interface{}{
