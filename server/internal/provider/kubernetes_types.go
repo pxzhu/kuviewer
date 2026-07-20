@@ -162,12 +162,17 @@ type serviceResource struct {
 	Spec     struct {
 		Type                     string            `json:"type"`
 		ClusterIP                string            `json:"clusterIP"`
+		ExternalName             string            `json:"externalName"`
 		Selector                 map[string]string `json:"selector"`
 		PublishNotReadyAddresses bool              `json:"publishNotReadyAddresses"`
-		Ports                    []struct {
-			Port int `json:"port"`
-		} `json:"ports"`
+		Ports                    []servicePort     `json:"ports"`
 	} `json:"spec"`
+}
+
+type servicePort struct {
+	Name     string `json:"name"`
+	Protocol string `json:"protocol"`
+	Port     int    `json:"port"`
 }
 
 type endpointSliceList = kubeList[endpointSliceResource]
