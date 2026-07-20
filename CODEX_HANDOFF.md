@@ -52,7 +52,7 @@
 - Topology는 dispatcher, shared layout, mobile SVG, desktop React Flow renderer로 분리돼 있다.
 - Upload topology JSON import의 size/identity/reference validation과 Secret/민감 metadata redaction은 `importTopologySnapshot.ts`의 독립 보안 경계와 direct unit test로 검증한다.
 - Upload CustomResource의 native/custom `*Ref/*Name` 관계 추론은 `customResourceReferences.ts`에서 cycle/depth/value/path/result 상한을 적용하고 direct unit test로 검증한다.
-- Upload Gateway route의 parent/backend 참조와 host/method 요약은 `gatewayRouteReferences.ts`에서 분리하고, 공통 Kubernetes object 접근은 `kubernetesObject.ts`의 fail-closed helper를 사용한다.
+- Gateway listener/address와 Gateway route parent/backend/status condition은 live `kubernetes_gateway.go`와 upload `gatewayRouteReferences.ts`에서 동일한 collection/문법 경계를 적용한다. 주소 원문과 condition message는 보존하지 않고 type/count만 요약하며 malformed spec/status는 warning diagnostic과 edge 추론 중단으로 fail-closed 처리한다.
 - Upload NetworkPolicy LabelSelector 평가는 `labelSelector.ts`에서 Kubernetes key/value/operator 문법과 size cap을 검증하며 malformed selector는 fail-closed 처리한다.
 - Desktop CM grouping/search/diagnostic view model은 `website/src/features/desktop/desktopCmSessionView.ts`에 둔다.
 - Desktop CM layout의 validation, storage, import/export, folder/preset ordering은 `website/src/features/desktop/desktopCmSessionLayouts.ts`에 두고 direct unit test로 검증한다.
@@ -84,7 +84,7 @@
 - Kubernetes CRD discovery, version/status summary와 custom-resource relation inference는 `kubernetes_custom_resources.go`가 담당한다. CRD API path segment와 reference identity를 검증하고 depth/visit/collection/path/result 상한 및 deterministic traversal을 전용 unit/integration test로 고정한다.
 - Kubernetes NetworkPolicy selector, peer, port, intent summary는 `kubernetes_network_policy.go`가 담당한다. Kubernetes label/operator 의미를 유지하면서 비정상·과대 입력은 safe marker로 요약하고 inferred edge를 fail-closed 처리한다.
 - Kubernetes workload/storage 상태와 condition/container/owner 요약은 `kubernetes_resource_summaries.go`가 담당한다. 음수·누락 replica, 과대 condition/container/owner 입력과 restart overflow를 bounded summary로 처리한다.
-- Pod/Service endpoint, Ingress/Gateway route와 native object reference 추론은 `kubernetes_references.go`가 담당한다. selector fallback 작업량과 collection/result 수를 제한하고 malformed host/method/name은 summary와 placeholder edge에서 제외한다.
+- Pod/Service endpoint와 native object reference 추론은 `kubernetes_references.go`가 담당하고 Gateway schema/route reference는 `kubernetes_gateway.go`가 담당한다. selector fallback 작업량과 collection/result 수를 제한하고 malformed host/method/name은 summary와 placeholder edge에서 제외한다.
 
 ## Runtime Boundaries
 

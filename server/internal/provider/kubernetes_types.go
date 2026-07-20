@@ -388,14 +388,35 @@ type gatewayList = kubeList[gatewayResource]
 type gatewayResource struct {
 	Metadata metadata `json:"metadata"`
 	Spec     struct {
-		GatewayClassName string `json:"gatewayClassName"`
-		Listeners        []struct {
-			Name     string `json:"name"`
-			Protocol string `json:"protocol"`
-			Port     int    `json:"port"`
-			Hostname string `json:"hostname"`
-		} `json:"listeners"`
+		GatewayClassName string            `json:"gatewayClassName"`
+		Addresses        []gatewayAddress  `json:"addresses"`
+		Listeners        []gatewayListener `json:"listeners"`
 	} `json:"spec"`
+	Status struct {
+		Addresses  []gatewayAddress        `json:"addresses"`
+		Conditions []condition             `json:"conditions"`
+		Listeners  []gatewayListenerStatus `json:"listeners"`
+	} `json:"status"`
+}
+
+type gatewayListener struct {
+	Name     string `json:"name"`
+	Protocol string `json:"protocol"`
+	Port     int    `json:"port"`
+	Hostname string `json:"hostname"`
+}
+
+type gatewayAddress struct {
+	Valid      bool
+	Configured bool
+	Kind       string
+	Deprecated bool
+}
+
+type gatewayListenerStatus struct {
+	Name           string      `json:"name"`
+	AttachedRoutes int         `json:"attachedRoutes"`
+	Conditions     []condition `json:"conditions"`
 }
 
 type gatewayRouteList = kubeList[gatewayRouteResource]
@@ -407,13 +428,22 @@ type gatewayRouteResource struct {
 		ParentRefs []gatewayReference `json:"parentRefs"`
 		Rules      []gatewayRouteRule `json:"rules"`
 	} `json:"spec"`
+	Status struct {
+		Parents []gatewayRouteParentStatus `json:"parents"`
+	} `json:"status"`
 }
 
 type gatewayReference struct {
-	Group     string `json:"group"`
-	Kind      string `json:"kind"`
-	Namespace string `json:"namespace"`
-	Name      string `json:"name"`
+	Group       string `json:"group"`
+	Kind        string `json:"kind"`
+	Namespace   string `json:"namespace"`
+	Name        string `json:"name"`
+	SectionName string `json:"sectionName"`
+	Port        int    `json:"port"`
+}
+
+type gatewayRouteParentStatus struct {
+	Conditions []condition `json:"conditions"`
 }
 
 type gatewayRouteRule struct {

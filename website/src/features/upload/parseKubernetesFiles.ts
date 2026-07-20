@@ -13,11 +13,14 @@ import {
   type LabelNamespaceRecord as NamespaceRecord,
 } from './labelSelector.ts';
 import {
-  gatewayHosts,
   gatewayRouteBackendServices,
   gatewayRouteParentGateways,
-  grpcRouteMethods,
   isGatewayRouteKind,
+  uploadGatewayRouteSpecIsValid,
+  uploadGatewayRouteStatus,
+  uploadGatewayRouteSummary,
+  uploadGatewayStatus,
+  uploadGatewaySummary,
 } from './gatewayRouteReferences.ts';
 import {
   asArray,
@@ -221,6 +224,9 @@ function addObjectEdges(context: BuildContext, object: KubeObject, customResourc
     });
   }
   if (isGatewayRouteKind(kind)) {
+    if (!uploadGatewayRouteSpecIsValid(kind, object)) {
+      return;
+    }
     gatewayRouteParentGateways(object, namespace).forEach((gatewayRef) => {
       ensureReferenceNode(context, 'Gateway', gatewayRef.namespace, gatewayRef.name);
       addEdge(context, 'attaches-to', objectId, id(context.clusterId, gatewayRef.namespace, 'Gateway', gatewayRef.name), `${kind}.spec.parentRefs`, 'observed');
@@ -503,19 +509,10 @@ function objectSummary(kind: ResourceKind, object: KubeObject, customResourceDef
     return uploadIngressSummary(object);
   }
   if (kind === 'Gateway') {
-    return {
-      class: stringAt(object, ['spec', 'gatewayClassName']) || '-',
-      listeners: asArray(readAt(object, ['spec', 'listeners'])).length,
-      hosts: gatewayHosts(object).join(',') || '-',
-    };
+    return uploadGatewaySummary(object);
   }
   if (isGatewayRouteKind(kind)) {
-    return {
-      ...(kind !== 'TCPRoute' ? { hosts: asStringArray(readAt(object, ['spec', 'hostnames'])).join(',') || '-' } : {}),
-      rules: asArray(readAt(object, ['spec', 'rules'])).length,
-      backends: gatewayRouteBackendServices(object, object.metadata?.namespace || '').length,
-      ...(kind === 'GRPCRoute' ? { methods: grpcRouteMethods(object).join(',') || '-' } : {}),
-    };
+    return uploadGatewayRouteSummary(kind, object);
   }
   if (kind === 'PersistentVolumeClaim') {
     return { storage: stringAt(object, ['spec', 'resources', 'requests', 'storage']) || '-', storageClass: stringAt(object, ['spec', 'storageClassName']) || '-' };
@@ -574,6 +571,12 @@ function objectStatus(kind: ResourceKind, object: KubeObject): ResourceStatus {
   }
   if (kind === 'Ingress') {
     return uploadIngressStatus(object);
+  }
+  if (kind === 'Gateway') {
+    return uploadGatewayStatus(object);
+  }
+  if (isGatewayRouteKind(kind)) {
+    return uploadGatewayRouteStatus(kind, object);
   }
   if (kind === 'Job') {
     if ((numberAt(object, ['status', 'failed']) ?? 0) > 0) {
