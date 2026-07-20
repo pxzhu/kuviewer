@@ -32,6 +32,19 @@ func TestBuildKubernetesSnapshotSummarizesSafeResources(t *testing.T) {
 	service := serviceResource{Metadata: metadata{Name: "api", Namespace: "app"}}
 	service.Spec.Selector = map[string]string{"app": "api"}
 	resources.services.Items = []serviceResource{service}
+	resources.customResources = []customResourceInstance{{
+		customResourceInstanceResource: customResourceInstanceResource{
+			APIVersion: "example.io/v1",
+			Kind:       "Widget",
+			Metadata:   metadata{Name: "checkout", Namespace: "app"},
+			Spec:       map[string]interface{}{"password": "raw-cr-value-must-not-survive"},
+			Status:     map[string]interface{}{"token": "raw-cr-value-must-not-survive"},
+		},
+		CRDName:    "widgets.example.io",
+		CRDGroup:   "example.io",
+		CRDVersion: "v1",
+		CRDScope:   "Namespaced",
+	}}
 
 	snapshot := buildKubernetesSnapshot("cluster-a", "Cluster A", resources)
 
@@ -58,6 +71,9 @@ func TestBuildKubernetesSnapshotSummarizesSafeResources(t *testing.T) {
 	}
 	if strings.Contains(string(encoded), `"data":`) || strings.Contains(string(encoded), `"stringData":`) {
 		t.Fatalf("snapshot unexpectedly exposes secret value fields: %s", encoded)
+	}
+	if strings.Contains(string(encoded), "raw-cr-value-must-not-survive") {
+		t.Fatalf("snapshot unexpectedly exposes raw custom resource values: %s", encoded)
 	}
 
 	serviceID := "cluster-a:app:Service:api"
