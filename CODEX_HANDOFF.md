@@ -77,6 +77,8 @@
 - Kubernetes API resource/list/reference schema는 `kubernetes_types.go`에 모으고, Pod raw value field를 보존하지 않으면서 pagination과 Secret reference 이름만 해석하는 계약을 direct test로 검증한다.
 - Kubernetes CRD discovery, version/status summary와 custom-resource relation inference는 `kubernetes_custom_resources.go`가 담당한다. CRD API path segment와 reference identity를 검증하고 depth/visit/collection/path/result 상한 및 deterministic traversal을 전용 unit/integration test로 고정한다.
 - Kubernetes NetworkPolicy selector, peer, port, intent summary는 `kubernetes_network_policy.go`가 담당한다. Kubernetes label/operator 의미를 유지하면서 비정상·과대 입력은 safe marker로 요약하고 inferred edge를 fail-closed 처리한다.
+- Kubernetes workload/storage 상태와 condition/container/owner 요약은 `kubernetes_resource_summaries.go`가 담당한다. 음수·누락 replica, 과대 condition/container/owner 입력과 restart overflow를 bounded summary로 처리한다.
+- Pod/Service endpoint, Ingress/Gateway route와 native object reference 추론은 `kubernetes_references.go`가 담당한다. selector fallback 작업량과 collection/result 수를 제한하고 malformed host/method/name은 summary와 placeholder edge에서 제외한다.
 
 ## Runtime Boundaries
 

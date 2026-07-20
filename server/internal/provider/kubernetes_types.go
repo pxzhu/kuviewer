@@ -476,20 +476,3 @@ type labelSelectorMatchExpression struct {
 	Operator string   `json:"operator"`
 	Values   []string `json:"values"`
 }
-
-type namespaceRecord struct {
-	name   string
-	labels map[string]string
-}
-
-type endpointCounter struct {
-	ready int
-	total int
-}
-
-type podReference struct {
-	kind        string
-	name        string
-	edgeType    string
-	sourceField string
-}

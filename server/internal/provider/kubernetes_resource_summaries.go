@@ -1,0 +1,283 @@
+package provider
+
+import (
+	"fmt"
+	"sort"
+	"time"
+)
+
+const (
+	maxConditionSummaryItems = 64
+	maxContainerSummaryItems = 256
+	maxOwnerSummaryItems     = 64
+	maxRestartCount          = 1_000_000_000
+)
+
+func nodeStatus(node nodeResource) string {
+	if nodeReady(node.Status.Conditions) {
+		return "healthy"
+	}
+	return "warning"
+}
+
+func nodeReady(conditions []condition) bool {
+	if len(conditions) > maxConditionSummaryItems {
+		return false
+	}
+	for _, condition := range conditions {
+		if condition.Type == "Ready" {
+			return condition.Status == "True"
+		}
+	}
+	return false
+}
+
+func podStatus(pod podResource) string {
+	if pod.Status.Phase == "Failed" {
+		return "error"
+	}
+	if pod.Status.Phase == "Succeeded" {
+		return "healthy"
+	}
+	if pod.Status.Phase != "Running" || len(pod.Status.ContainerStatuses) == 0 || len(pod.Status.ContainerStatuses) > maxContainerSummaryItems || readyContainers(pod.Status.ContainerStatuses) != len(pod.Status.ContainerStatuses) {
+		return "warning"
+	}
+	return "healthy"
+}
+
+func conditionSummary(conditions []condition) string {
+	if len(conditions) == 0 {
+		return ""
+	}
+	if len(conditions) > maxConditionSummaryItems {
+		return "invalid conditions"
+	}
+	values := make([]string, 0, len(conditions))
+	for _, condition := range conditions {
+		if !validConditionType(condition.Type) || !validConditionStatus(condition.Status) {
+			continue
+		}
+		values = append(values, condition.Type+"="+condition.Status)
+	}
+	sort.Strings(values)
+	return limitSummary(uniqueStrings(values), 8, "")
+}
+
+func validConditionType(value string) bool {
+	if value == "" || len(value) > 128 {
+		return false
+	}
+	for index := 0; index < len(value); index++ {
+		character := value[index]
+		if !isASCIIAlphanumeric(character) && character != '-' && character != '_' && character != '.' && character != '/' {
+			return false
+		}
+	}
+	return true
+}
+
+func validConditionStatus(value string) bool {
+	return value == "True" || value == "False" || value == "Unknown"
+}
+
+func deploymentStatus(deployment deploymentResource) string {
+	desired, valid := desiredReplicaCount(deployment.Spec.Replicas, 1)
+	if valid && deployment.Status.AvailableReplicas >= desired {
+		return "healthy"
+	}
+	return "warning"
+}
+
+func replicaSetStatus(replicaSet replicaSetResource) string {
+	desired, valid := desiredReplicaCount(replicaSet.Spec.Replicas, 1)
+	if valid && replicaSet.Status.ReadyReplicas >= desired {
+		return "healthy"
+	}
+	return "warning"
+}
+
+func statefulSetStatus(statefulSet statefulSetResource) string {
+	desired, valid := desiredReplicaCount(statefulSet.Spec.Replicas, 1)
+	if valid && statefulSet.Status.ReadyReplicas >= desired {
+		return "healthy"
+	}
+	return "warning"
+}
+
+func desiredReplicaCount(value *int, fallback int) (int, bool) {
+	if value == nil {
+		return fallback, fallback >= 0
+	}
+	return *value, *value >= 0
+}
+
+func daemonSetStatus(daemonSet daemonSetResource) string {
+	if daemonSet.Status.DesiredNumberScheduled >= 0 && daemonSet.Status.NumberReady >= 0 && daemonSet.Status.NumberReady >= daemonSet.Status.DesiredNumberScheduled {
+		return "healthy"
+	}
+	return "warning"
+}
+
+func jobStatus(job jobResource) string {
+	if job.Status.Failed > 0 {
+		return "error"
+	}
+	desired, valid := desiredReplicaCount(job.Spec.Completions, 1)
+	if valid && job.Status.Succeeded >= desired {
+		return "healthy"
+	}
+	return "warning"
+}
+
+func hpaStatus(hpa horizontalPodAutoscalerResource) string {
+	if hpa.Status.DesiredReplicas < 0 || hpa.Status.CurrentReplicas < 0 {
+		return "warning"
+	}
+	if hpa.Status.DesiredReplicas == 0 || hpa.Status.CurrentReplicas >= hpa.Status.DesiredReplicas {
+		return "healthy"
+	}
+	return "warning"
+}
+
+func pvcStatus(pvc pvcResource) string {
+	if pvc.Status.Phase == "Bound" {
+		return "healthy"
+	}
+	if pvc.Status.Phase == "Lost" {
+		return "error"
+	}
+	return "warning"
+}
+
+func pvStatus(pv pvResource) string {
+	if pv.Status.Phase == "Bound" || pv.Status.Phase == "Available" {
+		return "healthy"
+	}
+	if pv.Status.Phase == "Failed" {
+		return "error"
+	}
+	return "warning"
+}
+
+func serviceStatus(service serviceResource, counts endpointCounter) string {
+	if len(service.Spec.Selector) == 0 {
+		return "unknown"
+	}
+	if counts.total == 0 || counts.ready < counts.total {
+		return "warning"
+	}
+	return "healthy"
+}
+
+func readyContainers(statuses []containerStatus) int {
+	if len(statuses) > maxContainerSummaryItems {
+		return 0
+	}
+	ready := 0
+	for _, status := range statuses {
+		if status.Ready {
+			ready++
+		}
+	}
+	return ready
+}
+
+func restartCount(statuses []containerStatus) int {
+	if len(statuses) > maxContainerSummaryItems {
+		return 0
+	}
+	restarts := 0
+	for _, status := range statuses {
+		if status.RestartCount <= 0 {
+			continue
+		}
+		if status.RestartCount > maxRestartCount-restarts {
+			return maxRestartCount
+		}
+		restarts += status.RestartCount
+	}
+	return restarts
+}
+
+func containerNames(containers []container) []string {
+	if len(containers) > maxContainerSummaryItems {
+		return []string{}
+	}
+	names := make([]string, 0, len(containers))
+	for _, container := range containers {
+		if validKubernetesNamespace(container.Name) {
+			names = append(names, container.Name)
+		}
+	}
+	return uniqueStrings(names)
+}
+
+func formatReplicas(ready int, desired int) string {
+	if ready < 0 {
+		ready = 0
+	}
+	if desired < 0 {
+		desired = 0
+	}
+	return fmt.Sprintf("%d/%d", ready, desired)
+}
+
+func valueOrZero(value *int) int {
+	if value == nil || *value < 0 {
+		return 0
+	}
+	return *value
+}
+
+func valueOrDefault(value *int, fallback int) int {
+	if value == nil || *value < 0 {
+		return fallback
+	}
+	return *value
+}
+
+func boolSummary(value *bool) string {
+	if value == nil {
+		return "unset"
+	}
+	if *value {
+		return "true"
+	}
+	return "false"
+}
+
+func age(timestamp string) string {
+	if timestamp == "" {
+		return "unknown"
+	}
+	createdAt, err := time.Parse(time.RFC3339, timestamp)
+	if err != nil || createdAt.After(time.Now().Add(time.Minute)) {
+		return "unknown"
+	}
+	return time.Since(createdAt).Round(time.Hour).String()
+}
+
+func ownerSummaries(owners []ownerReference) []string {
+	if len(owners) == 0 || len(owners) > maxOwnerSummaryItems {
+		return []string{}
+	}
+	values := make([]string, 0, len(owners))
+	for _, owner := range owners {
+		if !validKubernetesKind(owner.Kind) || !validKubernetesReferenceName(owner.Name) {
+			continue
+		}
+		values = append(values, owner.Kind+"/"+owner.Name)
+	}
+	return uniqueStrings(values)
+}
+
+func boundedOwnerReferences(owners []ownerReference) []ownerReference {
+	if len(owners) > maxOwnerSummaryItems {
+		return nil
+	}
+	return owners
+}
+
+func joinSafeSummary(values []string, limit int, fallback string) string {
+	return limitSummary(uniqueStrings(values), limit, fallback)
+}

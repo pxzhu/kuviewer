@@ -92,7 +92,10 @@ func (b *graphBuilder) addEdge(edgeType string, source string, target string, so
 
 func (b *graphBuilder) addOwnerEdge(kind string, meta metadata) {
 	childID := b.nodeID(kind, meta.Namespace, meta.Name)
-	for _, owner := range meta.OwnerReferences {
+	for _, owner := range boundedOwnerReferences(meta.OwnerReferences) {
+		if !validKubernetesKind(owner.Kind) || !validKubernetesReferenceName(owner.Name) {
+			continue
+		}
 		ownerID := b.nodeID(owner.Kind, meta.Namespace, owner.Name)
 		b.addEdge("owns", ownerID, childID, "metadata.ownerReferences", "observed")
 	}
@@ -105,10 +108,10 @@ func (b *graphBuilder) addGatewayRouteNodes(kind string, routes gatewayRouteList
 			"backends": len(gatewayRouteBackendRefs(route)),
 		}
 		if kind != "TCPRoute" {
-			summary["hosts"] = strings.Join(route.Spec.Hostnames, ", ")
+			summary["hosts"] = joinSafeSummary(gatewayRouteHosts(route), 8, "")
 		}
 		if kind == "GRPCRoute" {
-			summary["methods"] = strings.Join(grpcRouteMethods(route), ", ")
+			summary["methods"] = joinSafeSummary(grpcRouteMethods(route), 8, "")
 		}
 		b.addResourceNode(kind, route.Metadata, "healthy", summary)
 	}

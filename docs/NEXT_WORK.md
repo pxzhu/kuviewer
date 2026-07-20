@@ -22,7 +22,8 @@
    - Snapshot fetch와 resource assembly도 독립 module/test로 분리돼 diagnostics copy, empty identity 거부, safe Secret placeholder와 관계 보존을 검증한다.
    - Kubernetes resource/list/reference schema는 독립 type module로 분리됐고 Pod raw value를 보존하지 않는 계약과 pagination metadata를 direct test로 검증한다.
    - CRD discovery/version/status와 custom-resource reference inference는 독립 module/test로 분리됐다. CRD API path와 reference identity를 검증하고 depth/visit/collection/path/result 상한, deterministic order, raw value 비노출을 유지한다.
-   - NetworkPolicy selector/peer/port/intent는 독립 module/test로 분리됐다. label key/value/operator와 rule/peer/port 수를 제한하고 malformed input은 summary와 inferred edge 모두 fail-closed 처리한다. 다음 provider 축소는 workload/networking summary와 reference helper 경계를 우선한다.
+   - NetworkPolicy selector/peer/port/intent는 독립 module/test로 분리됐다. label key/value/operator와 rule/peer/port 수를 제한하고 malformed input은 summary와 inferred edge 모두 fail-closed 처리한다.
+   - Workload/storage 상태와 condition/container/owner summary, Pod/Service/Ingress/Gateway/native reference 추론은 독립 module/test로 분리됐다. selector fallback 비교량과 reference collection/result 수를 제한하고 malformed host/method/name은 원문 요약과 phantom edge를 만들지 않는다. 다음 provider 감사는 resource metadata/summary field의 공통 sanitizer 경계를 우선한다.
 
 2. Resource Explorer panel extraction
    - Resource fetch/pagination abort, selection anchor, keyboard/bulk action은 controller hook으로 분리됐다.
