@@ -1,6 +1,11 @@
 import { unzipSync, strFromU8 } from 'fflate';
 import { loadAll } from 'js-yaml';
 import type { ClusterSummary, EdgeType, ResourceKind, ResourceStatus, SummaryValue, TopologyEdge, TopologyNode, TopologySnapshot } from '../../types/topology';
+import {
+  inferCustomResourceReferences,
+  type CustomResourceDefinitionRecord,
+} from './customResourceReferences.ts';
+import { normalizeUploadResourceKind } from './uploadResourceKinds.ts';
 export { importTopologySnapshot } from './importTopologySnapshot.ts';
 
 export interface UploadedTopologyState {
@@ -45,44 +50,6 @@ interface NamespaceRecord {
   name: string;
   labels: Record<string, string>;
 }
-
-interface CustomResourceDefinitionRecord {
-  name: string;
-  group: string;
-  kind: string;
-  versions: string[];
-  scope: string;
-}
-
-const supportedKinds = new Set<ResourceKind>([
-  'Cluster',
-  'Namespace',
-  'Node',
-  'Deployment',
-  'ReplicaSet',
-  'StatefulSet',
-  'DaemonSet',
-  'Job',
-  'CronJob',
-  'HorizontalPodAutoscaler',
-  'Pod',
-  'ServiceAccount',
-  'Service',
-  'EndpointSlice',
-  'Ingress',
-  'Gateway',
-  'HTTPRoute',
-  'GRPCRoute',
-  'TLSRoute',
-  'TCPRoute',
-  'NetworkPolicy',
-  'ConfigMap',
-  'Secret',
-  'PersistentVolumeClaim',
-  'PersistentVolume',
-  'StorageClass',
-  'CustomResourceDefinition',
-]);
 
 const defaultUploadedCluster = 'uploaded-bundle';
 
@@ -420,7 +387,7 @@ function addNetworkPolicyPeerEdges(
 
 function addCustomResourceReferenceEdges(context: BuildContext, object: KubeObject, objectId: string, customResourceDefinition: CustomResourceDefinitionRecord, customResourceDefinitions: CustomResourceDefinitionRecord[]) {
   const namespace = object.metadata?.namespace || '';
-  const references = customResourceReferences(readAt(object, ['spec']), namespace, customResourceDefinition, customResourceDefinitions);
+  const references = inferCustomResourceReferences(readAt(object, ['spec']), namespace, customResourceDefinition, customResourceDefinitions);
   references.forEach((reference) => {
     const targetId = id(context.clusterId, reference.namespace, reference.kind, reference.name);
     if (context.nodeSet.has(targetId)) {
@@ -428,141 +395,6 @@ function addCustomResourceReferenceEdges(context: BuildContext, object: KubeObje
     }
   });
 }
-
-interface CustomResourceReference {
-  kind: ResourceKind;
-  namespace: string;
-  name: string;
-  sourceField: string;
-}
-
-function customResourceReferences(spec: unknown, defaultNamespace: string, sourceDefinition: CustomResourceDefinitionRecord, customResourceDefinitions: CustomResourceDefinitionRecord[]) {
-  const references: CustomResourceReference[] = [];
-  collectCustomResourceReferences(spec, 'spec', defaultNamespace, sourceDefinition, customResourceDefinitions, references);
-  return references;
-}
-
-function collectCustomResourceReferences(
-  value: unknown,
-  path: string,
-  defaultNamespace: string,
-  sourceDefinition: CustomResourceDefinitionRecord,
-  customResourceDefinitions: CustomResourceDefinitionRecord[],
-  references: CustomResourceReference[],
-) {
-  if (references.length >= 80 || value == null) {
-    return;
-  }
-  if (Array.isArray(value)) {
-    value.forEach((item, index) => collectCustomResourceReferences(item, `${path}[${index}]`, defaultNamespace, sourceDefinition, customResourceDefinitions, references));
-    return;
-  }
-  if (!isRecord(value)) {
-    return;
-  }
-
-  Object.entries(value).forEach(([key, child]) => {
-    const childPath = `${path}.${key}`;
-    const referenceKind = customResourceReferenceKindFromKey(key);
-    if (isRecord(child) && isReferenceFieldName(key)) {
-      const reference = customResourceReferenceFromObject(child, referenceKind, childPath, defaultNamespace, sourceDefinition, customResourceDefinitions);
-      if (reference) {
-        references.push(reference);
-      }
-    }
-    if (Array.isArray(child) && isReferenceFieldName(key)) {
-      child.forEach((item, index) => {
-        if (isRecord(item)) {
-          const reference = customResourceReferenceFromObject(item, referenceKind, `${childPath}[${index}]`, defaultNamespace, sourceDefinition, customResourceDefinitions);
-          if (reference) {
-            references.push(reference);
-          }
-        }
-      });
-    }
-    const nameKind = customResourceReferenceKindFromNameKey(key);
-    if (nameKind && typeof child === 'string' && child.trim()) {
-      references.push({
-        kind: nameKind,
-        namespace: targetNamespaceForKind(nameKind, stringAt(value, ['namespace']) || defaultNamespace, sourceDefinition),
-        name: child.trim(),
-        sourceField: childPath,
-      });
-    }
-    collectCustomResourceReferences(child, childPath, defaultNamespace, sourceDefinition, customResourceDefinitions, references);
-  });
-}
-
-function customResourceReferenceFromObject(
-  value: Record<string, unknown>,
-  fallbackKind: ResourceKind | undefined,
-  sourceField: string,
-  defaultNamespace: string,
-  sourceDefinition: CustomResourceDefinitionRecord,
-  customResourceDefinitions: CustomResourceDefinitionRecord[],
-): CustomResourceReference | undefined {
-  const name = stringAt(value, ['name']);
-  if (!name) {
-    return undefined;
-  }
-  const apiVersion = stringAt(value, ['apiVersion']);
-  const kindName = stringAt(value, ['kind']);
-  const customDefinition = kindName && apiVersion ? customResourceDefinitionForReference(apiVersion, kindName, customResourceDefinitions) : undefined;
-  const nativeKind = normalizeKind(kindName);
-  const kind = customDefinition ? 'CustomResource' : nativeKind || fallbackKind;
-  if (!kind) {
-    return undefined;
-  }
-  const namespace = targetNamespaceForKind(kind, stringAt(value, ['namespace']) || defaultNamespace, customDefinition || sourceDefinition);
-  return {
-    kind,
-    namespace,
-    name: kind === 'CustomResource' ? `${kindName || customDefinition?.kind || 'CustomResource'}:${name}` : name,
-    sourceField,
-  };
-}
-
-function isReferenceFieldName(key: string) {
-  return /(Ref|Refs|Reference|References)$/.test(key);
-}
-
-function customResourceReferenceKindFromKey(key: string): ResourceKind | undefined {
-  const normalized = key.toLowerCase();
-  if (normalized === 'secretref' || normalized === 'secretrefs') return 'Secret';
-  if (normalized === 'configmapref' || normalized === 'configmaprefs') return 'ConfigMap';
-  if (normalized === 'serviceaccountref' || normalized === 'serviceaccountrefs') return 'ServiceAccount';
-  if (normalized === 'serviceref' || normalized === 'servicerefs' || normalized === 'backendref' || normalized === 'backendrefs') return 'Service';
-  return undefined;
-}
-
-function customResourceReferenceKindFromNameKey(key: string): ResourceKind | undefined {
-  const normalized = key.toLowerCase();
-  if (normalized === 'secretname') return 'Secret';
-  if (normalized === 'configmapname') return 'ConfigMap';
-  if (normalized === 'serviceaccountname') return 'ServiceAccount';
-  if (normalized === 'servicename') return 'Service';
-  return undefined;
-}
-
-function customResourceDefinitionForReference(apiVersion: string, kind: string, definitions: CustomResourceDefinitionRecord[]) {
-  const { group, version } = apiVersionParts(apiVersion);
-  if (!group || !version) {
-    return undefined;
-  }
-  return definitions.find((definition) => definition.group === group && definition.kind === kind && definition.versions.includes(version));
-}
-
-function targetNamespaceForKind(kind: ResourceKind, namespace: string, customResourceDefinition?: CustomResourceDefinitionRecord) {
-  if (kind === 'CustomResource' && customResourceDefinition?.scope === 'Cluster') {
-    return '';
-  }
-  if (clusterScopedKinds.has(kind)) {
-    return '';
-  }
-  return namespace;
-}
-
-const clusterScopedKinds = new Set<ResourceKind>(['Cluster', 'Namespace', 'Node', 'PersistentVolume', 'StorageClass', 'CustomResourceDefinition']);
 
 function addNode(context: BuildContext, kind: ResourceKind, namespace: string, name: string, status: ResourceStatus, labels: Record<string, string>, summary: Record<string, SummaryValue>) {
   const nodeId = id(context.clusterId, namespace, kind, name);
@@ -935,7 +767,7 @@ function collectObject(value: unknown, target: KubeObject[]) {
 }
 
 function normalizeKind(kind: unknown): ResourceKind | undefined {
-  return typeof kind === 'string' && supportedKinds.has(kind as ResourceKind) ? (kind as ResourceKind) : undefined;
+  return normalizeUploadResourceKind(kind);
 }
 
 function normalizeObjectKind(object: KubeObject, customResourceDefinitions: CustomResourceDefinitionRecord[]): { kind?: ResourceKind; customResourceDefinition?: CustomResourceDefinitionRecord } {
