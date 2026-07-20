@@ -69,6 +69,7 @@
 - Kubernetes list는 `continue` pagination을 사용하고 page/item/byte 상한 내에서 완료된 결과만 snapshot에 반영한다.
 - Live snapshot의 optional API와 CR instance 수집은 최대 6개 동시 요청으로 제한하고, 부분 실패는 원격 body/path 없이 resource와 allowlisted reason code만 `diagnostics`에 남긴다.
 - 2026-07-20 Native Kubernetes 실검증에서 capability/topology/Secret redaction/cursor/cache/Events와 fixed/follow Pod logs를 확인했다. Pod log content negotiation은 일부 API server의 `text/plain` 406을 피하도록 `Accept: */*`를 사용한다.
+- Kubernetes capability probing은 `kubernetes_capabilities.go`, Events/fixed/follow Pod logs와 line cap은 `kubernetes_activity.go`가 담당한다. 빈 Event ref와 nil stream callback은 네트워크 호출 전에 fail-closed 처리한다.
 
 ## Runtime Boundaries
 
