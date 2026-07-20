@@ -71,6 +71,7 @@
 - 2026-07-20 Native Kubernetes 실검증에서 capability/topology/Secret redaction/cursor/cache/Events와 fixed/follow Pod logs를 확인했다. Pod log content negotiation은 일부 API server의 `text/plain` 406을 피하도록 `Accept: */*`를 사용한다.
 - Kubernetes capability probing은 `kubernetes_capabilities.go`, Events/fixed/follow Pod logs와 line cap은 `kubernetes_activity.go`가 담당한다. 빈 Event ref와 nil stream callback은 네트워크 호출 전에 fail-closed 처리한다.
 - Kubernetes list pagination은 `kubernetes_pagination.go`에서 selector/continue token을 보존하면서 page/item/byte/token cap을 적용한다. malformed query, nil client/output, invalid limits는 HTTP 요청 전에 bounded error로 거부한다.
+- Kubernetes API 설정, TLS transport, bounded JSON/text/stream 처리는 `kubernetes_client.go`에 격리했다. API server URL은 scheme/host/userinfo/query/fragment를 검증하고 token/CA 파일 및 PEM 오류는 로컬 경로를 포함하지 않는 safe code로만 반환한다.
 
 ## Runtime Boundaries
 
