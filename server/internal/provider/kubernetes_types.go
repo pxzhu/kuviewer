@@ -104,8 +104,13 @@ type configMapResource struct {
 
 type container struct {
 	Name    string    `json:"name"`
+	Image   string    `json:"image"`
 	Env     []envVar  `json:"env"`
 	EnvFrom []envFrom `json:"envFrom"`
+}
+
+type podTemplateSpec struct {
+	Spec podSpec `json:"spec"`
 }
 
 type envFrom struct {
@@ -118,8 +123,10 @@ type envVar struct {
 }
 
 type envVarSource struct {
-	ConfigMapKeyRef *localObjectRef `json:"configMapKeyRef"`
-	SecretKeyRef    *localObjectRef `json:"secretKeyRef"`
+	ConfigMapKeyRef  *localObjectRef `json:"configMapKeyRef"`
+	SecretKeyRef     *localObjectRef `json:"secretKeyRef"`
+	FieldRef         *struct{}       `json:"fieldRef"`
+	ResourceFieldRef *struct{}       `json:"resourceFieldRef"`
 }
 
 type volume struct {
@@ -243,7 +250,8 @@ type deploymentList = kubeList[deploymentResource]
 type deploymentResource struct {
 	Metadata metadata `json:"metadata"`
 	Spec     struct {
-		Replicas *int `json:"replicas"`
+		Replicas *int            `json:"replicas"`
+		Template podTemplateSpec `json:"template"`
 	} `json:"spec"`
 	Status replicaStatus `json:"status"`
 }
@@ -253,7 +261,8 @@ type replicaSetList = kubeList[replicaSetResource]
 type replicaSetResource struct {
 	Metadata metadata `json:"metadata"`
 	Spec     struct {
-		Replicas *int `json:"replicas"`
+		Replicas *int            `json:"replicas"`
+		Template podTemplateSpec `json:"template"`
 	} `json:"spec"`
 	Status replicaStatus `json:"status"`
 }
@@ -263,7 +272,8 @@ type statefulSetList = kubeList[statefulSetResource]
 type statefulSetResource struct {
 	Metadata metadata `json:"metadata"`
 	Spec     struct {
-		Replicas *int `json:"replicas"`
+		Replicas *int            `json:"replicas"`
+		Template podTemplateSpec `json:"template"`
 	} `json:"spec"`
 	Status replicaStatus `json:"status"`
 }
@@ -272,7 +282,10 @@ type daemonSetList = kubeList[daemonSetResource]
 
 type daemonSetResource struct {
 	Metadata metadata `json:"metadata"`
-	Status   struct {
+	Spec     struct {
+		Template podTemplateSpec `json:"template"`
+	} `json:"spec"`
+	Status struct {
 		DesiredNumberScheduled int `json:"desiredNumberScheduled"`
 		NumberReady            int `json:"numberReady"`
 	} `json:"status"`
@@ -289,7 +302,8 @@ type jobList = kubeList[jobResource]
 type jobResource struct {
 	Metadata metadata `json:"metadata"`
 	Spec     struct {
-		Completions *int `json:"completions"`
+		Completions *int            `json:"completions"`
+		Template    podTemplateSpec `json:"template"`
 	} `json:"spec"`
 	Status struct {
 		Active    int `json:"active"`
@@ -303,8 +317,13 @@ type cronJobList = kubeList[cronJobResource]
 type cronJobResource struct {
 	Metadata metadata `json:"metadata"`
 	Spec     struct {
-		Schedule string `json:"schedule"`
-		Suspend  *bool  `json:"suspend"`
+		Schedule    string `json:"schedule"`
+		Suspend     *bool  `json:"suspend"`
+		JobTemplate struct {
+			Spec struct {
+				Template podTemplateSpec `json:"template"`
+			} `json:"spec"`
+		} `json:"jobTemplate"`
 	} `json:"spec"`
 	Status struct {
 		Active []objectReference `json:"active"`

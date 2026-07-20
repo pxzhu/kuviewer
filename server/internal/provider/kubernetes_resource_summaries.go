@@ -112,11 +112,12 @@ func desiredReplicaCount(value *int, fallback int) (int, bool) {
 }
 
 func validReplicaStatus(status replicaStatus) bool {
-	return validSummaryCount(status.Replicas) && validSummaryCount(status.ReadyReplicas) && validSummaryCount(status.AvailableReplicas)
+	return validSummaryCount(status.Replicas) && validSummaryCount(status.ReadyReplicas) && validSummaryCount(status.AvailableReplicas) &&
+		status.ReadyReplicas <= status.Replicas && status.AvailableReplicas <= status.Replicas
 }
 
 func daemonSetStatus(daemonSet daemonSetResource) string {
-	if validSummaryCount(daemonSet.Status.DesiredNumberScheduled) && validSummaryCount(daemonSet.Status.NumberReady) && daemonSet.Status.NumberReady >= daemonSet.Status.DesiredNumberScheduled {
+	if validDaemonSetWorkload(daemonSet.Status.DesiredNumberScheduled, daemonSet.Status.NumberReady) && daemonSet.Status.NumberReady >= daemonSet.Status.DesiredNumberScheduled {
 		return "healthy"
 	}
 	return "warning"

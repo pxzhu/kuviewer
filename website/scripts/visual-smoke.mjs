@@ -1621,6 +1621,31 @@ spec:
   selector:
     matchLabels:
       app: checkout-api
+  template:
+    metadata:
+      labels:
+        app: checkout-api
+    spec:
+      serviceAccountName: checkout-sa
+      containers:
+        - name: app
+          image: checkout:1.0.0
+          envFrom:
+            - configMapRef:
+                name: checkout-config
+            - secretRef:
+                name: checkout-secret
+          volumeMounts:
+            - name: orders
+              mountPath: /data
+      volumes:
+        - name: orders
+          persistentVolumeClaim:
+            claimName: orders-data
+status:
+  replicas: 2
+  readyReplicas: 2
+  availableReplicas: 2
 ---
 apiVersion: apps/v1
 kind: ReplicaSet
@@ -1636,6 +1661,18 @@ spec:
   selector:
     matchLabels:
       app: checkout-api
+  template:
+    metadata:
+      labels:
+        app: checkout-api
+    spec:
+      containers:
+        - name: app
+          image: checkout:1.0.0
+status:
+  replicas: 2
+  readyReplicas: 2
+  availableReplicas: 2
 ---
 apiVersion: v1
 kind: Pod
@@ -1775,6 +1812,16 @@ metadata:
   namespace: checkout
 spec:
   schedule: "*/15 * * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: reconcile
+              image: checkout/reconcile:1.0.0
+status:
+  active: []
 ---
 apiVersion: batch/v1
 kind: Job
@@ -1787,6 +1834,12 @@ metadata:
       name: checkout-reconcile
 spec:
   completions: 1
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: reconcile
+          image: checkout/reconcile:1.0.0
 status:
   succeeded: 1
 ---
@@ -1944,6 +1997,17 @@ spec:
   selector:
     matchLabels:
       app: node-agent
+  template:
+    metadata:
+      labels:
+        app: node-agent
+    spec:
+      containers:
+        - name: agent
+          image: agent:1.0.0
+status:
+  desiredNumberScheduled: 2
+  numberReady: 2
 ---
 apiVersion: v1
 kind: Pod
