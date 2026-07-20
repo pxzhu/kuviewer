@@ -16,7 +16,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"kuviewer/server/internal/topology"
@@ -65,43 +64,6 @@ type KubernetesProvider struct {
 	clusterName string
 }
 
-type capabilityProbe struct {
-	id       string
-	group    string
-	resource string
-	required bool
-	paths    []string
-}
-
-var kubernetesCapabilityProbes = []capabilityProbe{
-	{id: "core/namespaces", group: "Core", resource: "Namespaces", required: true, paths: []string{"/api/v1/namespaces"}},
-	{id: "core/nodes", group: "Core", resource: "Nodes", required: true, paths: []string{"/api/v1/nodes"}},
-	{id: "core/pods", group: "Core", resource: "Pods", required: true, paths: []string{"/api/v1/pods"}},
-	{id: "core/services", group: "Core", resource: "Services", required: true, paths: []string{"/api/v1/services"}},
-	{id: "core/serviceaccounts", group: "Core", resource: "ServiceAccounts", paths: []string{"/api/v1/serviceaccounts"}},
-	{id: "core/configmaps", group: "Core", resource: "ConfigMaps", paths: []string{"/api/v1/configmaps"}},
-	{id: "workloads/deployments", group: "Workloads", resource: "Deployments", paths: []string{"/apis/apps/v1/deployments"}},
-	{id: "workloads/replicasets", group: "Workloads", resource: "ReplicaSets", paths: []string{"/apis/apps/v1/replicasets"}},
-	{id: "workloads/statefulsets", group: "Workloads", resource: "StatefulSets", paths: []string{"/apis/apps/v1/statefulsets"}},
-	{id: "workloads/daemonsets", group: "Workloads", resource: "DaemonSets", paths: []string{"/apis/apps/v1/daemonsets"}},
-	{id: "workloads/jobs", group: "Workloads", resource: "Jobs", paths: []string{"/apis/batch/v1/jobs"}},
-	{id: "workloads/cronjobs", group: "Workloads", resource: "CronJobs", paths: []string{"/apis/batch/v1/cronjobs"}},
-	{id: "workloads/hpas", group: "Workloads", resource: "HorizontalPodAutoscalers", paths: []string{"/apis/autoscaling/v2/horizontalpodautoscalers"}},
-	{id: "networking/endpointslices", group: "Networking", resource: "EndpointSlices", paths: []string{"/apis/discovery.k8s.io/v1/endpointslices"}},
-	{id: "networking/ingresses", group: "Networking", resource: "Ingresses", paths: []string{"/apis/networking.k8s.io/v1/ingresses"}},
-	{id: "networking/networkpolicies", group: "Networking", resource: "NetworkPolicies", paths: []string{"/apis/networking.k8s.io/v1/networkpolicies"}},
-	{id: "gateway/gateways", group: "Gateway API", resource: "Gateways", paths: []string{"/apis/gateway.networking.k8s.io/v1/gateways"}},
-	{id: "gateway/httproutes", group: "Gateway API", resource: "HTTPRoutes", paths: []string{"/apis/gateway.networking.k8s.io/v1/httproutes"}},
-	{id: "gateway/grpcroutes", group: "Gateway API", resource: "GRPCRoutes", paths: []string{"/apis/gateway.networking.k8s.io/v1/grpcroutes"}},
-	{id: "gateway/tlsroutes", group: "Gateway API", resource: "TLSRoutes", paths: []string{"/apis/gateway.networking.k8s.io/v1/tlsroutes", "/apis/gateway.networking.k8s.io/v1alpha2/tlsroutes"}},
-	{id: "gateway/tcproutes", group: "Gateway API", resource: "TCPRoutes", paths: []string{"/apis/gateway.networking.k8s.io/v1/tcproutes", "/apis/gateway.networking.k8s.io/v1alpha2/tcproutes"}},
-	{id: "storage/pvcs", group: "Storage", resource: "PersistentVolumeClaims", paths: []string{"/api/v1/persistentvolumeclaims"}},
-	{id: "storage/pvs", group: "Storage", resource: "PersistentVolumes", paths: []string{"/api/v1/persistentvolumes"}},
-	{id: "storage/storageclasses", group: "Storage", resource: "StorageClasses", paths: []string{"/apis/storage.k8s.io/v1/storageclasses"}},
-	{id: "extensions/crds", group: "Extensions", resource: "CustomResourceDefinitions", paths: []string{"/apis/apiextensions.k8s.io/v1/customresourcedefinitions"}},
-	{id: "observability/events", group: "Observability", resource: "Events", paths: []string{"/api/v1/events"}},
-}
-
 func NewKubernetesProviderFromEnv() (TopologyProvider, error) {
 	config, err := kubeConfigFromEnv()
 	if err != nil {
@@ -112,51 +74,6 @@ func NewKubernetesProviderFromEnv() (TopologyProvider, error) {
 		client:      config.client,
 		clusterID:   config.clusterID,
 		clusterName: config.clusterName,
-	}, nil
-}
-
-func (p KubernetesProvider) Capabilities(ctx context.Context) (topology.CapabilityReport, error) {
-	items := make([]topology.ResourceCapability, len(kubernetesCapabilityProbes))
-	semaphore := make(chan struct{}, 6)
-	var waitGroup sync.WaitGroup
-
-	for index, probe := range kubernetesCapabilityProbes {
-		waitGroup.Add(1)
-		go func(index int, probe capabilityProbe) {
-			defer waitGroup.Done()
-			select {
-			case semaphore <- struct{}{}:
-				defer func() { <-semaphore }()
-			case <-ctx.Done():
-				return
-			}
-			status, reason := p.client.probeCapability(ctx, probe.paths)
-			items[index] = topology.ResourceCapability{
-				ID:       probe.id,
-				Group:    probe.group,
-				Resource: probe.resource,
-				Required: probe.required,
-				Status:   status,
-				Reason:   reason,
-			}
-		}(index, probe)
-	}
-	waitGroup.Wait()
-	if err := ctx.Err(); err != nil {
-		return topology.CapabilityReport{}, err
-	}
-
-	items = append(items, topology.ResourceCapability{
-		ID:       "policy/secret-values",
-		Group:    "Security",
-		Resource: "Secret values",
-		Status:   "protected",
-		Reason:   "secret_values_hidden",
-	})
-	return topology.CapabilityReport{
-		Source:    "kubernetes",
-		CheckedAt: time.Now().UTC().Format(time.RFC3339),
-		Items:     items,
 	}, nil
 }
 
@@ -635,94 +552,6 @@ func (p KubernetesProvider) Snapshot(ctx context.Context) (topology.Snapshot, er
 		Edges:       builder.edges,
 		Diagnostics: diagnostics,
 	}, nil
-}
-
-func (p KubernetesProvider) ResourceEvents(ctx context.Context, ref ResourceRef) (topology.ResourceEvents, error) {
-	events := eventList{}
-	selector := url.QueryEscape("involvedObject.kind=" + ref.Kind + ",involvedObject.name=" + ref.Name)
-	path := "/api/v1/events?fieldSelector=" + selector
-	if ref.Namespace != "" {
-		path = "/api/v1/namespaces/" + url.PathEscape(ref.Namespace) + "/events?fieldSelector=" + selector
-	}
-	found, err := getKubeListJSONStatus(ctx, p.client, path, &events, true)
-	if err != nil {
-		return topology.ResourceEvents{}, err
-	}
-	if !found {
-		return topology.ResourceEvents{Items: []topology.ResourceEvent{}, Warning: "events_unavailable"}, nil
-	}
-
-	items := make([]topology.ResourceEvent, 0, len(events.Items))
-	for _, event := range events.Items {
-		items = append(items, topology.ResourceEvent{
-			Type:      event.Type,
-			Reason:    event.Reason,
-			Message:   event.Message,
-			Source:    eventSource(event),
-			Timestamp: eventTimestamp(event),
-		})
-	}
-	sort.SliceStable(items, func(i, j int) bool {
-		return items[i].Timestamp > items[j].Timestamp
-	})
-	return topology.ResourceEvents{Items: items}, nil
-}
-
-func (p KubernetesProvider) ResourceLogs(ctx context.Context, ref ResourceRef) (topology.ResourceLogs, error) {
-	if ref.Kind != "Pod" || ref.Namespace == "" || ref.Name == "" {
-		return topology.ResourceLogs{Lines: []string{}, Warning: "logs_unavailable", TailLines: podLogTailLines}, nil
-	}
-
-	found, body, err := p.client.getTextStatus(ctx, podLogPath(ref), true, podLogMaxBytes)
-	if err != nil || !found {
-		return topology.ResourceLogs{Lines: []string{}, Warning: "logs_unavailable", TailLines: effectivePodLogTailLines(ref)}, nil
-	}
-
-	return topology.ResourceLogs{Lines: cappedLogLines(body), Container: ref.Container, Previous: ref.Previous, TailLines: effectivePodLogTailLines(ref)}, nil
-}
-
-func (p KubernetesProvider) StreamLogs(ctx context.Context, ref ResourceRef, onLine func(string) error) error {
-	if ref.Kind != "Pod" || ref.Namespace == "" || ref.Name == "" {
-		return fmt.Errorf("logs stream unavailable")
-	}
-
-	ref.Follow = true
-	found, err := p.client.streamText(ctx, podLogPath(ref), true, podLogMaxBytes, func(line string) error {
-		return onLine(capLogLine(line))
-	})
-	if err != nil {
-		return err
-	}
-	if !found {
-		return fmt.Errorf("logs stream unavailable")
-	}
-	return nil
-}
-
-func podLogPath(ref ResourceRef) string {
-	return "/api/v1/namespaces/" + url.PathEscape(ref.Namespace) + "/pods/" + url.PathEscape(ref.Name) + "/log?" + podLogQuery(ref).Encode()
-}
-
-func podLogQuery(ref ResourceRef) url.Values {
-	query := url.Values{}
-	query.Set("tailLines", strconv.Itoa(effectivePodLogTailLines(ref)))
-	if ref.Container != "" {
-		query.Set("container", ref.Container)
-	}
-	if ref.Previous {
-		query.Set("previous", "true")
-	}
-	if ref.Follow {
-		query.Set("follow", "true")
-	}
-	return query
-}
-
-func effectivePodLogTailLines(ref ResourceRef) int {
-	if ref.TailLines > 0 && ref.TailLines <= podLogTailLines {
-		return ref.TailLines
-	}
-	return podLogTailLines
 }
 
 func (p KubernetesProvider) customResourceInstances(ctx context.Context, crds customResourceDefinitionList) []customResourceInstance {
@@ -2253,28 +2082,6 @@ func genericConditions(status map[string]interface{}) []condition {
 	return conditions
 }
 
-func cappedLogLines(body string) []string {
-	trimmed := strings.TrimSuffix(body, "\n")
-	if trimmed == "" {
-		return []string{}
-	}
-	lines := strings.Split(trimmed, "\n")
-	if len(lines) > podLogTailLines {
-		lines = lines[len(lines)-podLogTailLines:]
-	}
-	for index, line := range lines {
-		lines[index] = capLogLine(line)
-	}
-	return lines
-}
-
-func capLogLine(line string) string {
-	if len(line) > podLogMaxLineBytes {
-		return line[:podLogMaxLineBytes] + "..."
-	}
-	return line
-}
-
 func deploymentStatus(deployment deploymentResource) string {
 	if deployment.Status.AvailableReplicas >= valueOrZero(deployment.Spec.Replicas) {
 		return "healthy"
@@ -2812,28 +2619,6 @@ func age(timestamp string) string {
 		return "unknown"
 	}
 	return time.Since(createdAt).Round(time.Hour).String()
-}
-
-func eventSource(event eventResource) string {
-	if event.ReportingComponent != "" {
-		return event.ReportingComponent
-	}
-	if event.Source.Component != "" && event.Source.Host != "" {
-		return event.Source.Component + "@" + event.Source.Host
-	}
-	if event.Source.Component != "" {
-		return event.Source.Component
-	}
-	return event.Source.Host
-}
-
-func eventTimestamp(event eventResource) string {
-	for _, value := range []string{event.EventTime, event.LastTimestamp, event.FirstTimestamp, event.Metadata.CreationTimestamp} {
-		if value != "" {
-			return value
-		}
-	}
-	return ""
 }
 
 func ownerSummaries(owners []ownerReference) []string {

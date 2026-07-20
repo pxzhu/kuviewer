@@ -131,6 +131,17 @@ func TestKubernetesProviderCapabilitiesClassifiesSafeAccessResults(t *testing.T)
 	}
 }
 
+func TestKubernetesProviderCapabilitiesRejectsCanceledContextBeforeProbing(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	provider := KubernetesProvider{}
+	_, err := provider.Capabilities(ctx)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("Capabilities() error = %v, want context cancellation", err)
+	}
+}
+
 func TestKubernetesProviderSnapshotPaginatesRequiredLists(t *testing.T) {
 	namespaceRequests := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -640,6 +651,17 @@ func TestKubernetesProviderResourceEventsForbiddenFallsBack(t *testing.T) {
 	}
 }
 
+func TestKubernetesProviderResourceEventsRejectsEmptyReference(t *testing.T) {
+	provider := KubernetesProvider{}
+	events, err := provider.ResourceEvents(context.Background(), ResourceRef{})
+	if err != nil {
+		t.Fatalf("ResourceEvents() error = %v", err)
+	}
+	if events.Warning != "events_unavailable" || len(events.Items) != 0 {
+		t.Fatalf("events = %+v, want unavailable warning and empty list", events)
+	}
+}
+
 func TestKubernetesProviderResourceLogsReadsPodLog(t *testing.T) {
 	var gotPath string
 	var gotTailLines string
@@ -789,6 +811,25 @@ func TestKubernetesProviderResourceLogsForbiddenFallsBack(t *testing.T) {
 	}
 	if logs.Warning != "logs_unavailable" || len(logs.Lines) != 0 || logs.TailLines != 200 {
 		t.Fatalf("logs = %+v, want unavailable warning and empty list", logs)
+	}
+}
+
+func TestKubernetesProviderResourceLogsRejectsInvalidReferenceWithDefaultLimit(t *testing.T) {
+	provider := KubernetesProvider{}
+	logs, err := provider.ResourceLogs(context.Background(), ResourceRef{Kind: "Service", TailLines: 3})
+	if err != nil {
+		t.Fatalf("ResourceLogs() error = %v", err)
+	}
+	if logs.Warning != "logs_unavailable" || len(logs.Lines) != 0 || logs.TailLines != podLogTailLines {
+		t.Fatalf("logs = %+v, want safe unavailable response with default limit", logs)
+	}
+}
+
+func TestKubernetesProviderStreamLogsRejectsNilCallback(t *testing.T) {
+	provider := KubernetesProvider{}
+	err := provider.StreamLogs(context.Background(), ResourceRef{Kind: "Pod", Namespace: "checkout", Name: "checkout-api"}, nil)
+	if !errors.Is(err, errKubeLogStreamUnavailable) {
+		t.Fatalf("StreamLogs() error = %v, want safe unavailable code", err)
 	}
 }
 
