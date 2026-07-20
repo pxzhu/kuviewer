@@ -50,6 +50,7 @@
 - CSV export는 `website/src/features/export/safeCsv.ts`를 공통 사용해 formula injection과 NUL을 차단한다.
 - Topology는 dispatcher, shared layout, mobile SVG, desktop React Flow renderer로 분리돼 있다.
 - Upload topology JSON import의 size/identity/reference validation과 Secret/민감 metadata redaction은 `importTopologySnapshot.ts`의 독립 보안 경계와 direct unit test로 검증한다.
+- Upload CustomResource의 native/custom `*Ref/*Name` 관계 추론은 `customResourceReferences.ts`에서 cycle/depth/value/path/result 상한을 적용하고 direct unit test로 검증한다.
 - Desktop CM grouping/search/diagnostic view model은 `website/src/features/desktop/desktopCmSessionView.ts`에 둔다.
 - Desktop CM layout의 validation, storage, import/export, folder/preset ordering은 `website/src/features/desktop/desktopCmSessionLayouts.ts`에 두고 direct unit test로 검증한다.
 - Desktop CM saved-layout UI state, import conflict, selection, keyboard/drag reorder orchestration은 `useDesktopCmSessionLayouts.ts`가 담당한다.
