@@ -7,6 +7,7 @@ import (
 
 const (
 	maxEndpointSliceEndpoints        = 4096
+	maxEndpointSliceEndpointVisits   = 100_000
 	maxSelectorFallbackComparisons   = 250_000
 	maxPodReferenceResults           = 256
 	maxPodReferenceCollectionItems   = 256
@@ -47,34 +48,91 @@ type serviceEndpointReference struct {
 	ready       bool
 }
 
+type endpointSliceAnalysis struct {
+	counts            map[string]endpointCounter
+	references        []serviceEndpointReference
+	invalidItems      int
+	processingLimited bool
+}
+
 func boundedEndpointSliceEndpoints(endpoints []endpoint) ([]endpoint, bool) {
 	return endpoints, len(endpoints) <= maxEndpointSliceEndpoints
 }
 
 func endpointCounts(endpointSlices endpointSliceList) map[string]endpointCounter {
-	counts := map[string]endpointCounter{}
+	return analyzeEndpointSlices(endpointSlices).counts
+}
+
+func analyzeEndpointSlices(endpointSlices endpointSliceList) endpointSliceAnalysis {
+	analysis := endpointSliceAnalysis{counts: map[string]endpointCounter{}}
+	seenSlices := map[string]bool{}
+	seenReferences := map[string]bool{}
+	endpointVisits := 0
 	for _, slice := range endpointSlices.Items {
 		serviceName := slice.Metadata.Labels["kubernetes.io/service-name"]
 		endpoints, valid := boundedEndpointSliceEndpoints(slice.Endpoints)
-		if !validKubernetesReferenceName(serviceName) || !validKubernetesNamespace(slice.Metadata.Namespace) || !valid {
+		if !validKubernetesReferenceName(slice.Metadata.Name) || !validKubernetesReferenceName(serviceName) || !validKubernetesNamespace(slice.Metadata.Namespace) || !valid {
+			analysis.invalidItems++
 			continue
 		}
+		sliceKey := serviceKey(slice.Metadata.Namespace, slice.Metadata.Name)
+		if seenSlices[sliceKey] {
+			analysis.invalidItems++
+			continue
+		}
+		seenSlices[sliceKey] = true
+		endpointVisits += len(endpoints)
+		if endpointVisits > maxEndpointSliceEndpointVisits {
+			return endpointSliceAnalysis{counts: map[string]endpointCounter{}, invalidItems: analysis.invalidItems, processingLimited: true}
+		}
 		key := serviceKey(slice.Metadata.Namespace, serviceName)
-		counter := counts[key]
+		counter := analysis.counts[key]
 		for _, endpoint := range endpoints {
 			counter.total++
 			if endpoint.Conditions.Ready == nil || *endpoint.Conditions.Ready {
 				counter.ready++
 			}
+			if endpoint.TargetRef == nil || endpoint.TargetRef.Kind != "Pod" || !validKubernetesReferenceName(endpoint.TargetRef.Name) {
+				continue
+			}
+			referenceKey := key + "\x00" + endpoint.TargetRef.Name
+			if seenReferences[referenceKey] {
+				continue
+			}
+			if analysis.processingLimited {
+				continue
+			}
+			if len(analysis.references) >= maxServiceEndpointResults {
+				analysis.references = nil
+				analysis.processingLimited = true
+				continue
+			}
+			seenReferences[referenceKey] = true
+			analysis.references = append(analysis.references, serviceEndpointReference{
+				namespace:   slice.Metadata.Namespace,
+				service:     serviceName,
+				pod:         endpoint.TargetRef.Name,
+				sourceField: "EndpointSlice.endpoints.targetRef",
+				confidence:  "observed",
+				ready:       endpoint.Conditions.Ready == nil || *endpoint.Conditions.Ready,
+			})
 		}
-		counts[key] = counter
+		analysis.counts[key] = counter
 	}
-	return counts
+	return analysis
 }
 
 func serviceEndpointReferences(endpointSlices endpointSliceList, services serviceList, pods podList) []serviceEndpointReference {
-	references := []serviceEndpointReference{}
+	analysis := analyzeEndpointSlices(endpointSlices)
+	return serviceEndpointReferencesFromObserved(analysis.references, services, pods)
+}
+
+func serviceEndpointReferencesFromObserved(observedReferences []serviceEndpointReference, services serviceList, pods podList) []serviceEndpointReference {
+	references := append([]serviceEndpointReference(nil), observedReferences...)
 	seen := map[string]bool{}
+	for _, reference := range references {
+		seen[reference.namespace+"\x00"+reference.service+"\x00"+reference.pod] = true
+	}
 	add := func(namespace string, service string, pod string, sourceField string, confidence string, ready bool) bool {
 		if !validKubernetesNamespace(namespace) || !validKubernetesReferenceName(service) || !validKubernetesReferenceName(pod) {
 			return true
@@ -91,29 +149,17 @@ func serviceEndpointReferences(endpointSlices endpointSliceList, services servic
 		return true
 	}
 
-	for _, endpointSlice := range endpointSlices.Items {
-		serviceName := endpointSlice.Metadata.Labels["kubernetes.io/service-name"]
-		endpoints, valid := boundedEndpointSliceEndpoints(endpointSlice.Endpoints)
-		if !valid || !validKubernetesNamespace(endpointSlice.Metadata.Namespace) || !validKubernetesReferenceName(serviceName) {
-			continue
-		}
-		for _, endpoint := range endpoints {
-			if endpoint.TargetRef == nil || endpoint.TargetRef.Kind != "Pod" {
-				continue
-			}
-			if !add(endpointSlice.Metadata.Namespace, serviceName, endpoint.TargetRef.Name, "EndpointSlice.endpoints.targetRef", "observed", false) {
-				return nil
-			}
-		}
-	}
-
 	observed := append([]serviceEndpointReference(nil), references...)
 	comparisons := 0
+	seenServices := map[string]bool{}
+	validPods := uniqueValidPods(pods.Items)
 	for _, service := range services.Items {
-		if len(service.Spec.Selector) == 0 || !validKubernetesNamespace(service.Metadata.Namespace) || !validKubernetesReferenceName(service.Metadata.Name) {
+		serviceID := serviceKey(service.Metadata.Namespace, service.Metadata.Name)
+		if seenServices[serviceID] || len(service.Spec.Selector) == 0 || !validKubernetesNamespace(service.Metadata.Namespace) || !validKubernetesReferenceName(service.Metadata.Name) {
 			continue
 		}
-		for _, pod := range pods.Items {
+		seenServices[serviceID] = true
+		for _, pod := range validPods {
 			if pod.Metadata.Namespace != service.Metadata.Namespace {
 				continue
 			}
@@ -130,6 +176,23 @@ func serviceEndpointReferences(endpointSlices endpointSliceList, services servic
 		}
 	}
 	return references
+}
+
+func uniqueValidPods(pods []podResource) []podResource {
+	result := make([]podResource, 0, len(pods))
+	seen := map[string]bool{}
+	for _, pod := range pods {
+		if !validKubernetesNamespace(pod.Metadata.Namespace) || !validKubernetesReferenceName(pod.Metadata.Name) {
+			continue
+		}
+		key := serviceKey(pod.Metadata.Namespace, pod.Metadata.Name)
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		result = append(result, pod)
+	}
+	return result
 }
 
 func mergeReferenceEndpointCounts(counts map[string]endpointCounter, references []serviceEndpointReference) {

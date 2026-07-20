@@ -205,10 +205,10 @@ func testCustomResourceRelationCRDs(t *testing.T) customResourceDefinitionList {
 func TestNetworkPolicyPeerEdgesInferPodsWithMatchExpressions(t *testing.T) {
 	builder := newKubeGraphBuilder("test")
 	policyID := builder.addNode("NetworkPolicy", "checkout", "checkout-api", "healthy", nil, nil)
-	builder.addNode("Pod", "platform", "frontend", "healthy", map[string]string{"app": "frontend"}, nil)
-	builder.addNode("Pod", "checkout", "db", "healthy", map[string]string{"app": "db"}, nil)
-	builder.addNode("Pod", "checkout", "metrics", "healthy", map[string]string{"app": "metrics", "scrape": "true"}, nil)
-	builder.addNode("Pod", "checkout", "worker", "healthy", map[string]string{"app": "worker"}, nil)
+	builder.addResourceNode("Pod", metadata{Name: "frontend", Namespace: "platform", Labels: map[string]string{"app": "frontend"}}, "healthy", nil)
+	builder.addResourceNode("Pod", metadata{Name: "db", Namespace: "checkout", Labels: map[string]string{"app": "db"}}, "healthy", nil)
+	builder.addResourceNode("Pod", metadata{Name: "metrics", Namespace: "checkout", Labels: map[string]string{"app": "metrics", "scrape": "true"}}, "healthy", nil)
+	builder.addResourceNode("Pod", metadata{Name: "worker", Namespace: "checkout", Labels: map[string]string{"app": "worker"}}, "healthy", nil)
 
 	pods := podList{Items: []podResource{
 		{Metadata: metadata{Name: "frontend", Namespace: "platform", Labels: map[string]string{"app": "frontend"}}},

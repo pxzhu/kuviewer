@@ -1,6 +1,10 @@
 package provider
 
-import "kuviewer/server/internal/topology"
+import (
+	"sort"
+
+	"kuviewer/server/internal/topology"
+)
 
 type graphBuilder struct {
 	clusterID          string
@@ -178,17 +182,30 @@ func (b *graphBuilder) addNetworkPolicyPeerEdges(networkPolicyID string, policyN
 
 		matchingNamespaces := matchingNetworkPolicyNamespaces(namespaces, policyNamespace, peer.NamespaceSelector)
 		if peer.PodSelector != nil {
+			seenPods := map[string]bool{}
 			for _, pod := range pods.Items {
+				podID := b.nodeID("Pod", pod.Metadata.Namespace, pod.Metadata.Name)
+				if !b.claimResourceNode(podID, seenPods) {
+					continue
+				}
 				if !matchingNamespaces[pod.Metadata.Namespace] || !labelSelectorMatches(peer.PodSelector, pod.Metadata.Labels) {
 					continue
 				}
-				b.addEdge(edgeType, networkPolicyID, b.nodeID("Pod", pod.Metadata.Namespace, pod.Metadata.Name), sourceField, "inferred")
+				b.addEdge(edgeType, networkPolicyID, podID, sourceField, "inferred")
 			}
 			continue
 		}
 
+		namespaceNames := make([]string, 0, len(matchingNamespaces))
 		for namespace := range matchingNamespaces {
-			b.addEdge(edgeType, networkPolicyID, b.nodeID("Namespace", "", namespace), sourceField, "inferred")
+			namespaceNames = append(namespaceNames, namespace)
+		}
+		sort.Strings(namespaceNames)
+		for _, namespace := range namespaceNames {
+			namespaceID := b.nodeID("Namespace", "", namespace)
+			if b.hasResourceNode(namespaceID) {
+				b.addEdge(edgeType, networkPolicyID, namespaceID, sourceField, "inferred")
+			}
 		}
 	}
 }

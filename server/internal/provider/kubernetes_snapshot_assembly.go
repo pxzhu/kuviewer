@@ -52,8 +52,9 @@ func buildKubernetesSnapshot(clusterID string, clusterName string, resources kub
 	podRunning := 0
 	podWarning := 0
 	namespaceCount := 0
-	serviceEndpointCounts := endpointCounts(resources.endpointSlices)
-	serviceEndpointRefs := serviceEndpointReferences(resources.endpointSlices, resources.services, resources.pods)
+	endpointAnalysis := analyzeEndpointSlices(resources.endpointSlices)
+	serviceEndpointCounts := endpointAnalysis.counts
+	serviceEndpointRefs := serviceEndpointReferencesFromObserved(endpointAnalysis.references, resources.services, resources.pods)
 	mergeReferenceEndpointCounts(serviceEndpointCounts, serviceEndpointRefs)
 	namespaceIndex := namespaceRecords(resources.namespaces)
 
@@ -271,6 +272,7 @@ func buildKubernetesSnapshot(clusterID string, clusterName string, resources kub
 	})
 	diagnostics := append([]topology.SnapshotDiagnostic(nil), resources.diagnostics...)
 	diagnostics = append(diagnostics, builder.resourceIssueDiagnostics()...)
+	diagnostics = append(diagnostics, endpointAnalysis.diagnostics()...)
 	return topology.Snapshot{
 		Clusters:    []topology.ClusterSummary{clusterSummary},
 		Nodes:       builder.nodes,
@@ -413,12 +415,17 @@ func addKubernetesSnapshotEdges(builder *graphBuilder, resources kubernetesSnaps
 		matches := 0
 		selectorValid := validLabelSelector(networkPolicy.Spec.PodSelector)
 		if selectorValid {
+			seenTargetPods := map[string]bool{}
 			for _, pod := range resources.pods.Items {
+				podID := builder.nodeID("Pod", pod.Metadata.Namespace, pod.Metadata.Name)
+				if !builder.claimResourceNode(podID, seenTargetPods) {
+					continue
+				}
 				if pod.Metadata.Namespace != networkPolicy.Metadata.Namespace || !labelSelectorMatches(&networkPolicy.Spec.PodSelector, pod.Metadata.Labels) {
 					continue
 				}
 				matches++
-				builder.addEdge("applies-to", networkPolicyID, builder.nodeID("Pod", pod.Metadata.Namespace, pod.Metadata.Name), "NetworkPolicy.spec.podSelector", "inferred")
+				builder.addEdge("applies-to", networkPolicyID, podID, "NetworkPolicy.spec.podSelector", "inferred")
 			}
 		}
 		if selectorValid && matches == 0 && networkPolicy.Metadata.Namespace != "" {

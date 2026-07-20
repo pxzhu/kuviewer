@@ -55,10 +55,22 @@ var snapshotDiagnosticReasons = map[string]bool{
 	"pagination_item_limit":    true,
 	"pagination_page_limit":    true,
 	"pagination_token_invalid": true,
+	"processing_limit":         true,
 	"request_failed":           true,
 	"request_invalid":          true,
 	"response_read_failed":     true,
 	"response_too_large":       true,
+}
+
+func (analysis endpointSliceAnalysis) diagnostics() []topology.SnapshotDiagnostic {
+	diagnostics := make([]topology.SnapshotDiagnostic, 0, 2)
+	if analysis.invalidItems > 0 {
+		diagnostics = append(diagnostics, topology.SnapshotDiagnostic{ID: "snapshot/endpointslices", Resource: "EndpointSlices", Reason: "invalid_item", Count: analysis.invalidItems})
+	}
+	if analysis.processingLimited {
+		diagnostics = append(diagnostics, topology.SnapshotDiagnostic{ID: "snapshot/endpointslices", Resource: "EndpointSlices", Reason: "processing_limit", Count: 1})
+	}
+	return diagnostics
 }
 
 var snapshotDiagnosticResources = map[string]bool{

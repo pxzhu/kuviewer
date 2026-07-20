@@ -40,12 +40,12 @@ func TestPodReferencesAreValidatedDeduplicatedAndBounded(t *testing.T) {
 
 func TestEndpointCountsRejectMalformedAndOversizedSlices(t *testing.T) {
 	ready := true
-	valid := endpointSliceResource{Metadata: metadata{Namespace: "app", Labels: map[string]string{"kubernetes.io/service-name": "api"}}}
+	valid := endpointSliceResource{Metadata: metadata{Name: "api-a", Namespace: "app", Labels: map[string]string{"kubernetes.io/service-name": "api"}}}
 	valid.Endpoints = []endpoint{{}, {Conditions: struct {
 		Ready *bool `json:"ready"`
 	}{Ready: &ready}}}
-	malformed := endpointSliceResource{Metadata: metadata{Namespace: "bad namespace", Labels: map[string]string{"kubernetes.io/service-name": "unsafe"}}, Endpoints: []endpoint{{}}}
-	oversized := endpointSliceResource{Metadata: metadata{Namespace: "app", Labels: map[string]string{"kubernetes.io/service-name": "oversized"}}, Endpoints: make([]endpoint, maxEndpointSliceEndpoints+1)}
+	malformed := endpointSliceResource{Metadata: metadata{Name: "unsafe", Namespace: "bad namespace", Labels: map[string]string{"kubernetes.io/service-name": "unsafe"}}, Endpoints: []endpoint{{}}}
+	oversized := endpointSliceResource{Metadata: metadata{Name: "oversized", Namespace: "app", Labels: map[string]string{"kubernetes.io/service-name": "oversized"}}, Endpoints: make([]endpoint, maxEndpointSliceEndpoints+1)}
 
 	counts := endpointCounts(endpointSliceList{Items: []endpointSliceResource{valid, malformed, oversized}})
 	if got := counts["app/api"]; got.ready != 2 || got.total != 2 {
@@ -53,6 +53,29 @@ func TestEndpointCountsRejectMalformedAndOversizedSlices(t *testing.T) {
 	}
 	if len(counts) != 1 {
 		t.Fatalf("endpointCounts() retained invalid slices: %#v", counts)
+	}
+}
+
+func TestEndpointSliceAnalysisRejectsDuplicatesAndFailsClosedOnGlobalBudget(t *testing.T) {
+	first := endpointSliceResource{Metadata: metadata{Name: "api-a", Namespace: "app", Labels: map[string]string{"kubernetes.io/service-name": "api"}}, Endpoints: []endpoint{{TargetRef: &objectReference{Kind: "Pod", Name: "api-a"}}}}
+	duplicate := endpointSliceResource{Metadata: metadata{Name: "api-a", Namespace: "app", Labels: map[string]string{"kubernetes.io/service-name": "other"}}, Endpoints: []endpoint{{TargetRef: &objectReference{Kind: "Pod", Name: "other-a"}}}}
+	analysis := analyzeEndpointSlices(endpointSliceList{Items: []endpointSliceResource{first, duplicate}})
+	if analysis.invalidItems != 1 || analysis.processingLimited || len(analysis.counts) != 1 || analysis.counts["app/api"].total != 1 || len(analysis.references) != 1 {
+		t.Fatalf("duplicate EndpointSlice analysis = %+v", analysis)
+	}
+
+	items := make([]endpointSliceResource, maxEndpointSliceEndpointVisits/maxEndpointSliceEndpoints+1)
+	for index := range items {
+		items[index].Metadata = metadata{Name: "slice-" + paddedNumber(index), Namespace: "app", Labels: map[string]string{"kubernetes.io/service-name": "api"}}
+		items[index].Endpoints = make([]endpoint, maxEndpointSliceEndpoints)
+	}
+	analysis = analyzeEndpointSlices(endpointSliceList{Items: items})
+	if !analysis.processingLimited || len(analysis.counts) != 0 || len(analysis.references) != 0 {
+		t.Fatalf("over-budget EndpointSlice analysis was not atomic: counts=%d refs=%d limited=%t", len(analysis.counts), len(analysis.references), analysis.processingLimited)
+	}
+	diagnostics := analysis.diagnostics()
+	if len(diagnostics) != 1 || diagnostics[0].Reason != "processing_limit" || diagnostics[0].Resource != "EndpointSlices" {
+		t.Fatalf("EndpointSlice processing diagnostic = %+v", diagnostics)
 	}
 }
 
@@ -74,7 +97,7 @@ func TestSelectorEndpointFallbackIsAtomicWhenComparisonBudgetIsExceeded(t *testi
 		t.Fatalf("serviceEndpointReferences() partially returned an over-budget inferred scan: %d entries", len(references))
 	}
 
-	observedSlice := endpointSliceResource{Metadata: metadata{Namespace: "app", Labels: map[string]string{"kubernetes.io/service-name": "observed"}}}
+	observedSlice := endpointSliceResource{Metadata: metadata{Name: "observed-a", Namespace: "app", Labels: map[string]string{"kubernetes.io/service-name": "observed"}}}
 	observedSlice.Endpoints = []endpoint{{TargetRef: &objectReference{Kind: "Pod", Name: "pod-aa"}}}
 	references = serviceEndpointReferences(endpointSliceList{Items: []endpointSliceResource{observedSlice}}, serviceList{Items: services}, podList{Items: pods})
 	if len(references) != 1 || references[0].service != "observed" || references[0].confidence != "observed" {
