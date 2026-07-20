@@ -1,6 +1,8 @@
 import { Search } from 'lucide-react';
 import type { ColorMode, TopologyFilters } from '../features/topology/useTopology';
 import type { ClusterSummary } from '../types/topology';
+import { KuInput } from './ui/KuInput';
+import { KuSegmentedControl, type KuSegmentedOption } from './ui/KuSegmentedControl';
 
 interface FilterBarProps {
   filters: TopologyFilters;
@@ -13,6 +15,10 @@ interface FilterBarProps {
   onFiltersChange: (filters: TopologyFilters) => void;
   onColorModeChange: (mode: ColorMode) => void;
 }
+
+const colorModeOptions: Array<KuSegmentedOption<ColorMode>> = (
+  ['status', 'cluster', 'namespace', 'kind', 'node'] as ColorMode[]
+).map((value) => ({ value, label: colorModeLabel(value) }));
 
 export function FilterBar({
   filters,
@@ -27,13 +33,13 @@ export function FilterBar({
 }: FilterBarProps) {
   return (
     <section className="ku-panel p-3 sm:p-4">
-      <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-[minmax(220px,1fr)_150px_165px_150px_145px_135px_310px]">
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2 2xl:grid-cols-[minmax(220px,1fr)_150px_165px_150px_145px_135px_310px]">
         <label className="block">
           <span className="mb-1.5 block text-xs font-semibold text-[rgba(60,60,67,0.72)]">검색</span>
           <span className="relative block">
             <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[rgba(60,60,67,0.45)]" size={17} />
-            <input
-              className="ku-field w-full pl-9"
+            <KuInput
+              className="w-full pl-9"
               value={filters.query}
               onChange={(event) => onFiltersChange({ ...filters, query: event.target.value })}
               placeholder="리소스 검색"
@@ -123,20 +129,13 @@ export function FilterBar({
 
         <div className="block">
           <span className="mb-1.5 block text-xs font-semibold text-[rgba(60,60,67,0.72)]">색상 기준</span>
-          <div className="grid grid-cols-5 rounded-[11px] border border-[rgba(60,60,67,0.16)] bg-[rgba(242,242,247,0.72)] p-1">
-            {(['status', 'cluster', 'namespace', 'kind', 'node'] as ColorMode[]).map((mode) => (
-              <button
-                key={mode}
-                className={`h-8 rounded-[8px] px-2 text-xs font-semibold transition ${
-                  colorMode === mode ? 'bg-[#1d1d1f] text-white shadow-sm' : 'text-[rgba(60,60,67,0.72)] hover:bg-white/80'
-                }`}
-                type="button"
-                onClick={() => onColorModeChange(mode)}
-              >
-                {colorModeLabel(mode)}
-              </button>
-            ))}
-          </div>
+          <KuSegmentedControl
+            ariaLabel="토폴로지 색상 기준"
+            className="grid-cols-5"
+            options={colorModeOptions}
+            value={colorMode}
+            onChange={onColorModeChange}
+          />
         </div>
       </div>
     </section>

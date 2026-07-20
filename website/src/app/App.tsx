@@ -389,7 +389,11 @@ function Dashboard() {
   }, []);
 
   return (
-    <main className="ku-app-shell text-[#1e2b3c]" data-brand-theme={brandTheme}>
+    <main
+      className="ku-app-shell text-[#1e2b3c]"
+      data-brand-theme={brandTheme}
+      data-theme={brandTheme === 'radar' ? 'dark' : 'light'}
+    >
       <AppHeader
         autoRefresh={autoRefresh}
         brandTheme={brandTheme}

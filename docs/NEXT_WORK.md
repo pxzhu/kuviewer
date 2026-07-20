@@ -4,7 +4,13 @@
 
 ## Recommended Order
 
-1. Live Kubernetes connection verification
+1. HeroUI UI migration
+   - HeroUI v3, React 19, Tailwind CSS v4 foundation과 앱 header/source/token/search/segmented controls 전환은 완료했다.
+   - B/D theme token은 HeroUI light/dark token과 연결하고 component subpath import 및 필요한 CSS만 포함한다.
+   - 다음 배치는 native select와 Resource Explorer 공통 control, 이후 snapshot/topology controls, desktop-only panel 순서로 전환한다.
+   - 각 배치는 기존 test id, keyboard, storage/API 경계를 유지하고 desktop/mobile visual smoke와 중간 폭 overflow를 검증한다.
+
+2. Live Kubernetes connection verification
    - Native Kubernetes와 local k3s 검증은 완료했다. AKS에서 same-origin/API-base live mode를 추가 검증한다.
    - k3s smoke는 capability/RBAC, Events, fixed Pod logs, cache miss/hit, cursor pagination, CRD discovery와 Secret value 비노출을 실제 API로 검증한다.
    - 임시 namespace/ClusterRole/Binding/token/log에는 식별 가능한 smoke 범위와 trap 정리를 적용하며 기본적으로 잔여물을 남기지 않는다.
@@ -38,7 +44,7 @@
    - PV/PVC/StorageClass summary는 live/upload 독립 module에서 quantity, access/volume mode, phase, reclaim/binding policy, provisioner와 collection 상한을 검증한다. CSI source, claimRef, parameters, mount option, storage Secret reference와 status message는 보존하지 않고 malformed spec은 warning/invalid summary와 storage edge 중단으로 fail-closed 처리한다.
    - ConfigMap summary는 live/upload 독립 module에서 data/binaryData key 문법, 중복, 합계 4,096개, immutable 값을 검증한다. live provider는 value를 디코딩·보존하지 않고 key index만 만들며 upload parser도 topology build 전에 value를 폐기한다. malformed map은 warning/invalid summary와 kind-level diagnostic으로 fail-closed 처리한다. 다음 provider 감사는 upload Secret data/stringData 값을 parse 직후 폐기하는 type/key-count 경계를 우선한다.
 
-2. Resource Explorer panel extraction
+3. Resource Explorer panel extraction
    - Resource fetch/pagination abort, selection anchor, keyboard/bulk action은 controller hook으로 분리됐다.
    - Resource list filtering/sorting/preferences/selection/export 모델은 feature module과 direct unit test로 분리됐다.
    - Events/Logs 요청·취소·stream 상태는 controller hook으로 분리됐다.
@@ -60,7 +66,7 @@
    - API/storage/wire shape 변경 없이 shell은 controller 조정과 detail/list 연결만 담당한다.
    - 리소스 목록·saved view·Events·Logs export는 공용 browser download helper를 사용해 Blob URL lifecycle을 한 경계에서 관리한다.
 
-3. Frontend regression coverage
+4. Frontend regression coverage
    - App/Vite TypeScript config는 `noUnusedLocals`와 `noUnusedParameters`를 강제해 미사용 import, type, helper, controller return을 CI에서 차단한다.
    - `npm run test:unit`은 Desktop safe view와 diagnostic preset/reorder test-id, snapshot metadata/report summary, CSV 방어, Resource detail activity, saved-view model/storage helper를 검증한다.
    - Resource primary/page request generation, abort, stale completion 방지는 coordinator direct unit test로 검증한다.
@@ -73,7 +79,7 @@
    - NetworkPolicy LabelSelector 평가는 독립 pure module에서 Kubernetes key/value/operator 문법, namespace scope, malformed/oversized fail-closed 동작을 검증한다.
    - Visual smoke는 주요 화면과 브라우저 통합에 집중해 CI 시간을 관리한다.
 
-4. Desktop prototype scope reduction
+5. Desktop prototype scope reduction
    - Web product path는 standalone web/server를 유지하며 SSH/CM controls를 노출하지 않는다.
    - Desktop CM/SSH는 public installer가 없는 local prototype이다.
    - Local sidecar, direct Kubernetes bearer profile command, legacy browser server profile UI와 stale keychain smoke는 제거됐다.
@@ -84,14 +90,14 @@
    - Saved-layout state/import conflict/selection controller와 transient focus/keyboard/drag reorder controller가 분리됐다. 실제 CM 사용 흐름 검증 후 prototype 유지 또는 archive 범위를 결정한다.
    - App shell에 있던 session/runtime load, subscription, credential/check/start/stop action은 desktop-only controller hook으로 분리됐으며 Tauri API의 lazy 경계는 유지한다.
 
-5. Snapshot comparison follow-up
+6. Snapshot comparison follow-up
    - Metadata-only history export는 완료됐다.
    - 검증된 Diff JSON 두 개의 exported/resource/relation/cluster 및 change-type 요약 증감 비교를 지원한다.
    - Report 비교 모델은 raw item payload를 전달하지 않고 safe count summary만 생성한다.
    - History와 선택값은 저장하지 않고 Secret 값은 모든 비교/export/import에서 제외한다.
    - 스코프·변경 유형·검색·관계 유형 필터와 count 계산은 pure view model과 direct unit test로 분리돼 UI component가 safe result 렌더만 담당한다.
 
-6. Local automation hygiene
+7. Local automation hygiene
    - Telegram CLI는 reusable helper, direct unit test, bounded remote error code, required token-source guard를 사용한다.
    - SSH banner/endpoint diagnostics는 공용 probe helper와 allowlisted network reason code를 사용한다.
    - Desktop browser smoke의 HTTP readiness는 공용 helper에서 URL scheme과 timeout을 제한하고 원격 오류 원문을 버린다.

@@ -17,6 +17,10 @@ import type { DesktopCmSession, DesktopCmSessionInput, DesktopCmSessionRuntimePr
 import type { TopologySourceMode } from '../features/topology/useTopology';
 import type { UploadedTopologyState } from '../features/upload/parseKubernetesFiles';
 import { fetchConnectorStatusWithToken } from '../services/statusApi';
+import { KuButton } from './ui/KuButton';
+import { KuInput } from './ui/KuInput';
+import { KuSegmentedControl, type KuSegmentedOption } from './ui/KuSegmentedControl';
+import { KuChip, KuSurface } from './ui/KuSurface';
 
 const DesktopCmSessionPanel = lazy(async () => {
   const module = await import('./DesktopCmSessionPanel');
@@ -55,10 +59,10 @@ interface SourceModeBarProps {
   onLiveLock: () => void;
 }
 
-const modeOptions: Array<{ mode: TopologySourceMode; label: string; icon: typeof UploadCloud }> = [
-  { mode: 'upload', label: 'YAML 업로드', icon: UploadCloud },
-  { mode: 'live', label: '실시간 클러스터', icon: Server },
-  { mode: 'mock', label: '목업 데모', icon: Boxes },
+const modeOptions: Array<KuSegmentedOption<TopologySourceMode>> = [
+  { value: 'upload', label: 'YAML 업로드', icon: UploadCloud, testId: 'source-mode-upload' },
+  { value: 'live', label: '실시간 클러스터', icon: Server, testId: 'source-mode-live' },
+  { value: 'mock', label: '목업 데모', icon: Boxes, testId: 'source-mode-mock' },
 ];
 
 export function SourceModeBar({
@@ -133,58 +137,45 @@ export function SourceModeBar({
   };
 
   return (
-    <section className="ku-panel overflow-hidden">
-      <div className="grid gap-3 p-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center lg:p-4">
+    <KuSurface className="overflow-hidden" role="region" aria-label="데이터 소스">
+      <div className="grid gap-3 p-3 lg:p-4 2xl:grid-cols-[minmax(0,1fr)_auto] 2xl:items-center">
         <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center">
-          <div className="grid w-full grid-cols-3 rounded-[12px] border border-[rgba(60,60,67,0.14)] bg-[rgba(242,242,247,0.78)] p-1 sm:w-auto">
-            {modeOptions.map((option) => {
-              const Icon = option.icon;
-              const active = mode === option.mode;
-              return (
-                <button
-                  key={option.mode}
-                  className={`inline-flex h-9 min-w-0 items-center justify-center gap-2 rounded-[9px] px-3 text-sm font-semibold transition ${
-                    active ? 'bg-[#1d1d1f] text-white shadow-sm' : 'text-[rgba(60,60,67,0.72)] hover:bg-white/80'
-                  }`}
-                  data-testid={`source-mode-${option.mode}`}
-                  type="button"
-                  onClick={() => onModeChange(option.mode)}
-                >
-                  <Icon className="shrink-0" size={15} aria-hidden="true" />
-                  <span className="truncate">{option.label}</span>
-                </button>
-              );
-            })}
-          </div>
+          <KuSegmentedControl
+            ariaLabel="토폴로지 소스"
+            className="w-full grid-cols-3 sm:w-auto"
+            options={modeOptions}
+            value={mode}
+            onChange={onModeChange}
+          />
 
           <div className="flex min-w-0 flex-wrap items-center gap-2">
-            <button className="ku-control" type="button" onClick={() => uploadInputRef.current?.click()}>
+            <KuButton type="button" onPress={() => uploadInputRef.current?.click()}>
               <FileArchive size={16} aria-hidden="true" />
               YAML/ZIP
-            </button>
-            <button className="ku-control" type="button" onClick={() => importInputRef.current?.click()}>
+            </KuButton>
+            <KuButton type="button" onPress={() => importInputRef.current?.click()}>
               <FileJson size={16} aria-hidden="true" />
               가져오기
-            </button>
-            <button className="ku-control" type="button" disabled={!canExport} onClick={onExportJson}>
+            </KuButton>
+            <KuButton type="button" disabled={!canExport} onPress={onExportJson}>
               <Download size={16} aria-hidden="true" />
               내보내기
-            </button>
+            </KuButton>
             <UploadSummary uploadedState={uploadedState} uploadError={uploadError} />
           </div>
         </div>
 
         <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
           {liveUnlocked ? (
-            <span className="ku-chip border-[rgba(52,199,89,0.22)] bg-[rgba(52,199,89,0.1)] text-[#248a3d]">
+            <KuChip className="border-[rgba(52,199,89,0.22)] bg-[rgba(52,199,89,0.1)] text-[#248a3d]">
               <CheckCircle2 size={13} aria-hidden="true" />
               {mode === 'live' ? '실시간 연결됨' : '실시간 인증 준비됨'}
-            </span>
+            </KuChip>
           ) : (
             <label className="relative min-w-0 sm:w-[260px]">
               <KeyRound className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[rgba(60,60,67,0.46)]" size={15} aria-hidden="true" />
-              <input
-                className="ku-field h-9 w-full pl-9 pr-3"
+              <KuInput
+                className="h-9 w-full pl-9 pr-3"
                 data-testid="live-token-input"
                 placeholder="admin token"
                 type="password"
@@ -199,26 +190,26 @@ export function SourceModeBar({
             </label>
           )}
           {liveUnlocked ? (
-            <button className="ku-control" type="button" onClick={handleLiveLock}>
+            <KuButton type="button" onPress={handleLiveLock}>
               <LockKeyhole size={16} aria-hidden="true" />
               실시간 잠금
-            </button>
+            </KuButton>
           ) : (
-            <button className="ku-control-primary" data-testid="unlock-live" type="button" disabled={checkingToken} onClick={() => void handleLiveUnlock()}>
+            <KuButton data-testid="unlock-live" type="button" disabled={checkingToken} tone="primary" onPress={() => void handleLiveUnlock()}>
               <Server size={16} aria-hidden="true" />
               {checkingToken ? '확인 중' : '실시간 연결'}
-            </button>
+            </KuButton>
           )}
           {tokenError ? (
-            <span className="ku-chip border-[rgba(255,149,0,0.24)] bg-[rgba(255,149,0,0.12)] text-[#b05f00]" title={tokenError}>
+            <KuChip className="border-[rgba(255,149,0,0.24)] bg-[rgba(255,149,0,0.12)] text-[#b05f00]" title={tokenError}>
               <AlertTriangle size={13} aria-hidden="true" />
               {shortError(tokenError)}
-            </span>
+            </KuChip>
           ) : liveSessionMessage ? (
-            <span className="ku-chip border-[rgba(255,149,0,0.24)] bg-[rgba(255,149,0,0.12)] text-[#b05f00]" title={liveSessionMessage}>
+            <KuChip className="border-[rgba(255,149,0,0.24)] bg-[rgba(255,149,0,0.12)] text-[#b05f00]" title={liveSessionMessage}>
               <AlertTriangle size={13} aria-hidden="true" />
               {liveSessionMessage}
-            </span>
+            </KuChip>
           ) : null}
         </div>
       </div>
@@ -227,8 +218,8 @@ export function SourceModeBar({
         <div className="grid gap-3 border-t border-[rgba(60,60,67,0.1)] bg-white/45 px-3 py-3 md:grid-cols-[minmax(160px,240px)_minmax(160px,240px)_minmax(0,1fr)] lg:px-4">
           <label className="min-w-0">
             <span className="ku-meta">Cluster name</span>
-            <input
-              className="ku-field mt-1 h-9 w-full"
+            <KuInput
+              className="mt-1 h-9 w-full"
               data-testid="upload-cluster-name"
               placeholder="uploaded-bundle"
               value={uploadClusterName}
@@ -237,8 +228,8 @@ export function SourceModeBar({
           </label>
           <label className="min-w-0">
             <span className="ku-meta">Cluster id</span>
-            <input
-              className="ku-field mt-1 h-9 w-full font-mono"
+            <KuInput
+              className="mt-1 h-9 w-full font-mono"
               data-testid="upload-cluster-id"
               placeholder="uploaded-bundle"
               value={uploadClusterId}
@@ -302,30 +293,30 @@ export function SourceModeBar({
           }
         }}
       />
-    </section>
+    </KuSurface>
   );
 }
 
 function UploadSummary({ uploadedState, uploadError }: { uploadedState: UploadedTopologyState | null; uploadError: string }) {
   if (uploadError) {
     return (
-      <span className="ku-chip border-[rgba(255,149,0,0.24)] bg-[rgba(255,149,0,0.12)] text-[#b05f00]" title={uploadError}>
+      <KuChip className="border-[rgba(255,149,0,0.24)] bg-[rgba(255,149,0,0.12)] text-[#b05f00]" title={uploadError}>
         <AlertTriangle size={13} aria-hidden="true" />
         업로드 오류
-      </span>
+      </KuChip>
     );
   }
 
   if (!uploadedState) {
-    return <span className="ku-chip">업로드 없음</span>;
+    return <KuChip>업로드 없음</KuChip>;
   }
 
   const warningCount = uploadedState.warnings.length;
   return (
-    <span className={`ku-chip ${warningCount ? 'border-[rgba(255,149,0,0.24)] bg-[rgba(255,149,0,0.12)] text-[#b05f00]' : ''}`} title={uploadedState.warnings.slice(0, 3).join('\n')}>
+    <KuChip className={warningCount ? 'border-[rgba(255,149,0,0.24)] bg-[rgba(255,149,0,0.12)] text-[#b05f00]' : ''} title={uploadedState.warnings.slice(0, 3).join('\n')}>
       {warningCount ? <AlertTriangle size={13} aria-hidden="true" /> : <CheckCircle2 size={13} aria-hidden="true" />}
       리소스 {uploadedState.snapshot.nodes.length}개 · 파일 {uploadedState.files.length}개 · 경고 {warningCount}개
-    </span>
+    </KuChip>
   );
 }
 
@@ -346,19 +337,19 @@ function UploadWarnings({
 
   return (
     <div className="min-w-0 self-end">
-      <button
-        className={`inline-flex h-9 max-w-full items-center gap-2 rounded-[10px] border px-3 text-sm font-semibold transition ${
+      <KuButton
+        className={`h-9 max-w-full ${
           warnings.length ? 'border-[rgba(255,149,0,0.24)] bg-[rgba(255,149,0,0.12)] text-[#b05f00]' : 'border-[rgba(52,199,89,0.22)] bg-[rgba(52,199,89,0.1)] text-[#248a3d]'
         }`}
         data-testid="upload-warning-toggle"
         type="button"
         aria-expanded={open}
-        onClick={onToggle}
+        onPress={onToggle}
       >
         {warnings.length ? <AlertTriangle size={14} aria-hidden="true" /> : <CheckCircle2 size={14} aria-hidden="true" />}
         <span className="truncate">{warnings.length ? `업로드 진단 ${warnings.length}개` : '업로드 진단 정상'}</span>
         <ChevronDown className={`shrink-0 transition ${open ? 'rotate-180' : ''}`} size={14} aria-hidden="true" />
-      </button>
+      </KuButton>
 
       {open ? (
         <div className="mt-2 rounded-[11px] border border-[rgba(60,60,67,0.12)] bg-white/88 p-3 shadow-[0_4px_16px_rgba(0,0,0,0.04)]" data-testid="upload-warning-panel">
