@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { fetchResourceLogs, streamResourceLogs } from '../../services/resourceApi';
 import type { ResourceExplorerItem } from '../../types/resourceExplorer';
+import { downloadTextFile } from '../../features/export/downloadTextFile';
 import {
   collectLogSearchMatches,
-  downloadTextFile,
   filterLogLines,
   logDownloadFileName,
   parseLogLines,

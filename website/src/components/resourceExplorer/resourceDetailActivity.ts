@@ -186,18 +186,6 @@ export function eventExportJson(items: EventListItem[]) {
   return `${JSON.stringify(eventExportRows(items), null, 2)}\n`;
 }
 
-export function downloadTextFile(content: string, mimeType: string, fileName: string) {
-  const blob = new Blob([content], { type: mimeType });
-  const url = window.URL.createObjectURL(blob);
-  const anchor = document.createElement('a');
-  anchor.href = url;
-  anchor.download = fileName;
-  document.body.append(anchor);
-  anchor.click();
-  anchor.remove();
-  window.setTimeout(() => window.URL.revokeObjectURL(url), 0);
-}
-
 export function safeFileSlug(value: string, fallback: string) {
   const slug = value
     .trim()

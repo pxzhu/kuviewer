@@ -50,6 +50,7 @@
    - Saved-view control/summary와 folder/search/bulk/list JSX는 각각 표시 전용 panel/collection component로 분리됐다.
    - App sticky header와 connector/error 표시 formatter는 표시 component와 direct-tested pure module로 분리됐다.
    - API/storage/wire shape 변경 없이 shell은 controller 조정과 detail/list 연결만 담당한다.
+   - 리소스 목록·saved view·Events·Logs export는 공용 browser download helper를 사용해 Blob URL lifecycle을 한 경계에서 관리한다.
 
 3. Frontend regression coverage
    - App/Vite TypeScript config는 `noUnusedLocals`와 `noUnusedParameters`를 강제해 미사용 import, type, helper, controller return을 CI에서 차단한다.
@@ -79,6 +80,7 @@
    - 검증된 Diff JSON 두 개의 exported/resource/relation/cluster 및 change-type 요약 증감 비교를 지원한다.
    - Report 비교 모델은 raw item payload를 전달하지 않고 safe count summary만 생성한다.
    - History와 선택값은 저장하지 않고 Secret 값은 모든 비교/export/import에서 제외한다.
+   - 스코프·변경 유형·검색·관계 유형 필터와 count 계산은 pure view model과 direct unit test로 분리돼 UI component가 safe result 렌더만 담당한다.
 
 6. Local automation hygiene
    - Telegram CLI는 reusable helper, direct unit test, bounded remote error code, required token-source guard를 사용한다.

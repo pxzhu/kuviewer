@@ -10,6 +10,7 @@ import {
 } from '../features/resources/resourceViewPresets';
 import { resourceListAllValue } from '../features/resources/resourceListModel';
 import { useResourceListController } from '../features/resources/useResourceListController';
+import { downloadTextFile } from '../features/export/downloadTextFile';
 import { ResourceExplorerFiltersPanel } from './resourceExplorer/ResourceExplorerFiltersPanel';
 import { ResourceExplorerListPanel } from './resourceExplorer/ResourceExplorerListPanel';
 import { ResourceExplorerListToolbar } from './resourceExplorer/ResourceExplorerListToolbar';
@@ -235,16 +236,4 @@ export function ResourceExplorer({
       </Suspense>
     </section>
   );
-}
-
-function downloadTextFile(content: string, mimeType: string, fileName: string) {
-  const blob = new Blob([content], { type: mimeType });
-  const url = window.URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = fileName;
-  document.body.append(anchor);
-  anchor.click();
-  anchor.remove();
-  window.setTimeout(() => window.URL.revokeObjectURL(url), 0);
 }
