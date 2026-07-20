@@ -41,6 +41,12 @@ import {
   uploadIngressSummary,
 } from './ingressSchema.ts';
 import {
+  uploadHPAScaleTarget,
+  uploadHPASpecIsValid,
+  uploadHPAStatus,
+  uploadHPASummary,
+} from './hpaSchema.ts';
+import {
   uploadServiceSelector,
   uploadServiceSpecIsValid,
   uploadServiceSummary,
@@ -237,8 +243,12 @@ function addObjectEdges(context: BuildContext, object: KubeObject, customResourc
     });
   }
   if (kind === 'HorizontalPodAutoscaler') {
-    const targetKind = normalizeKind(stringAt(object, ['spec', 'scaleTargetRef', 'kind']));
-    const targetName = stringAt(object, ['spec', 'scaleTargetRef', 'name']);
+    if (!uploadHPASpecIsValid(object)) {
+      return;
+    }
+    const target = uploadHPAScaleTarget(object);
+    const targetKind = normalizeKind(target?.kind);
+    const targetName = target?.name || '';
     if (targetKind && targetName) {
       ensureReferenceNode(context, targetKind, namespace, targetName);
       addEdge(context, 'targets-scale', objectId, id(context.clusterId, namespace, targetKind, targetName), 'HorizontalPodAutoscaler.spec.scaleTargetRef', 'observed');
@@ -480,11 +490,7 @@ function objectSummary(kind: ResourceKind, object: KubeObject, customResourceDef
     };
   }
   if (kind === 'HorizontalPodAutoscaler') {
-    return {
-      target: `${stringAt(object, ['spec', 'scaleTargetRef', 'kind']) || '-'}/${stringAt(object, ['spec', 'scaleTargetRef', 'name']) || '-'}`,
-      replicas: `${numberAt(object, ['status', 'currentReplicas']) ?? 0}/${numberAt(object, ['status', 'desiredReplicas']) ?? 0}`,
-      range: `${numberAt(object, ['spec', 'minReplicas']) ?? 1}-${numberAt(object, ['spec', 'maxReplicas']) ?? 0}`,
-    };
+    return uploadHPASummary(object);
   }
   if (kind === 'NetworkPolicy') {
     const policyTypes = networkPolicyTypes(object);
@@ -587,9 +593,7 @@ function objectStatus(kind: ResourceKind, object: KubeObject): ResourceStatus {
     return succeeded >= completions ? 'healthy' : 'warning';
   }
   if (kind === 'HorizontalPodAutoscaler') {
-    const desired = numberAt(object, ['status', 'desiredReplicas']) ?? 0;
-    const current = numberAt(object, ['status', 'currentReplicas']) ?? 0;
-    return desired === 0 || current >= desired ? 'healthy' : 'warning';
+    return uploadHPAStatus(object);
   }
   if (kind === 'PersistentVolumeClaim') {
     const phase = stringAt(object, ['status', 'phase']);

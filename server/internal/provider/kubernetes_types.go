@@ -316,14 +316,35 @@ type horizontalPodAutoscalerList = kubeList[horizontalPodAutoscalerResource]
 type horizontalPodAutoscalerResource struct {
 	Metadata metadata `json:"metadata"`
 	Spec     struct {
-		ScaleTargetRef objectReference `json:"scaleTargetRef"`
-		MinReplicas    *int            `json:"minReplicas"`
-		MaxReplicas    int             `json:"maxReplicas"`
+		ScaleTargetRef hpaScaleTargetReference `json:"scaleTargetRef"`
+		MinReplicas    *int                    `json:"minReplicas"`
+		MaxReplicas    *int                    `json:"maxReplicas"`
+		Metrics        []hpaMetricSpec         `json:"metrics"`
 	} `json:"spec"`
 	Status struct {
-		CurrentReplicas int `json:"currentReplicas"`
-		DesiredReplicas int `json:"desiredReplicas"`
+		CurrentReplicas *int              `json:"currentReplicas"`
+		DesiredReplicas *int              `json:"desiredReplicas"`
+		CurrentMetrics  []hpaMetricStatus `json:"currentMetrics"`
+		Conditions      []condition       `json:"conditions"`
 	} `json:"status"`
+}
+
+type hpaScaleTargetReference struct {
+	APIVersion string `json:"apiVersion"`
+	Kind       string `json:"kind"`
+	Name       string `json:"name"`
+}
+
+type hpaMetricSpec struct {
+	Valid      bool
+	SourceType string
+	TargetType string
+}
+
+type hpaMetricStatus struct {
+	Valid       bool
+	SourceType  string
+	CurrentType string
 }
 
 type ingressList = kubeList[ingressResource]

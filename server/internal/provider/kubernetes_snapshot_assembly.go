@@ -118,11 +118,10 @@ func buildKubernetesSnapshot(clusterID string, clusterName string, resources kub
 		})
 	}
 	for _, hpa := range resources.hpas.Items {
-		builder.addResourceNode("HorizontalPodAutoscaler", hpa.Metadata, hpaStatus(hpa), map[string]interface{}{
-			"target":   kubernetesScaleTargetSummary(hpa.Spec.ScaleTargetRef.Kind, hpa.Spec.ScaleTargetRef.Name),
-			"replicas": formatReplicas(hpa.Status.CurrentReplicas, hpa.Status.DesiredReplicas),
-			"range":    formatReplicaRange(hpa.Spec.MinReplicas, hpa.Spec.MaxReplicas),
-		})
+		_, added := builder.addTrackedResourceNode("HorizontalPodAutoscaler", hpa.Metadata, hpaStatus(hpa), hpaSummary(hpa))
+		if added && (!validHPASpec(hpa) || !validHPAStatus(hpa)) {
+			builder.recordResourceIssue("HorizontalPodAutoscaler")
+		}
 	}
 	for _, serviceAccount := range resources.serviceAccounts.Items {
 		builder.addResourceNode("ServiceAccount", serviceAccount.Metadata, "healthy", map[string]interface{}{
@@ -396,11 +395,11 @@ func addKubernetesSnapshotEdges(builder *graphBuilder, resources kubernetesSnaps
 		if !builder.claimResourceNode(hpaID, seenHPAs) {
 			continue
 		}
-		targetKind := hpa.Spec.ScaleTargetRef.Kind
-		targetName := hpa.Spec.ScaleTargetRef.Name
-		if !validKubernetesKind(targetKind) || !validKubernetesReferenceName(targetName) {
+		if !validHPASpec(hpa) {
 			continue
 		}
+		targetKind := hpa.Spec.ScaleTargetRef.Kind
+		targetName := hpa.Spec.ScaleTargetRef.Name
 		builder.ensureReferenceNode(targetKind, hpa.Metadata.Namespace, targetName)
 		builder.addEdge("targets-scale", hpaID, builder.nodeID(targetKind, hpa.Metadata.Namespace, targetName), "HorizontalPodAutoscaler.spec.scaleTargetRef", "observed")
 	}

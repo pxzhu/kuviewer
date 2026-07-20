@@ -168,9 +168,9 @@ func TestBuildKubernetesSnapshotMarksMalformedStatusScalarsInvalid(t *testing.T)
 	resources.daemonSets.Items = []daemonSetResource{daemonSet}
 	hpa := horizontalPodAutoscalerResource{Metadata: metadata{Name: "api", Namespace: "app"}}
 	hpa.Spec.MinReplicas = &negative
-	hpa.Spec.MaxReplicas = -1
-	hpa.Status.CurrentReplicas = -1
-	hpa.Status.DesiredReplicas = -1
+	hpa.Spec.MaxReplicas = &negative
+	hpa.Status.CurrentReplicas = &negative
+	hpa.Status.DesiredReplicas = &negative
 	resources.hpas.Items = []horizontalPodAutoscalerResource{hpa}
 
 	snapshot := buildKubernetesSnapshot("cluster-a", "Cluster A", resources)

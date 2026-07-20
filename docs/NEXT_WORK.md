@@ -30,7 +30,8 @@
    - Workload/Pod status count는 공통 non-negative bounded scalar 경계를 사용하고 malformed 값은 `invalid` summary와 warning 상태로 fail-closed 처리한다.
    - Service schema/summary/status는 live/upload 독립 module에서 type 기본값, canonical single/dual-stack ClusterIP, IP family/policy 대응, ExternalName, port/name/protocol, targetPort/nodePort/appProtocol, internal/external traffic policy, healthCheckNodePort, loadBalancerClass/node-port allocation, ClientIP session timeout과 selector syntax/cardinality를 검증한다. `externalIPs`·source ranges·trafficDistribution은 bounded allowlist/count summary로 처리하고 deprecated `loadBalancerIP`는 주소를 보존하지 않는 marker로만 decode한다. invalid spec과 ExternalName selector는 Pod 비교 전에 차단하고 원격 원문 대신 `invalid`/safe summary와 kind-level diagnostic만 남긴다.
    - Ingress schema/summary/status도 live/upload 독립 module에서 class, rule/path, Service/resource backend와 port, TLS host/Secret, collection 상한을 검증한다. status load-balancer IP/hostname 원문은 보존하지 않고 address/port/error count만 요약하며 malformed spec/status는 warning과 kind-level diagnostic으로 표시하고 backend edge를 만들지 않는다.
-   - Gateway listener/address와 route parent/backend/status condition도 live/upload 독립 module에서 공식 collection/문법 경계를 검증한다. 주소와 condition message 원문은 보존하지 않고 type/count만 요약하며 malformed spec/status는 warning diagnostic과 edge 추론 중단으로 fail-closed 처리한다. 다음 provider 감사는 HPA metric target/status 또는 workload image/reference summary 경계를 우선한다.
+   - Gateway listener/address와 route parent/backend/status condition도 live/upload 독립 module에서 공식 collection/문법 경계를 검증한다. 주소와 condition message 원문은 보존하지 않고 type/count만 요약하며 malformed spec/status는 warning diagnostic과 edge 추론 중단으로 fail-closed 처리한다.
+   - HPA target/metric/status도 live/upload 독립 module에서 scale target API version, replica range, metric source/target/current type, Quantity와 condition collection을 검증한다. metric name·selector·quantity·condition message 원문은 보존하지 않고 type/count만 요약하며 malformed spec/status는 warning diagnostic과 edge 추론 중단으로 fail-closed 처리한다. 다음 provider 감사는 workload image/reference summary 경계를 우선한다.
 
 2. Resource Explorer panel extraction
    - Resource fetch/pagination abort, selection anchor, keyboard/bulk action은 controller hook으로 분리됐다.
@@ -63,6 +64,7 @@
    - Upload topology JSON import는 독립 sanitizer와 direct unit test로 collection cap, duplicate/dangling reference 거부, Secret/민감 metadata redaction을 검증한다.
    - CustomResource reference inference는 독립 bounded traversal과 direct unit test로 native/custom scope, cycle, depth, path, result cap을 검증한다.
    - Upload Gateway listener/address와 route parent/backend/status condition은 독립 parser module과 malformed-input/topology integration test로 검증한다.
+   - Upload HPA target/metric/status는 독립 parser module과 malformed-input/topology integration test로 검증한다.
    - NetworkPolicy LabelSelector 평가는 독립 pure module에서 Kubernetes key/value/operator 문법, namespace scope, malformed/oversized fail-closed 동작을 검증한다.
    - Visual smoke는 주요 화면과 브라우저 통합에 집중해 CI 시간을 관리한다.
 
