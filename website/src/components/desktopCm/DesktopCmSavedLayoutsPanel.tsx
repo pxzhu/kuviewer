@@ -37,7 +37,7 @@ interface DesktopCmSavedLayoutsPanelActions {
   onResolveConflicts: (mode: DesktopCmSessionLayoutConflictResolution, conflictName?: string) => void;
 }
 
-interface DesktopCmSavedLayoutsPanelProps {
+export interface DesktopCmSavedLayoutsPanelProps {
   importInputRef: Ref<HTMLInputElement>;
   listRef: Ref<HTMLDivElement>;
   presetName: string;
