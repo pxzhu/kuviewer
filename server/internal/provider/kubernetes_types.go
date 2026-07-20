@@ -1,12 +1,5 @@
 package provider
 
-type customResourceReference struct {
-	kind        string
-	namespace   string
-	name        string
-	sourceField string
-}
-
 type kubeVersion struct {
 	GitVersion string `json:"gitVersion"`
 }
