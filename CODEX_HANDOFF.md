@@ -72,6 +72,7 @@
 - Kubernetes capability probing은 `kubernetes_capabilities.go`, Events/fixed/follow Pod logs와 line cap은 `kubernetes_activity.go`가 담당한다. 빈 Event ref와 nil stream callback은 네트워크 호출 전에 fail-closed 처리한다.
 - Kubernetes list pagination은 `kubernetes_pagination.go`에서 selector/continue token을 보존하면서 page/item/byte/token cap을 적용한다. malformed query, nil client/output, invalid limits는 HTTP 요청 전에 bounded error로 거부한다.
 - Kubernetes API 설정, TLS transport, bounded JSON/text/stream 처리는 `kubernetes_client.go`에 격리했다. API server URL은 scheme/host/userinfo/query/fragment를 검증하고 token/CA 파일 및 PEM 오류는 로컬 경로를 포함하지 않는 safe code로만 반환한다.
+- Kubernetes graph node/edge dedupe, dangling-edge 방지, reference placeholder, layout lane은 `kubernetes_graph.go`가 담당한다. 전달받은 node metadata를 복제하고 Secret reference는 `values=hidden`만 유지하며 전용 테스트로 불변식을 검증한다.
 
 ## Runtime Boundaries
 
