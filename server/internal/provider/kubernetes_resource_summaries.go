@@ -10,7 +10,6 @@ const (
 	maxConditionSummaryItems = 64
 	maxContainerSummaryItems = 256
 	maxOwnerSummaryItems     = 64
-	maxRestartCount          = 1_000_000_000
 )
 
 func nodeStatus(node nodeResource) string {
@@ -30,19 +29,6 @@ func nodeReady(conditions []condition) bool {
 		}
 	}
 	return false
-}
-
-func podStatus(pod podResource) string {
-	if pod.Status.Phase == "Failed" {
-		return "error"
-	}
-	if pod.Status.Phase == "Succeeded" {
-		return "healthy"
-	}
-	if pod.Status.Phase != "Running" || !validContainerStatuses(pod.Status.ContainerStatuses) || readyContainers(pod.Status.ContainerStatuses) != len(pod.Status.ContainerStatuses) {
-		return "warning"
-	}
-	return "healthy"
 }
 
 func conditionSummary(conditions []condition) string {
@@ -157,48 +143,6 @@ func pvStatus(pv pvResource) string {
 	return "warning"
 }
 
-func readyContainers(statuses []containerStatus) int {
-	if len(statuses) > maxContainerSummaryItems {
-		return 0
-	}
-	ready := 0
-	for _, status := range statuses {
-		if status.Ready {
-			ready++
-		}
-	}
-	return ready
-}
-
-func validContainerStatuses(statuses []containerStatus) bool {
-	if len(statuses) == 0 || len(statuses) > maxContainerSummaryItems {
-		return false
-	}
-	for _, status := range statuses {
-		if !validSummaryCount(status.RestartCount) {
-			return false
-		}
-	}
-	return true
-}
-
-func restartCount(statuses []containerStatus) int {
-	if len(statuses) > maxContainerSummaryItems {
-		return 0
-	}
-	restarts := 0
-	for _, status := range statuses {
-		if status.RestartCount <= 0 {
-			continue
-		}
-		if status.RestartCount > maxRestartCount-restarts {
-			return maxRestartCount
-		}
-		restarts += status.RestartCount
-	}
-	return restarts
-}
-
 func containerNames(containers []container) []string {
 	if len(containers) > maxContainerSummaryItems {
 		return []string{}
@@ -252,20 +196,6 @@ func formatReplicaRange(minimum *int, maximum int) string {
 
 func validSummaryCount(value int) bool {
 	return value >= 0 && int64(value) <= maxSummaryInteger
-}
-
-func containerReadinessSummary(statuses []containerStatus) string {
-	if !validContainerStatuses(statuses) {
-		return "invalid"
-	}
-	return formatReplicas(readyContainers(statuses), len(statuses))
-}
-
-func restartSummary(statuses []containerStatus) interface{} {
-	if !validContainerStatuses(statuses) {
-		return "invalid"
-	}
-	return restartCount(statuses)
 }
 
 func boolSummary(value *bool) string {

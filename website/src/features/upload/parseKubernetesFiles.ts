@@ -57,6 +57,7 @@ import {
   uploadWorkloadSummary,
   uploadWorkloadTemplateIsValid,
 } from './workloadSchema.ts';
+import { uploadPodRuntimeStatus, uploadPodRuntimeSummary } from './podRuntimeSchema.ts';
 export { importTopologySnapshot } from './importTopologySnapshot.ts';
 
 export interface UploadedTopologyState {
@@ -505,7 +506,13 @@ function objectSummary(kind: ResourceKind, object: KubeObject, customResourceDef
   if (kind === 'Pod') {
     const containers = containerNames(readAt(object, ['spec', 'containers']));
     const initContainers = containerNames(readAt(object, ['spec', 'initContainers']));
-    return { phase: stringAt(object, ['status', 'phase']) || 'Pending', node: stringAt(object, ['spec', 'nodeName']) || '-', containers: containers.length, containerNames: containers, initContainers };
+    return {
+      ...uploadPodRuntimeSummary(object),
+      node: stringAt(object, ['spec', 'nodeName']) || '-',
+      containers: containers.length,
+      containerNames: containers,
+      initContainers,
+    };
   }
   if (kind === 'Service') {
     return uploadServiceSummary(object);
@@ -568,8 +575,7 @@ function objectStatus(kind: ResourceKind, object: KubeObject): ResourceStatus {
     return customResourceStatus(object);
   }
   if (kind === 'Pod') {
-    const phase = stringAt(object, ['status', 'phase']);
-    return phase === 'Running' || phase === 'Succeeded' ? 'healthy' : phase ? 'warning' : 'unknown';
+    return uploadPodRuntimeStatus(object);
   }
   if (kind === 'Service') {
     return uploadServiceSpecIsValid(object) ? 'healthy' : 'warning';

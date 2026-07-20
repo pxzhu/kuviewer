@@ -152,14 +152,36 @@ type localObjectRef struct {
 }
 
 type podStat struct {
-	Phase             string            `json:"phase"`
-	Conditions        []condition       `json:"conditions"`
-	ContainerStatuses []containerStatus `json:"containerStatuses"`
+	Phase                      string            `json:"phase"`
+	Conditions                 []condition       `json:"conditions"`
+	ContainerStatuses          []containerStatus `json:"containerStatuses"`
+	InitContainerStatuses      []containerStatus `json:"initContainerStatuses"`
+	EphemeralContainerStatuses []containerStatus `json:"ephemeralContainerStatuses"`
 }
 
 type containerStatus struct {
-	Ready        bool `json:"ready"`
-	RestartCount int  `json:"restartCount"`
+	Name         string         `json:"name"`
+	Ready        bool           `json:"ready"`
+	RestartCount int            `json:"restartCount"`
+	Image        string         `json:"image"`
+	State        containerState `json:"state"`
+	LastState    containerState `json:"lastState"`
+}
+
+type containerState struct {
+	Waiting    *containerStateWaiting    `json:"waiting"`
+	Running    *struct{}                 `json:"running"`
+	Terminated *containerStateTerminated `json:"terminated"`
+}
+
+type containerStateWaiting struct {
+	Reason string `json:"reason"`
+}
+
+type containerStateTerminated struct {
+	ExitCode *int   `json:"exitCode"`
+	Signal   int    `json:"signal"`
+	Reason   string `json:"reason"`
 }
 
 type serviceList = kubeList[serviceResource]

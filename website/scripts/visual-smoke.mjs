@@ -1706,6 +1706,13 @@ spec:
         claimName: orders-data
 status:
   phase: Running
+  containerStatuses:
+    - name: app
+      ready: true
+      restartCount: 0
+      image: checkout:1.0.0
+      state:
+        running: {}
 ---
 apiVersion: v1
 kind: Pod
@@ -1727,6 +1734,13 @@ spec:
       image: checkout:1.0.0
 status:
   phase: Running
+  containerStatuses:
+    - name: app
+      ready: true
+      restartCount: 1
+      image: checkout:1.0.0
+      state:
+        running: {}
 ---
 apiVersion: v1
 kind: Service
@@ -2024,6 +2038,13 @@ spec:
       image: agent:1.0.0
 status:
   phase: Running
+  containerStatuses:
+    - name: agent
+      ready: true
+      restartCount: 0
+      image: agent:1.0.0
+      state:
+        running: {}
 ---
 apiVersion: v1
 kind: Service

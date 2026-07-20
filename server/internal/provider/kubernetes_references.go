@@ -253,7 +253,7 @@ func serviceEndpointReferencesFromObserved(observedReferences []serviceEndpointR
 			if !labelsMatch(service.Spec.Selector, pod.Metadata.Labels) {
 				continue
 			}
-			if !add(service.Metadata.Namespace, service.Metadata.Name, pod.Metadata.Name, "Service.spec.selector", "inferred", podStatus(pod) == "healthy") {
+			if !add(service.Metadata.Namespace, service.Metadata.Name, pod.Metadata.Name, "Service.spec.selector", "inferred", podRuntimeStatus(analyzePodRuntime(pod.Status)) == "healthy") {
 				return observed
 			}
 		}
