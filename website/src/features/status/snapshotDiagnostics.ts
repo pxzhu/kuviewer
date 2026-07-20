@@ -13,6 +13,7 @@ const reasonLabels: Record<string, string> = {
   request_invalid: '요청 생성 실패',
   request_failed: 'API 요청 실패',
   invalid_item: '유효하지 않은 항목',
+  processing_limit: '처리 상한',
 };
 
 export function snapshotDiagnosticReasonLabel(reason: string) {

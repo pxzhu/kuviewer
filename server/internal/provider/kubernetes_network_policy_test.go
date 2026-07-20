@@ -161,7 +161,7 @@ func TestLabelSelectorSummaryIsDeterministicAndBounded(t *testing.T) {
 func TestNetworkPolicyPeerEdgesRejectOversizedAndMalformedPeers(t *testing.T) {
 	builder := newKubeGraphBuilder("test")
 	policyID := builder.addNode("NetworkPolicy", "checkout", "policy", "healthy", nil, nil)
-	builder.addNode("Pod", "checkout", "api", "healthy", map[string]string{"app": "api"}, nil)
+	builder.addResourceNode("Pod", metadata{Name: "api", Namespace: "checkout", Labels: map[string]string{"app": "api"}}, "healthy", nil)
 	pods := podList{Items: []podResource{{Metadata: metadata{Name: "api", Namespace: "checkout", Labels: map[string]string{"app": "api"}}}}}
 
 	tooManyPeers := make([]networkPolicyPeer, maxNetworkPolicyPeers+1)
@@ -174,5 +174,30 @@ func TestNetworkPolicyPeerEdgesRejectOversizedAndMalformedPeers(t *testing.T) {
 	builder.addNetworkPolicyPeerEdges(policyID, "checkout", malformed, "allows-ingress", "NetworkPolicy.spec.ingress.from", pods, nil)
 	if len(builder.edges) != 0 {
 		t.Fatalf("invalid peers created inferred edges: %#v", builder.edges)
+	}
+}
+
+func TestNetworkPolicyPeerEdgesUseFirstAcceptedUniqueTargets(t *testing.T) {
+	builder := newKubeGraphBuilder("test")
+	policyID := builder.addNode("NetworkPolicy", "checkout", "policy", "healthy", nil, nil)
+	first := podResource{Metadata: metadata{Name: "api", Namespace: "checkout", Labels: map[string]string{"app": "worker"}}}
+	duplicate := podResource{Metadata: metadata{Name: "api", Namespace: "checkout", Labels: map[string]string{"app": "api"}}}
+	invalid := podResource{Metadata: metadata{Name: "bad name", Namespace: "checkout", Labels: map[string]string{"app": "api"}}}
+	builder.addResourceNode("Pod", first.Metadata, "healthy", nil)
+
+	builder.addNetworkPolicyPeerEdges(policyID, "checkout", []networkPolicyPeer{{
+		PodSelector: &labelSelector{MatchLabels: map[string]string{"app": "api"}},
+	}}, "allows-ingress", "NetworkPolicy.spec.ingress.from", podList{Items: []podResource{first, duplicate, invalid}}, nil)
+	if len(builder.edges) != 0 {
+		t.Fatalf("duplicate or invalid peer target created edges: %+v", builder.edges)
+	}
+
+	namespaces := namespaceRecords(namespaceList{Items: []namespace{
+		{Metadata: metadata{Name: "checkout", Labels: map[string]string{"team": "first"}}},
+		{Metadata: metadata{Name: "checkout", Labels: map[string]string{"team": "duplicate"}}},
+		{Metadata: metadata{Name: "bad namespace", Labels: map[string]string{"team": "invalid"}}},
+	}})
+	if len(namespaces) != 1 || namespaces[0].labels["team"] != "first" {
+		t.Fatalf("namespaceRecords() = %+v, want first valid unique namespace", namespaces)
 	}
 }

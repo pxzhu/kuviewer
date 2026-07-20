@@ -129,6 +129,7 @@ func TestSafeSnapshotDiagnosticsValidateAggregateAndBoundOutput(t *testing.T) {
 	values := []topology.SnapshotDiagnostic{
 		{ID: "snapshot/pods", Resource: "Pods", Reason: "invalid_item", Count: maxSnapshotDiagnosticCount},
 		{ID: "snapshot/pods", Resource: "Pods", Reason: "invalid_item", Count: maxSnapshotDiagnosticCount},
+		{ID: "snapshot/endpointslices", Resource: "EndpointSlices", Reason: "processing_limit", Count: 1},
 		{ID: "BAD ID", Resource: "Pods", Reason: "invalid_item", Count: 1},
 		{ID: "snapshot/nodes", Resource: "unsafe resource", Reason: "invalid_item", Count: 1},
 		{ID: "snapshot/nodes", Resource: "Nodes", Reason: "remote_body", Count: 1},
@@ -143,6 +144,9 @@ func TestSafeSnapshotDiagnosticsValidateAggregateAndBoundOutput(t *testing.T) {
 	}
 	if diagnostic := findSnapshotDiagnostic(safe, "snapshot/pods"); diagnostic.Count != maxSnapshotDiagnosticCount {
 		t.Fatalf("aggregated diagnostic count = %+v", diagnostic)
+	}
+	if diagnostic := findSnapshotDiagnostic(safe, "snapshot/endpointslices"); diagnostic.Reason != "processing_limit" || diagnostic.Count != 1 {
+		t.Fatalf("processing-limit diagnostic = %+v", diagnostic)
 	}
 	for _, diagnostic := range safe {
 		if diagnostic.ID == "BAD ID" || diagnostic.Resource == "unsafe resource" || diagnostic.Reason == "remote_body" {

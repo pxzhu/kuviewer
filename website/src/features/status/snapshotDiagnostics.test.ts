@@ -5,6 +5,7 @@ import { snapshotDiagnosticAffectedCount, snapshotDiagnosticReasonLabel } from '
 test('snapshot diagnostics expose only allowlisted display labels', () => {
   assert.equal(snapshotDiagnosticReasonLabel('pagination_incomplete'), '페이지 불완전');
   assert.equal(snapshotDiagnosticReasonLabel('invalid_item'), '유효하지 않은 항목');
+  assert.equal(snapshotDiagnosticReasonLabel('processing_limit'), '처리 상한');
   assert.equal(snapshotDiagnosticReasonLabel('remote body / secret'), '수집 실패');
 });
 

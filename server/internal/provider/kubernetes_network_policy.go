@@ -127,7 +127,12 @@ func labelSelectorExpressionMatches(expression labelSelectorMatchExpression, lab
 
 func namespaceRecords(namespaces namespaceList) []namespaceRecord {
 	records := make([]namespaceRecord, 0, len(namespaces.Items))
+	seen := map[string]bool{}
 	for _, namespace := range namespaces.Items {
+		if !validKubernetesNamespace(namespace.Metadata.Name) || seen[namespace.Metadata.Name] {
+			continue
+		}
+		seen[namespace.Metadata.Name] = true
 		records = append(records, namespaceRecord{
 			name:   namespace.Metadata.Name,
 			labels: labelsOrEmpty(namespace.Metadata.Labels),
