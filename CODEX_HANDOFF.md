@@ -37,7 +37,7 @@
 - Resource list filtering/sorting/preferences/selection/export 모델은 `website/src/features/resources/resourceListModel.ts`에 두고 direct unit test로 검증한다.
 - Saved-view validation/storage/order/import/conflict/team compare 모델은 `website/src/features/resources/resourceViewPresets.ts`에 둔다.
 - Saved-view UI state와 save/import/conflict/team sync/reorder action은 `website/src/features/resources/useResourceViewPresetsController.ts`가 담당한다.
-- Saved-view action/summary/folder/search/bulk/list rendering은 `website/src/components/resourceExplorer/ResourceViewPresetsPanel.tsx`가 담당한다.
+- Saved-view action/summary rendering은 `ResourceViewPresetsPanel.tsx`, folder/search/bulk/list rendering은 `ResourceViewPresetCollection.tsx`가 담당한다.
 - Resource API filter/sort/cursor/facet 계산은 `server/internal/httpapi/resource_list.go`에 두고 HTTP integration과 순수 helper test를 함께 유지한다.
 - Resource detail state는 `useResourceEventsController`, `useResourceLogsController`, `useResourceRelationsController`로 분리되며 각 controller가 resource-bound reset을 소유한다.
 - Events filter/group/notification/export와 표시용 model/action 조립은 `useResourceEventsSectionController.ts`가 담당한다.

@@ -33,7 +33,7 @@
    - Active filter chip 계산은 pure helper와 direct unit test로 분리됐다.
    - Saved-view validation, storage, order/group, import/merge/conflict, team compare 모델은 feature module과 unit test로 분리됐다.
    - Saved-view UI state와 save/import/conflict/team sync/reorder action은 controller hook으로 분리됐다.
-   - Saved-view control/summary/folder/search/bulk/list JSX는 표시 전용 panel component로 분리됐다.
+   - Saved-view control/summary와 folder/search/bulk/list JSX는 각각 표시 전용 panel/collection component로 분리됐다.
    - API/storage/wire shape 변경 없이 shell은 controller 조정과 detail/list 연결만 담당한다.
 
 3. Frontend regression coverage
