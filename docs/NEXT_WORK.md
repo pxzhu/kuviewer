@@ -42,6 +42,7 @@
    - Resource primary/page request generation, abort, stale completion 방지는 coordinator direct unit test로 검증한다.
    - Server pagination/filter/cursor/facet 계산은 별도 Go module과 direct unit test로 분리됐다.
    - Snapshot comparison reducer는 resource/relation/cluster 변화, clone 안정성, Secret-safe diff를 direct unit test로 검증한다.
+   - Upload topology JSON import는 독립 sanitizer와 direct unit test로 collection cap, duplicate/dangling reference 거부, Secret/민감 metadata redaction을 검증한다.
    - Visual smoke는 주요 화면과 브라우저 통합에 집중해 CI 시간을 관리한다.
 
 4. Desktop prototype scope reduction
