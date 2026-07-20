@@ -5,12 +5,8 @@ import type {
   SnapshotEdgeChange,
   SnapshotNodeChange,
 } from '../../features/snapshot/compareSnapshots';
+import type { SnapshotRelationTypeOption } from '../../features/snapshot/snapshotComparisonView';
 import { VirtualizedTable } from './VirtualizedTable';
-
-export interface RelationTypeOption {
-  relation: string;
-  count: number;
-}
 
 export function ResourceChangeTable({
   changes,
@@ -66,7 +62,7 @@ export function RelationTypeFilter({
   onClear,
   onToggle,
 }: {
-  options: RelationTypeOption[];
+  options: SnapshotRelationTypeOption[];
   selected: Set<string>;
   onClear: () => void;
   onToggle: (relation: string) => void;
@@ -218,14 +214,6 @@ export function ClusterChangeTable({ changes }: { changes: SnapshotClusterChange
       }}
     />
   );
-}
-
-export function relationTypeCounts(changes: SnapshotEdgeChange[]): RelationTypeOption[] {
-  const counts = new Map<string, number>();
-  changes.forEach((change) => counts.set(change.relation, (counts.get(change.relation) || 0) + 1));
-  return [...counts.entries()]
-    .map(([relation, count]) => ({ relation, count }))
-    .sort((left, right) => left.relation.localeCompare(right.relation));
 }
 
 function RelationChangeRow({

@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { downloadTextFile } from '../../features/export/downloadTextFile';
 import type { ResourceExplorerItem } from '../../types/resourceExplorer';
 import type {
   ResourceEventsSectionActions,
@@ -7,7 +8,6 @@ import type {
 import {
   countEventSeverities,
   countNewEvents,
-  downloadTextFile,
   eventControlSummary,
   eventExportCsv,
   eventExportFileName,

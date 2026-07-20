@@ -62,6 +62,7 @@
 - Desktop CM diagnostic preset은 독립 feature module과 direct unit test로 검증하며, core reorder는 test-id 정규화와 실제 desktop smoke로 고정한다.
 - Desktop CM 연결 폼과 선택 세션 요약은 `website/src/components/desktopCm/` 표시 컴포넌트로 분리하고, safe error/status/validation은 `desktopCmSessionPresentation.ts` direct unit test로 고정한다.
 - Frontend pure helper regression은 `npm run test:unit`, end-to-end UI는 `npm run test:visual`로 검증한다.
+- Snapshot comparison 검색·스코프·변경/관계 필터와 count 계산은 pure view model로 분리했고 Resource Explorer export는 공용 download helper를 사용한다.
 - Local automation helper regression은 `node --test scripts/lib/*.test.mjs`로 검증하며 Telegram 원격 오류 원문은 출력하지 않는다.
 - Desktop smoke preview readiness도 공용 helper를 사용하고 HTTP(S) URL과 bounded timeout만 허용한다.
 - SSH endpoint probe는 공용 helper에서 입력·응답 크기·오류 코드를 제한하고 대상 host를 로그에 출력하지 않는다.

@@ -4,15 +4,23 @@ import {
   compareTopologySnapshots,
   type SnapshotBaseline,
   type SnapshotChangeType,
-  type SnapshotClusterChange,
-  type SnapshotEdgeChange,
-  type SnapshotNodeChange,
 } from '../features/snapshot/compareSnapshots';
 import {
   downloadSnapshotDiff,
   type SnapshotDiffChangeFilter,
   type SnapshotDiffScope,
 } from '../features/snapshot/exportSnapshotDiff';
+import {
+  filterSnapshotComparison,
+  filterSnapshotRelationsByTypes,
+  relationTypeCounts,
+  retainAvailableRelationTypes,
+  snapshotScopeLabel,
+  snapshotScopeSearchPlaceholder,
+  snapshotScopeTotalCount,
+  snapshotVisibleChangeCount,
+  toggleRelationTypeSelection,
+} from '../features/snapshot/snapshotComparisonView';
 import type { SnapshotHistoryEntry } from '../features/snapshot/snapshotHistory';
 import type { TopologySnapshot } from '../types/topology';
 import { formatLastSync } from '../utils/formatTime';
@@ -21,7 +29,6 @@ import {
   RelationChangeTable,
   RelationTypeFilter,
   ResourceChangeTable,
-  relationTypeCounts,
 } from './snapshot/SnapshotChangeTables';
 import { SnapshotHistoryControls } from './snapshot/SnapshotHistoryControls';
 import { VIRTUALIZE_AFTER_ROWS } from './snapshot/VirtualizedTable';
@@ -93,79 +100,27 @@ export function SnapshotComparePanel({
     () => new Set(currentSnapshot.nodes.map((node) => node.id).filter((id) => liveNodeIds.has(id))),
     [currentSnapshot.nodes, liveNodeIds],
   );
-  const normalizedQuery = query.trim().toLowerCase();
-  const visibleNodeChanges = useMemo(() => {
-    if (!comparison) {
-      return [];
-    }
-    return comparison.nodes.filter((change) => {
-      if (changeFilter !== 'all' && change.type !== changeFilter) {
-        return false;
-      }
-      if (!normalizedQuery) {
-        return true;
-      }
-      return [change.kind, change.namespace, change.name, change.clusterId, ...change.changedFields]
-        .join(' ')
-        .toLowerCase()
-        .includes(normalizedQuery);
-    });
-  }, [changeFilter, comparison, normalizedQuery]);
-  const matchingEdgeChanges = useMemo(() => {
-    if (!comparison) {
-      return [];
-    }
-    return comparison.edges.filter((change) => {
-      if (changeFilter !== 'all' && change.type !== changeFilter) {
-        return false;
-      }
-      if (!normalizedQuery) {
-        return true;
-      }
-      return edgeSearchValue(change).includes(normalizedQuery);
-    });
-  }, [changeFilter, comparison, normalizedQuery]);
-  const relationTypeOptions = useMemo(() => relationTypeCounts(matchingEdgeChanges), [matchingEdgeChanges]);
+  const matchingChanges = useMemo(
+    () => comparison ? filterSnapshotComparison(comparison, changeFilter, query) : { nodes: [], edges: [], clusters: [] },
+    [changeFilter, comparison, query],
+  );
+  const relationTypeOptions = useMemo(() => relationTypeCounts(matchingChanges.edges), [matchingChanges.edges]);
   const relationTypeKey = relationTypeOptions.map((option) => option.relation).join('\u0000');
   useEffect(() => {
-    const availableTypes = new Set(relationTypeOptions.map((option) => option.relation));
-    setSelectedRelationTypes((current) => {
-      const next = new Set([...current].filter((relation) => availableTypes.has(relation)));
-      return setsEqual(current, next) ? current : next;
-    });
+    setSelectedRelationTypes((current) => retainAvailableRelationTypes(current, relationTypeOptions));
   }, [relationTypeKey, relationTypeOptions]);
   const visibleEdgeChanges = useMemo(
-    () => selectedRelationTypes.size === 0
-      ? matchingEdgeChanges
-      : matchingEdgeChanges.filter((change) => selectedRelationTypes.has(change.relation)),
-    [matchingEdgeChanges, selectedRelationTypes],
+    () => filterSnapshotRelationsByTypes(matchingChanges.edges, selectedRelationTypes),
+    [matchingChanges.edges, selectedRelationTypes],
   );
-  const visibleClusterChanges = useMemo(() => {
-    if (!comparison) {
-      return [];
-    }
-    return comparison.clusters.filter((change) => {
-      if (changeFilter !== 'all' && change.type !== changeFilter) {
-        return false;
-      }
-      if (!normalizedQuery) {
-        return true;
-      }
-      return clusterSearchValue(change).includes(normalizedQuery);
-    });
-  }, [changeFilter, comparison, normalizedQuery]);
-  const activeVisibleChangeCount = visibleChangeCount(scope, visibleNodeChanges, visibleEdgeChanges, visibleClusterChanges);
+  const visibleChanges = useMemo(
+    () => ({ ...matchingChanges, edges: visibleEdgeChanges }),
+    [matchingChanges, visibleEdgeChanges],
+  );
+  const activeVisibleChangeCount = snapshotVisibleChangeCount(scope, visibleChanges);
 
   const toggleRelationType = (relation: string) => {
-    setSelectedRelationTypes((current) => {
-      const next = new Set(current);
-      if (next.has(relation)) {
-        next.delete(relation);
-      } else {
-        next.add(relation);
-      }
-      return next;
-    });
+    setSelectedRelationTypes((current) => toggleRelationTypeSelection(current, relation));
   };
 
   const handleExport = (format: 'json' | 'csv') => {
@@ -175,12 +130,12 @@ export function SnapshotComparePanel({
     downloadSnapshotDiff({
       baseline,
       changeFilter,
-      clusters: visibleClusterChanges,
+      clusters: visibleChanges.clusters,
       comparison,
       currentLabel,
       currentSnapshot,
       edges: visibleEdgeChanges,
-      nodes: visibleNodeChanges,
+      nodes: visibleChanges.nodes,
       relationTypes: [...selectedRelationTypes],
       scope,
     }, format);
@@ -257,7 +212,7 @@ export function SnapshotComparePanel({
                 className="ku-input w-full pl-9 pr-9"
                 type="search"
                 value={query}
-                placeholder={scopeSearchPlaceholder(scope)}
+                placeholder={snapshotScopeSearchPlaceholder(scope)}
                 aria-label="스냅샷 변경 검색"
                 onChange={(event) => setQuery(event.target.value)}
               />
@@ -271,7 +226,7 @@ export function SnapshotComparePanel({
 
           <div className="flex flex-wrap items-center justify-between gap-2" data-testid="snapshot-compare-export-bar">
             <p className="ku-meta">
-              현재 {scopeLabel(scope)} {activeVisibleChangeCount} / {scopeTotalCount(scope, comparison)}개
+              현재 {snapshotScopeLabel(scope)} {activeVisibleChangeCount} / {snapshotScopeTotalCount(scope, comparison)}개
             </p>
             <div className="flex flex-wrap gap-2">
               <button
@@ -307,11 +262,11 @@ export function SnapshotComparePanel({
           ) : null}
 
           {scope === 'resources' ? (
-            <ResourceChangeTable changes={visibleNodeChanges} currentNodeIds={currentNodeIds} onOpenTopologyNode={onOpenTopologyNode} />
+            <ResourceChangeTable changes={visibleChanges.nodes} currentNodeIds={currentNodeIds} onOpenTopologyNode={onOpenTopologyNode} />
           ) : scope === 'relations' ? (
             <RelationChangeTable changes={visibleEdgeChanges} currentNodeIds={currentNodeIds} onOpenTopologyNode={onOpenTopologyNode} />
           ) : (
-            <ClusterChangeTable changes={visibleClusterChanges} />
+            <ClusterChangeTable changes={visibleChanges.clusters} />
           )}
 
           {activeVisibleChangeCount === 0 ? (
@@ -360,74 +315,6 @@ function SnapshotMetric({ label, value, detail, tone = 'neutral', testId }: Snap
       <p className="mt-1 truncate text-xs text-[rgba(60,60,67,0.58)]" title={detail}>{detail}</p>
     </div>
   );
-}
-
-function setsEqual(left: Set<string>, right: Set<string>) {
-  return left.size === right.size && [...left].every((value) => right.has(value));
-}
-
-function scopeLabel(scope: ComparisonScope) {
-  if (scope === 'relations') {
-    return '관계';
-  }
-  return scope === 'clusters' ? '클러스터' : '리소스';
-}
-
-function scopeTotalCount(scope: ComparisonScope, comparison: ReturnType<typeof compareTopologySnapshots>) {
-  if (scope === 'relations') {
-    return comparison.edges.length;
-  }
-  return scope === 'clusters' ? comparison.clusters.length : comparison.nodes.length;
-}
-
-function edgeSearchValue(change: SnapshotEdgeChange) {
-  return [
-    change.clusterId,
-    change.relation,
-    change.source.kind,
-    change.source.namespace,
-    change.source.name,
-    change.target.kind,
-    change.target.namespace,
-    change.target.name,
-    change.sourceField,
-    change.confidence,
-    ...change.changedFields,
-  ].join(' ').toLowerCase();
-}
-
-function clusterSearchValue(change: SnapshotClusterChange) {
-  return [
-    change.id,
-    change.name,
-    change.before?.provider,
-    change.before?.version,
-    change.after?.provider,
-    change.after?.version,
-    ...change.changedFields,
-  ].filter(Boolean).join(' ').toLowerCase();
-}
-
-function scopeSearchPlaceholder(scope: ComparisonScope) {
-  if (scope === 'relations') {
-    return 'relation, source, target 검색';
-  }
-  if (scope === 'clusters') {
-    return 'cluster, provider, version 검색';
-  }
-  return 'kind, namespace, name 검색';
-}
-
-function visibleChangeCount(
-  scope: ComparisonScope,
-  nodes: SnapshotNodeChange[],
-  edges: SnapshotEdgeChange[],
-  clusters: SnapshotClusterChange[],
-) {
-  if (scope === 'relations') {
-    return edges.length;
-  }
-  return scope === 'clusters' ? clusters.length : nodes.length;
 }
 
 function formatChangeCounts(counts: Record<SnapshotChangeType, number>) {
