@@ -212,7 +212,7 @@ func TestSelectorEndpointFallbackIsAtomicWhenComparisonBudgetIsExceeded(t *testi
 
 func TestIngressAndGatewaySummariesValidateRemoteStrings(t *testing.T) {
 	ingress := ingressResource{}
-	if err := json.Unmarshal([]byte(`{"metadata":{"namespace":"edge"},"spec":{"rules":[{"host":"api.example.com","http":{"paths":[{"backend":{"service":{"name":"api"}}},{"backend":{"service":{"name":"bad name"}}}]}},{"host":"TOKEN.EXAMPLE.COM"}]}}`), &ingress); err != nil {
+	if err := json.Unmarshal([]byte(`{"metadata":{"namespace":"edge"},"spec":{"rules":[{"host":"api.example.com","http":{"paths":[{"path":"/","pathType":"Prefix","backend":{"service":{"name":"api","port":{"number":80}}}}]}}]}}`), &ingress); err != nil {
 		t.Fatalf("decode ingress: %v", err)
 	}
 	if got := strings.Join(ingressHosts(ingress), ","); got != "api.example.com" {

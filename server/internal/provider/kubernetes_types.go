@@ -331,24 +331,56 @@ type ingressList = kubeList[ingressResource]
 type ingressResource struct {
 	Metadata metadata `json:"metadata"`
 	Spec     struct {
-		DefaultBackend *ingressBackend `json:"defaultBackend"`
-		Rules          []ingressRule   `json:"rules"`
+		IngressClassName string             `json:"ingressClassName"`
+		DefaultBackend   *ingressBackend    `json:"defaultBackend"`
+		Rules            []ingressRule      `json:"rules"`
+		TLS              []ingressTLSConfig `json:"tls"`
 	} `json:"spec"`
+	Status struct {
+		LoadBalancer struct {
+			Ingress []ingressLoadBalancerPoint `json:"ingress"`
+		} `json:"loadBalancer"`
+	} `json:"status"`
 }
 
 type ingressRule struct {
 	Host string `json:"host"`
 	HTTP *struct {
 		Paths []struct {
-			Backend ingressBackend `json:"backend"`
+			Path     string         `json:"path"`
+			PathType string         `json:"pathType"`
+			Backend  ingressBackend `json:"backend"`
 		} `json:"paths"`
 	} `json:"http"`
 }
 
 type ingressBackend struct {
-	Service *struct {
-		Name string `json:"name"`
-	} `json:"service"`
+	Service  *ingressServiceBackend `json:"service"`
+	Resource *struct {
+		APIGroup string `json:"apiGroup"`
+		Kind     string `json:"kind"`
+		Name     string `json:"name"`
+	} `json:"resource"`
+}
+
+type ingressServiceBackend struct {
+	Name string `json:"name"`
+	Port struct {
+		Name   string `json:"name"`
+		Number int    `json:"number"`
+	} `json:"port"`
+}
+
+type ingressTLSConfig struct {
+	Hosts      []string `json:"hosts"`
+	SecretName string   `json:"secretName"`
+}
+
+type ingressLoadBalancerPoint struct {
+	Valid      bool
+	Kind       string
+	PortCount  int
+	ErrorCount int
 }
 
 type gatewayList = kubeList[gatewayResource]

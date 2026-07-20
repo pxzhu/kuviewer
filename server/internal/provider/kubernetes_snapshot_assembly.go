@@ -200,10 +200,10 @@ func buildKubernetesSnapshot(clusterID string, clusterName string, resources kub
 		}
 	}
 	for _, ingress := range resources.ingresses.Items {
-		builder.addResourceNode("Ingress", ingress.Metadata, "healthy", map[string]interface{}{
-			"hosts": joinSafeSummary(ingressHosts(ingress), 8, ""),
-			"rules": len(ingress.Spec.Rules),
-		})
+		_, added := builder.addTrackedResourceNode("Ingress", ingress.Metadata, ingressStatus(ingress), ingressSummary(ingress))
+		if added && (!validIngressSpec(ingress) || !validIngressLoadBalancerStatus(ingress)) {
+			builder.recordResourceIssue("Ingress")
+		}
 	}
 	for _, gateway := range resources.gateways.Items {
 		builder.addResourceNode("Gateway", gateway.Metadata, "healthy", map[string]interface{}{
@@ -376,6 +376,9 @@ func addKubernetesSnapshotEdges(builder *graphBuilder, resources kubernetesSnaps
 	for _, ingress := range resources.ingresses.Items {
 		ingressID := builder.nodeID("Ingress", ingress.Metadata.Namespace, ingress.Metadata.Name)
 		if !builder.claimResourceNode(ingressID, seenIngresses) {
+			continue
+		}
+		if !validIngressSpec(ingress) {
 			continue
 		}
 		for _, serviceName := range ingressServiceNames(ingress) {

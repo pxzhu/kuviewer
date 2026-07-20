@@ -32,6 +32,12 @@ import {
 } from './kubernetesObject.ts';
 import { normalizeUploadResourceKind } from './uploadResourceKinds.ts';
 import {
+  uploadIngressServiceNames,
+  uploadIngressSpecIsValid,
+  uploadIngressStatus,
+  uploadIngressSummary,
+} from './ingressSchema.ts';
+import {
   uploadServiceSelector,
   uploadServiceSpecIsValid,
   uploadServiceSummary,
@@ -206,7 +212,10 @@ function addObjectEdges(context: BuildContext, object: KubeObject, customResourc
     addPodEdges(context, object, objectId, namespace);
   }
   if (kind === 'Ingress') {
-    ingressBackends(object).forEach((serviceName) => {
+    if (!uploadIngressSpecIsValid(object)) {
+      return;
+    }
+    uploadIngressServiceNames(object).forEach((serviceName) => {
       ensureReferenceNode(context, 'Service', namespace, serviceName);
       addEdge(context, 'routes-to', objectId, id(context.clusterId, namespace, 'Service', serviceName), 'Ingress.spec.rules.http.paths.backend.service', 'observed');
     });
@@ -491,7 +500,7 @@ function objectSummary(kind: ResourceKind, object: KubeObject, customResourceDef
     return uploadServiceSummary(object);
   }
   if (kind === 'Ingress') {
-    return { rules: asArray(readAt(object, ['spec', 'rules'])).length, tls: asArray(readAt(object, ['spec', 'tls'])).length > 0 };
+    return uploadIngressSummary(object);
   }
   if (kind === 'Gateway') {
     return {
@@ -563,6 +572,9 @@ function objectStatus(kind: ResourceKind, object: KubeObject): ResourceStatus {
   if (kind === 'Service') {
     return uploadServiceSpecIsValid(object) ? 'healthy' : 'warning';
   }
+  if (kind === 'Ingress') {
+    return uploadIngressStatus(object);
+  }
   if (kind === 'Job') {
     if ((numberAt(object, ['status', 'failed']) ?? 0) > 0) {
       return 'error';
@@ -581,23 +593,6 @@ function objectStatus(kind: ResourceKind, object: KubeObject): ResourceStatus {
     return !phase || phase === 'Bound' ? 'healthy' : 'warning';
   }
   return 'healthy';
-}
-
-function ingressBackends(object: KubeObject) {
-  const services = new Set<string>();
-  asArray(readAt(object, ['spec', 'rules'])).forEach((rule) => {
-    asArray(readAt(rule, ['http', 'paths'])).forEach((path) => {
-      const serviceName = stringAt(path, ['backend', 'service', 'name']);
-      if (serviceName) {
-        services.add(serviceName);
-      }
-    });
-  });
-  const defaultBackend = stringAt(object, ['spec', 'defaultBackend', 'service', 'name']);
-  if (defaultBackend) {
-    services.add(defaultBackend);
-  }
-  return Array.from(services);
 }
 
 function containerNames(value: unknown) {
