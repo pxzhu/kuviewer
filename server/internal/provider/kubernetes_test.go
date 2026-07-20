@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -676,6 +677,120 @@ func TestKubeAPIClientRequestAndTransportErrorsAreBounded(t *testing.T) {
 	cancel()
 	if err := safeKubeAPITransportError(ctx); !errors.Is(err, context.Canceled) {
 		t.Fatalf("canceled transport error = %v, want context cancellation", err)
+	}
+}
+
+func TestNormalizeKubeAPIServerRejectsUnsafeURLs(t *testing.T) {
+	got, err := normalizeKubeAPIServer(" https://127.0.0.1:6443/proxy/ ")
+	if err != nil || got != "https://127.0.0.1:6443/proxy" {
+		t.Fatalf("normalize safe URL = %q, %v", got, err)
+	}
+
+	for _, raw := range []string{
+		"",
+		"ftp://cluster.internal",
+		"https:///missing-host",
+		"https://user:pass@cluster.internal",
+		"https://cluster.internal?token=private",
+		"https://cluster.internal#private",
+	} {
+		if _, err := normalizeKubeAPIServer(raw); !errors.Is(err, errKubeConfigInvalid) {
+			t.Errorf("normalizeKubeAPIServer(%q) error = %v", raw, err)
+		}
+	}
+}
+
+func TestKubeConfigFileErrorsDoNotExposePaths(t *testing.T) {
+	resetKubeConfigEnv(t)
+	t.Setenv("KUVIEWER_KUBE_API_SERVER", "https://cluster.internal")
+
+	privateTokenPath := t.TempDir() + "/private-token-path"
+	t.Setenv("KUVIEWER_KUBE_TOKEN_FILE", privateTokenPath)
+	_, err := kubeConfigFromEnv()
+	if !errors.Is(err, errKubeTokenFileRead) || strings.Contains(err.Error(), privateTokenPath) {
+		t.Fatalf("token file error = %v, want bounded error without path", err)
+	}
+
+	t.Setenv("KUVIEWER_KUBE_TOKEN_FILE", "")
+	t.Setenv("KUVIEWER_KUBE_BEARER_TOKEN", "test-token")
+	privateCAPath := t.TempDir() + "/private-ca-path"
+	t.Setenv("KUVIEWER_KUBE_CA_FILE", privateCAPath)
+	_, err = kubeConfigFromEnv()
+	if !errors.Is(err, errKubeCAFileRead) || strings.Contains(err.Error(), privateCAPath) {
+		t.Fatalf("CA file error = %v, want bounded error without path", err)
+	}
+}
+
+func TestKubeHTTPClientRejectsInvalidCA(t *testing.T) {
+	caPath := t.TempDir() + "/invalid-ca.pem"
+	if err := os.WriteFile(caPath, []byte("not a certificate"), 0o600); err != nil {
+		t.Fatalf("write CA fixture: %v", err)
+	}
+	_, err := kubeHTTPClient("https://cluster.internal", caPath)
+	if !errors.Is(err, errKubeCAInvalid) || strings.Contains(err.Error(), caPath) {
+		t.Fatalf("invalid CA error = %v, want bounded error without path", err)
+	}
+}
+
+func TestKubeAPIClientRejectsInvalidInputsBeforeRequest(t *testing.T) {
+	client := &kubeAPIClient{baseURL: "https://cluster.internal", httpClient: http.DefaultClient}
+	var nilClient *kubeAPIClient
+	requestTests := []struct {
+		name   string
+		client *kubeAPIClient
+		ctx    context.Context
+		path   string
+		accept string
+	}{
+		{name: "nil client", client: nilClient, ctx: context.Background(), path: "/api", accept: "application/json"},
+		{name: "nil context", client: client, path: "/api", accept: "application/json"},
+		{name: "relative path", client: client, ctx: context.Background(), path: "api", accept: "application/json"},
+		{name: "unsupported accept", client: client, ctx: context.Background(), path: "/api", accept: "text/html"},
+		{name: "nil HTTP client", client: &kubeAPIClient{baseURL: "https://cluster.internal"}, ctx: context.Background(), path: "/api", accept: "application/json"},
+	}
+	for _, test := range requestTests {
+		t.Run(test.name, func(t *testing.T) {
+			if _, err := test.client.newRequest(test.ctx, test.path, test.accept); !errors.Is(err, errKubeAPIInvalidRequest) {
+				t.Fatalf("newRequest() error = %v", err)
+			}
+		})
+	}
+
+	if _, _, err := client.getJSONStatusBounded(context.Background(), "/api", nil, false, 1024); !errors.Is(err, errKubeAPIInvalidRequest) {
+		t.Fatalf("nil JSON output error = %v", err)
+	}
+	if _, _, err := client.getJSONStatusBounded(context.Background(), "/api", &map[string]interface{}{}, false, 0); !errors.Is(err, errKubeAPIInvalidRequest) {
+		t.Fatalf("zero JSON bound error = %v", err)
+	}
+	if _, _, err := client.getJSONStatusBounded(context.Background(), "/api", &map[string]interface{}{}, false, kubeJSONMaxBytes+1); !errors.Is(err, errKubeAPIInvalidRequest) {
+		t.Fatalf("oversized JSON bound error = %v", err)
+	}
+	if _, _, err := client.getTextStatus(context.Background(), "/api", false, 0); !errors.Is(err, errKubeAPIInvalidRequest) {
+		t.Fatalf("zero text bound error = %v", err)
+	}
+	if _, _, err := client.getTextStatus(context.Background(), "/api", false, kubeJSONMaxBytes+1); !errors.Is(err, errKubeAPIInvalidRequest) {
+		t.Fatalf("oversized text bound error = %v", err)
+	}
+	if _, err := client.streamText(context.Background(), "/api", false, 1024, nil); !errors.Is(err, errKubeAPIInvalidRequest) {
+		t.Fatalf("nil stream callback error = %v", err)
+	}
+	if _, err := client.streamText(context.Background(), "/api", false, kubeJSONMaxBytes+1, func(string) error { return nil }); !errors.Is(err, errKubeAPIInvalidRequest) {
+		t.Fatalf("oversized stream bound error = %v", err)
+	}
+}
+
+func resetKubeConfigEnv(t *testing.T) {
+	t.Helper()
+	for _, key := range []string{
+		"KUVIEWER_KUBE_API_SERVER",
+		"KUVIEWER_KUBE_BEARER_TOKEN",
+		"KUVIEWER_KUBE_TOKEN_FILE",
+		"KUVIEWER_KUBE_CA_FILE",
+		"KUVIEWER_KUBE_INSECURE_SKIP_TLS_VERIFY",
+		"KUBERNETES_SERVICE_HOST",
+		"KUBERNETES_SERVICE_PORT",
+	} {
+		t.Setenv(key, "")
 	}
 }
 
