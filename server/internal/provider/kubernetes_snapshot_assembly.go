@@ -1,7 +1,6 @@
 package provider
 
 import (
-	"fmt"
 	"strings"
 
 	"kuviewer/server/internal/topology"
@@ -84,31 +83,31 @@ func buildKubernetesSnapshot(clusterID string, clusterName string, resources kub
 	}
 	for _, deployment := range resources.deployments.Items {
 		builder.addResourceNode("Deployment", deployment.Metadata, deploymentStatus(deployment), map[string]interface{}{
-			"replicas":          formatReplicas(deployment.Status.ReadyReplicas, valueOrZero(deployment.Spec.Replicas)),
-			"availableReplicas": deployment.Status.AvailableReplicas,
+			"replicas":          formatReplicaSummary(deployment.Status.ReadyReplicas, deployment.Spec.Replicas, 1),
+			"availableReplicas": summaryCount(deployment.Status.AvailableReplicas),
 		})
 	}
 	for _, replicaSet := range resources.replicaSets.Items {
 		builder.addResourceNode("ReplicaSet", replicaSet.Metadata, replicaSetStatus(replicaSet), map[string]interface{}{
-			"replicas": formatReplicas(replicaSet.Status.ReadyReplicas, valueOrZero(replicaSet.Spec.Replicas)),
+			"replicas": formatReplicaSummary(replicaSet.Status.ReadyReplicas, replicaSet.Spec.Replicas, 1),
 		})
 	}
 	for _, statefulSet := range resources.statefulSets.Items {
 		builder.addResourceNode("StatefulSet", statefulSet.Metadata, statefulSetStatus(statefulSet), map[string]interface{}{
-			"replicas": formatReplicas(statefulSet.Status.ReadyReplicas, valueOrZero(statefulSet.Spec.Replicas)),
+			"replicas": formatReplicaSummary(statefulSet.Status.ReadyReplicas, statefulSet.Spec.Replicas, 1),
 		})
 	}
 	for _, daemonSet := range resources.daemonSets.Items {
 		builder.addResourceNode("DaemonSet", daemonSet.Metadata, daemonSetStatus(daemonSet), map[string]interface{}{
-			"ready": fmt.Sprintf("%d/%d", daemonSet.Status.NumberReady, daemonSet.Status.DesiredNumberScheduled),
+			"ready": formatReplicas(daemonSet.Status.NumberReady, daemonSet.Status.DesiredNumberScheduled),
 		})
 	}
 	for _, job := range resources.jobs.Items {
 		builder.addResourceNode("Job", job.Metadata, jobStatus(job), map[string]interface{}{
-			"completions": valueOrDefault(job.Spec.Completions, 1),
-			"succeeded":   job.Status.Succeeded,
-			"failed":      job.Status.Failed,
-			"active":      job.Status.Active,
+			"completions": summaryOptionalCount(job.Spec.Completions, 1),
+			"succeeded":   summaryCount(job.Status.Succeeded),
+			"failed":      summaryCount(job.Status.Failed),
+			"active":      summaryCount(job.Status.Active),
 		})
 	}
 	for _, cronJob := range resources.cronJobs.Items {
@@ -122,7 +121,7 @@ func buildKubernetesSnapshot(clusterID string, clusterName string, resources kub
 		builder.addResourceNode("HorizontalPodAutoscaler", hpa.Metadata, hpaStatus(hpa), map[string]interface{}{
 			"target":   kubernetesScaleTargetSummary(hpa.Spec.ScaleTargetRef.Kind, hpa.Spec.ScaleTargetRef.Name),
 			"replicas": formatReplicas(hpa.Status.CurrentReplicas, hpa.Status.DesiredReplicas),
-			"range":    fmt.Sprintf("%d-%d", valueOrDefault(hpa.Spec.MinReplicas, 1), hpa.Spec.MaxReplicas),
+			"range":    formatReplicaRange(hpa.Spec.MinReplicas, hpa.Spec.MaxReplicas),
 		})
 	}
 	for _, serviceAccount := range resources.serviceAccounts.Items {
@@ -196,10 +195,12 @@ func buildKubernetesSnapshot(clusterID string, clusterName string, resources kub
 	for _, service := range resources.services.Items {
 		counts := serviceEndpointCounts[serviceKey(service.Metadata.Namespace, service.Metadata.Name)]
 		builder.addResourceNode("Service", service.Metadata, serviceStatus(service, counts), map[string]interface{}{
-			"type":           service.Spec.Type,
-			"clusterIP":      service.Spec.ClusterIP,
-			"ports":          len(service.Spec.Ports),
-			"readyEndpoints": fmt.Sprintf("%d/%d", counts.ready, counts.total),
+			"type":                 service.Spec.Type,
+			"clusterIP":            service.Spec.ClusterIP,
+			"ports":                len(service.Spec.Ports),
+			"readyEndpoints":       formatReplicas(counts.ready, counts.total),
+			"servingEndpoints":     formatReplicas(counts.serving, counts.total),
+			"terminatingEndpoints": summaryCount(counts.terminating),
 		})
 	}
 	for _, ingress := range resources.ingresses.Items {
@@ -236,8 +237,8 @@ func buildKubernetesSnapshot(clusterID string, clusterName string, resources kub
 		status := podStatus(pod)
 		_, added := builder.addTrackedResourceNode("Pod", pod.Metadata, status, map[string]interface{}{
 			"phase":          pod.Status.Phase,
-			"ready":          formatReplicas(readyContainers(pod.Status.ContainerStatuses), len(pod.Status.ContainerStatuses)),
-			"restarts":       restartCount(pod.Status.ContainerStatuses),
+			"ready":          containerReadinessSummary(pod.Status.ContainerStatuses),
+			"restarts":       restartSummary(pod.Status.ContainerStatuses),
 			"node":           kubernetesReferenceSummary(pod.Spec.NodeName),
 			"conditions":     conditionSummary(pod.Status.Conditions),
 			"containerNames": containerNames(pod.Spec.Containers),

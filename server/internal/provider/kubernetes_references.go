@@ -28,8 +28,10 @@ const (
 )
 
 type endpointCounter struct {
-	ready int
-	total int
+	ready       int
+	serving     int
+	terminating int
+	total       int
 }
 
 type podReference struct {
@@ -53,6 +55,12 @@ type endpointSliceAnalysis struct {
 	references        []serviceEndpointReference
 	invalidItems      int
 	processingLimited bool
+}
+
+type endpointReadiness struct {
+	ready       bool
+	serving     bool
+	terminating bool
 }
 
 func boundedEndpointSliceEndpoints(endpoints []endpoint) ([]endpoint, bool) {
@@ -88,9 +96,16 @@ func analyzeEndpointSlices(endpointSlices endpointSliceList) endpointSliceAnalys
 		key := serviceKey(slice.Metadata.Namespace, serviceName)
 		counter := analysis.counts[key]
 		for _, endpoint := range endpoints {
+			readiness := endpointConditionState(endpoint)
 			counter.total++
-			if endpoint.Conditions.Ready == nil || *endpoint.Conditions.Ready {
+			if readiness.ready {
 				counter.ready++
+			}
+			if readiness.serving {
+				counter.serving++
+			}
+			if readiness.terminating {
+				counter.terminating++
 			}
 			if endpoint.TargetRef == nil || endpoint.TargetRef.Kind != "Pod" || !validKubernetesReferenceName(endpoint.TargetRef.Name) {
 				continue
@@ -114,12 +129,27 @@ func analyzeEndpointSlices(endpointSlices endpointSliceList) endpointSliceAnalys
 				pod:         endpoint.TargetRef.Name,
 				sourceField: "EndpointSlice.endpoints.targetRef",
 				confidence:  "observed",
-				ready:       endpoint.Conditions.Ready == nil || *endpoint.Conditions.Ready,
+				ready:       readiness.ready,
 			})
 		}
 		analysis.counts[key] = counter
 	}
 	return analysis
+}
+
+func endpointConditionState(endpoint endpoint) endpointReadiness {
+	return endpointReadiness{
+		ready:       conditionValue(endpoint.Conditions.Ready, true),
+		serving:     conditionValue(endpoint.Conditions.Serving, true),
+		terminating: conditionValue(endpoint.Conditions.Terminating, false),
+	}
+}
+
+func conditionValue(value *bool, fallback bool) bool {
+	if value == nil {
+		return fallback
+	}
+	return *value
 }
 
 func serviceEndpointReferences(endpointSlices endpointSliceList, services serviceList, pods podList) []serviceEndpointReference {
@@ -215,6 +245,7 @@ func mergeReferenceEndpointCounts(counts map[string]endpointCounter, references 
 		counter.total++
 		if reference.ready {
 			counter.ready++
+			counter.serving++
 		}
 		counts[key] = counter
 	}

@@ -41,9 +41,9 @@ func TestPodReferencesAreValidatedDeduplicatedAndBounded(t *testing.T) {
 func TestEndpointCountsRejectMalformedAndOversizedSlices(t *testing.T) {
 	ready := true
 	valid := endpointSliceResource{Metadata: metadata{Name: "api-a", Namespace: "app", Labels: map[string]string{"kubernetes.io/service-name": "api"}}}
-	valid.Endpoints = []endpoint{{}, {Conditions: struct {
-		Ready *bool `json:"ready"`
-	}{Ready: &ready}}}
+	readyEndpoint := endpoint{}
+	readyEndpoint.Conditions.Ready = &ready
+	valid.Endpoints = []endpoint{{}, readyEndpoint}
 	malformed := endpointSliceResource{Metadata: metadata{Name: "unsafe", Namespace: "bad namespace", Labels: map[string]string{"kubernetes.io/service-name": "unsafe"}}, Endpoints: []endpoint{{}}}
 	oversized := endpointSliceResource{Metadata: metadata{Name: "oversized", Namespace: "app", Labels: map[string]string{"kubernetes.io/service-name": "oversized"}}, Endpoints: make([]endpoint, maxEndpointSliceEndpoints+1)}
 
@@ -53,6 +53,36 @@ func TestEndpointCountsRejectMalformedAndOversizedSlices(t *testing.T) {
 	}
 	if len(counts) != 1 {
 		t.Fatalf("endpointCounts() retained invalid slices: %#v", counts)
+	}
+}
+
+func TestEndpointSliceAnalysisPreservesReadyServingAndTerminatingSemantics(t *testing.T) {
+	readyFalse := false
+	servingTrue := true
+	terminatingTrue := true
+	terminating := endpoint{TargetRef: &objectReference{Kind: "Pod", Name: "api-old"}}
+	terminating.Conditions.Ready = &readyFalse
+	terminating.Conditions.Serving = &servingTrue
+	terminating.Conditions.Terminating = &terminatingTrue
+	defaulted := endpoint{TargetRef: &objectReference{Kind: "Pod", Name: "api-new"}}
+	slice := endpointSliceResource{
+		Metadata:  metadata{Name: "api-a", Namespace: "app", Labels: map[string]string{"kubernetes.io/service-name": "api"}},
+		Endpoints: []endpoint{terminating, defaulted},
+	}
+
+	analysis := analyzeEndpointSlices(endpointSliceList{Items: []endpointSliceResource{slice}})
+	counts := analysis.counts["app/api"]
+	if counts.ready != 1 || counts.serving != 2 || counts.terminating != 1 || counts.total != 2 {
+		t.Fatalf("EndpointSlice condition counts = %+v, want ready=1 serving=2 terminating=1 total=2", counts)
+	}
+	if len(analysis.references) != 2 || analysis.references[0].ready || !analysis.references[1].ready {
+		t.Fatalf("EndpointSlice relation readiness = %#v", analysis.references)
+	}
+
+	mergeCounts := map[string]endpointCounter{}
+	mergeReferenceEndpointCounts(mergeCounts, []serviceEndpointReference{{namespace: "app", service: "api", pod: "api", confidence: "inferred", ready: true}})
+	if got := mergeCounts["app/api"]; got.ready != 1 || got.serving != 1 || got.terminating != 0 || got.total != 1 {
+		t.Fatalf("inferred endpoint counts = %+v", got)
 	}
 }
 
