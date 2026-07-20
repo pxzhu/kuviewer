@@ -256,18 +256,19 @@ func buildKubernetesSnapshot(clusterID string, clusterName string, resources kub
 		})
 	}
 	for _, pod := range resources.pods.Items {
-		status := podStatus(pod)
-		_, added := builder.addTrackedResourceNode("Pod", pod.Metadata, status, map[string]interface{}{
-			"phase":          pod.Status.Phase,
-			"ready":          containerReadinessSummary(pod.Status.ContainerStatuses),
-			"restarts":       restartSummary(pod.Status.ContainerStatuses),
-			"node":           kubernetesReferenceSummary(pod.Spec.NodeName),
-			"conditions":     conditionSummary(pod.Status.Conditions),
-			"containerNames": containerNames(pod.Spec.Containers),
-			"initContainers": containerNames(pod.Spec.InitContainers),
-		})
+		runtime := analyzePodRuntime(pod.Status)
+		status := podRuntimeStatus(runtime)
+		summary := podRuntimeSummary(runtime)
+		summary["node"] = kubernetesReferenceSummary(pod.Spec.NodeName)
+		summary["conditions"] = conditionSummary(pod.Status.Conditions)
+		summary["containerNames"] = containerNames(pod.Spec.Containers)
+		summary["initContainers"] = containerNames(pod.Spec.InitContainers)
+		_, added := builder.addTrackedResourceNode("Pod", pod.Metadata, status, summary)
+		if !runtime.valid {
+			builder.recordResourceIssue("Pod")
+		}
 		if added {
-			if pod.Status.Phase == "Running" || pod.Status.Phase == "Succeeded" {
+			if runtime.valid && (pod.Status.Phase == "Running" || pod.Status.Phase == "Succeeded") {
 				podRunning++
 			}
 			if status != "healthy" {

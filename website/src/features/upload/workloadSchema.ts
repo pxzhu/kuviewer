@@ -178,7 +178,7 @@ function parseTemplate(kind: WorkloadKind, object: KubeObject): ParsedTemplate |
   const seenImages = new Set<string>();
   const seenContainerNames = new Set<string>();
   for (const container of [...initContainers, ...containers]) {
-    if (typeof container.name !== 'string' || !validDNSLabel(container.name) || seenContainerNames.has(container.name) || (container.image != null && (typeof container.image !== 'string' || !validImage(container.image)))) {
+    if (typeof container.name !== 'string' || !validDNSLabel(container.name) || seenContainerNames.has(container.name) || (container.image != null && (typeof container.image !== 'string' || !validUploadContainerImage(container.image)))) {
       return null;
     }
     seenContainerNames.add(container.name);
@@ -281,7 +281,7 @@ function validDNSLabel(value: string) {
   return value.length > 0 && value.length <= 63 && /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/.test(value);
 }
 
-function validImage(value: string) {
+export function validUploadContainerImage(value: string) {
   if (!value || value.length > maxImageBytes || value.trim() !== value || value.includes('://') || /[=?#\\]/.test(value)) {
     return false;
   }

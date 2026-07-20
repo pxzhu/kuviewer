@@ -26,7 +26,7 @@ func TestBuildKubernetesSnapshotSummarizesSafeResources(t *testing.T) {
 				Name:    "api",
 				EnvFrom: []envFrom{{SecretRef: &localObjectRef{Name: "database"}}},
 			}}},
-			Status: podStat{Phase: "Running", ContainerStatuses: []containerStatus{{Ready: true}}},
+			Status: podStat{Phase: "Running", ContainerStatuses: []containerStatus{{Name: "api", Ready: true, State: containerState{Running: &struct{}{}}}}},
 		},
 		{
 			Spec: podSpec{

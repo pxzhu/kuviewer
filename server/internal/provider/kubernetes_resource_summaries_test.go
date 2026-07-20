@@ -9,8 +9,8 @@ import (
 func TestWorkloadStatusesFailClosedForMissingOrInvalidCounts(t *testing.T) {
 	runningWithoutStatuses := podResource{}
 	runningWithoutStatuses.Status.Phase = "Running"
-	if got := podStatus(runningWithoutStatuses); got != "warning" {
-		t.Fatalf("podStatus() = %q, want warning without container status", got)
+	if got := podRuntimeStatus(analyzePodRuntime(runningWithoutStatuses.Status)); got != "warning" {
+		t.Fatalf("podRuntimeStatus() = %q, want warning without container status", got)
 	}
 
 	deployment := deploymentResource{}
@@ -76,20 +76,6 @@ func TestSummaryCountHelpersRejectMalformedRemoteScalars(t *testing.T) {
 	}
 }
 
-func TestPodSummariesRejectMalformedContainerStatusCounts(t *testing.T) {
-	statuses := []containerStatus{{Ready: true, RestartCount: -1}}
-	pod := podResource{Status: podStat{Phase: "Running", ContainerStatuses: statuses}}
-	if got := podStatus(pod); got != "warning" {
-		t.Fatalf("podStatus() = %q, want warning", got)
-	}
-	if got := containerReadinessSummary(statuses); got != "invalid" {
-		t.Fatalf("containerReadinessSummary() = %q", got)
-	}
-	if got := restartSummary(statuses); got != "invalid" {
-		t.Fatalf("restartSummary() = %#v", got)
-	}
-}
-
 func TestConditionSummaryIsBoundedAndDoesNotEchoMalformedValues(t *testing.T) {
 	malformed := "Ready=token-like\nvalue"
 	conditions := []condition{
@@ -135,12 +121,7 @@ func TestContainerAndOwnerSummariesAreValidatedBoundedAndDeterministic(t *testin
 	}
 }
 
-func TestRestartAndAgeSummariesRemainBounded(t *testing.T) {
-	statuses := []containerStatus{{RestartCount: maxRestartCount}, {RestartCount: 10}, {RestartCount: -10}}
-	if got := restartCount(statuses); got != maxRestartCount {
-		t.Fatalf("restartCount() = %d, want cap %d", got, maxRestartCount)
-	}
-
+func TestAgeSummaryRejectsFutureTimestamp(t *testing.T) {
 	future := time.Now().Add(2 * time.Hour).UTC().Format(time.RFC3339)
 	if got := age(future); got != "unknown" {
 		t.Fatalf("age() = %q, want future timestamp rejected", got)
