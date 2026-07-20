@@ -44,6 +44,7 @@
    - Snapshot comparison reducer는 resource/relation/cluster 변화, clone 안정성, Secret-safe diff를 direct unit test로 검증한다.
    - Upload topology JSON import는 독립 sanitizer와 direct unit test로 collection cap, duplicate/dangling reference 거부, Secret/민감 metadata redaction을 검증한다.
    - CustomResource reference inference는 독립 bounded traversal과 direct unit test로 native/custom scope, cycle, depth, path, result cap을 검증한다.
+   - NetworkPolicy LabelSelector 평가는 독립 pure module에서 Kubernetes key/value/operator 문법, namespace scope, malformed/oversized fail-closed 동작을 검증한다.
    - Visual smoke는 주요 화면과 브라우저 통합에 집중해 CI 시간을 관리한다.
 
 4. Desktop prototype scope reduction
