@@ -74,6 +74,7 @@
 - Kubernetes API 설정, TLS transport, bounded JSON/text/stream 처리는 `kubernetes_client.go`에 격리했다. API server URL은 scheme/host/userinfo/query/fragment를 검증하고 token/CA 파일 및 PEM 오류는 로컬 경로를 포함하지 않는 safe code로만 반환한다.
 - Kubernetes graph node/edge dedupe, dangling-edge 방지, reference placeholder, layout lane은 `kubernetes_graph.go`가 담당한다. 전달받은 node metadata를 복제하고 Secret reference는 `values=hidden`만 유지하며 전용 테스트로 불변식을 검증한다.
 - Kubernetes snapshot fetch와 topology assembly는 분리돼 있다. `kubernetes_snapshot_assembly.go`의 순수 조립기는 diagnostics와 metadata를 복제하고, 빈 identity와 Secret value가 결과에 들어가지 않는지 direct test로 검증한다.
+- Kubernetes API resource/list/reference schema는 `kubernetes_types.go`에 모으고, Pod raw value field를 보존하지 않으면서 pagination과 Secret reference 이름만 해석하는 계약을 direct test로 검증한다.
 
 ## Runtime Boundaries
 
