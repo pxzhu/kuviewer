@@ -125,35 +125,6 @@ func clusterNodeID(clusterID string, clusterName string) string {
 	return clusterID + ":Cluster:" + clusterName
 }
 
-func safeMetadataAnnotations(values map[string]string) map[string]string {
-	if values == nil {
-		return map[string]string{}
-	}
-	safe := make(map[string]string, len(values))
-	for key, value := range values {
-		if sensitiveMetadataField(key) || sensitiveMetadataField(value) {
-			safe[key] = "redacted"
-			continue
-		}
-		safe[key] = value
-	}
-	return safe
-}
-
-func sensitiveMetadataField(value string) bool {
-	normalized := strings.ToLower(value)
-	return strings.Contains(normalized, "token") ||
-		strings.Contains(normalized, "password") ||
-		strings.Contains(normalized, "secret") ||
-		strings.Contains(normalized, "credential") ||
-		strings.Contains(normalized, "apikey") ||
-		strings.Contains(normalized, "api-key") ||
-		strings.Contains(normalized, "accesskey") ||
-		strings.Contains(normalized, "access-key") ||
-		strings.Contains(normalized, "private-key") ||
-		strings.Contains(normalized, "client-key")
-}
-
 func uniqueStrings(values []string) []string {
 	seen := map[string]bool{}
 	result := []string{}
