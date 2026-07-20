@@ -25,9 +25,7 @@ import {
 import {
   asArray,
   asStringArray,
-  boolAt,
   isRecord,
-  numberAt,
   readAt,
   stringAt,
   uniqueStrings,
@@ -52,6 +50,13 @@ import {
   uploadServiceSummary,
   uploadServiceSupportsSelectorInference,
 } from './serviceSchema.ts';
+import {
+  isUploadWorkloadKind,
+  uploadWorkloadReferences,
+  uploadWorkloadStatus,
+  uploadWorkloadSummary,
+  uploadWorkloadTemplateIsValid,
+} from './workloadSchema.ts';
 export { importTopologySnapshot } from './importTopologySnapshot.ts';
 
 export interface UploadedTopologyState {
@@ -219,6 +224,15 @@ function addObjectEdges(context: BuildContext, object: KubeObject, customResourc
 
   if (kind === 'Pod') {
     addPodEdges(context, object, objectId, namespace);
+  }
+  if (isUploadWorkloadKind(kind)) {
+    if (!uploadWorkloadTemplateIsValid(kind, object)) {
+      return;
+    }
+    uploadWorkloadReferences(kind, object).forEach((reference) => {
+      ensureReferenceNode(context, reference.kind, namespace, reference.name);
+      addEdge(context, reference.edgeType, objectId, id(context.clusterId, namespace, reference.kind, reference.name), reference.sourceField, 'observed');
+    });
   }
   if (kind === 'Ingress') {
     if (!uploadIngressSpecIsValid(object)) {
@@ -467,27 +481,12 @@ function objectSummary(kind: ResourceKind, object: KubeObject, customResourceDef
   if (kind === 'ConfigMap') {
     return { keys: Object.keys(object.data || {}).length + Object.keys(object.binaryData || {}).length };
   }
-  if (kind === 'Deployment' || kind === 'ReplicaSet' || kind === 'StatefulSet') {
-    const desired = numberAt(object, ['spec', 'replicas']) ?? 1;
-    const ready = numberAt(object, ['status', 'readyReplicas']) ?? numberAt(object, ['status', 'availableReplicas']) ?? 0;
-    return { replicas: `${ready}/${desired}`, selector: selectorSummary(readAt(object, ['spec', 'selector', 'matchLabels'])) };
-  }
-  if (kind === 'DaemonSet') {
-    return { ready: `${numberAt(object, ['status', 'numberReady']) ?? 0}/${numberAt(object, ['status', 'desiredNumberScheduled']) ?? 0}` };
-  }
-  if (kind === 'Job') {
-    return {
-      completions: numberAt(object, ['spec', 'completions']) ?? 1,
-      succeeded: numberAt(object, ['status', 'succeeded']) ?? 0,
-      failed: numberAt(object, ['status', 'failed']) ?? 0,
-    };
-  }
-  if (kind === 'CronJob') {
-    return {
-      schedule: stringAt(object, ['spec', 'schedule']) || '-',
-      suspend: boolAt(object, ['spec', 'suspend']) ?? false,
-      active: asArray(readAt(object, ['status', 'active'])).length,
-    };
+  if (isUploadWorkloadKind(kind)) {
+    const summary = uploadWorkloadSummary(kind, object);
+    if (kind === 'Deployment' || kind === 'ReplicaSet' || kind === 'StatefulSet') {
+      summary.selector = selectorSummary(readAt(object, ['spec', 'selector', 'matchLabels']));
+    }
+    return summary;
   }
   if (kind === 'HorizontalPodAutoscaler') {
     return uploadHPASummary(object);
@@ -584,13 +583,8 @@ function objectStatus(kind: ResourceKind, object: KubeObject): ResourceStatus {
   if (isGatewayRouteKind(kind)) {
     return uploadGatewayRouteStatus(kind, object);
   }
-  if (kind === 'Job') {
-    if ((numberAt(object, ['status', 'failed']) ?? 0) > 0) {
-      return 'error';
-    }
-    const completions = numberAt(object, ['spec', 'completions']) ?? 1;
-    const succeeded = numberAt(object, ['status', 'succeeded']) ?? 0;
-    return succeeded >= completions ? 'healthy' : 'warning';
+  if (isUploadWorkloadKind(kind)) {
+    return uploadWorkloadStatus(kind, object);
   }
   if (kind === 'HorizontalPodAutoscaler') {
     return uploadHPAStatus(object);

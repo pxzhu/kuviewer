@@ -309,11 +309,15 @@ func serviceKey(namespace string, name string) string {
 }
 
 func podRefs(pod podResource) []podReference {
-	if len(pod.Spec.ImagePullSecret) > maxPodReferenceCollectionItems ||
-		len(pod.Spec.Volumes) > maxPodReferenceCollectionItems ||
-		len(pod.Spec.InitContainers) > maxPodReferenceCollectionItems ||
-		len(pod.Spec.Containers) > maxPodReferenceCollectionItems ||
-		len(pod.Spec.InitContainers)+len(pod.Spec.Containers) > maxPodReferenceCollectionItems {
+	return podSpecRefs(pod.Spec, "Pod.spec")
+}
+
+func podSpecRefs(spec podSpec, sourcePrefix string) []podReference {
+	if len(spec.ImagePullSecret) > maxPodReferenceCollectionItems ||
+		len(spec.Volumes) > maxPodReferenceCollectionItems ||
+		len(spec.InitContainers) > maxPodReferenceCollectionItems ||
+		len(spec.Containers) > maxPodReferenceCollectionItems ||
+		len(spec.InitContainers)+len(spec.Containers) > maxPodReferenceCollectionItems {
 		return nil
 	}
 
@@ -331,34 +335,34 @@ func podRefs(pod podResource) []podReference {
 		refs = append(refs, podReference{kind: kind, name: name, edgeType: edgeType, sourceField: sourceField})
 	}
 
-	for _, imagePullSecret := range pod.Spec.ImagePullSecret {
-		add("Secret", imagePullSecret.Name, "env-from", "Pod.spec.imagePullSecrets")
+	for _, imagePullSecret := range spec.ImagePullSecret {
+		add("Secret", imagePullSecret.Name, "env-from", sourcePrefix+".imagePullSecrets")
 	}
-	for _, volume := range pod.Spec.Volumes {
+	for _, volume := range spec.Volumes {
 		if volume.ConfigMap != nil {
-			add("ConfigMap", volume.ConfigMap.Name, "mounts", "Pod.spec.volumes.configMap")
+			add("ConfigMap", volume.ConfigMap.Name, "mounts", sourcePrefix+".volumes.configMap")
 		}
 		if volume.Secret != nil {
-			add("Secret", volume.Secret.SecretName, "mounts", "Pod.spec.volumes.secret")
+			add("Secret", volume.Secret.SecretName, "mounts", sourcePrefix+".volumes.secret")
 		}
 		if volume.PersistentVolumeClaim != nil {
-			add("PersistentVolumeClaim", volume.PersistentVolumeClaim.ClaimName, "mounts", "Pod.spec.volumes.persistentVolumeClaim")
+			add("PersistentVolumeClaim", volume.PersistentVolumeClaim.ClaimName, "mounts", sourcePrefix+".volumes.persistentVolumeClaim")
 		}
 	}
 
-	containers := make([]container, 0, len(pod.Spec.InitContainers)+len(pod.Spec.Containers))
-	containers = append(containers, pod.Spec.InitContainers...)
-	containers = append(containers, pod.Spec.Containers...)
+	containers := make([]container, 0, len(spec.InitContainers)+len(spec.Containers))
+	containers = append(containers, spec.InitContainers...)
+	containers = append(containers, spec.Containers...)
 	for _, container := range containers {
 		if len(container.EnvFrom) > maxPodReferenceCollectionItems || len(container.Env) > maxPodReferenceCollectionItems {
 			return nil
 		}
 		for _, envFrom := range container.EnvFrom {
 			if envFrom.ConfigMapRef != nil {
-				add("ConfigMap", envFrom.ConfigMapRef.Name, "env-from", "Pod.spec.containers.envFrom.configMapRef")
+				add("ConfigMap", envFrom.ConfigMapRef.Name, "env-from", sourcePrefix+".containers.envFrom.configMapRef")
 			}
 			if envFrom.SecretRef != nil {
-				add("Secret", envFrom.SecretRef.Name, "env-from", "Pod.spec.containers.envFrom.secretRef")
+				add("Secret", envFrom.SecretRef.Name, "env-from", sourcePrefix+".containers.envFrom.secretRef")
 			}
 		}
 		for _, env := range container.Env {
@@ -366,10 +370,10 @@ func podRefs(pod podResource) []podReference {
 				continue
 			}
 			if env.ValueFrom.ConfigMapKeyRef != nil {
-				add("ConfigMap", env.ValueFrom.ConfigMapKeyRef.Name, "env-from", "Pod.spec.containers.env.valueFrom.configMapKeyRef")
+				add("ConfigMap", env.ValueFrom.ConfigMapKeyRef.Name, "env-from", sourcePrefix+".containers.env.valueFrom.configMapKeyRef")
 			}
 			if env.ValueFrom.SecretKeyRef != nil {
-				add("Secret", env.ValueFrom.SecretKeyRef.Name, "env-from", "Pod.spec.containers.env.valueFrom.secretKeyRef")
+				add("Secret", env.ValueFrom.SecretKeyRef.Name, "env-from", sourcePrefix+".containers.env.valueFrom.secretKeyRef")
 			}
 		}
 	}

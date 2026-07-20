@@ -82,40 +82,68 @@ func buildKubernetesSnapshot(clusterID string, clusterName string, resources kub
 		}
 	}
 	for _, deployment := range resources.deployments.Items {
-		builder.addResourceNode("Deployment", deployment.Metadata, deploymentStatus(deployment), map[string]interface{}{
+		analysis := analyzeWorkloadTemplate(deployment.Spec.Template.Spec, "Deployment.spec.template.spec")
+		_, added := builder.addTrackedResourceNode("Deployment", deployment.Metadata, workloadStatus(deploymentStatus(deployment), analysis), addWorkloadTemplateSummary(map[string]interface{}{
 			"replicas":          formatReplicaSummary(deployment.Status.ReadyReplicas, deployment.Spec.Replicas, 1),
 			"availableReplicas": summaryCount(deployment.Status.AvailableReplicas),
-		})
+		}, analysis))
+		if added && (!analysis.valid || !validReplicaWorkload(deployment.Spec.Replicas, deployment.Status)) {
+			builder.recordResourceIssue("Deployment")
+		}
 	}
 	for _, replicaSet := range resources.replicaSets.Items {
-		builder.addResourceNode("ReplicaSet", replicaSet.Metadata, replicaSetStatus(replicaSet), map[string]interface{}{
+		analysis := analyzeWorkloadTemplate(replicaSet.Spec.Template.Spec, "ReplicaSet.spec.template.spec")
+		_, added := builder.addTrackedResourceNode("ReplicaSet", replicaSet.Metadata, workloadStatus(replicaSetStatus(replicaSet), analysis), addWorkloadTemplateSummary(map[string]interface{}{
 			"replicas": formatReplicaSummary(replicaSet.Status.ReadyReplicas, replicaSet.Spec.Replicas, 1),
-		})
+		}, analysis))
+		if added && (!analysis.valid || !validReplicaWorkload(replicaSet.Spec.Replicas, replicaSet.Status)) {
+			builder.recordResourceIssue("ReplicaSet")
+		}
 	}
 	for _, statefulSet := range resources.statefulSets.Items {
-		builder.addResourceNode("StatefulSet", statefulSet.Metadata, statefulSetStatus(statefulSet), map[string]interface{}{
+		analysis := analyzeWorkloadTemplate(statefulSet.Spec.Template.Spec, "StatefulSet.spec.template.spec")
+		_, added := builder.addTrackedResourceNode("StatefulSet", statefulSet.Metadata, workloadStatus(statefulSetStatus(statefulSet), analysis), addWorkloadTemplateSummary(map[string]interface{}{
 			"replicas": formatReplicaSummary(statefulSet.Status.ReadyReplicas, statefulSet.Spec.Replicas, 1),
-		})
+		}, analysis))
+		if added && (!analysis.valid || !validReplicaWorkload(statefulSet.Spec.Replicas, statefulSet.Status)) {
+			builder.recordResourceIssue("StatefulSet")
+		}
 	}
 	for _, daemonSet := range resources.daemonSets.Items {
-		builder.addResourceNode("DaemonSet", daemonSet.Metadata, daemonSetStatus(daemonSet), map[string]interface{}{
+		analysis := analyzeWorkloadTemplate(daemonSet.Spec.Template.Spec, "DaemonSet.spec.template.spec")
+		_, added := builder.addTrackedResourceNode("DaemonSet", daemonSet.Metadata, workloadStatus(daemonSetStatus(daemonSet), analysis), addWorkloadTemplateSummary(map[string]interface{}{
 			"ready": formatReplicas(daemonSet.Status.NumberReady, daemonSet.Status.DesiredNumberScheduled),
-		})
+		}, analysis))
+		if added && (!analysis.valid || !validDaemonSetWorkload(daemonSet.Status.DesiredNumberScheduled, daemonSet.Status.NumberReady)) {
+			builder.recordResourceIssue("DaemonSet")
+		}
 	}
 	for _, job := range resources.jobs.Items {
-		builder.addResourceNode("Job", job.Metadata, jobStatus(job), map[string]interface{}{
+		analysis := analyzeWorkloadTemplate(job.Spec.Template.Spec, "Job.spec.template.spec")
+		_, added := builder.addTrackedResourceNode("Job", job.Metadata, workloadStatus(jobStatus(job), analysis), addWorkloadTemplateSummary(map[string]interface{}{
 			"completions": summaryOptionalCount(job.Spec.Completions, 1),
 			"succeeded":   summaryCount(job.Status.Succeeded),
 			"failed":      summaryCount(job.Status.Failed),
 			"active":      summaryCount(job.Status.Active),
-		})
+		}, analysis))
+		if added && (!analysis.valid || !validJobWorkload(job)) {
+			builder.recordResourceIssue("Job")
+		}
 	}
 	for _, cronJob := range resources.cronJobs.Items {
-		builder.addResourceNode("CronJob", cronJob.Metadata, "healthy", map[string]interface{}{
-			"schedule": cronJob.Spec.Schedule,
+		analysis := analyzeWorkloadTemplate(cronJob.Spec.JobTemplate.Spec.Template.Spec, "CronJob.spec.jobTemplate.spec.template.spec")
+		baseStatus := "healthy"
+		if !validCronJobWorkload(cronJob) {
+			baseStatus = "warning"
+		}
+		_, added := builder.addTrackedResourceNode("CronJob", cronJob.Metadata, workloadStatus(baseStatus, analysis), addWorkloadTemplateSummary(map[string]interface{}{
+			"schedule": workloadScheduleSummary(cronJob.Spec.Schedule),
 			"suspend":  boolSummary(cronJob.Spec.Suspend),
-			"active":   len(cronJob.Status.Active),
-		})
+			"active":   cronJobActiveSummary(cronJob),
+		}, analysis))
+		if added && (!analysis.valid || !validCronJobWorkload(cronJob)) {
+			builder.recordResourceIssue("CronJob")
+		}
 	}
 	for _, hpa := range resources.hpas.Items {
 		_, added := builder.addTrackedResourceNode("HorizontalPodAutoscaler", hpa.Metadata, hpaStatus(hpa), hpaSummary(hpa))
@@ -291,36 +319,42 @@ func addKubernetesSnapshotEdges(builder *graphBuilder, resources kubernetesSnaps
 			continue
 		}
 		builder.addOwnerEdge("Deployment", deployment.Metadata)
+		builder.addWorkloadTemplateEdges("Deployment", deployment.Metadata, analyzeWorkloadTemplate(deployment.Spec.Template.Spec, "Deployment.spec.template.spec"))
 	}
 	for _, replicaSet := range resources.replicaSets.Items {
 		if !builder.claimResourceNode(builder.nodeID("ReplicaSet", replicaSet.Metadata.Namespace, replicaSet.Metadata.Name), seenOwnerSources) {
 			continue
 		}
 		builder.addOwnerEdge("ReplicaSet", replicaSet.Metadata)
+		builder.addWorkloadTemplateEdges("ReplicaSet", replicaSet.Metadata, analyzeWorkloadTemplate(replicaSet.Spec.Template.Spec, "ReplicaSet.spec.template.spec"))
 	}
 	for _, statefulSet := range resources.statefulSets.Items {
 		if !builder.claimResourceNode(builder.nodeID("StatefulSet", statefulSet.Metadata.Namespace, statefulSet.Metadata.Name), seenOwnerSources) {
 			continue
 		}
 		builder.addOwnerEdge("StatefulSet", statefulSet.Metadata)
+		builder.addWorkloadTemplateEdges("StatefulSet", statefulSet.Metadata, analyzeWorkloadTemplate(statefulSet.Spec.Template.Spec, "StatefulSet.spec.template.spec"))
 	}
 	for _, daemonSet := range resources.daemonSets.Items {
 		if !builder.claimResourceNode(builder.nodeID("DaemonSet", daemonSet.Metadata.Namespace, daemonSet.Metadata.Name), seenOwnerSources) {
 			continue
 		}
 		builder.addOwnerEdge("DaemonSet", daemonSet.Metadata)
+		builder.addWorkloadTemplateEdges("DaemonSet", daemonSet.Metadata, analyzeWorkloadTemplate(daemonSet.Spec.Template.Spec, "DaemonSet.spec.template.spec"))
 	}
 	for _, cronJob := range resources.cronJobs.Items {
 		if !builder.claimResourceNode(builder.nodeID("CronJob", cronJob.Metadata.Namespace, cronJob.Metadata.Name), seenOwnerSources) {
 			continue
 		}
 		builder.addOwnerEdge("CronJob", cronJob.Metadata)
+		builder.addWorkloadTemplateEdges("CronJob", cronJob.Metadata, analyzeWorkloadTemplate(cronJob.Spec.JobTemplate.Spec.Template.Spec, "CronJob.spec.jobTemplate.spec.template.spec"))
 	}
 	for _, job := range resources.jobs.Items {
 		if !builder.claimResourceNode(builder.nodeID("Job", job.Metadata.Namespace, job.Metadata.Name), seenOwnerSources) {
 			continue
 		}
 		builder.addOwnerEdge("Job", job.Metadata)
+		builder.addWorkloadTemplateEdges("Job", job.Metadata, analyzeWorkloadTemplate(job.Spec.Template.Spec, "Job.spec.template.spec"))
 	}
 	for _, pod := range resources.pods.Items {
 		if !builder.claimResourceNode(builder.nodeID("Pod", pod.Metadata.Namespace, pod.Metadata.Name), seenOwnerSources) {

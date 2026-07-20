@@ -17,7 +17,7 @@ func TestWorkloadStatusesFailClosedForMissingOrInvalidCounts(t *testing.T) {
 	if got := deploymentStatus(deployment); got != "warning" {
 		t.Fatalf("deploymentStatus() = %q, want default desired replica to be one", got)
 	}
-	deployment.Status.AvailableReplicas = 1
+	deployment.Status = replicaStatus{Replicas: 1, AvailableReplicas: 1}
 	if got := deploymentStatus(deployment); got != "healthy" {
 		t.Fatalf("deploymentStatus() = %q, want healthy at default replica count", got)
 	}
@@ -36,6 +36,19 @@ func TestWorkloadStatusesFailClosedForMissingOrInvalidCounts(t *testing.T) {
 	}
 	if got := formatReplicaSummary(deployment.Status.ReadyReplicas, deployment.Spec.Replicas, 1); got != "invalid" {
 		t.Fatalf("formatReplicaSummary() = %q, want invalid", got)
+	}
+
+	one := 1
+	deployment.Spec.Replicas = &one
+	deployment.Status = replicaStatus{Replicas: 1, ReadyReplicas: 2, AvailableReplicas: 1}
+	if got := deploymentStatus(deployment); got != "warning" {
+		t.Fatalf("deploymentStatus() = %q, want impossible ready count rejected", got)
+	}
+	daemonSet := daemonSetResource{}
+	daemonSet.Status.DesiredNumberScheduled = 1
+	daemonSet.Status.NumberReady = 2
+	if got := daemonSetStatus(daemonSet); got != "warning" {
+		t.Fatalf("daemonSetStatus() = %q, want impossible ready count rejected", got)
 	}
 }
 
