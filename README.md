@@ -33,7 +33,7 @@ Kuviewer is a read-only Kubernetes topology and resource explorer. It turns uplo
 - Bounded PV, PVC, and StorageClass capacity, access, policy, provisioner, and binding summaries without CSI configuration or storage Secret references
 - Bounded ConfigMap key-count and immutable summaries without decoding or retaining `data` or `binaryData` values
 - Bounded concurrent live collection with safe partial-result diagnostics; incomplete resource lists are never merged into a snapshot
-- HeroUI-backed application shell controls with accessible pressed/disabled states and responsive source/filter layouts
+- HeroUI-backed application shell, Resource Explorer filters/sorting, and accessible pressed/disabled/popover states
 
 ## Source Modes
 

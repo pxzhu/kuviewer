@@ -3,6 +3,7 @@ import type { ColorMode, TopologyFilters } from '../features/topology/useTopolog
 import type { ClusterSummary } from '../types/topology';
 import { KuInput } from './ui/KuInput';
 import { KuSegmentedControl, type KuSegmentedOption } from './ui/KuSegmentedControl';
+import { KuSelect } from './ui/KuSelect';
 
 interface FilterBarProps {
   filters: TopologyFilters;
@@ -49,82 +50,55 @@ export function FilterBar({
 
         <label className="block">
           <span className="mb-1.5 block text-xs font-semibold text-[rgba(60,60,67,0.72)]">Cluster</span>
-          <select
-            className="ku-field w-full"
+          <KuSelect
+            ariaLabel="Cluster"
             value={filters.cluster}
-            onChange={(event) => onFiltersChange({ ...filters, cluster: event.target.value })}
-          >
-            <option value="all">전체 Cluster</option>
-            {clusters.map((cluster) => (
-              <option key={cluster.id} value={cluster.id}>
-                {cluster.name}
-              </option>
-            ))}
-          </select>
+            options={[
+              { value: 'all', label: '전체 Cluster' },
+              ...clusters.map((cluster) => ({ value: cluster.id, label: cluster.name })),
+            ]}
+            onChange={(cluster) => onFiltersChange({ ...filters, cluster })}
+          />
         </label>
 
         <label className="block">
           <span className="mb-1.5 block text-xs font-semibold text-[rgba(60,60,67,0.72)]">Namespace</span>
-          <select
-            className="ku-field w-full"
+          <KuSelect
+            ariaLabel="Namespace"
             value={filters.namespace}
-            onChange={(event) => onFiltersChange({ ...filters, namespace: event.target.value })}
-          >
-            <option value="all">전체 Namespace</option>
-            {namespaces.map((namespace) => (
-              <option key={namespace} value={namespace}>
-                {namespace}
-              </option>
-            ))}
-          </select>
+            options={toFilterOptions(namespaces, '전체 Namespace')}
+            onChange={(namespace) => onFiltersChange({ ...filters, namespace })}
+          />
         </label>
 
         <label className="block">
           <span className="mb-1.5 block text-xs font-semibold text-[rgba(60,60,67,0.72)]">Node</span>
-          <select
-            className="ku-field w-full"
+          <KuSelect
+            ariaLabel="Node"
             value={filters.node}
-            onChange={(event) => onFiltersChange({ ...filters, node: event.target.value })}
-          >
-            <option value="all">전체 Node</option>
-            {nodeNames.map((nodeName) => (
-              <option key={nodeName} value={nodeName}>
-                {nodeName}
-              </option>
-            ))}
-          </select>
+            options={toFilterOptions(nodeNames, '전체 Node')}
+            onChange={(node) => onFiltersChange({ ...filters, node })}
+          />
         </label>
 
         <label className="block">
           <span className="mb-1.5 block text-xs font-semibold text-[rgba(60,60,67,0.72)]">종류</span>
-          <select
-            className="ku-field w-full"
+          <KuSelect
+            ariaLabel="종류"
             value={filters.kind}
-            onChange={(event) => onFiltersChange({ ...filters, kind: event.target.value })}
-          >
-            <option value="all">전체 종류</option>
-            {kinds.map((kind) => (
-              <option key={kind} value={kind}>
-                {kind}
-              </option>
-            ))}
-          </select>
+            options={toFilterOptions(kinds, '전체 종류')}
+            onChange={(kind) => onFiltersChange({ ...filters, kind })}
+          />
         </label>
 
         <label className="block">
           <span className="mb-1.5 block text-xs font-semibold text-[rgba(60,60,67,0.72)]">상태</span>
-          <select
-            className="ku-field w-full"
+          <KuSelect
+            ariaLabel="상태"
             value={filters.status}
-            onChange={(event) => onFiltersChange({ ...filters, status: event.target.value })}
-          >
-            <option value="all">전체 상태</option>
-            {statuses.map((status) => (
-              <option key={status} value={status}>
-                {status}
-              </option>
-            ))}
-          </select>
+            options={toFilterOptions(statuses, '전체 상태')}
+            onChange={(status) => onFiltersChange({ ...filters, status })}
+          />
         </label>
 
         <div className="block">
@@ -140,6 +114,10 @@ export function FilterBar({
       </div>
     </section>
   );
+}
+
+function toFilterOptions(values: string[], allLabel: string) {
+  return [{ value: 'all', label: allLabel }, ...values.map((value) => ({ value, label: value }))];
 }
 
 function colorModeLabel(mode: ColorMode) {

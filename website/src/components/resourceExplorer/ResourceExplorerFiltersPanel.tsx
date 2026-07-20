@@ -2,6 +2,8 @@ import { RotateCcw, Search, X } from 'lucide-react';
 import { resourceListAllValue } from '../../features/resources/resourceListModel';
 import type { ResourceViewPresetsController } from '../../features/resources/useResourceViewPresetsController';
 import type { ActiveResourceFilterChip, ResourceViewFilters } from '../../features/resources/resourceViewState';
+import { KuInput } from '../ui/KuInput';
+import { KuSelect } from '../ui/KuSelect';
 import { ResourceViewPresetsPanel } from './ResourceViewPresetsPanel';
 
 interface ResourceExplorerFiltersPanelProps {
@@ -29,8 +31,8 @@ export function ResourceExplorerFiltersPanel({
     <div className="grid gap-2 border-b border-[rgba(60,60,67,0.1)] p-3">
       <label className="relative block">
         <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[rgba(60,60,67,0.45)]" size={16} />
-        <input
-          className="ku-input w-full pl-9"
+        <KuInput
+          className="w-full pl-9"
           placeholder="리소스 검색"
           value={filters.query}
           data-testid="resource-view-query"
@@ -96,14 +98,16 @@ function ResourceSelect({ label, testId, value, values, onChange }: { label: str
   return (
     <label className="grid gap-1">
       <span className="ku-meta">{label}</span>
-      <select className="ku-select" value={value} data-testid={testId} onChange={(event) => onChange(event.target.value)}>
-        <option value={resourceListAllValue}>전체</option>
-        {values.map((option) => (
-          <option key={option} value={option}>
-            {option}
-          </option>
-        ))}
-      </select>
+      <KuSelect
+        ariaLabel={`${label} 리소스 필터`}
+        testId={testId}
+        value={value}
+        options={[
+          { value: resourceListAllValue, label: '전체' },
+          ...values.map((option) => ({ value: option, label: option })),
+        ]}
+        onChange={onChange}
+      />
     </label>
   );
 }

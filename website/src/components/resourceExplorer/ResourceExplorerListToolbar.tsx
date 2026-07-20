@@ -9,6 +9,18 @@ import {
   type ResourceListSortField,
   type ResourceListSortPreference,
 } from '../../features/resources/resourceListModel';
+import { KuSegmentedControl, type KuSegmentedOption } from '../ui/KuSegmentedControl';
+import { KuSelect } from '../ui/KuSelect';
+
+const sortDirectionOptions: Array<KuSegmentedOption<ResourceListSortPreference['direction']>> = [
+  { value: 'asc', label: '오름', icon: ArrowUp, testId: 'resource-list-sort-asc' },
+  { value: 'desc', label: '내림', icon: ArrowDown, testId: 'resource-list-sort-desc' },
+];
+
+const densityOptions: Array<KuSegmentedOption<ResourceListDensity>> = [
+  { value: 'comfortable', label: '기본', testId: 'resource-list-density-comfortable' },
+  { value: 'compact', label: '촘촘', testId: 'resource-list-density-compact' },
+];
 
 interface ResourceExplorerListToolbarProps {
   activeFilterCount: number;
@@ -47,66 +59,32 @@ export function ResourceExplorerListToolbar({
         <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
           <label className="grid min-w-[116px] gap-1">
             <span className="ku-meta">정렬</span>
-            <select
-              className="ku-select h-8 text-xs"
+            <KuSelect
+              ariaLabel="리소스 목록 정렬 기준"
+              className="text-xs"
               value={sort.field}
-              data-testid="resource-list-sort-field"
-              onChange={(event) => setSort((current) => ({ ...current, field: event.target.value as ResourceListSortField }))}
-            >
-              {resourceListSortOptions.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
+              testId="resource-list-sort-field"
+              options={resourceListSortOptions}
+              onChange={(field) => setSort((current) => ({ ...current, field: field as ResourceListSortField }))}
+            />
           </label>
           <div className="grid gap-1">
             <span className="ku-meta">방향</span>
-            <div className="grid grid-cols-2 rounded-[9px] border border-[rgba(60,60,67,0.12)] bg-white/70 p-0.5" aria-label="리소스 목록 정렬 방향">
-              {([
-                { value: 'asc', label: '오름차순', icon: ArrowUp },
-                { value: 'desc', label: '내림차순', icon: ArrowDown },
-              ] as const).map((option) => {
-                const Icon = option.icon;
-                return (
-                  <button
-                    key={option.value}
-                    className={`rounded-[7px] px-2 py-1 text-xs font-semibold transition ${
-                      sort.direction === option.value ? 'bg-[#1d1d1f] text-white shadow-sm' : 'text-[rgba(60,60,67,0.72)] hover:bg-white'
-                    }`}
-                    data-testid={`resource-list-sort-${option.value}`}
-                    type="button"
-                    onClick={() => setSort((current) => ({ ...current, direction: option.value }))}
-                    aria-pressed={sort.direction === option.value}
-                    aria-label={`리소스 목록 ${option.label} 정렬`}
-                    title={`리소스 목록 ${option.label} 정렬`}
-                  >
-                    <Icon size={13} aria-hidden="true" />
-                  </button>
-                );
-              })}
-            </div>
+            <KuSegmentedControl
+              ariaLabel="리소스 목록 정렬 방향"
+              className="grid-cols-2"
+              options={sortDirectionOptions}
+              value={sort.direction}
+              onChange={(direction) => setSort((current) => ({ ...current, direction }))}
+            />
           </div>
-          <div className="grid grid-cols-2 rounded-[9px] border border-[rgba(60,60,67,0.12)] bg-white/70 p-0.5" aria-label="리소스 목록 밀도">
-            {([
-              { value: 'comfortable', label: '기본' },
-              { value: 'compact', label: '촘촘' },
-            ] as const).map((option) => (
-              <button
-                key={option.value}
-                className={`rounded-[7px] px-2 py-1 text-xs font-semibold transition ${
-                  density === option.value ? 'bg-[#1d1d1f] text-white shadow-sm' : 'text-[rgba(60,60,67,0.72)] hover:bg-white'
-                }`}
-                data-testid={`resource-list-density-${option.value}`}
-                type="button"
-                onClick={() => setDensity(option.value)}
-                aria-pressed={density === option.value}
-                title={`리소스 목록 ${option.label} 표시`}
-              >
-                {option.label}
-              </button>
-            ))}
-          </div>
+          <KuSegmentedControl
+            ariaLabel="리소스 목록 밀도"
+            className="grid-cols-2"
+            options={densityOptions}
+            value={density}
+            onChange={setDensity}
+          />
           <div className="grid gap-1">
             <span className="ku-meta">컬럼 · {visibleOptionalColumnCount + 3}</span>
             <div className="flex max-w-[280px] flex-wrap gap-1 rounded-[9px] border border-[rgba(60,60,67,0.12)] bg-white/70 p-1" aria-label="리소스 목록 표시 컬럼">

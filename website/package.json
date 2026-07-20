@@ -16,7 +16,7 @@
     "@heroui/styles": "^3.2.2",
     "@xyflow/react": "^12.11.0",
     "fflate": "^0.8.3",
-    "js-yaml": "^4.2.0",
+    "js-yaml": "^5.2.1",
     "lucide-react": "^0.468.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7"
@@ -24,7 +24,6 @@
   "devDependencies": {
     "@playwright/test": "^1.60.0",
     "@tailwindcss/vite": "^4.3.3",
-    "@types/js-yaml": "^4.0.9",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.2",
