@@ -55,6 +55,10 @@ for (const relativePath of spec.requiredFiles || []) {
 const sourceModeBar = await readFile(path.join(repoRoot, 'website/src/components/SourceModeBar.tsx'), 'utf8');
 requireCondition(sourceModeBar.includes('desktopConnectionAvailable'), 'SourceModeBar must keep an explicit desktop runtime guard');
 requireCondition(sourceModeBar.includes('DesktopCmSessionPanel'), 'desktop session panel integration is missing');
+const desktopCmSessionPanel = await readFile(path.join(repoRoot, 'website/src/components/DesktopCmSessionPanel.tsx'), 'utf8');
+for (const componentName of ['DesktopCmSessionList', 'DesktopCmSessionBulkToolbar']) {
+  requireCondition(desktopCmSessionPanel.includes(componentName), `desktop session panel must use ${componentName}`);
+}
 
 const tauriMain = await readFile(path.join(repoRoot, 'desktop/src-tauri/src/main.rs'), 'utf8');
 for (const forbiddenCommand of ['desktop_sidecar_profile', 'desktop_kubernetes_profiles', 'desktop_select_kubernetes_profile']) {

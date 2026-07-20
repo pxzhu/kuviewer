@@ -38,7 +38,7 @@
 
 3. Frontend regression coverage
    - App/Vite TypeScript config는 `noUnusedLocals`와 `noUnusedParameters`를 강제해 미사용 import, type, helper, controller return을 CI에서 차단한다.
-   - `npm run test:unit`은 Desktop safe view와 diagnostic preset/reorder history, snapshot metadata/report summary, CSV 방어, Resource detail activity, saved-view model/storage helper를 검증한다.
+   - `npm run test:unit`은 Desktop safe view와 diagnostic preset/reorder test-id, snapshot metadata/report summary, CSV 방어, Resource detail activity, saved-view model/storage helper를 검증한다.
    - Resource primary/page request generation, abort, stale completion 방지는 coordinator direct unit test로 검증한다.
    - Server pagination/filter/cursor/facet 계산은 별도 Go module과 direct unit test로 분리됐다.
    - Snapshot comparison reducer는 resource/relation/cluster 변화, clone 안정성, Secret-safe diff를 direct unit test로 검증한다.
@@ -49,9 +49,9 @@
    - Desktop CM/SSH는 public installer가 없는 local prototype이다.
    - Local sidecar, direct Kubernetes bearer profile command, legacy browser server profile UI와 stale keychain smoke는 제거됐다.
    - Session layout validation/storage/import/export/reorder 모델은 panel에서 feature module로 분리되고 direct unit test가 추가됐다.
-   - Diagnostic filter preset storage/normalization과 reorder history filter/time/test-id helper도 feature module로 분리됐다.
+   - Diagnostic filter preset storage/normalization은 feature module로 분리됐고, core reorder test-id helper만 유지한다. 비핵심 reorder history/filter/density UI는 제거됐다.
    - Connection profile form, selected session summary, safe diagnostics primitive와 presentation helper가 panel에서 분리됐다.
-   - Session/layout UI를 더 분리할지, prototype archive로 축소할지 실제 사용 후 결정한다.
+   - Session group/card/bulk toolbar는 표시 모듈로 분리됐다. Saved-layout/reorder/conflict UI를 더 분리할지, prototype archive로 축소할지 실제 사용 후 결정한다.
 
 5. Snapshot comparison follow-up
    - Metadata-only history export는 완료됐다.
