@@ -69,14 +69,14 @@ func buildKubernetesSnapshot(clusterID string, clusterName string, resources kub
 		builder.addEdge("owns", clusterNode, namespaceID, "metadata.namespace", "observed")
 	}
 	for _, node := range resources.nodes.Items {
-		_, added := builder.addTrackedResourceNode("Node", node.Metadata, nodeStatus(node), map[string]interface{}{
-			"kubeletVersion": node.Status.NodeInfo.KubeletVersion,
-			"cpu":            node.Status.Capacity["cpu"],
-			"memory":         node.Status.Capacity["memory"],
-		})
+		analysis := analyzeNodeStatus(node.Status)
+		_, added := builder.addTrackedResourceNode("Node", node.Metadata, nodeStatusValue(analysis), analysis.summary)
+		if !analysis.valid {
+			builder.recordResourceIssue("Node")
+		}
 		if added {
 			totalNodes++
-			if nodeReady(node.Status.Conditions) {
+			if analysis.valid && analysis.ready {
 				readyNodes++
 			}
 		}

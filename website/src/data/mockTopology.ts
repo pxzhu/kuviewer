@@ -30,9 +30,9 @@ export const mockTopology: TopologySnapshot = {
   ],
   nodes: [
     node(local, 'Cluster', '', 'native-dev', 'healthy', { provider: 'native' }, { version: 'v1.30.x', nodes: 3, namespaces: 3 }),
-    node(local, 'Node', '', 'worker-a', 'healthy', { zone: 'a', role: 'system' }, { cpu: '61%', memory: '72%', pods: 7 }),
-    node(local, 'Node', '', 'worker-b', 'healthy', { zone: 'b', role: 'app' }, { cpu: '48%', memory: '58%', pods: 6 }),
-    node(local, 'Node', '', 'worker-c', 'warning', { zone: 'c', role: 'app' }, { cpu: '82%', memory: '86%', pods: 5 }),
+    node(local, 'Node', '', 'worker-a', 'healthy', { zone: 'a', role: 'system' }, nodeStatusSummary('8', '7800m', '32Gi', '30Gi', 110, 100)),
+    node(local, 'Node', '', 'worker-b', 'healthy', { zone: 'b', role: 'app' }, nodeStatusSummary('8', '7600m', '32Gi', '29Gi', 110, 96)),
+    node(local, 'Node', '', 'worker-c', 'warning', { zone: 'c', role: 'app' }, nodeStatusSummary('4', '3800m', '16Gi', '14Gi', 80, 72, false)),
     node(local, 'StorageClass', '', 'local-path', 'healthy', { provisioner: 'rancher.io/local-path' }, { provisioner: 'local-path', mode: 'WaitForFirstConsumer' }),
     node(local, 'PersistentVolume', '', 'pv-checkout-db', 'healthy', { storage: 'local' }, { capacity: '20Gi', reclaim: 'Delete' }),
     node(local, 'CustomResourceDefinition', '', 'widgets.platform.example.com', 'healthy', { group: 'platform.example.com' }, { group: 'platform.example.com', kind: 'Widget', plural: 'widgets', scope: 'Namespaced', servedVersions: 'v1', storageVersion: 'v1' }),
@@ -75,8 +75,8 @@ export const mockTopology: TopologySnapshot = {
     node(local, 'Service', 'observability', 'telemetry', 'healthy', { app: 'node-agent' }, { type: 'ClusterIP', port: 4317 }),
 
     node(aks, 'Cluster', '', 'aks-prod-east', 'healthy', { provider: 'aks', region: 'eastus' }, { version: 'v1.30.x', nodes: 2, namespaces: 3 }),
-    node(aks, 'Node', '', 'aks-node-a', 'healthy', { zone: '1', pool: 'system' }, { cpu: '44%', memory: '52%', pods: 6 }),
-    node(aks, 'Node', '', 'aks-node-b', 'healthy', { zone: '2', pool: 'user' }, { cpu: '69%', memory: '64%', pods: 5 }),
+    node(aks, 'Node', '', 'aks-node-a', 'healthy', { zone: '1', pool: 'system' }, nodeStatusSummary('8', '7700m', '32Gi', '29Gi', 110, 100)),
+    node(aks, 'Node', '', 'aks-node-b', 'healthy', { zone: '2', pool: 'user' }, nodeStatusSummary('16', '15500m', '64Gi', '60Gi', 110, 100)),
     node(aks, 'StorageClass', '', 'managed-csi', 'healthy', { provisioner: 'disk.csi.azure.com' }, { sku: 'Premium_LRS', mode: 'WaitForFirstConsumer' }),
     node(aks, 'CustomResourceDefinition', '', 'rollouts.argoproj.io', 'healthy', { group: 'argoproj.io' }, { group: 'argoproj.io', kind: 'Rollout', plural: 'rollouts', scope: 'Namespaced', servedVersions: 'v1alpha1', storageVersion: 'v1alpha1' }),
     node(aks, 'CustomResource', 'edge', 'Rollout:edge-gateway', 'healthy', { app: 'edge-gateway' }, { apiVersion: 'argoproj.io/v1alpha1', kind: 'Rollout', name: 'edge-gateway', crd: 'rollouts.argoproj.io', group: 'argoproj.io', scope: 'Namespaced', version: 'v1alpha1', specFields: 2, statusFields: 1, conditions: 'Reconciled=True' }),
@@ -228,6 +228,34 @@ function node(
     summary,
     x: 0,
     y: 0,
+  };
+}
+
+function nodeStatusSummary(
+  capacityCpu: string,
+  allocatableCpu: string,
+  capacityMemory: string,
+  allocatableMemory: string,
+  capacityPods: number,
+  allocatablePods: number,
+  ready = true,
+): Record<string, SummaryValue> {
+  return {
+    capacityCpu,
+    allocatableCpu,
+    capacityMemory,
+    allocatableMemory,
+    capacityPods,
+    allocatablePods,
+    capacityEphemeralStorage: '100Gi',
+    allocatableEphemeralStorage: '90Gi',
+    capacityResourceCount: 4,
+    allocatableResourceCount: 4,
+    kubeletVersion: 'v1.30.4',
+    containerRuntime: 'containerd://1.7.27',
+    operatingSystem: 'linux',
+    architecture: 'amd64',
+    conditions: ready ? 'Ready=True' : 'Ready=False',
   };
 }
 

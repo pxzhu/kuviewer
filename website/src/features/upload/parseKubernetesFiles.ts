@@ -58,6 +58,7 @@ import {
   uploadWorkloadTemplateIsValid,
 } from './workloadSchema.ts';
 import { uploadPodRuntimeStatus, uploadPodRuntimeSummary } from './podRuntimeSchema.ts';
+import { uploadNodeStatus, uploadNodeSummary } from './nodeStatusSchema.ts';
 export { importTopologySnapshot } from './importTopologySnapshot.ts';
 
 export interface UploadedTopologyState {
@@ -503,6 +504,9 @@ function objectSummary(kind: ResourceKind, object: KubeObject, customResourceDef
       ports: intent.ports,
     };
   }
+  if (kind === 'Node') {
+    return uploadNodeSummary(object);
+  }
   if (kind === 'Pod') {
     const containers = containerNames(readAt(object, ['spec', 'containers']));
     const initContainers = containerNames(readAt(object, ['spec', 'initContainers']));
@@ -576,6 +580,9 @@ function objectStatus(kind: ResourceKind, object: KubeObject): ResourceStatus {
   }
   if (kind === 'Pod') {
     return uploadPodRuntimeStatus(object);
+  }
+  if (kind === 'Node') {
+    return uploadNodeStatus(object);
   }
   if (kind === 'Service') {
     return uploadServiceSpecIsValid(object) ? 'healthy' : 'warning';

@@ -1549,6 +1549,21 @@ status:
   conditions:
     - type: Ready
       status: "True"
+  capacity:
+    cpu: 8
+    memory: 32Gi
+    pods: 110
+    ephemeral-storage: 100Gi
+  allocatable:
+    cpu: 7800m
+    memory: 30Gi
+    pods: 100
+    ephemeral-storage: 90Gi
+  nodeInfo:
+    kubeletVersion: v1.30.4
+    containerRuntimeVersion: containerd://1.7.27
+    operatingSystem: linux
+    architecture: amd64
 ---
 apiVersion: v1
 kind: Node
@@ -1560,6 +1575,21 @@ status:
   conditions:
     - type: Ready
       status: "True"
+  capacity:
+    cpu: 8
+    memory: 32Gi
+    pods: 110
+    ephemeral-storage: 100Gi
+  allocatable:
+    cpu: 7600m
+    memory: 29Gi
+    pods: 100
+    ephemeral-storage: 88Gi
+  nodeInfo:
+    kubeletVersion: v1.30.4
+    containerRuntimeVersion: containerd://1.7.27
+    operatingSystem: linux
+    architecture: amd64
 ---
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
