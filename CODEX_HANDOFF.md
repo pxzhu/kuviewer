@@ -45,6 +45,7 @@
 - Resource detail section open/active/focus와 document keyboard listener는 `useResourceDetailSectionsController.ts`가 담당하고 shortcut 해석은 `resourceDetailShortcut.ts` pure helper로 검증한다.
 - Metadata/Status/Safe/YAML/Labels/Annotations rendering은 `ResourceCoreDetailSections.tsx`가 담당한다.
 - Resource detail identity/density, section navigation/jump controls, overview header는 `ResourceExplorerDetailHeader.tsx` 표시 component가 담당한다.
+- App sticky header의 theme/view controls, sync 상태, refresh/lock rendering은 `AppHeader.tsx`가 담당하고 오류 표시는 `appHeaderPresentation.ts`의 bounded formatter로 제한한다.
 - Safe Preview 검색/match 상태와 rendering은 `ResourceSafePreviewSection.tsx`가 담당하며, 저장하지 않고 resource id가 바뀌면 초기화한다.
 - Relations, Events, Logs section과 highlight renderer는 `website/src/components/resourceExplorer/` 아래 표시 component로 분리돼 있다.
 - CSV export는 `website/src/features/export/safeCsv.ts`를 공통 사용해 formula injection과 NUL을 차단한다.

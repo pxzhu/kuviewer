@@ -1,10 +1,9 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Boxes, GitBranch, GitCompareArrows, LockKeyhole, Palette, Pause, Play, RefreshCw, SearchCode, SlidersHorizontal, Workflow, type LucideIcon } from 'lucide-react';
+import { RefreshCw } from 'lucide-react';
 import { clearAdminToken, getStoredAdminToken, isValidAdminToken } from '../features/auth/adminToken';
 import { isDesktopRuntime } from '../features/desktop/desktopRuntime';
 import { useDesktopCmSessionController } from '../features/desktop/useDesktopCmSessionController';
 import { useConnectorStatus } from '../features/status/useConnectorStatus';
-import { describeConnectorError } from '../features/status/connectorDiagnostics';
 import { useConnectorCapabilities } from '../features/status/useConnectorCapabilities';
 import { type ColorMode, type TopologyFilters, type TopologySourceMode, useTopology } from '../features/topology/useTopology';
 import { importTopologySnapshot, parseKubernetesFiles, type UploadedTopologyState } from '../features/upload/parseKubernetesFiles';
@@ -19,6 +18,7 @@ import { ConnectorDiagnostics } from '../components/ConnectorDiagnostics';
 import { DetailPanel } from '../components/DetailPanel';
 import { FilterBar } from '../components/FilterBar';
 import { ResourceList } from '../components/ResourceList';
+import { AppHeader, type BrandTheme, type ViewMode } from '../components/AppHeader';
 import {
   appSearchHasResourceViewState,
   appendResourceViewFilterSearchParams,
@@ -29,8 +29,6 @@ import {
 } from '../features/resources/resourceViewState';
 import { SourceModeBar } from '../components/SourceModeBar';
 import { StatTiles } from '../components/StatTiles';
-import type { ConnectorStatus } from '../types/status';
-import { formatLastSync } from '../utils/formatTime';
 
 const initialFilters: TopologyFilters = {
   query: '',
@@ -42,8 +40,6 @@ const initialFilters: TopologyFilters = {
 };
 const sourceModeStorageKey = 'kuviewer_source_mode';
 const brandThemeStorageKey = 'kuviewer_brand_theme';
-type BrandTheme = 'yaml-flow' | 'radar';
-type ViewMode = 'topology' | 'traffic' | 'resources' | 'compare';
 
 const ResourceExplorer = lazy(async () => {
   const module = await import('../components/ResourceExplorer');
@@ -65,18 +61,6 @@ const TopologyCanvas = lazy(async () => {
   return { default: module.TopologyCanvas };
 });
 
-const brandThemeOptions: Array<{ value: BrandTheme; label: string }> = [
-  { value: 'yaml-flow', label: 'D' },
-  { value: 'radar', label: 'B' },
-];
-
-const viewModeOptions: Array<{ value: ViewMode; label: string; icon: LucideIcon }> = [
-  { value: 'topology', label: '토폴로지', icon: GitBranch },
-  { value: 'traffic', label: '트래픽 흐름', icon: Workflow },
-  { value: 'resources', label: '리소스 탐색', icon: SearchCode },
-  { value: 'compare', label: '스냅샷 비교', icon: GitCompareArrows },
-];
-
 interface AppUrlState {
   viewMode: ViewMode;
   sourceMode: TopologySourceMode;
@@ -85,20 +69,6 @@ interface AppUrlState {
 
 export function App() {
   return <Dashboard />;
-}
-
-function HeaderSegmentButton({ active, icon: Icon, label, onClick }: { active: boolean; icon: LucideIcon; label: string; onClick: () => void }) {
-  return (
-    <button
-      className={`ku-segmented-button ${active ? 'ku-segmented-button-active' : ''}`}
-      type="button"
-      aria-pressed={active}
-      onClick={onClick}
-    >
-      <Icon size={15} aria-hidden="true" />
-      {label}
-    </button>
-  );
 }
 
 function Dashboard() {
@@ -225,7 +195,6 @@ function Dashboard() {
   const snapshotNodeIds = useMemo(() => new Set(snapshot.nodes.map((node) => node.id)), [snapshot.nodes]);
   const visibleNodeIds = useMemo(() => new Set(nodes.map((node) => node.id)), [nodes]);
   const selectedNode = selectedNodeId ? nodeMap.get(selectedNodeId) || snapshotNodeMap.get(selectedNodeId) : nodes[0];
-  const AutoRefreshIcon = autoRefresh ? Pause : Play;
   const providerLabel = sourceMode === 'live' ? connectorStatus?.source || '실시간' : sourceModeLabel(sourceMode);
   const snapshotBaseline = useMemo(
     () => snapshotHistory.find((entry) => entry.id === snapshotBaselineId) || null,
@@ -237,10 +206,6 @@ function Dashboard() {
   );
   const comparisonCurrentSnapshot = snapshotComparisonCurrent?.snapshot || snapshot;
   const comparisonCurrentLabel = snapshotComparisonCurrent?.label || providerLabel;
-  const brandIconSrc =
-    brandTheme === 'radar'
-      ? `${import.meta.env.BASE_URL}images/brand/kuviewer-icon-radar.svg?v=0.1.40`
-      : `${import.meta.env.BASE_URL}images/brand/kuviewer-icon-yaml-flow.svg?v=0.1.40`;
   const topologySourceKey = useMemo(
     () => `${sourceMode}:${snapshot.clusters.map((cluster) => cluster.id).join(',')}:${snapshot.nodes.length}:${snapshot.edges.length}`,
     [snapshot.clusters, snapshot.edges.length, snapshot.nodes.length, sourceMode],
@@ -425,109 +390,30 @@ function Dashboard() {
 
   return (
     <main className="ku-app-shell text-[#1e2b3c]" data-brand-theme={brandTheme}>
-      <header className="ku-header sticky top-0 z-50">
-        <div className="mx-auto flex max-w-[1760px] flex-col gap-3 px-3 py-3 sm:px-4 lg:flex-row lg:items-center lg:justify-between lg:px-6">
-          <div className="flex min-w-0 gap-3">
-            <img
-              className="ku-brand-mark mt-0.5 h-11 w-11 shrink-0"
-              src={brandIconSrc}
-              alt=""
-              aria-hidden="true"
-            />
-            <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="ku-chip border-[rgba(0,122,255,0.18)] bg-[rgba(0,122,255,0.08)] text-[#0066cc]">
-                  <Boxes size={13} aria-hidden="true" />
-                  {providerLabel} 소스
-                </span>
-                <span className="ku-chip">
-                  {loading ? '동기화 중' : `동기화 ${formatLastSync(lastUpdatedAt, '안 됨')}`}
-                </span>
-                <span className="ku-chip max-w-full truncate">
-                  {formatConnectorStatus(connectorStatus, connectorLoading, connectorError, sourceMode, liveUnlocked, uploadedState)}
-                </span>
-              </div>
-              <div className="mt-2 flex flex-wrap items-baseline gap-x-3 gap-y-1">
-                <h1 className="ku-title text-[22px] font-semibold tracking-[0]">Kuviewer</h1>
-                <p className="ku-copy font-mono text-xs font-semibold">
-                  Kubernetes 리소스 맵 · 관계 · YAML 기반 트래픽 흐름
-                </p>
-              </div>
-              {error ? <p className="mt-1 text-sm font-semibold text-[#b26a00]">API 오류: {formatUiError(error)}</p> : null}
-              {uploadError ? <p className="mt-1 text-sm font-semibold text-[#b26a00]">업로드 오류: {formatUiError(uploadError)}</p> : null}
-            </div>
-          </div>
-
-          <div className="ku-header-actions">
-            <div className="ku-segmented grid-cols-2" aria-label="브랜드 테마">
-              {brandThemeOptions.map((option) => (
-                <HeaderSegmentButton
-                  key={option.value}
-                  active={brandTheme === option.value}
-                  icon={Palette}
-                  label={option.label}
-                  onClick={() => handleBrandThemeChange(option.value)}
-                />
-              ))}
-            </div>
-            <div className="ku-segmented grid-cols-4" aria-label="주요 보기">
-              {viewModeOptions.map((option) => (
-                <HeaderSegmentButton
-                  key={option.value}
-                  active={viewMode === option.value}
-                  icon={option.icon}
-                  label={option.label}
-                  onClick={() => handleViewModeChange(option.value)}
-                />
-              ))}
-            </div>
-            <button
-              className="ku-control"
-              type="button"
-              onClick={refresh}
-              disabled={!liveActive || loading}
-              title="실시간 토폴로지 새로고침"
-            >
-              <RefreshCw className={loading ? 'animate-spin' : ''} size={16} aria-hidden="true" />
-              새로고침
-            </button>
-            <button
-              className={`inline-flex h-9 items-center gap-2 rounded-[10px] border px-3 text-sm font-semibold shadow-[0_2px_8px_rgba(0,0,0,0.04)] transition ${
-                autoRefresh
-                  ? 'border-[rgba(0,122,255,0.22)] bg-[rgba(0,122,255,0.1)] text-[#0066cc] hover:bg-[rgba(0,122,255,0.14)]'
-                  : 'border-[rgba(60,60,67,0.16)] bg-white/80 text-[#1d1d1f] hover:bg-white'
-              } ${liveActive ? '' : 'cursor-not-allowed opacity-60'}`}
-              type="button"
-              onClick={() => setAutoRefresh(!autoRefresh)}
-              disabled={!liveActive}
-              aria-pressed={autoRefresh}
-              title="실시간 자동 새로고침 전환"
-            >
-              <AutoRefreshIcon size={16} aria-hidden="true" />
-              자동 {Math.round(refreshIntervalMs / 1000)}초
-            </button>
-            <button
-              className="ku-control"
-              type="button"
-              onClick={() => setFilters(initialFilters)}
-              title="필터 초기화"
-            >
-              <SlidersHorizontal size={16} aria-hidden="true" />
-              초기화
-            </button>
-            <button
-              className="ku-control-primary"
-              type="button"
-              disabled={!liveUnlocked}
-              onClick={handleLiveLock}
-              title="실시간 admin token 지우기"
-            >
-              <LockKeyhole size={16} aria-hidden="true" />
-              실시간 잠금
-            </button>
-          </div>
-        </div>
-      </header>
+      <AppHeader
+        autoRefresh={autoRefresh}
+        brandTheme={brandTheme}
+        connectorError={connectorError}
+        connectorLoading={connectorLoading}
+        connectorStatus={connectorStatus}
+        lastUpdatedAt={lastUpdatedAt}
+        liveActive={liveActive}
+        liveUnlocked={liveUnlocked}
+        loading={loading}
+        providerLabel={providerLabel}
+        refreshIntervalMs={refreshIntervalMs}
+        sourceMode={sourceMode}
+        topologyError={error}
+        uploadError={uploadError}
+        uploadedState={uploadedState}
+        viewMode={viewMode}
+        onAutoRefreshChange={setAutoRefresh}
+        onBrandThemeChange={handleBrandThemeChange}
+        onLiveLock={handleLiveLock}
+        onRefresh={refresh}
+        onResetFilters={() => setFilters(initialFilters)}
+        onViewModeChange={handleViewModeChange}
+      />
 
       <div className="mx-auto grid max-w-[1760px] gap-3 px-3 py-3 sm:px-4 lg:gap-4 lg:px-6 lg:py-4">
         <SourceModeBar
@@ -932,66 +818,4 @@ function exportSourceName(sourceMode: TopologySourceMode, uploadedState: Uploade
 
 function sanitizeFilenamePart(value: string) {
   return value.trim().toLowerCase().replace(/[^a-z0-9._-]+/g, '-') || 'topology';
-}
-
-function formatConnectorStatus(
-  status: ConnectorStatus | null,
-  loading: boolean,
-  error: string,
-  sourceMode: TopologySourceMode,
-  liveUnlocked: boolean,
-  uploadedState: UploadedTopologyState | null,
-) {
-  if (sourceMode === 'upload') {
-    if (!uploadedState) {
-      return '업로드 소스 · 매니페스트 대기 중';
-    }
-
-    return `업로드 소스 · ${uploadedState.snapshot.nodes.length}개 리소스 · 경고 ${uploadedState.warnings.length}개`;
-  }
-
-  if (sourceMode === 'mock') {
-    return '목업 소스 · 내장 데모 데이터';
-  }
-
-  if (!liveUnlocked) {
-    return '실시간 소스 잠김 · admin token 필요';
-  }
-
-  if (status) {
-    const accessLabel = status.readOnly ? '읽기 전용' : '쓰기 가능';
-    const secretsLabel = status.secrets === 'hidden' ? 'Secret 숨김' : `Secret ${status.secrets}`;
-    const uiLabel = status.static ? '정적 UI 포함' : '분리된 UI';
-
-    return `제공자 ${status.source} · ${accessLabel} · ${secretsLabel} · ${uiLabel}`;
-  }
-
-  if (loading) {
-    return '제공자 상태 로딩 중';
-  }
-
-  if (error) {
-    return `제공자 상태 오류: ${describeConnectorError(error).message}`;
-  }
-
-  return '제공자 상태 확인 불가';
-}
-
-function formatUiError(error: string) {
-  if (error.includes('invalid_topology_json')) {
-    return '토폴로지 JSON 형식이 올바르지 않습니다.';
-  }
-  if (error.includes('topology_import_failed')) {
-    return '토폴로지 JSON 가져오기에 실패했습니다.';
-  }
-  if (error.includes('upload_parse_failed')) {
-    return '업로드 파일을 해석하지 못했습니다.';
-  }
-  if (error.includes('topology_request_failed')) {
-    return describeConnectorError(error).message;
-  }
-  if (error.includes('status_request_failed') || error.includes('api_base_url') || error.toLowerCase().includes('failed to fetch')) {
-    return describeConnectorError(error).message;
-  }
-  return '요청을 처리하지 못했습니다.';
 }
