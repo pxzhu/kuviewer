@@ -125,6 +125,71 @@ func TestBuildKubernetesSnapshotCountsUniqueResourcesAndIgnoresDuplicateEdges(t 
 	}
 }
 
+func TestBuildKubernetesSnapshotNormalizesServiceEndpointConditions(t *testing.T) {
+	resources := newKubernetesSnapshotResources()
+	service := serviceResource{Metadata: metadata{Name: "api", Namespace: "app"}}
+	service.Spec.Selector = map[string]string{"app": "api"}
+	resources.services.Items = []serviceResource{service}
+	readyFalse := false
+	servingTrue := true
+	terminatingTrue := true
+	draining := endpoint{}
+	draining.Conditions.Ready = &readyFalse
+	draining.Conditions.Serving = &servingTrue
+	draining.Conditions.Terminating = &terminatingTrue
+	resources.endpointSlices.Items = []endpointSliceResource{{
+		Metadata:  metadata{Name: "api-a", Namespace: "app", Labels: map[string]string{"kubernetes.io/service-name": "api"}},
+		Endpoints: []endpoint{draining, {}},
+	}}
+
+	snapshot := buildKubernetesSnapshot("cluster-a", "Cluster A", resources)
+	serviceNode := snapshotNode(t, snapshot, "Service", "app", "api")
+	if serviceNode.Status != "warning" || serviceNode.Summary["readyEndpoints"] != "1/2" || serviceNode.Summary["servingEndpoints"] != "2/2" || serviceNode.Summary["terminatingEndpoints"] != 1 {
+		t.Fatalf("service endpoint summary = %+v", serviceNode)
+	}
+}
+
+func TestBuildKubernetesSnapshotMarksMalformedStatusScalarsInvalid(t *testing.T) {
+	resources := newKubernetesSnapshotResources()
+	negative := -1
+	deployment := deploymentResource{Metadata: metadata{Name: "api", Namespace: "app"}}
+	deployment.Spec.Replicas = &negative
+	deployment.Status = replicaStatus{Replicas: -1, ReadyReplicas: -1, AvailableReplicas: -1}
+	resources.deployments.Items = []deploymentResource{deployment}
+	job := jobResource{Metadata: metadata{Name: "migration", Namespace: "app"}}
+	job.Spec.Completions = &negative
+	job.Status.Succeeded = -1
+	resources.jobs.Items = []jobResource{job}
+	daemonSet := daemonSetResource{Metadata: metadata{Name: "agent", Namespace: "app"}}
+	daemonSet.Status.NumberReady = -1
+	daemonSet.Status.DesiredNumberScheduled = -1
+	resources.daemonSets.Items = []daemonSetResource{daemonSet}
+	hpa := horizontalPodAutoscalerResource{Metadata: metadata{Name: "api", Namespace: "app"}}
+	hpa.Spec.MinReplicas = &negative
+	hpa.Spec.MaxReplicas = -1
+	hpa.Status.CurrentReplicas = -1
+	hpa.Status.DesiredReplicas = -1
+	resources.hpas.Items = []horizontalPodAutoscalerResource{hpa}
+
+	snapshot := buildKubernetesSnapshot("cluster-a", "Cluster A", resources)
+	deploymentNode := snapshotNode(t, snapshot, "Deployment", "app", "api")
+	if deploymentNode.Status != "warning" || deploymentNode.Summary["replicas"] != "invalid" || deploymentNode.Summary["availableReplicas"] != "invalid" {
+		t.Fatalf("deployment scalar summary = %+v", deploymentNode)
+	}
+	jobNode := snapshotNode(t, snapshot, "Job", "app", "migration")
+	if jobNode.Status != "warning" || jobNode.Summary["completions"] != "invalid" || jobNode.Summary["succeeded"] != "invalid" {
+		t.Fatalf("job scalar summary = %+v", jobNode)
+	}
+	daemonSetNode := snapshotNode(t, snapshot, "DaemonSet", "app", "agent")
+	if daemonSetNode.Status != "warning" || daemonSetNode.Summary["ready"] != "invalid" {
+		t.Fatalf("DaemonSet scalar summary = %+v", daemonSetNode)
+	}
+	hpaNode := snapshotNode(t, snapshot, "HorizontalPodAutoscaler", "app", "api")
+	if hpaNode.Status != "warning" || hpaNode.Summary["replicas"] != "invalid" || hpaNode.Summary["range"] != "invalid" {
+		t.Fatalf("HPA scalar summary = %+v", hpaNode)
+	}
+}
+
 func TestSafeSnapshotDiagnosticsValidateAggregateAndBoundOutput(t *testing.T) {
 	values := []topology.SnapshotDiagnostic{
 		{ID: "snapshot/pods", Resource: "Pods", Reason: "invalid_item", Count: maxSnapshotDiagnosticCount},

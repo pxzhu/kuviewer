@@ -39,7 +39,7 @@ func podStatus(pod podResource) string {
 	if pod.Status.Phase == "Succeeded" {
 		return "healthy"
 	}
-	if pod.Status.Phase != "Running" || len(pod.Status.ContainerStatuses) == 0 || len(pod.Status.ContainerStatuses) > maxContainerSummaryItems || readyContainers(pod.Status.ContainerStatuses) != len(pod.Status.ContainerStatuses) {
+	if pod.Status.Phase != "Running" || !validContainerStatuses(pod.Status.ContainerStatuses) || readyContainers(pod.Status.ContainerStatuses) != len(pod.Status.ContainerStatuses) {
 		return "warning"
 	}
 	return "healthy"
@@ -82,7 +82,7 @@ func validConditionStatus(value string) bool {
 
 func deploymentStatus(deployment deploymentResource) string {
 	desired, valid := desiredReplicaCount(deployment.Spec.Replicas, 1)
-	if valid && deployment.Status.AvailableReplicas >= desired {
+	if valid && validReplicaStatus(deployment.Status) && deployment.Status.AvailableReplicas >= desired {
 		return "healthy"
 	}
 	return "warning"
@@ -90,7 +90,7 @@ func deploymentStatus(deployment deploymentResource) string {
 
 func replicaSetStatus(replicaSet replicaSetResource) string {
 	desired, valid := desiredReplicaCount(replicaSet.Spec.Replicas, 1)
-	if valid && replicaSet.Status.ReadyReplicas >= desired {
+	if valid && validReplicaStatus(replicaSet.Status) && replicaSet.Status.ReadyReplicas >= desired {
 		return "healthy"
 	}
 	return "warning"
@@ -98,7 +98,7 @@ func replicaSetStatus(replicaSet replicaSetResource) string {
 
 func statefulSetStatus(statefulSet statefulSetResource) string {
 	desired, valid := desiredReplicaCount(statefulSet.Spec.Replicas, 1)
-	if valid && statefulSet.Status.ReadyReplicas >= desired {
+	if valid && validReplicaStatus(statefulSet.Status) && statefulSet.Status.ReadyReplicas >= desired {
 		return "healthy"
 	}
 	return "warning"
@@ -106,19 +106,26 @@ func statefulSetStatus(statefulSet statefulSetResource) string {
 
 func desiredReplicaCount(value *int, fallback int) (int, bool) {
 	if value == nil {
-		return fallback, fallback >= 0
+		return fallback, validSummaryCount(fallback)
 	}
-	return *value, *value >= 0
+	return *value, validSummaryCount(*value)
+}
+
+func validReplicaStatus(status replicaStatus) bool {
+	return validSummaryCount(status.Replicas) && validSummaryCount(status.ReadyReplicas) && validSummaryCount(status.AvailableReplicas)
 }
 
 func daemonSetStatus(daemonSet daemonSetResource) string {
-	if daemonSet.Status.DesiredNumberScheduled >= 0 && daemonSet.Status.NumberReady >= 0 && daemonSet.Status.NumberReady >= daemonSet.Status.DesiredNumberScheduled {
+	if validSummaryCount(daemonSet.Status.DesiredNumberScheduled) && validSummaryCount(daemonSet.Status.NumberReady) && daemonSet.Status.NumberReady >= daemonSet.Status.DesiredNumberScheduled {
 		return "healthy"
 	}
 	return "warning"
 }
 
 func jobStatus(job jobResource) string {
+	if !validSummaryCount(job.Status.Active) || !validSummaryCount(job.Status.Succeeded) || !validSummaryCount(job.Status.Failed) {
+		return "warning"
+	}
 	if job.Status.Failed > 0 {
 		return "error"
 	}
@@ -130,7 +137,7 @@ func jobStatus(job jobResource) string {
 }
 
 func hpaStatus(hpa horizontalPodAutoscalerResource) string {
-	if hpa.Status.DesiredReplicas < 0 || hpa.Status.CurrentReplicas < 0 {
+	if !validSummaryCount(hpa.Status.DesiredReplicas) || !validSummaryCount(hpa.Status.CurrentReplicas) {
 		return "warning"
 	}
 	if hpa.Status.DesiredReplicas == 0 || hpa.Status.CurrentReplicas >= hpa.Status.DesiredReplicas {
@@ -182,6 +189,18 @@ func readyContainers(statuses []containerStatus) int {
 	return ready
 }
 
+func validContainerStatuses(statuses []containerStatus) bool {
+	if len(statuses) == 0 || len(statuses) > maxContainerSummaryItems {
+		return false
+	}
+	for _, status := range statuses {
+		if !validSummaryCount(status.RestartCount) {
+			return false
+		}
+	}
+	return true
+}
+
 func restartCount(statuses []containerStatus) int {
 	if len(statuses) > maxContainerSummaryItems {
 		return 0
@@ -213,27 +232,59 @@ func containerNames(containers []container) []string {
 }
 
 func formatReplicas(ready int, desired int) string {
-	if ready < 0 {
-		ready = 0
-	}
-	if desired < 0 {
-		desired = 0
+	if !validSummaryCount(ready) || !validSummaryCount(desired) {
+		return "invalid"
 	}
 	return fmt.Sprintf("%d/%d", ready, desired)
 }
 
-func valueOrZero(value *int) int {
-	if value == nil || *value < 0 {
-		return 0
+func formatReplicaSummary(ready int, desired *int, fallback int) string {
+	count, valid := desiredReplicaCount(desired, fallback)
+	if !valid {
+		return "invalid"
 	}
-	return *value
+	return formatReplicas(ready, count)
 }
 
-func valueOrDefault(value *int, fallback int) int {
-	if value == nil || *value < 0 {
-		return fallback
+func summaryCount(value int) interface{} {
+	if !validSummaryCount(value) {
+		return "invalid"
 	}
-	return *value
+	return value
+}
+
+func summaryOptionalCount(value *int, fallback int) interface{} {
+	count, valid := desiredReplicaCount(value, fallback)
+	if !valid {
+		return "invalid"
+	}
+	return count
+}
+
+func formatReplicaRange(minimum *int, maximum int) string {
+	minValue, valid := desiredReplicaCount(minimum, 1)
+	if !valid || !validSummaryCount(maximum) || minValue > maximum {
+		return "invalid"
+	}
+	return fmt.Sprintf("%d-%d", minValue, maximum)
+}
+
+func validSummaryCount(value int) bool {
+	return value >= 0 && int64(value) <= maxSummaryInteger
+}
+
+func containerReadinessSummary(statuses []containerStatus) string {
+	if !validContainerStatuses(statuses) {
+		return "invalid"
+	}
+	return formatReplicas(readyContainers(statuses), len(statuses))
+}
+
+func restartSummary(statuses []containerStatus) interface{} {
+	if !validContainerStatuses(statuses) {
+		return "invalid"
+	}
+	return restartCount(statuses)
 }
 
 func boolSummary(value *bool) string {

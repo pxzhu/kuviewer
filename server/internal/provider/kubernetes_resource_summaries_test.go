@@ -27,6 +27,54 @@ func TestWorkloadStatusesFailClosedForMissingOrInvalidCounts(t *testing.T) {
 	if got := deploymentStatus(deployment); got != "warning" {
 		t.Fatalf("deploymentStatus() = %q, want negative desired count rejected", got)
 	}
+
+	oversized := maxSummaryInteger + 1
+	deployment.Spec.Replicas = &oversized
+	deployment.Status = replicaStatus{Replicas: oversized, ReadyReplicas: oversized, AvailableReplicas: oversized}
+	if got := deploymentStatus(deployment); got != "warning" {
+		t.Fatalf("deploymentStatus() = %q, want oversized counts rejected", got)
+	}
+	if got := formatReplicaSummary(deployment.Status.ReadyReplicas, deployment.Spec.Replicas, 1); got != "invalid" {
+		t.Fatalf("formatReplicaSummary() = %q, want invalid", got)
+	}
+}
+
+func TestSummaryCountHelpersRejectMalformedRemoteScalars(t *testing.T) {
+	negative := -1
+	tooLarge := maxSummaryInteger + 1
+	if got := summaryCount(negative); got != "invalid" {
+		t.Fatalf("summaryCount(-1) = %#v", got)
+	}
+	if got := summaryOptionalCount(&tooLarge, 1); got != "invalid" {
+		t.Fatalf("summaryOptionalCount(oversized) = %#v", got)
+	}
+	if got := formatReplicas(-1, 1); got != "invalid" {
+		t.Fatalf("formatReplicas(-1, 1) = %q", got)
+	}
+	if got := formatReplicaRange(&negative, 10); got != "invalid" {
+		t.Fatalf("formatReplicaRange(-1, 10) = %q", got)
+	}
+	minimum := 5
+	if got := formatReplicaRange(&minimum, 4); got != "invalid" {
+		t.Fatalf("formatReplicaRange(5, 4) = %q", got)
+	}
+	if got := formatReplicaRange(nil, 10); got != "1-10" {
+		t.Fatalf("formatReplicaRange(nil, 10) = %q", got)
+	}
+}
+
+func TestPodSummariesRejectMalformedContainerStatusCounts(t *testing.T) {
+	statuses := []containerStatus{{Ready: true, RestartCount: -1}}
+	pod := podResource{Status: podStat{Phase: "Running", ContainerStatuses: statuses}}
+	if got := podStatus(pod); got != "warning" {
+		t.Fatalf("podStatus() = %q, want warning", got)
+	}
+	if got := containerReadinessSummary(statuses); got != "invalid" {
+		t.Fatalf("containerReadinessSummary() = %q", got)
+	}
+	if got := restartSummary(statuses); got != "invalid" {
+		t.Fatalf("restartSummary() = %#v", got)
+	}
 }
 
 func TestConditionSummaryIsBoundedAndDoesNotEchoMalformedValues(t *testing.T) {

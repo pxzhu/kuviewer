@@ -178,7 +178,9 @@ type endpointSliceResource struct {
 
 type endpoint struct {
 	Conditions struct {
-		Ready *bool `json:"ready"`
+		Ready       *bool `json:"ready"`
+		Serving     *bool `json:"serving"`
+		Terminating *bool `json:"terminating"`
 	} `json:"conditions"`
 	TargetRef *objectReference `json:"targetRef"`
 }
