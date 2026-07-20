@@ -3,20 +3,24 @@ package provider
 import "kuviewer/server/internal/topology"
 
 type graphBuilder struct {
-	clusterID string
-	layout    map[string]int
-	nodeSet   map[string]bool
-	edgeSet   map[string]bool
-	nodes     []topology.Node
-	edges     []topology.Edge
+	clusterID          string
+	layout             map[string]int
+	nodeSet            map[string]bool
+	resourceNodeSet    map[string]bool
+	resourceIssueCount map[string]int
+	edgeSet            map[string]bool
+	nodes              []topology.Node
+	edges              []topology.Edge
 }
 
 func newKubeGraphBuilder(clusterID string) *graphBuilder {
 	return &graphBuilder{
-		clusterID: safeClusterID(clusterID),
-		layout:    map[string]int{},
-		nodeSet:   map[string]bool{},
-		edgeSet:   map[string]bool{},
+		clusterID:          safeClusterID(clusterID),
+		layout:             map[string]int{},
+		nodeSet:            map[string]bool{},
+		resourceNodeSet:    map[string]bool{},
+		resourceIssueCount: map[string]int{},
+		edgeSet:            map[string]bool{},
 	}
 }
 
@@ -25,7 +29,30 @@ func (b *graphBuilder) addNode(kind string, namespace string, name string, statu
 }
 
 func (b *graphBuilder) addResourceNode(kind string, meta metadata, status string, summary map[string]interface{}) string {
-	return b.addNodeWithMetadata(kind, meta.Namespace, meta.Name, status, meta.Labels, meta.Annotations, meta.UID, age(meta.CreationTimestamp), ownerSummaries(meta.OwnerReferences), summary)
+	id, _ := b.addTrackedResourceNode(kind, meta, status, summary)
+	return id
+}
+
+func (b *graphBuilder) addTrackedResourceNode(kind string, meta metadata, status string, summary map[string]interface{}) (string, bool) {
+	id := b.addNodeWithMetadata(kind, meta.Namespace, meta.Name, status, meta.Labels, meta.Annotations, meta.UID, age(meta.CreationTimestamp), ownerSummaries(meta.OwnerReferences), summary)
+	if id == "" || b.resourceNodeSet[id] {
+		b.recordResourceIssue(kind)
+		return id, false
+	}
+	b.resourceNodeSet[id] = true
+	return id, true
+}
+
+func (b *graphBuilder) hasResourceNode(id string) bool {
+	return id != "" && b.resourceNodeSet[id]
+}
+
+func (b *graphBuilder) claimResourceNode(id string, seen map[string]bool) bool {
+	if !b.hasResourceNode(id) || seen[id] {
+		return false
+	}
+	seen[id] = true
+	return true
 }
 
 func (b *graphBuilder) addNodeWithMetadata(kind string, namespace string, name string, status string, labels map[string]string, annotations map[string]string, uid string, ageValue string, owners []string, summary map[string]interface{}) string {
@@ -117,8 +144,12 @@ func (b *graphBuilder) addGatewayRouteNodes(kind string, routes gatewayRouteList
 }
 
 func (b *graphBuilder) addGatewayRouteEdges(kind string, routes gatewayRouteList) {
+	seen := map[string]bool{}
 	for _, route := range routes.Items {
 		routeID := b.nodeID(kind, route.Metadata.Namespace, route.Metadata.Name)
+		if !b.claimResourceNode(routeID, seen) {
+			continue
+		}
 		for _, parentRef := range gatewayRouteParentRefs(route) {
 			b.ensureReferenceNode("Gateway", parentRef.Namespace, parentRef.Name)
 			b.addEdge("attaches-to", routeID, b.nodeID("Gateway", parentRef.Namespace, parentRef.Name), kind+".spec.parentRefs", "observed")

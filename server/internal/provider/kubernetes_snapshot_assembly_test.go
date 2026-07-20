@@ -2,6 +2,7 @@ package provider
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -27,7 +28,15 @@ func TestBuildKubernetesSnapshotSummarizesSafeResources(t *testing.T) {
 			}}},
 			Status: podStat{Phase: "Running", ContainerStatuses: []containerStatus{{Ready: true}}},
 		},
-		{},
+		{
+			Spec: podSpec{
+				ServiceAccountName: "phantom-service-account",
+				Containers: []container{{
+					Name:    "invalid",
+					EnvFrom: []envFrom{{SecretRef: &localObjectRef{Name: "phantom-secret"}}},
+				}},
+			},
+		},
 	}
 	service := serviceResource{Metadata: metadata{Name: "api", Namespace: "app"}}
 	service.Spec.Selector = map[string]string{"app": "api"}
@@ -52,8 +61,17 @@ func TestBuildKubernetesSnapshotSummarizesSafeResources(t *testing.T) {
 		t.Fatalf("expected one cluster summary, got %d", len(snapshot.Clusters))
 	}
 	cluster := snapshot.Clusters[0]
-	if cluster.Version != "v1.30.4" || cluster.NodeReady != 1 || cluster.PodRunning != 1 {
+	if cluster.Version != "v1.30.4" || cluster.NodeReady != 1 || cluster.NodeTotal != 1 || cluster.PodRunning != 1 || cluster.PodWarning != 0 || cluster.Namespaces != 1 {
 		t.Fatalf("unexpected cluster summary: %+v", cluster)
+	}
+	diagnostics := make(map[string]topology.SnapshotDiagnostic, len(snapshot.Diagnostics))
+	for _, diagnostic := range snapshot.Diagnostics {
+		diagnostics[diagnostic.ID] = diagnostic
+	}
+	for _, id := range []string{"snapshot/namespaces", "snapshot/nodes", "snapshot/pods"} {
+		if diagnostic := diagnostics[id]; diagnostic.Reason != "invalid_item" || diagnostic.Count != 1 {
+			t.Fatalf("invalid item diagnostic %q = %+v", id, diagnostic)
+		}
 	}
 	for _, node := range snapshot.Nodes {
 		if strings.TrimSpace(node.Name) == "" {
@@ -75,11 +93,61 @@ func TestBuildKubernetesSnapshotSummarizesSafeResources(t *testing.T) {
 	if strings.Contains(string(encoded), "raw-cr-value-must-not-survive") {
 		t.Fatalf("snapshot unexpectedly exposes raw custom resource values: %s", encoded)
 	}
+	if strings.Contains(string(encoded), "phantom-service-account") || strings.Contains(string(encoded), "phantom-secret") {
+		t.Fatalf("invalid Pod created reference placeholders: %s", encoded)
+	}
 
 	serviceID := "cluster-a:app:Service:api"
 	podID := "cluster-a:app:Pod:api"
 	if !snapshotHasEdge(snapshot, "service-endpoint", serviceID, podID) {
 		t.Fatal("expected selector-inferred Service to Pod edge")
+	}
+}
+
+func TestBuildKubernetesSnapshotCountsUniqueResourcesAndIgnoresDuplicateEdges(t *testing.T) {
+	resources := newKubernetesSnapshotResources()
+	first := podResource{Metadata: metadata{Name: "api", Namespace: "app"}, Status: podStat{Phase: "Succeeded"}}
+	duplicate := first
+	duplicate.Spec.ServiceAccountName = "duplicate-only-account"
+	resources.pods.Items = []podResource{first, duplicate}
+
+	snapshot := buildKubernetesSnapshot("cluster-a", "Cluster A", resources)
+	cluster := snapshot.Clusters[0]
+	if cluster.PodRunning != 1 || cluster.PodWarning != 0 {
+		t.Fatalf("duplicate Pod affected summary: %+v", cluster)
+	}
+	diagnostic := findSnapshotDiagnostic(snapshot.Diagnostics, "snapshot/pods")
+	if diagnostic.Reason != "invalid_item" || diagnostic.Count != 1 {
+		t.Fatalf("duplicate Pod diagnostic = %+v", diagnostic)
+	}
+	if snapshotHasNode(snapshot, "ServiceAccount", "app", "duplicate-only-account") {
+		t.Fatal("duplicate Pod contributed a reference placeholder")
+	}
+}
+
+func TestSafeSnapshotDiagnosticsValidateAggregateAndBoundOutput(t *testing.T) {
+	values := []topology.SnapshotDiagnostic{
+		{ID: "snapshot/pods", Resource: "Pods", Reason: "invalid_item", Count: maxSnapshotDiagnosticCount},
+		{ID: "snapshot/pods", Resource: "Pods", Reason: "invalid_item", Count: maxSnapshotDiagnosticCount},
+		{ID: "BAD ID", Resource: "Pods", Reason: "invalid_item", Count: 1},
+		{ID: "snapshot/nodes", Resource: "unsafe resource", Reason: "invalid_item", Count: 1},
+		{ID: "snapshot/nodes", Resource: "Nodes", Reason: "remote_body", Count: 1},
+	}
+	for index := 0; index < maxSnapshotDiagnostics+4; index++ {
+		values = append(values, topology.SnapshotDiagnostic{ID: fmt.Sprintf("snapshot/test-%02d", index), Resource: "Resources", Reason: "invalid_item", Count: 0})
+	}
+
+	safe := safeSnapshotDiagnostics(values)
+	if len(safe) != maxSnapshotDiagnostics {
+		t.Fatalf("safe diagnostics = %d, want cap %d", len(safe), maxSnapshotDiagnostics)
+	}
+	if diagnostic := findSnapshotDiagnostic(safe, "snapshot/pods"); diagnostic.Count != maxSnapshotDiagnosticCount {
+		t.Fatalf("aggregated diagnostic count = %+v", diagnostic)
+	}
+	for _, diagnostic := range safe {
+		if diagnostic.ID == "BAD ID" || diagnostic.Resource == "unsafe resource" || diagnostic.Reason == "remote_body" {
+			t.Fatalf("unsafe diagnostic survived: %+v", diagnostic)
+		}
 	}
 }
 
@@ -136,4 +204,22 @@ func snapshotHasEdge(snapshot topology.Snapshot, edgeType string, source string,
 		}
 	}
 	return false
+}
+
+func snapshotHasNode(snapshot topology.Snapshot, kind string, namespace string, name string) bool {
+	for _, node := range snapshot.Nodes {
+		if node.Kind == kind && node.Namespace == namespace && node.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
+func findSnapshotDiagnostic(diagnostics []topology.SnapshotDiagnostic, id string) topology.SnapshotDiagnostic {
+	for _, diagnostic := range diagnostics {
+		if diagnostic.ID == id {
+			return diagnostic
+		}
+	}
+	return topology.SnapshotDiagnostic{}
 }
