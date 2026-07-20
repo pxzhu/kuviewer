@@ -1,5 +1,5 @@
 import { type DragEvent as ReactDragEvent, type KeyboardEvent, useEffect, useMemo, useRef, useState } from 'react';
-import { Activity, ArrowDown, ArrowUp, Bookmark, CheckCircle2, ChevronDown, ChevronRight, CircleHelp, Copy, Download, Filter, Folder, GripVertical, KeyRound, Pencil, Play, Search, ServerCog, ShieldCheck, Square, Star, Trash2, Unplug, Upload, XCircle } from 'lucide-react';
+import { ArrowDown, ArrowUp, Bookmark, CheckCircle2, ChevronDown, ChevronRight, Copy, Download, Filter, Folder, GripVertical, KeyRound, Pencil, Play, Search, ServerCog, ShieldCheck, Trash2, Unplug, Upload, XCircle } from 'lucide-react';
 import {
   createDesktopCmSessionExportBundle,
   desktopCmDefaultRemoteApiHost,
@@ -20,7 +20,6 @@ import {
   getDisplayedCmDiagnostic,
   matchesCmDiagnosticFilters,
   matchesCmSessionSearch,
-  maxDesktopCmSessionGroupNameLength,
   normalizeDesktopCmSessionGroupName,
   normalizeDesktopCmSessionViewPreferences,
   pruneDesktopCmSessionViewPreferences,
@@ -43,28 +42,7 @@ import {
   writeDesktopCmDiagnosticFilterPresets,
   type DesktopCmDiagnosticFilterPreset,
 } from '../features/desktop/desktopCmDiagnosticFilterPresets';
-import {
-  desktopCmSessionLayoutReorderHistoryDensityOptions,
-  desktopCmSessionLayoutReorderHistoryFilterPresetIds,
-  desktopCmSessionLayoutReorderHistoryFilterPresets,
-  desktopCmSessionLayoutReorderHistoryFilterPresetShortcuts,
-  desktopCmSessionLayoutReorderHistoryScopeFilterOptions,
-  desktopCmSessionLayoutReorderHistoryStatusFilterOptions,
-  formatDesktopCmSessionLayoutReorderHistoryAge,
-  formatDesktopCmSessionLayoutReorderHistoryExactTime,
-  formatDesktopCmSessionLayoutReorderHistoryIsoTime,
-  formatDesktopCmSessionLayoutReorderHistoryScopeLabel,
-  isDesktopCmKeyboardIgnoredTarget,
-  matchesDesktopCmSessionLayoutReorderHistoryScope,
-  matchesDesktopCmSessionLayoutReorderHistoryStatus,
-  maxDesktopCmSessionLayoutReorderHistoryEntries,
-  slugifyDesktopCmTestId,
-  type DesktopCmSessionLayoutReorderHistoryDensity,
-  type DesktopCmSessionLayoutReorderHistoryEntry,
-  type DesktopCmSessionLayoutReorderHistoryFilterPreset,
-  type DesktopCmSessionLayoutReorderHistoryScopeFilter,
-  type DesktopCmSessionLayoutReorderHistoryStatusFilter,
-} from '../features/desktop/desktopCmReorderHistory';
+import { isDesktopCmKeyboardIgnoredTarget, slugifyDesktopCmTestId } from '../features/desktop/desktopCmReorder';
 import {
   buildDesktopCmSessionLayoutDuplicateName,
   buildDesktopCmSessionLayoutFolderFilterOptions,
@@ -97,19 +75,15 @@ import {
 } from '../features/desktop/desktopCmSessionLayouts';
 import { DesktopCmConnectionProfileForm } from './desktopCm/DesktopCmConnectionProfileForm';
 import {
-  DesktopCmDiagnostics,
-} from './desktopCm/DesktopCmSessionPrimitives';
-import {
   buildDesktopCmSessionCloneName,
   formatCmSessionError,
   formatCmDiagnosticSeverity,
   formatCmDiagnosticStage,
-  formatCmSessionCheckStatus,
-  formatRuntimeHealthStatus,
   normalizeSearchValue,
   validateDesktopCmSessionForm,
 } from '../features/desktop/desktopCmSessionPresentation';
 import { DesktopCmSessionSummary } from './desktopCm/DesktopCmSessionSummary';
+import { DesktopCmSessionBulkToolbar, DesktopCmSessionList } from './desktopCm/DesktopCmSessionList';
 
 interface DesktopCmSessionPanelProps {
   message: string;
@@ -215,19 +189,6 @@ export function DesktopCmSessionPanel({
   const [sessionLayoutReorderFocusTargetTestId, setSessionLayoutReorderFocusTargetTestId] = useState('');
   const [sessionLayoutReorderFocusTargetLabel, setSessionLayoutReorderFocusTargetLabel] = useState('');
   const [sessionLayoutReorderFocusMessage, setSessionLayoutReorderFocusMessage] = useState('');
-  const [sessionLayoutReorderHistory, setSessionLayoutReorderHistory] = useState<DesktopCmSessionLayoutReorderHistoryEntry[]>(() => []);
-  const [sessionLayoutReorderHistoryScopeFilter, setSessionLayoutReorderHistoryScopeFilter] =
-    useState<DesktopCmSessionLayoutReorderHistoryScopeFilter>('all');
-  const [sessionLayoutReorderHistoryStatusFilter, setSessionLayoutReorderHistoryStatusFilter] =
-    useState<DesktopCmSessionLayoutReorderHistoryStatusFilter>('all');
-  const [sessionLayoutReorderHistoryNow, setSessionLayoutReorderHistoryNow] = useState(() => Date.now());
-  const [sessionLayoutReorderHistoryDensity, setSessionLayoutReorderHistoryDensity] =
-    useState<DesktopCmSessionLayoutReorderHistoryDensity>('comfortable');
-  const [sessionLayoutReorderHistoryFilterPresetFocusId, setSessionLayoutReorderHistoryFilterPresetFocusId] = useState(
-    desktopCmSessionLayoutReorderHistoryFilterPresetIds[0] || '',
-  );
-  const [sessionLayoutReorderHistoryFilterPresetKeyboardMessage, setSessionLayoutReorderHistoryFilterPresetKeyboardMessage] = useState('');
-  const [sessionLayoutReorderHistoryFilterPresetHelpFocusVisible, setSessionLayoutReorderHistoryFilterPresetHelpFocusVisible] = useState(false);
   const [sessionLayoutPresets, setSessionLayoutPresets] = useState<DesktopCmSessionLayoutPreset[]>(() => readDesktopCmSessionLayoutPresets());
   const [collapsedSessionLayoutFolders, setCollapsedSessionLayoutFolders] = useState<Set<string>>(() => readDesktopCmSessionLayoutCollapsedFolders());
   const [selectedSessionLayoutPresetNames, setSelectedSessionLayoutPresetNames] = useState<Set<string>>(() => new Set());
@@ -245,8 +206,6 @@ export function DesktopCmSessionPanel({
   const sessionLayoutImportInputRef = useRef<HTMLInputElement | null>(null);
   const sessionLayoutConflictPreviewRef = useRef<HTMLDivElement | null>(null);
   const sessionLayoutFolderListRef = useRef<HTMLDivElement | null>(null);
-  const sessionLayoutReorderHistorySequenceRef = useRef(0);
-  const sessionLayoutReorderHistoryFilterPresetButtonRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   const normalizedSessionSearchQuery = normalizeSearchValue(sessionSearchQuery);
   const normalizedSessionLayoutSearchQuery = normalizeSearchValue(sessionLayoutSearchQuery);
   const sessionPreferenceMap = useMemo(() => new Map(sessionViewPreferences.sessions.map((preference) => [preference.sessionId, preference])), [sessionViewPreferences.sessions]);
@@ -354,20 +313,6 @@ export function DesktopCmSessionPanel({
   const sessionLayoutReorderDisabledReasonId = 'desktop-cm-session-layout-reorder-disabled-reason';
   const sessionLayoutReorderFocusDescriptionId = 'desktop-cm-session-layout-reorder-focus-description';
   const sessionLayoutReorderFocusStatusId = 'desktop-cm-session-layout-reorder-focus-status';
-  const sessionLayoutReorderHistoryTitleId = 'desktop-cm-session-layout-reorder-history-title';
-  const sessionLayoutReorderHistoryDescriptionId = 'desktop-cm-session-layout-reorder-history-description';
-  const sessionLayoutReorderHistorySummaryId = 'desktop-cm-session-layout-reorder-history-accessibility-summary';
-  const sessionLayoutReorderHistoryFilterPresetDescriptionId = 'desktop-cm-session-layout-reorder-history-filter-preset-description';
-  const sessionLayoutReorderHistoryFilterPresetSummaryId = 'desktop-cm-session-layout-reorder-history-filter-preset-summary';
-  const sessionLayoutReorderHistoryFilterPresetKeyboardDescriptionId = 'desktop-cm-session-layout-reorder-history-filter-preset-keyboard-description';
-  const sessionLayoutReorderHistoryFilterPresetKeyboardStatusId = 'desktop-cm-session-layout-reorder-history-filter-preset-keyboard-status';
-  const sessionLayoutReorderHistoryFilterPresetShortcutHintId = 'desktop-cm-session-layout-reorder-history-filter-preset-shortcut-hint';
-  const sessionLayoutReorderHistoryFilterPresetDiscoverabilityHintId = 'desktop-cm-session-layout-reorder-history-filter-preset-discoverability-hint';
-  const sessionLayoutReorderHistoryFilterPresetHelpTooltipId = 'desktop-cm-session-layout-reorder-history-filter-preset-help-tooltip';
-  const sessionLayoutReorderHistoryFilterPresetHelpTooltipContrastDescriptionId =
-    'desktop-cm-session-layout-reorder-history-filter-preset-help-tooltip-contrast-description';
-  const sessionLayoutReorderHistoryFilterPresetHelpTooltipFocusVisibleDescriptionId =
-    'desktop-cm-session-layout-reorder-history-filter-preset-help-tooltip-focus-visible-description';
   const sessionLayoutReorderFilterDisabledReason =
     sessionLayoutSearchActive && sessionLayoutFolderFilterActive
       ? 'Reorder unavailable: layout search and folder filter are active. Clear both filters to reorder.'
@@ -393,27 +338,6 @@ export function DesktopCmSessionPanel({
       ? sessionLayoutReorderUnavailableReason
       : 'Reorder ready: keyboard shortcuts can move folders and presets.');
   const sessionLayoutReorderFocusLiveText = sessionLayoutReorderFocusMessage || 'Focus restoration ready: focus returns to the moved control after reorder.';
-  const sessionLayoutReorderHistoryFiltersActive = sessionLayoutReorderHistoryScopeFilter !== 'all' || sessionLayoutReorderHistoryStatusFilter !== 'all';
-  const visibleSessionLayoutReorderHistory = useMemo(
-    () =>
-      sessionLayoutReorderHistory.filter(
-        (entry) =>
-          matchesDesktopCmSessionLayoutReorderHistoryScope(entry, sessionLayoutReorderHistoryScopeFilter) &&
-          matchesDesktopCmSessionLayoutReorderHistoryStatus(entry, sessionLayoutReorderHistoryStatusFilter),
-      ),
-    [sessionLayoutReorderHistory, sessionLayoutReorderHistoryScopeFilter, sessionLayoutReorderHistoryStatusFilter],
-  );
-  const sessionLayoutReorderHistoryLatestMessage =
-    visibleSessionLayoutReorderHistory[0]?.message ||
-    (sessionLayoutReorderHistoryFiltersActive ? 'No matching reorder status history.' : 'No reorder status history yet.');
-  const sessionLayoutReorderHistoryLatestAge = visibleSessionLayoutReorderHistory[0]
-    ? formatDesktopCmSessionLayoutReorderHistoryAge(visibleSessionLayoutReorderHistory[0].createdAt, sessionLayoutReorderHistoryNow)
-    : '';
-  const sessionLayoutReorderHistoryAccessibilitySummary = visibleSessionLayoutReorderHistory[0]
-    ? `Showing ${visibleSessionLayoutReorderHistory.length} of ${sessionLayoutReorderHistory.length} saved layout reorder status history entries, newest first. Latest ${formatDesktopCmSessionLayoutReorderHistoryScopeLabel(visibleSessionLayoutReorderHistory[0].scope)} entry recorded ${sessionLayoutReorderHistoryLatestAge}.`
-    : sessionLayoutReorderHistoryFiltersActive
-      ? `No saved layout reorder status history entries match the current filters. ${sessionLayoutReorderHistory.length} total entries remain in memory.`
-      : 'No saved layout reorder status history entries are currently available.';
   const activeSessionLayoutFolder = groupedSessionLayoutPresets.find((folder) => folder.folder === activeSessionLayoutFolderName);
   const activeSessionLayoutFolderIndex = sessionLayoutFolderNames.findIndex((folderName) => folderName === activeSessionLayoutFolderName);
   const sessionLayoutFolderKeyboardLiveText = activeSessionLayoutFolder
@@ -423,34 +347,8 @@ export function DesktopCmSessionPanel({
   const selectedRuntimeActive = Boolean(selectedSession && runtimeProfile?.sessionId === selectedSession.id);
   const selectedRuntimeStatus = selectedRuntimeActive ? runtimeProfile?.status || selectedSession?.runtimeStatus || 'runtime-active' : selectedSession?.runtimeStatus || 'stopped';
 
-  const appendSessionLayoutReorderHistory = (messageText: string, scope: DesktopCmSessionLayoutReorderHistoryEntry['scope']) => {
-    const messageValue = messageText.trim();
-    if (!messageValue) {
-      return;
-    }
-    const now = Date.now();
-    sessionLayoutReorderHistorySequenceRef.current += 1;
-    const entry: DesktopCmSessionLayoutReorderHistoryEntry = {
-      id: `${now}-${sessionLayoutReorderHistorySequenceRef.current}`,
-      scope,
-      message: messageValue,
-      createdAt: now,
-    };
-    setSessionLayoutReorderHistoryNow(now);
-    setSessionLayoutReorderHistory((current) => [entry, ...current].slice(0, maxDesktopCmSessionLayoutReorderHistoryEntries));
-  };
-
-  const applySessionLayoutReorderHistoryFilterPreset = (preset: DesktopCmSessionLayoutReorderHistoryFilterPreset) => {
-    setSessionLayoutReorderHistoryFilterPresetFocusId(preset.id);
-    setSessionLayoutReorderHistoryFilterPresetKeyboardMessage(`Applied ${preset.label} reorder history preset.`);
-    setSessionLayoutReorderHistoryScopeFilter(preset.scope);
-    setSessionLayoutReorderHistoryStatusFilter(preset.status);
-    setSessionLayoutReorderHistoryDensity(preset.density);
-  };
-
-  const announceSessionLayoutReorderStatus = (messageText: string, scope: DesktopCmSessionLayoutReorderHistoryEntry['scope']) => {
+  const announceSessionLayoutReorderStatus = (messageText: string) => {
     setSessionLayoutReorderKeyboardMessage(messageText);
-    appendSessionLayoutReorderHistory(messageText, scope);
   };
 
   useEffect(() => {
@@ -459,14 +357,6 @@ export function DesktopCmSessionPanel({
       setCloneDraftSourceName('');
     }
   }, [form.id, sessions]);
-
-  useEffect(() => {
-    if (sessionLayoutReorderHistory.length === 0) {
-      return undefined;
-    }
-    const timer = window.setInterval(() => setSessionLayoutReorderHistoryNow(Date.now()), 30_000);
-    return () => window.clearInterval(timer);
-  }, [sessionLayoutReorderHistory.length]);
 
   useEffect(() => {
     if (!sessionLayoutImportConflicts) {
@@ -510,7 +400,6 @@ export function DesktopCmSessionPanel({
         target.focus({ preventScroll: true });
       }
       setSessionLayoutReorderFocusMessage(focusStatusMessage);
-      appendSessionLayoutReorderHistory(focusStatusMessage, 'focus');
       setSessionLayoutReorderFocusTargetTestId('');
       setSessionLayoutReorderFocusTargetLabel('');
     });
@@ -648,6 +537,26 @@ export function DesktopCmSessionPanel({
       description: selectedSession.description || '',
     });
     setCloneDraftSourceName('');
+    setError('');
+  };
+
+  const handleEditSession = (session: DesktopCmSession) => {
+    setForm({
+      id: session.id,
+      name: session.name,
+      host: session.host,
+      port: session.port,
+      user: session.user,
+      remoteApiHost: session.remoteApiHost,
+      remoteApiPort: session.remoteApiPort,
+      description: session.description || '',
+    });
+    setCloneDraftSourceName('');
+    setError('');
+  };
+
+  const handleKeyFilePathChange = (sessionId: string, value: string) => {
+    setKeyFilePaths((current) => ({ ...current, [sessionId]: value }));
     setError('');
   };
 
@@ -1153,117 +1062,6 @@ export function DesktopCmSessionPanel({
   const sessionLayoutReorderMovementLabel = (direction: -1 | 1 | 'first' | 'last') =>
     direction === 'first' ? 'moved to first' : direction === 'last' ? 'moved to last' : direction < 0 ? 'moved up' : 'moved down';
   const sessionLayoutReorderPositionLabel = (index: number, total: number) => `position ${index + 1} of ${total}`;
-  const sessionLayoutReorderHistoryScopeLabel = (scope: DesktopCmSessionLayoutReorderHistoryEntry['scope']) =>
-    formatDesktopCmSessionLayoutReorderHistoryScopeLabel(scope);
-  const sessionLayoutReorderHistoryScopeFilterLabel = (scope: DesktopCmSessionLayoutReorderHistoryScopeFilter) =>
-    scope === 'all' ? 'All scopes' : sessionLayoutReorderHistoryScopeLabel(scope);
-  const sessionLayoutReorderHistoryStatusFilterLabel = (status: DesktopCmSessionLayoutReorderHistoryStatusFilter) =>
-    status === 'all'
-      ? 'All statuses'
-      : status === 'reorder-complete'
-        ? 'Reorder complete'
-        : status === 'reorder-unavailable'
-          ? 'Reorder unavailable'
-          : status === 'reorder-unchanged'
-            ? 'Reorder unchanged'
-            : status === 'focus-restored'
-            ? 'Focus restored'
-            : 'Focus unavailable';
-  const sessionLayoutReorderHistoryDensityLabel = (density: DesktopCmSessionLayoutReorderHistoryDensity) =>
-    density === 'compact' ? 'Compact' : 'Comfortable';
-  const sessionLayoutReorderHistoryExactTimeLabel = (createdAt: number) => formatDesktopCmSessionLayoutReorderHistoryExactTime(createdAt);
-  const sessionLayoutReorderHistoryIsoTimeLabel = (createdAt: number) => formatDesktopCmSessionLayoutReorderHistoryIsoTime(createdAt);
-  const sessionLayoutReorderHistoryAgeLabel = (createdAt: number) =>
-    formatDesktopCmSessionLayoutReorderHistoryAge(createdAt, sessionLayoutReorderHistoryNow);
-  const sessionLayoutReorderHistoryTimeLabel = (createdAt: number) =>
-    new Date(createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-  const sessionLayoutReorderHistoryCompact = sessionLayoutReorderHistoryDensity === 'compact';
-  const activeSessionLayoutReorderHistoryFilterPreset = desktopCmSessionLayoutReorderHistoryFilterPresets.find(
-    (preset) =>
-      preset.scope === sessionLayoutReorderHistoryScopeFilter &&
-      preset.status === sessionLayoutReorderHistoryStatusFilter &&
-      preset.density === sessionLayoutReorderHistoryDensity,
-  );
-  const sessionLayoutReorderHistoryFilterPresetSummary = activeSessionLayoutReorderHistoryFilterPreset
-    ? `Active reorder history preset ${activeSessionLayoutReorderHistoryFilterPreset.label}: ${sessionLayoutReorderHistoryScopeFilterLabel(activeSessionLayoutReorderHistoryFilterPreset.scope)}, ${sessionLayoutReorderHistoryStatusFilterLabel(activeSessionLayoutReorderHistoryFilterPreset.status)}, ${sessionLayoutReorderHistoryDensityLabel(activeSessionLayoutReorderHistoryFilterPreset.density)} density.`
-    : `No reorder history preset is active. Current filters are ${sessionLayoutReorderHistoryScopeFilterLabel(sessionLayoutReorderHistoryScopeFilter)}, ${sessionLayoutReorderHistoryStatusFilterLabel(sessionLayoutReorderHistoryStatusFilter)}, ${sessionLayoutReorderHistoryDensityLabel(sessionLayoutReorderHistoryDensity)} density.`;
-  const sessionLayoutReorderHistoryFilterPresetTabStopId = desktopCmSessionLayoutReorderHistoryFilterPresetIds.includes(
-    sessionLayoutReorderHistoryFilterPresetFocusId,
-  )
-    ? sessionLayoutReorderHistoryFilterPresetFocusId
-    : activeSessionLayoutReorderHistoryFilterPreset?.id || desktopCmSessionLayoutReorderHistoryFilterPresetIds[0] || '';
-  const sessionLayoutReorderHistoryFilterPresetKeyboardStatus =
-    sessionLayoutReorderHistoryFilterPresetKeyboardMessage || 'Reorder history filter preset keyboard focus is ready.';
-  const sessionLayoutReorderHistoryFilterPresetShortcutHint =
-    'Shortcut hint: Arrow keys move across reorder history presets, Home and End jump to the ends, and Enter or Space applies the focused preset.';
-  const sessionLayoutReorderHistoryFilterPresetDiscoverabilityHint =
-    activeSessionLayoutReorderHistoryFilterPreset
-      ? `Preset help for ${activeSessionLayoutReorderHistoryFilterPreset.label}: arrow keys move between presets, Home and End jump, Enter or Space applies, and this help button focuses the active preset. This hint is UI-only.`
-      : 'Preset help: arrow keys move between presets, Home and End jump, Enter or Space applies, and this help button focuses the first preset. This hint is UI-only.';
-  const sessionLayoutReorderHistoryFilterPresetHelpTooltip =
-    activeSessionLayoutReorderHistoryFilterPreset
-      ? `Tooltip: ${activeSessionLayoutReorderHistoryFilterPreset.label} is active. Hover or focus this help button to review shortcuts; Enter or Space moves focus to the active preset. UI-only and not stored.`
-      : 'Tooltip: no preset currently matches. Hover or focus this help button to review shortcuts; Enter or Space moves focus to the first preset. UI-only and not stored.';
-  const sessionLayoutReorderHistoryFilterPresetHelpTooltipContrastDescription =
-    'Contrast note: tooltip text and surface keep at least 7:1 contrast. This contrast note is UI-only and not stored.';
-  const sessionLayoutReorderHistoryFilterPresetHelpTooltipFocusVisibleDescription =
-    'Focus-visible note: keyboard focus shows a high-contrast outline, ring, and offset around this help button. This focus-visible note is UI-only and not stored.';
-  const sessionLayoutReorderHistoryFilterPresetHelpFocusVisibleStyle = sessionLayoutReorderHistoryFilterPresetHelpFocusVisible
-    ? {
-        backgroundColor: '#f8fcff',
-        borderColor: '#0f4f68',
-        boxShadow: '0 0 0 2px #8bd3f7, 0 0 0 4px rgba(139, 211, 247, 0.34)',
-        color: '#0f4f68',
-        transform: 'scale(1.04)',
-      }
-    : undefined;
-  const sessionLayoutReorderHistoryFilterPresetHelpVisualRegressionState = sessionLayoutReorderHistoryFilterPresetHelpFocusVisible
-    ? 'focus-visible'
-    : 'idle';
-  const sessionLayoutReorderHistoryFilterPresetLabel = (preset: DesktopCmSessionLayoutReorderHistoryFilterPreset, index: number, total: number) =>
-    `Apply ${preset.label} reorder history preset, ${index + 1} of ${total}: ${sessionLayoutReorderHistoryScopeFilterLabel(preset.scope)}, ${sessionLayoutReorderHistoryStatusFilterLabel(preset.status)}, ${sessionLayoutReorderHistoryDensityLabel(preset.density)} density. Arrow keys move between presets, Home and End jump, Enter or Space applies.`;
-  const sessionLayoutReorderHistoryFilterPresetTitle = (preset: DesktopCmSessionLayoutReorderHistoryFilterPreset, index: number, total: number) =>
-    `${sessionLayoutReorderHistoryFilterPresetLabel(preset, index, total)} Shortcuts: Arrow keys, Home, End, Enter, Space.`;
-  const focusSessionLayoutReorderHistoryFilterPreset = (preset: DesktopCmSessionLayoutReorderHistoryFilterPreset) => {
-    const presetIndex = desktopCmSessionLayoutReorderHistoryFilterPresets.findIndex((candidate) => candidate.id === preset.id);
-    setSessionLayoutReorderHistoryFilterPresetFocusId(preset.id);
-    setSessionLayoutReorderHistoryFilterPresetKeyboardMessage(
-      `Focus ${preset.label} reorder history preset, ${presetIndex + 1} of ${desktopCmSessionLayoutReorderHistoryFilterPresets.length}. Press Enter or Space to apply.`,
-    );
-    window.requestAnimationFrame(() => sessionLayoutReorderHistoryFilterPresetButtonRefs.current[preset.id]?.focus({ preventScroll: true }));
-  };
-  const focusSessionLayoutReorderHistoryFilterPresetHelpTarget = () => {
-    const targetPreset = activeSessionLayoutReorderHistoryFilterPreset || desktopCmSessionLayoutReorderHistoryFilterPresets[0];
-    if (!targetPreset) {
-      return;
-    }
-    focusSessionLayoutReorderHistoryFilterPreset(targetPreset);
-  };
-  const handleSessionLayoutReorderHistoryFilterPresetKeyDown = (
-    event: KeyboardEvent<HTMLButtonElement>,
-    preset: DesktopCmSessionLayoutReorderHistoryFilterPreset,
-  ) => {
-    const currentIndex = desktopCmSessionLayoutReorderHistoryFilterPresets.findIndex((candidate) => candidate.id === preset.id);
-    if (currentIndex < 0) {
-      return;
-    }
-    const presetCount = desktopCmSessionLayoutReorderHistoryFilterPresets.length;
-    const targetIndex =
-      event.key === 'ArrowRight' || event.key === 'ArrowDown'
-        ? (currentIndex + 1) % presetCount
-        : event.key === 'ArrowLeft' || event.key === 'ArrowUp'
-          ? (currentIndex - 1 + presetCount) % presetCount
-          : event.key === 'Home'
-            ? 0
-            : event.key === 'End'
-              ? presetCount - 1
-              : -1;
-    if (targetIndex < 0) {
-      return;
-    }
-    event.preventDefault();
-    focusSessionLayoutReorderHistoryFilterPreset(desktopCmSessionLayoutReorderHistoryFilterPresets[targetIndex]);
-  };
   const sessionLayoutFolderReorderSuccessMessage = (folderName: string, direction: -1 | 1 | 'first' | 'last', targetIndex: number, total: number) =>
     `Reorder complete: ${folderName} folder ${sessionLayoutReorderMovementLabel(direction)}, ${sessionLayoutReorderPositionLabel(targetIndex, total)}.`;
   const sessionLayoutPresetReorderSuccessMessage = (presetName: string, folderName: string, direction: -1 | 1 | 'first' | 'last', targetIndex: number, total: number) =>
@@ -1312,7 +1110,7 @@ export function DesktopCmSessionPanel({
   ) => {
     const folder = normalizeDesktopCmSessionLayoutFolderName(folderName);
     if (!canReorderSessionLayoutFolders) {
-      announceSessionLayoutReorderStatus(sessionLayoutReorderUnavailableReason || 'Reorder unavailable: layout folder order cannot change now.', 'folder');
+      announceSessionLayoutReorderStatus(sessionLayoutReorderUnavailableReason || 'Reorder unavailable: layout folder order cannot change now.');
       return;
     }
     const folderOrder = desktopCmSessionLayoutFolderOrder(sessionLayoutPresets);
@@ -1322,14 +1120,12 @@ export function DesktopCmSessionPanel({
     if (currentIndex < 0 || targetIndex < 0 || targetIndex >= folderOrder.length) {
       announceSessionLayoutReorderStatus(
         sessionLayoutReorderUnchangedMessage(folder || 'layout folder', `cannot move ${direction === -1 || direction === 'first' ? 'up' : 'down'}`),
-        'folder',
       );
       return;
     }
     if (currentIndex === targetIndex) {
       announceSessionLayoutReorderStatus(
         sessionLayoutReorderUnchangedMessage(`${folder} folder`, `is already ${direction === 'first' || direction === -1 ? 'first' : 'last'}`),
-        'folder',
       );
       return;
     }
@@ -1341,7 +1137,7 @@ export function DesktopCmSessionPanel({
       writeDesktopCmSessionLayoutPresets(nextPresets);
       return nextPresets;
     });
-    announceSessionLayoutReorderStatus(sessionLayoutFolderReorderSuccessMessage(folder, direction, targetIndex, folderOrder.length), 'folder');
+    announceSessionLayoutReorderStatus(sessionLayoutFolderReorderSuccessMessage(folder, direction, targetIndex, folderOrder.length));
     requestSessionLayoutReorderFocus(
       focusTarget === 'folder-list' ? 'desktop-cm-session-layout-list' : sessionLayoutFolderDragHandleTestId(folder),
       focusTarget === 'folder-list' ? 'saved layout folder list' : `${folder} layout folder drag handle`,
@@ -1368,14 +1164,14 @@ export function DesktopCmSessionPanel({
       writeDesktopCmSessionLayoutPresets(nextPresets);
       return nextPresets;
     });
-    announceSessionLayoutReorderStatus(`Reorder complete: ${sourceFolder} folder moved before ${targetFolder}.`, 'folder');
+    announceSessionLayoutReorderStatus(`Reorder complete: ${sourceFolder} folder moved before ${targetFolder}.`);
     requestSessionLayoutReorderFocus(sessionLayoutFolderDragHandleTestId(sourceFolder), `${sourceFolder} layout folder drag handle`);
     setDraggingSessionLayoutFolderName('');
   };
 
   const handleMoveSessionLayoutPresetOrder = (presetName: string, direction: -1 | 1 | 'first' | 'last') => {
     if (!canReorderSessionLayoutPresets) {
-      announceSessionLayoutReorderStatus(sessionLayoutReorderUnavailableReason || 'Reorder unavailable: layout preset order cannot change now.', 'preset');
+      announceSessionLayoutReorderStatus(sessionLayoutReorderUnavailableReason || 'Reorder unavailable: layout preset order cannot change now.');
       return;
     }
     const sourcePreset = sessionLayoutPresets.find((preset) => preset.name === presetName);
@@ -1390,14 +1186,12 @@ export function DesktopCmSessionPanel({
     if (currentIndex < 0 || targetIndex < 0 || targetIndex >= folderPresets.length) {
       announceSessionLayoutReorderStatus(
         sessionLayoutReorderUnchangedMessage(`${presetName} layout`, `cannot move ${direction === -1 || direction === 'first' ? 'up' : 'down'} in ${folder}`),
-        'preset',
       );
       return;
     }
     if (currentIndex === targetIndex) {
       announceSessionLayoutReorderStatus(
         sessionLayoutReorderUnchangedMessage(`${presetName} layout`, `is already ${direction === 'first' || direction === -1 ? 'first' : 'last'} in ${folder}`),
-        'preset',
       );
       return;
     }
@@ -1408,7 +1202,7 @@ export function DesktopCmSessionPanel({
       writeDesktopCmSessionLayoutPresets(nextPresets);
       return nextPresets;
     });
-    announceSessionLayoutReorderStatus(sessionLayoutPresetReorderSuccessMessage(presetName, folder, direction, targetIndex, folderPresets.length), 'preset');
+    announceSessionLayoutReorderStatus(sessionLayoutPresetReorderSuccessMessage(presetName, folder, direction, targetIndex, folderPresets.length));
     requestSessionLayoutReorderFocus(sessionLayoutPresetDragHandleTestId(presetName), `${presetName} layout drag handle in ${folder}`);
   };
 
@@ -1430,7 +1224,7 @@ export function DesktopCmSessionPanel({
       writeDesktopCmSessionLayoutPresets(nextPresets);
       return nextPresets;
     });
-    announceSessionLayoutReorderStatus(`Reorder complete: ${sourcePresetName} layout moved before ${targetPresetName}.`, 'preset');
+    announceSessionLayoutReorderStatus(`Reorder complete: ${sourcePresetName} layout moved before ${targetPresetName}.`);
     requestSessionLayoutReorderFocus(sessionLayoutPresetDragHandleTestId(sourcePresetName), `${sourcePresetName} layout drag handle`);
     setDraggingSessionLayoutPresetName('');
   };
@@ -2455,309 +2249,6 @@ export function DesktopCmSessionPanel({
                 </button>
               </div>
             ) : null}
-            {sessionLayoutReorderHistory.length > 0 ? (
-              <div
-                aria-describedby={`${sessionLayoutReorderHistoryDescriptionId} ${sessionLayoutReorderHistorySummaryId}`}
-                aria-labelledby={sessionLayoutReorderHistoryTitleId}
-                className="grid min-w-0 gap-2 overflow-hidden rounded-[10px] border border-[rgba(60,60,67,0.1)] bg-white/58 px-2 py-2 sm:px-3"
-                data-density={sessionLayoutReorderHistoryDensity}
-                data-testid="desktop-cm-session-layout-reorder-history"
-                role="region"
-              >
-                <p className="sr-only" data-testid="desktop-cm-session-layout-reorder-history-description" id={sessionLayoutReorderHistoryDescriptionId}>
-                  Saved layout reorder status history is newest first and uses safe UI status metadata only. Each entry includes scope, message, relative age, and exact local timestamp.
-                </p>
-                <p
-                  aria-atomic="true"
-                  aria-live="polite"
-                  className="sr-only"
-                  data-testid="desktop-cm-session-layout-reorder-history-accessibility-summary"
-                  id={sessionLayoutReorderHistorySummaryId}
-                  role="status"
-                >
-                  {sessionLayoutReorderHistoryAccessibilitySummary}
-                </p>
-                <div className="flex min-w-0 flex-wrap items-stretch gap-2 sm:items-center" data-testid="desktop-cm-session-layout-reorder-history-toolbar">
-                  <span
-                    className="ku-chip max-w-full justify-center text-center"
-                    data-testid="desktop-cm-session-layout-reorder-history-count"
-                    id={sessionLayoutReorderHistoryTitleId}
-                  >
-                    최근 reorder status {visibleSessionLayoutReorderHistory.length} / 전체 {sessionLayoutReorderHistory.length}
-                  </span>
-                  <span
-                    className="order-last min-w-0 flex-[1_1_100%] break-words text-xs font-semibold text-[rgba(60,60,67,0.62)] sm:order-none sm:flex-1 sm:truncate"
-                    data-testid="desktop-cm-session-layout-reorder-history-latest"
-                  >
-                    {sessionLayoutReorderHistoryLatestMessage}
-                  </span>
-                  {visibleSessionLayoutReorderHistory[0] ? (
-                    <span
-                      className="ku-chip h-7 shrink-0 text-[11px]"
-                      data-testid="desktop-cm-session-layout-reorder-history-latest-age"
-                      title={sessionLayoutReorderHistoryExactTimeLabel(visibleSessionLayoutReorderHistory[0].createdAt)}
-                    >
-                      {sessionLayoutReorderHistoryLatestAge}
-                    </span>
-                  ) : null}
-                  <label className="min-w-0 flex-1 basis-full sm:min-w-[138px] sm:basis-[138px]">
-                    <span className="ku-meta">Scope</span>
-                    <select
-                      className="ku-field mt-1 h-8 w-full text-xs"
-                      data-testid="desktop-cm-session-layout-reorder-history-scope-filter"
-                      value={sessionLayoutReorderHistoryScopeFilter}
-                      onChange={(event) => setSessionLayoutReorderHistoryScopeFilter(event.target.value as DesktopCmSessionLayoutReorderHistoryScopeFilter)}
-                    >
-                      {desktopCmSessionLayoutReorderHistoryScopeFilterOptions.map((option) => (
-                        <option key={option} value={option}>
-                          {sessionLayoutReorderHistoryScopeFilterLabel(option)}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label className="min-w-0 flex-1 basis-full sm:min-w-[158px] sm:basis-[158px]">
-                    <span className="ku-meta">Status</span>
-                    <select
-                      className="ku-field mt-1 h-8 w-full text-xs"
-                      data-testid="desktop-cm-session-layout-reorder-history-status-filter"
-                      value={sessionLayoutReorderHistoryStatusFilter}
-                      onChange={(event) => setSessionLayoutReorderHistoryStatusFilter(event.target.value as DesktopCmSessionLayoutReorderHistoryStatusFilter)}
-                    >
-                      {desktopCmSessionLayoutReorderHistoryStatusFilterOptions.map((option) => (
-                        <option key={option} value={option}>
-                          {sessionLayoutReorderHistoryStatusFilterLabel(option)}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <div
-                    aria-label="Reorder history timestamp density"
-                    className="flex min-w-0 flex-1 basis-full rounded-[8px] border border-[rgba(60,60,67,0.12)] bg-white/60 p-1 sm:flex-none sm:basis-auto"
-                    data-testid="desktop-cm-session-layout-reorder-history-density"
-                    role="group"
-                  >
-                    {desktopCmSessionLayoutReorderHistoryDensityOptions.map((density) => (
-                      <button
-                        key={density}
-                        aria-pressed={sessionLayoutReorderHistoryDensity === density}
-                        className={`h-7 flex-1 rounded-[6px] px-2 text-xs font-semibold transition sm:flex-none ${
-                          sessionLayoutReorderHistoryDensity === density
-                            ? 'bg-[rgba(42,111,151,0.14)] text-[rgba(23,68,93,0.92)]'
-                            : 'text-[rgba(60,60,67,0.58)] hover:bg-white/70'
-                        }`}
-                        data-testid={`desktop-cm-session-layout-reorder-history-density-${density}`}
-                        type="button"
-                        onClick={() => setSessionLayoutReorderHistoryDensity(density)}
-                      >
-                        {sessionLayoutReorderHistoryDensityLabel(density)}
-                      </button>
-                    ))}
-                  </div>
-                  <div
-                    aria-describedby={`${sessionLayoutReorderHistoryFilterPresetDescriptionId} ${sessionLayoutReorderHistoryFilterPresetKeyboardDescriptionId} ${sessionLayoutReorderHistoryFilterPresetShortcutHintId} ${sessionLayoutReorderHistoryFilterPresetDiscoverabilityHintId} ${sessionLayoutReorderHistoryFilterPresetHelpTooltipId} ${sessionLayoutReorderHistoryFilterPresetHelpTooltipContrastDescriptionId} ${sessionLayoutReorderHistoryFilterPresetHelpTooltipFocusVisibleDescriptionId} ${sessionLayoutReorderHistoryFilterPresetSummaryId} ${sessionLayoutReorderHistoryFilterPresetKeyboardStatusId}`}
-                    aria-label="Reorder history filter presets"
-                    className="flex min-w-0 flex-1 basis-full flex-wrap gap-1 rounded-[8px] border border-[rgba(60,60,67,0.12)] bg-white/55 p-1 sm:flex-none sm:basis-auto"
-                    data-testid="desktop-cm-session-layout-reorder-history-filter-presets"
-                    role="group"
-                  >
-                    <p
-                      className="sr-only"
-                      data-testid="desktop-cm-session-layout-reorder-history-filter-preset-description"
-                      id={sessionLayoutReorderHistoryFilterPresetDescriptionId}
-                    >
-                      Reorder history filter presets apply safe scope, status, and density settings together. Preset state stays in browser memory only and is not stored or exported.
-                    </p>
-                    <p
-                      className="sr-only"
-                      data-testid="desktop-cm-session-layout-reorder-history-filter-preset-keyboard-description"
-                      id={sessionLayoutReorderHistoryFilterPresetKeyboardDescriptionId}
-                    >
-                      Use arrow keys, Home, and End to move across reorder history filter presets. Press Enter or Space to apply the focused preset.
-                    </p>
-                    <p
-                      className="sr-only"
-                      data-testid="desktop-cm-session-layout-reorder-history-filter-preset-shortcut-hint"
-                      id={sessionLayoutReorderHistoryFilterPresetShortcutHintId}
-                    >
-                      {sessionLayoutReorderHistoryFilterPresetShortcutHint}
-                    </p>
-                    <p
-                      className="sr-only"
-                      data-testid="desktop-cm-session-layout-reorder-history-filter-preset-help-tooltip-contrast-description"
-                      id={sessionLayoutReorderHistoryFilterPresetHelpTooltipContrastDescriptionId}
-                    >
-                      {sessionLayoutReorderHistoryFilterPresetHelpTooltipContrastDescription}
-                    </p>
-                    <p
-                      className="sr-only"
-                      data-testid="desktop-cm-session-layout-reorder-history-filter-preset-help-tooltip-focus-visible-description"
-                      id={sessionLayoutReorderHistoryFilterPresetHelpTooltipFocusVisibleDescriptionId}
-                    >
-                      {sessionLayoutReorderHistoryFilterPresetHelpTooltipFocusVisibleDescription}
-                    </p>
-                    <span className="group relative inline-flex shrink-0">
-                      <button
-                        aria-describedby={`${sessionLayoutReorderHistoryFilterPresetHelpTooltipId} ${sessionLayoutReorderHistoryFilterPresetHelpTooltipContrastDescriptionId} ${sessionLayoutReorderHistoryFilterPresetHelpTooltipFocusVisibleDescriptionId}`}
-                        aria-label={sessionLayoutReorderHistoryFilterPresetDiscoverabilityHint}
-                        aria-keyshortcuts="Enter Space"
-                        className="ku-focus-visible-solid-highlight inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-[6px] border border-[rgba(42,111,151,0.16)] bg-[rgba(255,255,255,0.76)] text-[rgba(42,111,151,0.82)] transition hover:bg-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0f4f68] focus-visible:ring-2 focus-visible:ring-[#8bd3f7] focus-visible:ring-offset-2 focus-visible:ring-offset-[#f8fcff]"
-                        data-focus-visible="high-safe-ring"
-                        data-focus-visible-visual="solid-highlight"
-                        data-testid="desktop-cm-session-layout-reorder-history-filter-preset-discoverability-hint"
-                        data-visual-regression="desktop-cm-session-layout-reorder-history-filter-preset-help-focus-visible"
-                        data-visual-regression-state={sessionLayoutReorderHistoryFilterPresetHelpVisualRegressionState}
-                        data-visual-regression-token="solid-highlight-v1"
-                        id={sessionLayoutReorderHistoryFilterPresetDiscoverabilityHintId}
-                        style={sessionLayoutReorderHistoryFilterPresetHelpFocusVisibleStyle}
-                        title={sessionLayoutReorderHistoryFilterPresetDiscoverabilityHint}
-                        type="button"
-                        onBlur={() => setSessionLayoutReorderHistoryFilterPresetHelpFocusVisible(false)}
-                        onFocus={() => {
-                          setSessionLayoutReorderHistoryFilterPresetHelpFocusVisible(true);
-                          setSessionLayoutReorderHistoryFilterPresetKeyboardMessage(
-                            'Preset help focused. Press Enter or Space to focus the active reorder history preset.',
-                          );
-                        }}
-                        onClick={focusSessionLayoutReorderHistoryFilterPresetHelpTarget}
-                      >
-                        <CircleHelp className="h-3.5 w-3.5" aria-hidden="true" />
-                        <span className="sr-only">{sessionLayoutReorderHistoryFilterPresetDiscoverabilityHint}</span>
-                      </button>
-                      <span
-                        className="pointer-events-none absolute left-0 top-[calc(100%+0.45rem)] z-30 hidden w-64 max-w-[calc(100vw-2rem)] rounded-[6px] border border-[#2a6f97] bg-[#f8fcff] px-2.5 py-2 text-[0.68rem] leading-snug text-[#102a3a] shadow-[0_12px_30px_rgba(16,42,58,0.22)] before:absolute before:-top-[5px] before:left-3 before:h-2.5 before:w-2.5 before:rotate-45 before:border-l before:border-t before:border-[#2a6f97] before:bg-[#f8fcff] group-focus-within:block group-hover:block sm:left-auto sm:right-0 sm:translate-x-0 sm:before:left-auto sm:before:right-3"
-                        data-contrast="high-safe"
-                        data-contrast-min-ratio="7"
-                        data-testid="desktop-cm-session-layout-reorder-history-filter-preset-help-tooltip"
-                        data-placement="bottom-inline-safe"
-                        id={sessionLayoutReorderHistoryFilterPresetHelpTooltipId}
-                        role="tooltip"
-                      >
-                        {sessionLayoutReorderHistoryFilterPresetHelpTooltip}
-                      </span>
-                    </span>
-                    <p
-                      aria-atomic="true"
-                      aria-live="polite"
-                      className="sr-only"
-                      data-testid="desktop-cm-session-layout-reorder-history-filter-preset-summary"
-                      id={sessionLayoutReorderHistoryFilterPresetSummaryId}
-                      role="status"
-                    >
-                      {sessionLayoutReorderHistoryFilterPresetSummary}
-                    </p>
-                    <p
-                      aria-atomic="true"
-                      aria-live="polite"
-                      className="sr-only"
-                      data-testid="desktop-cm-session-layout-reorder-history-filter-preset-keyboard-status"
-                      id={sessionLayoutReorderHistoryFilterPresetKeyboardStatusId}
-                      role="status"
-                    >
-                      {sessionLayoutReorderHistoryFilterPresetKeyboardStatus}
-                    </p>
-                    {desktopCmSessionLayoutReorderHistoryFilterPresets.map((preset, index) => {
-                      const active = activeSessionLayoutReorderHistoryFilterPreset?.id === preset.id;
-                      return (
-                        <button
-                          key={preset.id}
-                          ref={(element) => {
-                            sessionLayoutReorderHistoryFilterPresetButtonRefs.current[preset.id] = element;
-                          }}
-                          aria-label={sessionLayoutReorderHistoryFilterPresetLabel(preset, index, desktopCmSessionLayoutReorderHistoryFilterPresets.length)}
-                          aria-pressed={active}
-                          aria-keyshortcuts={desktopCmSessionLayoutReorderHistoryFilterPresetShortcuts}
-                          className={`h-7 flex-1 rounded-[6px] px-2 text-xs font-semibold transition sm:flex-none ${
-                            active ? 'bg-[rgba(42,111,151,0.14)] text-[rgba(23,68,93,0.92)]' : 'text-[rgba(60,60,67,0.58)] hover:bg-white/70'
-                          }`}
-                          data-testid={`desktop-cm-session-layout-reorder-history-filter-preset-${preset.id}`}
-                          tabIndex={sessionLayoutReorderHistoryFilterPresetTabStopId === preset.id ? 0 : -1}
-                          title={sessionLayoutReorderHistoryFilterPresetTitle(preset, index, desktopCmSessionLayoutReorderHistoryFilterPresets.length)}
-                          type="button"
-                          onFocus={() => setSessionLayoutReorderHistoryFilterPresetFocusId(preset.id)}
-                          onKeyDown={(event) => handleSessionLayoutReorderHistoryFilterPresetKeyDown(event, preset)}
-                          onClick={() => applySessionLayoutReorderHistoryFilterPreset(preset)}
-                        >
-                          {preset.label}
-                        </button>
-                      );
-                    })}
-                  </div>
-                  <button
-                    className="ku-control h-8 flex-1 basis-[calc(50%-0.25rem)] justify-center text-xs sm:flex-none sm:basis-auto"
-                    data-testid="desktop-cm-session-layout-reorder-history-filter-clear"
-                    type="button"
-                    disabled={!sessionLayoutReorderHistoryFiltersActive}
-                    onClick={() => {
-                      setSessionLayoutReorderHistoryScopeFilter('all');
-                      setSessionLayoutReorderHistoryStatusFilter('all');
-                    }}
-                  >
-                    <Filter size={13} aria-hidden="true" />
-                    filter clear
-                  </button>
-                  <button
-                    className="ku-control h-8 flex-1 basis-[calc(50%-0.25rem)] justify-center text-xs sm:flex-none sm:basis-auto"
-                    data-testid="desktop-cm-session-layout-reorder-history-clear"
-                    type="button"
-                    onClick={() => {
-                      setSessionLayoutReorderHistory([]);
-                      setSessionLayoutReorderHistoryScopeFilter('all');
-                      setSessionLayoutReorderHistoryStatusFilter('all');
-                    }}
-                  >
-                    <XCircle size={13} aria-hidden="true" />
-                    history clear
-                  </button>
-                </div>
-                {visibleSessionLayoutReorderHistory.length > 0 ? (
-                  <ol
-                    aria-describedby={sessionLayoutReorderHistorySummaryId}
-                    aria-label="Saved layout reorder status history entries, newest first"
-                    className={sessionLayoutReorderHistoryCompact ? 'grid gap-0.5' : 'grid gap-1'}
-                    data-testid="desktop-cm-session-layout-reorder-history-list"
-                  >
-                    {visibleSessionLayoutReorderHistory.map((entry) => (
-                    <li
-                      key={entry.id}
-                      aria-label={`${sessionLayoutReorderHistoryScopeLabel(entry.scope)} reorder status: ${entry.message} Recorded ${sessionLayoutReorderHistoryExactTimeLabel(entry.createdAt)} (${sessionLayoutReorderHistoryAgeLabel(entry.createdAt)}).`}
-                      className={`grid min-w-0 rounded-[8px] border border-[rgba(60,60,67,0.08)] bg-white/70 font-semibold text-[rgba(60,60,67,0.68)] sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:items-center ${
-                        sessionLayoutReorderHistoryCompact ? 'gap-0.5 px-1.5 py-0.5 text-[11px]' : 'gap-1 px-2 py-1 text-xs'
-                      }`}
-                      data-testid={`desktop-cm-session-layout-reorder-history-item-${entry.scope}`}
-                    >
-                      <span className={`ku-chip max-w-full justify-center text-[11px] sm:w-auto ${sessionLayoutReorderHistoryCompact ? 'h-5' : 'h-6'}`}>
-                        {sessionLayoutReorderHistoryScopeLabel(entry.scope)}
-                      </span>
-                      <span className="min-w-0 break-words sm:truncate" data-testid="desktop-cm-session-layout-reorder-history-message">
-                        {entry.message}
-                      </span>
-                      <span className={`flex min-w-0 flex-wrap items-center sm:justify-end ${sessionLayoutReorderHistoryCompact ? 'gap-0.5' : 'gap-1'}`} data-testid="desktop-cm-session-layout-reorder-history-meta">
-                        <span className={`ku-chip shrink-0 text-[11px] ${sessionLayoutReorderHistoryCompact ? 'h-5' : 'h-6'}`} data-testid="desktop-cm-session-layout-reorder-history-age">
-                          {sessionLayoutReorderHistoryAgeLabel(entry.createdAt)}
-                        </span>
-                        <time
-                          aria-label={`Recorded ${sessionLayoutReorderHistoryExactTimeLabel(entry.createdAt)} (${sessionLayoutReorderHistoryAgeLabel(entry.createdAt)})`}
-                          className={`min-w-0 break-all font-mono text-[rgba(60,60,67,0.48)] ${sessionLayoutReorderHistoryCompact ? 'text-[10px]' : 'text-[11px]'}`}
-                          data-testid="desktop-cm-session-layout-reorder-history-time"
-                          dateTime={sessionLayoutReorderHistoryIsoTimeLabel(entry.createdAt)}
-                          title={sessionLayoutReorderHistoryExactTimeLabel(entry.createdAt)}
-                        >
-                          {sessionLayoutReorderHistoryTimeLabel(entry.createdAt)}
-                        </time>
-                      </span>
-                    </li>
-                    ))}
-                  </ol>
-                ) : (
-                  <div
-                    className="rounded-[8px] border border-dashed border-[rgba(60,60,67,0.12)] bg-white/54 px-2 py-2 text-xs font-semibold text-[rgba(60,60,67,0.58)]"
-                    data-testid="desktop-cm-session-layout-reorder-history-empty"
-                  >
-                    필터와 일치하는 reorder status history 없음
-                  </div>
-                )}
-              </div>
-            ) : null}
             {sessionLayoutImportConflicts ? (
               <div
                 ref={sessionLayoutConflictPreviewRef}
@@ -3351,364 +2842,53 @@ export function DesktopCmSessionPanel({
             </p>
           </div>
 
-          {selectedBulkSessionIds.size > 0 ? (
-            <div
-              className="grid gap-2 rounded-[10px] border border-[rgba(0,122,255,0.16)] bg-[rgba(0,122,255,0.06)] px-3 py-2"
-              data-testid="desktop-cm-session-bulk-toolbar"
-            >
-              <div className="flex min-w-0 flex-wrap items-center gap-2">
-                <span className="ku-chip border-[rgba(0,122,255,0.18)] bg-[rgba(0,122,255,0.08)] text-[#0066cc]" data-testid="desktop-cm-session-bulk-count">
-                  선택 {selectedBulkSessionIds.size}개 · 현재 결과 {selectedVisibleBulkCount}개
-                </span>
-                <button className="ku-control h-8 text-xs" data-testid="desktop-cm-session-bulk-export" type="button" onClick={handleExportSelectedSessions}>
-                  <Download size={13} aria-hidden="true" />
-                  선택 export
-                </button>
-                <button className="ku-control h-8 text-xs" data-testid="desktop-cm-session-bulk-favorite-on" type="button" onClick={() => handleSetSelectedFavorite(true)}>
-                  <Star size={13} aria-hidden="true" />
-                  즐겨찾기 설정
-                </button>
-                <button className="ku-control h-8 text-xs" data-testid="desktop-cm-session-bulk-favorite-off" type="button" onClick={() => handleSetSelectedFavorite(false)}>
-                  <Star size={13} aria-hidden="true" />
-                  즐겨찾기 해제
-                </button>
-                <button
-                  className={`ku-control h-8 text-xs ${bulkDeleteConfirm ? 'border-[rgba(255,59,48,0.28)] bg-[rgba(255,59,48,0.1)] text-[#b42318]' : ''}`}
-                  data-testid="desktop-cm-session-bulk-delete"
-                  type="button"
-                  disabled={busyAction === 'bulk-delete-sessions'}
-                  onClick={() => void handleDeleteSelectedSessions()}
-                >
-                  <Trash2 size={13} aria-hidden="true" />
-                  {bulkDeleteConfirm ? '선택 삭제 확인' : '선택 삭제'}
-                </button>
-                <button className="ku-control h-8 text-xs" data-testid="desktop-cm-session-bulk-clear-toolbar" type="button" onClick={handleClearBulkSelection}>
-                  <XCircle size={13} aria-hidden="true" />
-                  선택 해제
-                </button>
-              </div>
-              <div className="flex min-w-0 flex-wrap items-center gap-2">
-                <label className="min-w-[180px] flex-1">
-                  <span className="ku-meta">Bulk group</span>
-                  <input
-                    className="ku-field mt-1 h-8 w-full text-xs"
-                    data-testid="desktop-cm-session-bulk-group-input"
-                    maxLength={maxDesktopCmSessionGroupNameLength}
-                    placeholder={defaultDesktopCmSessionGroup}
-                    value={bulkGroupName}
-                    onChange={(event) => setBulkGroupName(event.target.value)}
-                    onKeyDown={(event) => {
-                      if (event.key === 'Enter') {
-                        handleMoveSelectedSessionsToGroup();
-                      }
-                    }}
-                  />
-                </label>
-                <button className="ku-control h-8 self-end text-xs" data-testid="desktop-cm-session-bulk-group-apply" type="button" onClick={handleMoveSelectedSessionsToGroup}>
-                  <Folder size={13} aria-hidden="true" />
-                  Group 이동
-                </button>
-                <span className="text-xs font-semibold text-[rgba(60,60,67,0.58)]">
-                  selection은 메모리 전용 · export/import/Tauri payload 제외
-                </span>
-              </div>
-            </div>
-          ) : null}
+          <DesktopCmSessionBulkToolbar
+            selectedCount={selectedBulkSessionIds.size}
+            selectedVisibleCount={selectedVisibleBulkCount}
+            bulkGroupName={bulkGroupName}
+            bulkDeleteConfirm={bulkDeleteConfirm}
+            busyAction={busyAction}
+            onExport={handleExportSelectedSessions}
+            onSetFavorite={handleSetSelectedFavorite}
+            onDelete={handleDeleteSelectedSessions}
+            onClear={handleClearBulkSelection}
+            onBulkGroupNameChange={setBulkGroupName}
+            onMoveToGroup={handleMoveSelectedSessionsToGroup}
+          />
         </div>
       ) : null}
 
-      {sessions.length > 0 ? (
-        visibleSessions.length > 0 ? (
-          <div className="grid gap-3" data-testid="desktop-cm-session-groups">
-            {groupedSessions.map((group) => (
-              <section
-                key={group.group}
-                className="grid gap-2 rounded-[10px] border border-[rgba(60,60,67,0.1)] bg-white/58 px-3 py-3"
-                data-testid={`desktop-cm-session-group-${group.slug}`}
-              >
-                <div className="flex min-w-0 flex-wrap items-center gap-2">
-                  <label className="ku-control h-8 text-xs" data-testid={`desktop-cm-session-group-select-${group.slug}`}>
-                    <input
-                      className="h-4 w-4 accent-[#007aff]"
-                      data-testid={`desktop-cm-session-group-select-input-${group.slug}`}
-                      type="checkbox"
-                      checked={group.sessions.length > 0 && group.sessions.every((session) => selectedBulkSessionIds.has(session.id))}
-                      onChange={(event) => handleToggleBulkGroup(group.sessions.map((session) => session.id), event.currentTarget.checked)}
-                    />
-                    선택
-                  </label>
-                  <button
-                    className="ku-control h-8 text-xs"
-                    data-testid={`desktop-cm-session-group-toggle-${group.slug}`}
-                    type="button"
-                    onClick={() => handleToggleGroupCollapsed(group.group)}
-                  >
-                    {group.collapsed ? <ChevronRight size={13} aria-hidden="true" /> : <ChevronDown size={13} aria-hidden="true" />}
-                    <Folder size={13} aria-hidden="true" />
-                    <span className="truncate">{group.group}</span>
-                  </button>
-                  <span className="ku-chip" data-testid={`desktop-cm-session-group-count-${group.slug}`}>
-                    {group.sessions.length} / {group.totalCount}
-                  </span>
-                  <span className="ku-chip" data-testid={`desktop-cm-session-group-favorites-${group.slug}`}>
-                    <Star size={12} aria-hidden="true" />
-                    favorite {group.favoriteCount}
-                  </span>
-                  {group.sessions.some((session) => selectedBulkSessionIds.has(session.id)) ? (
-                    <span className="ku-chip" data-testid={`desktop-cm-session-group-selected-${group.slug}`}>
-                      selected {group.sessions.filter((session) => selectedBulkSessionIds.has(session.id)).length}
-                    </span>
-                  ) : null}
-                </div>
-                {group.collapsed ? null : (
-                  <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3" data-testid={`desktop-cm-session-group-items-${group.slug}`}>
-                    {group.sessions.map((session) => {
-                      const preference = getDesktopCmSessionPreference(session.id, sessionPreferenceMap);
-                      return (
-                        <div
-                          key={session.id}
-                          className={`grid min-w-0 gap-2 rounded-[8px] border px-3 py-2 text-left transition ${
-                            session.selected
-                              ? 'border-[rgba(52,199,89,0.28)] bg-[rgba(52,199,89,0.09)]'
-                              : 'border-[rgba(60,60,67,0.13)] bg-white/72 hover:bg-white'
-                          }`}
-                          data-testid={`desktop-cm-session-${session.id}`}
-                        >
-                          <div className="flex min-w-0 flex-wrap items-center gap-2">
-                            <label className="ku-control w-fit text-[11px]" data-testid={`desktop-cm-session-bulk-select-${session.id}`}>
-                              <input
-                                className="h-4 w-4 accent-[#007aff]"
-                                data-testid={`desktop-cm-session-bulk-select-input-${session.id}`}
-                                type="checkbox"
-                                checked={selectedBulkSessionIds.has(session.id)}
-                                onChange={(event) => handleToggleBulkSession(session.id, event.currentTarget.checked)}
-                              />
-                              선택
-                            </label>
-                            <button
-                              className={`ku-control w-fit text-[11px] ${preference.favorite ? 'border-[rgba(255,204,0,0.32)] bg-[rgba(255,204,0,0.14)] text-[#8a6500]' : ''}`}
-                              data-testid={`desktop-cm-session-favorite-${session.id}`}
-                              type="button"
-                              onClick={() => handleToggleSessionFavorite(session.id)}
-                            >
-                              <Star size={13} aria-hidden="true" fill={preference.favorite ? 'currentColor' : 'none'} />
-                              {preference.favorite ? '즐겨찾기' : '즐겨찾기 추가'}
-                            </button>
-                            <label className="min-w-[150px] flex-1">
-                              <span className="ku-meta">Group</span>
-                              <input
-                                key={`${session.id}:${preference.group}`}
-                                className="ku-field mt-1 h-8 w-full text-xs"
-                                data-testid={`desktop-cm-session-group-input-${session.id}`}
-                                maxLength={maxDesktopCmSessionGroupNameLength}
-                                placeholder={defaultDesktopCmSessionGroup}
-                                defaultValue={preference.group}
-                                onBlur={(event) => handleSetSessionGroup(session.id, event.target.value)}
-                                onKeyDown={(event) => {
-                                  if (event.key === 'Enter') {
-                                    event.currentTarget.blur();
-                                  }
-                                }}
-                              />
-                            </label>
-                          </div>
-                          <button className="min-w-0 text-left" type="button" onClick={() => void handleSelect(session.id)}>
-                            <span className="flex min-w-0 items-center gap-2">
-                              <ServerCog className="shrink-0 text-[rgba(60,60,67,0.48)]" size={15} aria-hidden="true" />
-                              <span className="truncate text-sm font-semibold text-[#1d1d1f]">{session.name}</span>
-                            </span>
-                            <span className="mt-1 block truncate font-mono text-xs font-semibold text-[rgba(60,60,67,0.62)]">
-                              {session.user}@{session.host}:{session.port}
-                            </span>
-                            <span className="mt-1 block truncate font-mono text-xs font-semibold text-[rgba(60,60,67,0.58)]">
-                              API {session.remoteApiHost}:{session.remoteApiPort}
-                            </span>
-                            <span className="mt-1 block truncate text-xs font-semibold text-[rgba(60,60,67,0.58)]">
-                              {session.authType} · {session.status} · {session.runtimeStatus}
-                            </span>
-                            <span className={`mt-1 flex min-w-0 items-center gap-1 truncate text-xs font-semibold ${session.credentialAvailable ? 'text-[#248a3d]' : 'text-[rgba(60,60,67,0.58)]'}`}>
-                              <KeyRound className="shrink-0" size={12} aria-hidden="true" />
-                              <span className="truncate">
-                                {session.credentialAvailable ? `${session.credentialStore} · credential ready` : `${session.credentialStore} · credential 없음`}
-                              </span>
-                            </span>
-                            <span className="mt-1 flex min-w-0 items-center gap-1 truncate text-xs font-semibold text-[rgba(60,60,67,0.58)]">
-                              <Activity className="shrink-0" size={12} aria-hidden="true" />
-                              <span className="truncate">
-                                {formatCmSessionCheckStatus(session.lastCheckStatus)}
-                                {session.lastCheckAt ? ` · ${new Date(session.lastCheckAt).toLocaleTimeString()}` : ''}
-                              </span>
-                            </span>
-                          </button>
-                          <DesktopCmDiagnostics diagnostic={getDisplayedCmDiagnostic(session, runtimeProfile, activeRuntimeSessionId)} testId={`desktop-cm-session-diagnostics-${session.id}`} />
-                          {activeRuntimeSessionId === session.id && runtimeProfile ? (
-                            <div
-                              className="grid gap-1 rounded-[8px] border border-[rgba(0,122,255,0.18)] bg-[rgba(0,122,255,0.07)] px-2.5 py-2 text-xs font-semibold text-[#0066cc]"
-                              data-testid={`desktop-cm-session-runtime-detail-${session.id}`}
-                            >
-                              <div className="flex min-w-0 flex-wrap items-center gap-2">
-                                <span className={`ku-chip max-w-full ${runtimeProfile.healthStatus === 'healthy' ? 'border-[rgba(52,199,89,0.22)] bg-[rgba(52,199,89,0.1)] text-[#248a3d]' : 'border-[rgba(255,149,0,0.24)] bg-[rgba(255,149,0,0.12)] text-[#b05f00]'}`}>
-                                  <Activity size={12} aria-hidden="true" />
-                                  {formatRuntimeHealthStatus(runtimeProfile.healthStatus)}
-                                </span>
-                                <span className="truncate font-mono" title={runtimeProfile.serverUrl}>
-                                  {runtimeProfile.serverUrl}
-                                </span>
-                              </div>
-                              <div className="truncate font-mono text-[rgba(0,78,140,0.78)]">
-                                remote {runtimeProfile.remoteApiHost}:{runtimeProfile.remoteApiPort}
-                              </div>
-                              <div className="flex min-w-0 flex-wrap items-center gap-2 text-[rgba(0,78,140,0.74)]">
-                                <span className="truncate">
-                                  {runtimeProfile.lastHealthAt ? `health ${new Date(runtimeProfile.lastHealthAt).toLocaleTimeString()}` : 'health 미확인'}
-                                </span>
-                                {runtimeProfile.lastHealthMessage ? <span className="truncate">{runtimeProfile.lastHealthMessage}</span> : null}
-                              </div>
-                            </div>
-                          ) : null}
-                          <div className="grid gap-2">
-                            <label className="min-w-0">
-                              <span className="ku-meta">Private key path</span>
-                              <input
-                                className="ku-field mt-1 h-8 w-full font-mono text-xs"
-                                data-testid={`desktop-cm-session-key-path-${session.id}`}
-                                placeholder="~/.ssh/id_ed25519"
-                                value={keyFilePaths[session.id] || ''}
-                                onChange={(event) => {
-                                  setKeyFilePaths((current) => ({ ...current, [session.id]: event.target.value }));
-                                  setError('');
-                                }}
-                              />
-                            </label>
-                            <div className="flex flex-wrap gap-2">
-                              <button
-                                className="ku-control w-fit text-[11px]"
-                                data-testid={`desktop-cm-session-import-key-${session.id}`}
-                                type="button"
-                                disabled={busyAction === `import-key:${session.id}`}
-                                onClick={() => void handleImportPrivateKey(session.id)}
-                              >
-                                <KeyRound size={13} aria-hidden="true" />
-                                credential 가져오기
-                              </button>
-                              <button
-                                className="ku-control w-fit text-[11px]"
-                                data-testid={`desktop-cm-session-check-${session.id}`}
-                                type="button"
-                                disabled={busyAction === `check:${session.id}`}
-                                onClick={() => void handleCheckSession(session.id)}
-                              >
-                                <Activity size={13} aria-hidden="true" />
-                                연결 확인
-                              </button>
-                              {activeRuntimeSessionId === session.id ? (
-                                <>
-                                  <button
-                                    className="ku-control w-fit text-[11px]"
-                                    data-testid={`desktop-cm-session-check-runtime-${session.id}`}
-                                    type="button"
-                                    disabled={busyAction === 'check-runtime'}
-                                    onClick={() => void handleCheckRuntime()}
-                                  >
-                                    <Activity size={13} aria-hidden="true" />
-                                    health 재확인
-                                  </button>
-                                  <button
-                                    className="ku-control w-fit text-[11px]"
-                                    data-testid={`desktop-cm-session-stop-runtime-${session.id}`}
-                                    type="button"
-                                    disabled={busyAction === 'stop-runtime'}
-                                    onClick={() => void handleStopRuntime()}
-                                  >
-                                    <Square size={13} aria-hidden="true" />
-                                    runtime 중지
-                                  </button>
-                                </>
-                              ) : (
-                                <button
-                                  className="ku-control w-fit text-[11px]"
-                                  data-testid={`desktop-cm-session-start-runtime-${session.id}`}
-                                  type="button"
-                                  disabled={!session.credentialAvailable || busyAction === `start-runtime:${session.id}`}
-                                  onClick={() => void handleStartRuntime(session.id)}
-                                >
-                                  <Play size={13} aria-hidden="true" />
-                                  runtime 시작
-                                </button>
-                              )}
-                              <button
-                                className="ku-control w-fit text-[11px]"
-                                data-testid={`desktop-cm-session-delete-credential-${session.id}`}
-                                type="button"
-                                disabled={!session.credentialAvailable || busyAction === `delete-credential:${session.id}`}
-                                onClick={() => void handleCredentialDelete(session.id)}
-                              >
-                                <Trash2 size={13} aria-hidden="true" />
-                                {credentialDeleteConfirmId === session.id ? 'credential 삭제 확인' : 'credential 삭제'}
-                              </button>
-                            </div>
-                          </div>
-                          <div className="flex flex-wrap gap-2">
-                            <button
-                              className="ku-control w-fit text-[11px]"
-                              data-testid={`desktop-cm-session-edit-${session.id}`}
-                              type="button"
-                              onClick={() => {
-                                setForm({
-                                  id: session.id,
-                                  name: session.name,
-                                  host: session.host,
-                                  port: session.port,
-                                  user: session.user,
-                                  remoteApiHost: session.remoteApiHost,
-                                  remoteApiPort: session.remoteApiPort,
-                                  description: session.description || '',
-                                });
-                                setCloneDraftSourceName('');
-                                setError('');
-                              }}
-                            >
-                              <Pencil size={13} aria-hidden="true" />
-                              수정
-                            </button>
-                            <button
-                              className="ku-control w-fit text-[11px]"
-                              data-testid={`desktop-cm-session-clone-${session.id}`}
-                              type="button"
-                              onClick={() => handleCloneSession(session)}
-                            >
-                              <Copy size={13} aria-hidden="true" />
-                              복제
-                            </button>
-                            <button
-                              className="ku-control w-fit text-[11px]"
-                              data-testid={`desktop-cm-session-delete-${session.id}`}
-                              type="button"
-                              disabled={busyAction === `delete:${session.id}` || busyAction === `select:${session.id}`}
-                              onClick={() => void handleDelete(session.id)}
-                            >
-                              <Trash2 size={13} aria-hidden="true" />
-                              {deleteConfirmId === session.id ? '삭제 확인' : '삭제'}
-                            </button>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </section>
-            ))}
-          </div>
-        ) : (
-          <p className="rounded-[8px] border border-[rgba(60,60,67,0.1)] bg-white/70 px-3 py-2 text-xs font-semibold text-[rgba(60,60,67,0.58)]" data-testid="desktop-cm-session-search-empty">
-            일치하는 CM/SSH session 없음
-          </p>
-        )
-      ) : (
-        <p className="text-xs font-semibold text-[rgba(60,60,67,0.58)]">
-          CM/SSH 세션은 설치형 앱에서만 관리됩니다. private key는 Rust가 OS credential store에 저장하고 브라우저에는 safe metadata만 표시합니다.
-        </p>
-      )}
+      <DesktopCmSessionList
+        sessions={sessions}
+        visibleSessionCount={visibleSessions.length}
+        groups={groupedSessions}
+        preferences={sessionPreferenceMap}
+        selectedSessionIds={selectedBulkSessionIds}
+        runtimeProfile={runtimeProfile}
+        activeRuntimeSessionId={activeRuntimeSessionId}
+        keyFilePaths={keyFilePaths}
+        busyAction={busyAction}
+        deleteConfirmId={deleteConfirmId}
+        credentialDeleteConfirmId={credentialDeleteConfirmId}
+        actions={{
+          onToggleGroupSelection: handleToggleBulkGroup,
+          onToggleGroupCollapsed: handleToggleGroupCollapsed,
+          onToggleSessionSelection: handleToggleBulkSession,
+          onToggleFavorite: handleToggleSessionFavorite,
+          onSetGroup: handleSetSessionGroup,
+          onSelect: handleSelect,
+          onKeyFilePathChange: handleKeyFilePathChange,
+          onImportPrivateKey: handleImportPrivateKey,
+          onCheckSession: handleCheckSession,
+          onCheckRuntime: handleCheckRuntime,
+          onStopRuntime: handleStopRuntime,
+          onStartRuntime: handleStartRuntime,
+          onDeleteCredential: handleCredentialDelete,
+          onEdit: handleEditSession,
+          onClone: handleCloneSession,
+          onDelete: handleDelete,
+        }}
+      />
     </div>
   );
 }
