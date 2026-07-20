@@ -37,6 +37,7 @@ func TestServiceTypeClusterIPAndExternalNameValidation(t *testing.T) {
 	external := serviceResource{}
 	external.Spec.Type = "ExternalName"
 	external.Spec.ExternalName = "api.example.com"
+	external.Spec.SessionAffinity = "None"
 	if !validServiceSpec(external) || serviceStatus(external, endpointCounter{}) != "healthy" {
 		t.Fatalf("valid ExternalName Service was rejected: %+v", external)
 	}
@@ -108,6 +109,86 @@ func TestServiceDualStackConfigurationValidation(t *testing.T) {
 	external.Spec.ClusterIPs = []string{"10.0.0.8"}
 	if validServiceSpec(external) {
 		t.Fatal("ExternalName Service with clusterIPs was accepted")
+	}
+}
+
+func TestServiceTrafficPolicyLoadBalancerAndSessionAffinityValidation(t *testing.T) {
+	if policy, valid := normalizedServiceTrafficPolicy(""); policy != "Cluster" || !valid {
+		t.Fatalf("default traffic policy = %q/%t", policy, valid)
+	}
+	if affinity, valid := normalizedServiceSessionAffinity(""); affinity != "None" || !valid {
+		t.Fatalf("default session affinity = %q/%t", affinity, valid)
+	}
+	if _, valid := normalizedServiceTrafficPolicy("Nearest"); valid {
+		t.Fatal("invalid traffic policy was accepted")
+	}
+	if _, valid := normalizedServiceSessionAffinity("Cookie"); valid {
+		t.Fatal("invalid session affinity was accepted")
+	}
+
+	allocateNodePorts := false
+	timeout := 10800
+	service := serviceResource{}
+	service.Spec.Type = "LoadBalancer"
+	service.Spec.ExternalTrafficPolicy = "Local"
+	service.Spec.InternalTrafficPolicy = "Local"
+	service.Spec.HealthCheckNodePort = 30081
+	service.Spec.LoadBalancerClass = "example.com/internal"
+	service.Spec.AllocateLoadBalancerNodePorts = &allocateNodePorts
+	service.Spec.SessionAffinity = "ClientIP"
+	service.Spec.SessionAffinityConfig = &serviceSessionAffinityConfig{ClientIP: &serviceClientIPConfig{TimeoutSeconds: &timeout}}
+	if !validServiceSpec(service) {
+		t.Fatal("valid LoadBalancer traffic/session configuration was rejected")
+	}
+	summary := serviceSummary(service, endpointCounter{})
+	if summary["internalTrafficPolicy"] != "Local" || summary["externalTrafficPolicy"] != "Local" || summary["healthCheckNodePort"] != 30081 || summary["loadBalancerClass"] != "example.com/internal" || summary["allocateLoadBalancerNodePorts"] != false || summary["sessionAffinity"] != "ClientIP" || summary["sessionAffinityTimeout"] != 10800 {
+		t.Fatalf("LoadBalancer traffic/session summary = %+v", summary)
+	}
+
+	service.Spec.HealthCheckNodePort = 0
+	if validServiceSpec(service) {
+		t.Fatal("live Local LoadBalancer without healthCheckNodePort was accepted")
+	}
+	service.Spec.HealthCheckNodePort = 30081
+	service.Spec.LoadBalancerClass = "bad key"
+	if validServiceSpec(service) {
+		t.Fatal("invalid loadBalancerClass was accepted")
+	}
+	service.Spec.LoadBalancerClass = "example.com/internal"
+	service.Spec.Ports = []servicePort{{Port: 443, NodePort: 30081}}
+	if validServiceSpec(service) {
+		t.Fatal("healthCheckNodePort collision with TCP nodePort was accepted")
+	}
+	service.Spec.Ports = nil
+	timeout = 0
+	if validServiceSpec(service) {
+		t.Fatal("zero ClientIP timeout was accepted")
+	}
+	timeout = maxSessionAffinitySeconds + 1
+	if validServiceSpec(service) {
+		t.Fatal("oversized ClientIP timeout was accepted")
+	}
+
+	clusterIP := serviceResource{}
+	clusterIP.Spec.LoadBalancerClass = "internal"
+	if validServiceSpec(clusterIP) {
+		t.Fatal("ClusterIP Service loadBalancerClass was accepted")
+	}
+	clusterIP.Spec.LoadBalancerClass = ""
+	clusterIP.Spec.AllocateLoadBalancerNodePorts = &allocateNodePorts
+	if validServiceSpec(clusterIP) {
+		t.Fatal("ClusterIP Service allocateLoadBalancerNodePorts was accepted")
+	}
+	clusterIP.Spec.AllocateLoadBalancerNodePorts = nil
+	clusterIP.Spec.HealthCheckNodePort = 30081
+	if validServiceSpec(clusterIP) {
+		t.Fatal("ClusterIP Service healthCheckNodePort was accepted")
+	}
+	clusterIP.Spec.HealthCheckNodePort = 0
+	clusterIP.Spec.SessionAffinity = "None"
+	clusterIP.Spec.SessionAffinityConfig = &serviceSessionAffinityConfig{}
+	if validServiceSpec(clusterIP) {
+		t.Fatal("None session affinity with config was accepted")
 	}
 }
 
@@ -213,12 +294,17 @@ func TestServiceSummaryAndSnapshotFailClosedForMalformedSpec(t *testing.T) {
 	service.Spec.ClusterIPs = []string{"credential=remote-value"}
 	service.Spec.IPFamilies = []string{"UnsafeFamily"}
 	service.Spec.IPFamilyPolicy = "InjectedPolicy"
+	service.Spec.InternalTrafficPolicy = "InjectedInternal"
+	service.Spec.ExternalTrafficPolicy = "InjectedExternal"
+	service.Spec.SessionAffinity = "InjectedAffinity"
+	service.Spec.HealthCheckNodePort = -1
+	service.Spec.LoadBalancerClass = "credential.example.com/private"
 	service.Spec.ExternalName = "credential.example.com"
 	service.Spec.Ports = []servicePort{{Protocol: "HTTP", Port: -1, NodePort: -1, AppProtocol: "credential/value"}}
 	service.Spec.Selector = map[string]string{"bad key": "value"}
 
 	summary := serviceSummary(service, endpointCounter{})
-	for _, key := range []string{"type", "clusterIP", "clusterIPs", "ipFamilies", "ipFamilyPolicy", "externalName", "ports", "targetPorts", "nodePorts", "appProtocols", "selector"} {
+	for _, key := range []string{"type", "clusterIP", "clusterIPs", "ipFamilies", "ipFamilyPolicy", "internalTrafficPolicy", "externalTrafficPolicy", "healthCheckNodePort", "loadBalancerClass", "allocateLoadBalancerNodePorts", "sessionAffinity", "sessionAffinityTimeout", "externalName", "ports", "targetPorts", "nodePorts", "appProtocols", "selector"} {
 		if summary[key] != "invalid" {
 			t.Fatalf("Service summary %s = %#v", key, summary[key])
 		}
@@ -236,7 +322,7 @@ func TestServiceSummaryAndSnapshotFailClosedForMalformedSpec(t *testing.T) {
 		t.Fatalf("malformed Service diagnostic = %+v", diagnostic)
 	}
 	encoded := fmt.Sprintf("%+v", node.Summary)
-	if strings.Contains(encoded, "remote-value") || strings.Contains(encoded, "credential.example.com") || strings.Contains(encoded, "UnsafeFamily") || strings.Contains(encoded, "InjectedPolicy") {
+	if strings.Contains(encoded, "remote-value") || strings.Contains(encoded, "credential.example.com") || strings.Contains(encoded, "UnsafeFamily") || strings.Contains(encoded, "InjectedPolicy") || strings.Contains(encoded, "InjectedInternal") || strings.Contains(encoded, "InjectedExternal") || strings.Contains(encoded, "InjectedAffinity") {
 		t.Fatalf("malformed Service values leaked: %s", encoded)
 	}
 }

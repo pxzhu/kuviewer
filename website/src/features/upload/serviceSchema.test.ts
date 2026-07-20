@@ -35,8 +35,64 @@ test('upload Service schema accepts canonical dual-stack metadata and emits boun
     targetPorts: 2,
     nodePorts: 0,
     appProtocols: 1,
+    internalTrafficPolicy: 'Cluster',
+    externalTrafficPolicy: 'Cluster',
+    healthCheckNodePort: 'unset',
+    loadBalancerClass: 'unset',
+    allocateLoadBalancerNodePorts: 'unset',
+    sessionAffinity: 'None',
+    sessionAffinityTimeout: 'unset',
     selector: '1 labels',
   });
+});
+
+test('upload Service schema validates traffic policy, load balancer, and session affinity fields', () => {
+  const service = serviceObject({
+    type: 'LoadBalancer',
+    internalTrafficPolicy: 'Local',
+    externalTrafficPolicy: 'Local',
+    healthCheckNodePort: 30081,
+    loadBalancerClass: 'example.com/internal',
+    allocateLoadBalancerNodePorts: false,
+    sessionAffinity: 'ClientIP',
+    sessionAffinityConfig: { clientIP: { timeoutSeconds: 10800 } },
+    ports: [{ port: 443 }],
+  });
+  assert.equal(uploadServiceSpecIsValid(service), true);
+  assert.deepEqual(uploadServiceSummary(service), {
+    type: 'LoadBalancer',
+    clusterIP: 'unset',
+    clusterIPs: 0,
+    ipFamilies: 'unset',
+    ipFamilyPolicy: 'SingleStack',
+    ports: 1,
+    targetPorts: 0,
+    nodePorts: 0,
+    appProtocols: 0,
+    internalTrafficPolicy: 'Local',
+    externalTrafficPolicy: 'Local',
+    healthCheckNodePort: 30081,
+    loadBalancerClass: 'example.com/internal',
+    allocateLoadBalancerNodePorts: false,
+    sessionAffinity: 'ClientIP',
+    sessionAffinityTimeout: 10800,
+    selector: 'none',
+  });
+
+  const invalidSpecs = [
+    { type: 'ClusterIP', loadBalancerClass: 'internal' },
+    { type: 'ClusterIP', allocateLoadBalancerNodePorts: false },
+    { type: 'ClusterIP', healthCheckNodePort: 30081 },
+    { type: 'LoadBalancer', externalTrafficPolicy: 'Cluster', healthCheckNodePort: 30081 },
+    { type: 'LoadBalancer', externalTrafficPolicy: 'Local', healthCheckNodePort: 30081, ports: [{ port: 443, nodePort: 30081 }] },
+    { type: 'LoadBalancer', loadBalancerClass: 'bad key' },
+    { internalTrafficPolicy: 'Nearest' },
+    { sessionAffinity: 'Cookie' },
+    { sessionAffinity: 'None', sessionAffinityConfig: {} },
+    { sessionAffinity: 'ClientIP', sessionAffinityConfig: { clientIP: { timeoutSeconds: 0 } } },
+    { sessionAffinity: 'ClientIP', sessionAffinityConfig: { clientIP: { timeoutSeconds: 86401 } } },
+  ];
+  invalidSpecs.forEach((spec) => assert.equal(uploadServiceSpecIsValid(serviceObject(spec)), false));
 });
 
 test('upload Service schema allows API-defaulted NodePort fields but validates explicit values', () => {
@@ -55,6 +111,11 @@ test('upload Service schema rejects inconsistent IP and port fields without echo
     clusterIPs: ['credential=remote-value'],
     ipFamilies: ['UnsafeFamily'],
     ipFamilyPolicy: 'InjectedPolicy',
+    internalTrafficPolicy: 'InjectedInternal',
+    externalTrafficPolicy: 'InjectedExternal',
+    sessionAffinity: 'InjectedAffinity',
+    healthCheckNodePort: -1,
+    loadBalancerClass: 'credential.example.com/private',
     selector: { 'bad key': 'value' },
     ports: [{ port: -1, targetPort: { name: 'remote-value' }, nodePort: -1, appProtocol: 'bad key' }],
   });
@@ -62,7 +123,7 @@ test('upload Service schema rejects inconsistent IP and port fields without echo
   assert.equal(uploadServiceSupportsSelectorInference(malformed), false);
   assert.equal(uploadServiceSelector(malformed), null);
   const encoded = JSON.stringify(uploadServiceSummary(malformed));
-  assert.doesNotMatch(encoded, /remote-value|UnsafeFamily|InjectedPolicy/);
+  assert.doesNotMatch(encoded, /remote-value|UnsafeFamily|InjectedPolicy|InjectedInternal|InjectedExternal|InjectedAffinity|credential\.example\.com/);
   assert.deepEqual(uploadServiceSummary(malformed), {
     type: 'invalid',
     clusterIP: 'invalid',
@@ -73,6 +134,13 @@ test('upload Service schema rejects inconsistent IP and port fields without echo
     targetPorts: 'invalid',
     nodePorts: 'invalid',
     appProtocols: 'invalid',
+    internalTrafficPolicy: 'invalid',
+    externalTrafficPolicy: 'invalid',
+    healthCheckNodePort: 'invalid',
+    loadBalancerClass: 'invalid',
+    allocateLoadBalancerNodePorts: 'invalid',
+    sessionAffinity: 'invalid',
+    sessionAffinityTimeout: 'invalid',
     selector: 'invalid',
   });
 });
@@ -83,6 +151,7 @@ test('upload Service schema fails closed for dual-stack, duplicate port, and ove
     serviceObject({ clusterIP: '10.0.0.8', clusterIPs: ['10.0.0.8', '10.0.0.9'], ipFamilies: ['IPv4', 'IPv4'], ipFamilyPolicy: 'PreferDualStack' }),
     serviceObject({ clusterIP: '10.0.0.8', clusterIPs: ['10.0.0.8', '2001:0db8::8'], ipFamilies: ['IPv4', 'IPv6'], ipFamilyPolicy: 'PreferDualStack' }),
     serviceObject({ ports: [{ name: 'http', port: 80 }, { name: 'http-alt', protocol: 'TCP', port: 80 }] }),
+    serviceObject({ ports: Array.from({ length: 257 }, (_, index) => ({ name: `port-${index}`, port: 80 + index })) }),
     serviceObject({ selector: Object.fromEntries(Array.from({ length: 65 }, (_, index) => [`key-${index}`, 'value'])) }),
   ];
   fixtures.forEach((fixture) => assert.equal(uploadServiceSpecIsValid(fixture), false));
@@ -92,12 +161,15 @@ test('upload ExternalName Service never infers Pod selector relations', () => {
   const service = serviceObject({
     type: 'ExternalName',
     externalName: 'api.example.com',
+    sessionAffinity: 'None',
     selector: { app: 'api' },
   });
   assert.equal(uploadServiceSpecIsValid(service), true);
   assert.equal(uploadServiceSupportsSelectorInference(service), false);
   assert.equal(uploadServiceSummary(service).externalName, 'api.example.com');
   assert.equal(uploadServiceSummary(service).ipFamilyPolicy, 'unset');
+  assert.equal(uploadServiceSummary(service).sessionAffinity, 'unset');
+  assert.equal(uploadServiceSummary(service).internalTrafficPolicy, 'unset');
 });
 
 function serviceObject(spec: Record<string, unknown>): KubeObject {
