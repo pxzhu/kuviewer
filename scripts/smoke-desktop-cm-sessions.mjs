@@ -25,6 +25,15 @@ async function smokeDesktopRuntime(browserInstance, url) {
   await page.addInitScript(() => {
     window.localStorage.clear();
     window.sessionStorage.clear();
+    window.localStorage.setItem('kuviewer_desktop_cm_session_layout_presets', JSON.stringify([{
+      name: 'Operations',
+      folder: 'General',
+      viewPreferences: {
+        sessions: [{ sessionId: 'cm-primary', group: 'General', favorite: false, updatedAt: 1 }],
+        collapsedGroups: [],
+      },
+      updatedAt: 1,
+    }]));
     window.__TAURI__ = {
       core: {
         invoke: async (command) => {
@@ -91,6 +100,32 @@ async function smokeDesktopRuntime(browserInstance, url) {
   for (const forbidden of ['privateKey', 'adminToken', 'kubeconfig', 'rawSshStderr', 'events', 'logs', 'diagnosticHistory', 'runtimeProfile']) {
     requireCondition(!exportedText.includes(forbidden), `desktop session export included forbidden field: ${forbidden}`);
   }
+
+  await page.getByTestId('desktop-cm-session-layout-import').setInputFiles({
+    name: 'layout-conflict.json',
+    mimeType: 'application/json',
+    buffer: Buffer.from(JSON.stringify({
+      schemaVersion: 1,
+      kind: 'kuviewer.desktop.cmSessionLayouts',
+      items: [{
+        name: 'Operations',
+        folder: 'General',
+        viewPreferences: {
+          sessions: [{ sessionId: 'cm-primary', group: 'General', favorite: true, updatedAt: 2 }],
+          collapsedGroups: [],
+        },
+        updatedAt: 2,
+      }],
+    })),
+  });
+  const conflictPreview = page.getByTestId('desktop-cm-session-layout-conflict-preview');
+  await conflictPreview.waitFor({ state: 'visible' });
+  requireCondition(
+    await page.getByTestId('desktop-cm-session-layout-conflict-operations').getAttribute('aria-current') === 'true',
+    'first layout conflict must be active',
+  );
+  await conflictPreview.press('k');
+  await conflictPreview.waitFor({ state: 'hidden' });
 
   requireCondition(runtimeErrors.length === 0, `desktop runtime emitted browser errors: ${runtimeErrors.join(' | ')}`);
   await page.close();
