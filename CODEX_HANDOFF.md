@@ -52,6 +52,7 @@
 - Desktop CM grouping/search/diagnostic view model은 `website/src/features/desktop/desktopCmSessionView.ts`에 둔다.
 - Desktop CM layout의 validation, storage, import/export, folder/preset ordering은 `website/src/features/desktop/desktopCmSessionLayouts.ts`에 두고 direct unit test로 검증한다.
 - Desktop CM saved-layout UI state, import conflict, selection, keyboard/drag reorder orchestration은 `useDesktopCmSessionLayouts.ts`가 담당한다.
+- Desktop CM saved-layout의 transient focus, keyboard/drag reorder orchestration은 `useDesktopCmSessionLayoutReorder.ts`로 한 단계 더 분리돼 있다.
 - Desktop CM diagnostic preset은 독립 feature module과 direct unit test로 검증하며, core reorder는 test-id 정규화와 실제 desktop smoke로 고정한다.
 - Desktop CM 연결 폼과 선택 세션 요약은 `website/src/components/desktopCm/` 표시 컴포넌트로 분리하고, safe error/status/validation은 `desktopCmSessionPresentation.ts` direct unit test로 고정한다.
 - Frontend pure helper regression은 `npm run test:unit`, end-to-end UI는 `npm run test:visual`로 검증한다.
@@ -103,5 +104,5 @@ go test ./...
 
 1. AKS에서 capability/RBAC/Events/logs/pagination 검증 (Native Kubernetes와 local k3s 실검증 완료)
 2. Desktop CM local prototype의 실제 CM 사용 흐름 검증 후 유지 또는 archive 범위 결정
-3. Desktop CM session group/card/bulk toolbar와 saved-layout toolbar/conflict/folder/preset list는 표시 모듈로 분리됐고, saved-layout state/controller도 독립 hook으로 분리됐다.
+3. Desktop CM session group/card/bulk toolbar와 saved-layout toolbar/conflict/folder/preset list는 표시 모듈로 분리됐고, saved-layout state와 reorder controller도 독립 hook으로 분리됐다.
 4. scripts의 반복 코드가 다시 확인될 때 reusable helper/CLI entrypoint 분리 확대

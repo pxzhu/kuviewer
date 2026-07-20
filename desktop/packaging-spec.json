@@ -73,7 +73,8 @@
     "website/src/components/desktopCm/DesktopCmSavedLayoutsPanel.tsx",
     "website/src/components/desktopCm/DesktopCmSessionList.tsx",
     "website/src/features/desktop/desktopCmSessionView.ts",
-    "website/src/features/desktop/useDesktopCmSessionLayouts.ts"
+    "website/src/features/desktop/useDesktopCmSessionLayouts.ts",
+    "website/src/features/desktop/useDesktopCmSessionLayoutReorder.ts"
   ],
   "next": [
     "validate the extracted saved-layout controller against real desktop CM workflows",

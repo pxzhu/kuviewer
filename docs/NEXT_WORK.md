@@ -52,7 +52,7 @@
    - Diagnostic filter preset storage/normalization은 feature module로 분리됐고, core reorder test-id helper만 유지한다. 비핵심 reorder history/filter/density UI는 제거됐다.
    - Connection profile form, selected session summary, safe diagnostics primitive와 presentation helper가 panel에서 분리됐다.
    - Session group/card/bulk toolbar와 saved-layout toolbar/import conflict/folder/preset list는 표시 모듈로 분리됐다.
-   - Saved-layout state, import conflict, selection, keyboard/drag reorder orchestration은 controller hook으로 분리됐다. 실제 CM 사용 흐름 검증 후 prototype 유지 또는 archive 범위를 결정한다.
+   - Saved-layout state/import conflict/selection controller와 transient focus/keyboard/drag reorder controller가 분리됐다. 실제 CM 사용 흐름 검증 후 prototype 유지 또는 archive 범위를 결정한다.
 
 5. Snapshot comparison follow-up
    - Metadata-only history export는 완료됐다.
