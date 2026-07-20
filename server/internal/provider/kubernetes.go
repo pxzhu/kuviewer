@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
 
@@ -451,209 +450,6 @@ func grpcRouteMethods(route gatewayRouteResource) []string {
 	return uniqueStrings(methods)
 }
 
-func labelsMatch(selector map[string]string, labels map[string]string) bool {
-	for key, value := range selector {
-		if labels[key] != value {
-			return false
-		}
-	}
-	return len(selector) > 0
-}
-
-func selectorMatchesLabels(selector map[string]string, labels map[string]string) bool {
-	for key, value := range selector {
-		if labels[key] != value {
-			return false
-		}
-	}
-	return true
-}
-
-func labelSelectorMatches(selector *labelSelector, labels map[string]string) bool {
-	if selector == nil {
-		return true
-	}
-	if !selectorMatchesLabels(selector.MatchLabels, labels) {
-		return false
-	}
-	for _, expression := range selector.MatchExpressions {
-		if !labelSelectorExpressionMatches(expression, labels) {
-			return false
-		}
-	}
-	return true
-}
-
-func labelSelectorExpressionMatches(expression labelSelectorMatchExpression, labels map[string]string) bool {
-	if expression.Key == "" {
-		return false
-	}
-	_, exists := labels[expression.Key]
-	switch expression.Operator {
-	case "In":
-		return len(expression.Values) > 0 && containsString(expression.Values, labels[expression.Key])
-	case "NotIn":
-		return len(expression.Values) > 0 && !containsString(expression.Values, labels[expression.Key])
-	case "Exists":
-		return len(expression.Values) == 0 && exists
-	case "DoesNotExist":
-		return len(expression.Values) == 0 && !exists
-	default:
-		return false
-	}
-}
-
-func namespaceRecords(namespaces namespaceList) []namespaceRecord {
-	records := make([]namespaceRecord, 0, len(namespaces.Items))
-	for _, namespace := range namespaces.Items {
-		records = append(records, namespaceRecord{
-			name:   namespace.Metadata.Name,
-			labels: labelsOrEmpty(namespace.Metadata.Labels),
-		})
-	}
-	return records
-}
-
-func matchingNetworkPolicyNamespaces(namespaces []namespaceRecord, policyNamespace string, namespaceSelector *labelSelector) map[string]bool {
-	if namespaceSelector == nil {
-		return map[string]bool{policyNamespace: true}
-	}
-
-	matches := map[string]bool{}
-	for _, namespace := range namespaces {
-		if labelSelectorMatches(namespaceSelector, namespace.labels) {
-			matches[namespace.name] = true
-		}
-	}
-	return matches
-}
-
-func networkPolicyTypes(policy networkPolicyResource) []string {
-	if len(policy.Spec.PolicyTypes) > 0 {
-		return uniqueStrings(policy.Spec.PolicyTypes)
-	}
-
-	types := []string{"Ingress"}
-	if len(policy.Spec.Egress) > 0 {
-		types = append(types, "Egress")
-	}
-	return types
-}
-
-func networkPolicyIntentSummary(policy networkPolicyResource, policyTypes []string) networkPolicyIntent {
-	ports := uniqueStrings(append(networkPolicyIngressPortSummaries(policy.Spec.Ingress), networkPolicyEgressPortSummaries(policy.Spec.Egress)...))
-	return networkPolicyIntent{
-		ingress: networkPolicyDirectionSummary(containsString(policyTypes, "Ingress"), len(policy.Spec.Ingress), ingressPeers(policy.Spec.Ingress), networkPolicyIngressPortSummaries(policy.Spec.Ingress)),
-		egress:  networkPolicyDirectionSummary(containsString(policyTypes, "Egress"), len(policy.Spec.Egress), egressPeers(policy.Spec.Egress), networkPolicyEgressPortSummaries(policy.Spec.Egress)),
-		ports:   limitSummary(ports, 4, "-"),
-	}
-}
-
-func networkPolicyDirectionSummary(isIsolated bool, ruleCount int, peerValues []string, portValues []string) string {
-	if !isIsolated {
-		return "not isolated"
-	}
-	if ruleCount == 0 {
-		return "deny all"
-	}
-
-	peers := limitSummary(uniqueStrings(peerValues), 3, "all peers")
-	ports := limitSummary(uniqueStrings(portValues), 3, "all ports")
-	return fmt.Sprintf("%d rule%s: %s; %s", ruleCount, pluralSuffix(ruleCount), peers, ports)
-}
-
-func ingressPeers(rules []networkPolicyIngressRule) []string {
-	if len(rules) == 0 {
-		return nil
-	}
-	values := []string{}
-	for _, rule := range rules {
-		values = append(values, peerSummaries(rule.From)...)
-	}
-	return values
-}
-
-func egressPeers(rules []networkPolicyEgressRule) []string {
-	if len(rules) == 0 {
-		return nil
-	}
-	values := []string{}
-	for _, rule := range rules {
-		values = append(values, peerSummaries(rule.To)...)
-	}
-	return values
-}
-
-func peerSummaries(peers []networkPolicyPeer) []string {
-	if len(peers) == 0 {
-		return []string{"all peers"}
-	}
-
-	values := []string{}
-	for _, peer := range peers {
-		parts := []string{}
-		if peer.NamespaceSelector != nil {
-			parts = append(parts, "ns:"+labelSelectorSummaryWithFallback(*peer.NamespaceSelector, "all namespaces"))
-		}
-		if peer.PodSelector != nil {
-			parts = append(parts, "pod:"+labelSelectorSummary(*peer.PodSelector))
-		}
-		if peer.IPBlock != nil {
-			cidr := peer.IPBlock.CIDR
-			if cidr == "" {
-				cidr = "cidr"
-			}
-			parts = append(parts, "ip:"+cidr)
-		}
-		if len(parts) == 0 {
-			values = append(values, "all peers")
-			continue
-		}
-		values = append(values, strings.Join(parts, "+"))
-	}
-	return values
-}
-
-func networkPolicyIngressPortSummaries(rules []networkPolicyIngressRule) []string {
-	values := []string{}
-	for _, rule := range rules {
-		values = append(values, networkPolicyPortSummaries(rule.Ports)...)
-	}
-	return values
-}
-
-func networkPolicyEgressPortSummaries(rules []networkPolicyEgressRule) []string {
-	values := []string{}
-	for _, rule := range rules {
-		values = append(values, networkPolicyPortSummaries(rule.Ports)...)
-	}
-	return values
-}
-
-func networkPolicyPortSummaries(ports []networkPolicyPort) []string {
-	values := []string{}
-	for _, port := range ports {
-		protocol := port.Protocol
-		if protocol == "" {
-			protocol = "TCP"
-		}
-		portValue := "*"
-		switch value := port.Port.(type) {
-		case string:
-			if value != "" {
-				portValue = value
-			}
-		case float64:
-			portValue = strconv.Itoa(int(value))
-		}
-		if port.EndPort != nil {
-			portValue = fmt.Sprintf("%s-%d", portValue, *port.EndPort)
-		}
-		values = append(values, protocol+":"+portValue)
-	}
-	return values
-}
-
 func readyContainers(statuses []containerStatus) int {
 	ready := 0
 	for _, status := range statuses {
@@ -711,35 +507,6 @@ func boolSummary(value *bool) string {
 	return "false"
 }
 
-func labelSelectorSummary(selector labelSelector) string {
-	return labelSelectorSummaryWithFallback(selector, "all pods")
-}
-
-func labelSelectorSummaryWithFallback(selector labelSelector, fallback string) string {
-	expressions := len(selector.MatchExpressions)
-	if len(selector.MatchLabels) == 0 && expressions == 0 {
-		return fallback
-	}
-
-	parts := selectorSummaryParts(selector.MatchLabels)
-	if expressions > 0 {
-		parts = append(parts, fmt.Sprintf("%d expressions", expressions))
-	}
-	return strings.Join(parts, ",")
-}
-
-func selectorSummaryParts(selector map[string]string) []string {
-	if len(selector) == 0 {
-		return []string{}
-	}
-	keys := make([]string, 0, len(selector))
-	for key := range selector {
-		keys = append(keys, key)
-	}
-	sort.Strings(keys)
-	return keys
-}
-
 func age(timestamp string) string {
 	if timestamp == "" {
 		return "unknown"
@@ -793,13 +560,6 @@ func sensitiveMetadataField(value string) bool {
 		strings.Contains(normalized, "access-key") ||
 		strings.Contains(normalized, "private-key") ||
 		strings.Contains(normalized, "client-key")
-}
-
-func labelsOrEmpty(labels map[string]string) map[string]string {
-	if labels == nil {
-		return map[string]string{}
-	}
-	return labels
 }
 
 func uniqueGatewayReferences(values []gatewayReference) []gatewayReference {

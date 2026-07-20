@@ -493,9 +493,3 @@ type podReference struct {
 	edgeType    string
 	sourceField string
 }
-
-type networkPolicyIntent struct {
-	ingress string
-	egress  string
-	ports   string
-}
