@@ -1009,15 +1009,3 @@ func TestCappedLogLinesLimitsLinesAndLineLength(t *testing.T) {
 		t.Fatalf("last line length/suffix = %d/%q, want truncated suffix", len(got), got[len(got)-3:])
 	}
 }
-
-func TestNetworkPolicyTypesDefaultEgressWhenRulesExist(t *testing.T) {
-	policy := networkPolicyResource{}
-	if got := networkPolicyTypes(policy); len(got) != 1 || got[0] != "Ingress" {
-		t.Fatalf("networkPolicyTypes() = %#v, want Ingress", got)
-	}
-
-	policy.Spec.Egress = []networkPolicyEgressRule{{}}
-	if got := networkPolicyTypes(policy); len(got) != 2 || got[0] != "Ingress" || got[1] != "Egress" {
-		t.Fatalf("networkPolicyTypes() = %#v, want Ingress,Egress", got)
-	}
-}

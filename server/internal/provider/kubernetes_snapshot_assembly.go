@@ -345,25 +345,32 @@ func addKubernetesSnapshotEdges(builder *graphBuilder, resources kubernetesSnaps
 	for _, networkPolicy := range resources.networkPolicies.Items {
 		networkPolicyID := builder.nodeID("NetworkPolicy", networkPolicy.Metadata.Namespace, networkPolicy.Metadata.Name)
 		matches := 0
-		for _, pod := range resources.pods.Items {
-			if pod.Metadata.Namespace != networkPolicy.Metadata.Namespace || !labelSelectorMatches(&networkPolicy.Spec.PodSelector, pod.Metadata.Labels) {
-				continue
+		selectorValid := validLabelSelector(networkPolicy.Spec.PodSelector)
+		if selectorValid {
+			for _, pod := range resources.pods.Items {
+				if pod.Metadata.Namespace != networkPolicy.Metadata.Namespace || !labelSelectorMatches(&networkPolicy.Spec.PodSelector, pod.Metadata.Labels) {
+					continue
+				}
+				matches++
+				builder.addEdge("applies-to", networkPolicyID, builder.nodeID("Pod", pod.Metadata.Namespace, pod.Metadata.Name), "NetworkPolicy.spec.podSelector", "inferred")
 			}
-			matches++
-			builder.addEdge("applies-to", networkPolicyID, builder.nodeID("Pod", pod.Metadata.Namespace, pod.Metadata.Name), "NetworkPolicy.spec.podSelector", "inferred")
 		}
-		if matches == 0 && networkPolicy.Metadata.Namespace != "" {
+		if selectorValid && matches == 0 && networkPolicy.Metadata.Namespace != "" {
 			builder.addEdge("applies-to", networkPolicyID, builder.nodeID("Namespace", "", networkPolicy.Metadata.Namespace), "NetworkPolicy.spec.podSelector", "observed")
 		}
 		policyTypes := networkPolicyTypes(networkPolicy)
 		if containsString(policyTypes, "Ingress") {
-			for _, rule := range networkPolicy.Spec.Ingress {
-				builder.addNetworkPolicyPeerEdges(networkPolicyID, networkPolicy.Metadata.Namespace, rule.From, "allows-ingress", "NetworkPolicy.spec.ingress.from", resources.pods, namespaceIndex)
+			if rules, valid := boundedNetworkPolicyIngressRules(networkPolicy.Spec.Ingress); valid {
+				for _, rule := range rules {
+					builder.addNetworkPolicyPeerEdges(networkPolicyID, networkPolicy.Metadata.Namespace, rule.From, "allows-ingress", "NetworkPolicy.spec.ingress.from", resources.pods, namespaceIndex)
+				}
 			}
 		}
 		if containsString(policyTypes, "Egress") {
-			for _, rule := range networkPolicy.Spec.Egress {
-				builder.addNetworkPolicyPeerEdges(networkPolicyID, networkPolicy.Metadata.Namespace, rule.To, "allows-egress", "NetworkPolicy.spec.egress.to", resources.pods, namespaceIndex)
+			if rules, valid := boundedNetworkPolicyEgressRules(networkPolicy.Spec.Egress); valid {
+				for _, rule := range rules {
+					builder.addNetworkPolicyPeerEdges(networkPolicyID, networkPolicy.Metadata.Namespace, rule.To, "allows-egress", "NetworkPolicy.spec.egress.to", resources.pods, namespaceIndex)
+				}
 			}
 		}
 	}

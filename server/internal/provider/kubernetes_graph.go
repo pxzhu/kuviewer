@@ -129,7 +129,13 @@ func (b *graphBuilder) addGatewayRouteEdges(kind string, routes gatewayRouteList
 }
 
 func (b *graphBuilder) addNetworkPolicyPeerEdges(networkPolicyID string, policyNamespace string, peers []networkPolicyPeer, edgeType string, sourceField string, pods podList, namespaces []namespaceRecord) {
+	if len(peers) > maxNetworkPolicyPeers {
+		return
+	}
 	for _, peer := range peers {
+		if !validNetworkPolicyPeer(peer) {
+			continue
+		}
 		if peer.IPBlock != nil && peer.PodSelector == nil && peer.NamespaceSelector == nil {
 			continue
 		}
