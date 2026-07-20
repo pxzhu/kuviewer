@@ -5,6 +5,13 @@ import {
   inferCustomResourceReferences,
   type CustomResourceDefinitionRecord,
 } from './customResourceReferences.ts';
+import {
+  labelSelectorMatches,
+  labelSelectorSummary as selectorSummaryOrAll,
+  matchingNetworkPolicyNamespaces,
+  selectorKeySummary as selectorSummary,
+  type LabelNamespaceRecord as NamespaceRecord,
+} from './labelSelector.ts';
 import { normalizeUploadResourceKind } from './uploadResourceKinds.ts';
 export { importTopologySnapshot } from './importTopologySnapshot.ts';
 
@@ -44,11 +51,6 @@ interface BuildContext {
   nodes: TopologyNode[];
   edges: TopologyEdge[];
   warnings: string[];
-}
-
-interface NamespaceRecord {
-  name: string;
-  labels: Record<string, string>;
 }
 
 const defaultUploadedCluster = 'uploaded-bundle';
@@ -802,75 +804,11 @@ function labelsMatch(labels: Record<string, string>, selector: Record<string, st
   return Object.entries(selector).every(([key, value]) => labels[key] === value);
 }
 
-function selectorMatchesLabels(selector: Record<string, string>, labels: Record<string, string>) {
-  return Object.entries(selector).every(([key, value]) => labels[key] === value);
-}
-
-function labelSelectorMatches(selector: unknown, labels: Record<string, string>) {
-  if (!isRecord(selector)) {
-    return true;
-  }
-  if (!selectorMatchesLabels(selectorMatchLabels(selector), labels)) {
-    return false;
-  }
-  return asArray(readAt(selector, ['matchExpressions'])).every((expression) => labelSelectorExpressionMatches(expression, labels));
-}
-
-function labelSelectorExpressionMatches(expression: unknown, labels: Record<string, string>) {
-  if (!isRecord(expression)) {
-    return false;
-  }
-  const key = typeof expression.key === 'string' ? expression.key : '';
-  const operator = typeof expression.operator === 'string' ? expression.operator : '';
-  const values = asStringArray(expression.values);
-  if (!key) {
-    return false;
-  }
-  switch (operator) {
-    case 'In':
-      return values.length > 0 && values.includes(labels[key]);
-    case 'NotIn':
-      return values.length > 0 && !values.includes(labels[key]);
-    case 'Exists':
-      return values.length === 0 && Object.prototype.hasOwnProperty.call(labels, key);
-    case 'DoesNotExist':
-      return values.length === 0 && !Object.prototype.hasOwnProperty.call(labels, key);
-    default:
-      return false;
-  }
-}
-
-function selectorSummary(value: unknown) {
-  return isRecord(value) ? Object.keys(value).join(',') || '-' : '-';
-}
-
-function selectorSummaryOrAll(value: unknown, emptyLabel = 'all pods') {
-  const matchLabels = selectorMatchLabels(value);
-  const keys = Object.keys(matchLabels);
-  const expressions = asArray(readAt(value, ['matchExpressions'])).length;
-  if (keys.length === 0 && expressions === 0) {
-    return emptyLabel;
-  }
-  return [...keys, expressions > 0 ? `${expressions} expressions` : ''].filter(Boolean).join(',');
-}
-
 function namespaceRecords(namespaces: Set<string>, namespaceObjects: KubeObject[]): NamespaceRecord[] {
   const labelsByNamespace = new Map(namespaceObjects.map((namespace) => [namespace.metadata?.name || '', labels(namespace)]));
   return Array.from(namespaces)
     .sort()
     .map((name) => ({ name, labels: labelsByNamespace.get(name) || {} }));
-}
-
-function selectorMatchLabels(selector: unknown) {
-  const matchLabels = readAt(selector, ['matchLabels']);
-  return isRecord(matchLabels) ? stringRecord(matchLabels) : {};
-}
-
-function matchingNetworkPolicyNamespaces(namespaces: NamespaceRecord[], policyNamespace: string, namespaceSelector: unknown) {
-  if (!isRecord(namespaceSelector)) {
-    return new Set([policyNamespace]);
-  }
-  return new Set(namespaces.filter((namespace) => labelSelectorMatches(namespaceSelector, namespace.labels)).map((namespace) => namespace.name));
 }
 
 function networkPolicyTypes(object: KubeObject) {
@@ -958,11 +896,6 @@ function limitSummary(values: string[], limit: number) {
   }
   return `${values.slice(0, limit).join(', ')} +${values.length - limit}`;
 }
-
-function stringRecord(value: Record<string, unknown>) {
-  return Object.fromEntries(Object.entries(value).filter((entry): entry is [string, string] => typeof entry[1] === 'string'));
-}
-
 
 function readAt(value: unknown, path: string[]): unknown {
   return path.reduce<unknown>((current, key) => (isRecord(current) ? current[key] : undefined), value);
