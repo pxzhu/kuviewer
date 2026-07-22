@@ -209,7 +209,7 @@ async function verifySnapshotComparison(page, initialMode, viewportName) {
   await expect(page.getByTestId('snapshot-compare-added-count')).toContainText('0');
   await expect(page.getByTestId('snapshot-compare-removed-count')).toContainText('0');
   await expect(page.getByTestId('snapshot-history-count')).toContainText('1 / 8');
-  const firstBaselineId = await page.getByTestId('snapshot-compare-baseline-select').inputValue();
+  const firstBaselineId = await page.getByTestId('snapshot-compare-baseline-select').getAttribute('data-selected-value');
   if (!firstBaselineId) {
     throw new Error('snapshot history did not select the first capture as baseline');
   }
@@ -219,21 +219,21 @@ async function verifySnapshotComparison(page, initialMode, viewportName) {
   await expect(page.getByTestId('snapshot-compare-panel').locator('tbody tr').first()).toBeVisible({ timeout: 10_000 });
   await page.getByTestId('snapshot-compare-capture').click();
   await expect(page.getByTestId('snapshot-history-count')).toContainText('2 / 8');
-  const historicalCurrentId = await page.getByTestId('snapshot-compare-current-select').locator('option').evaluateAll(
-    (options, baselineId) => options.map((option) => option.value).find((value) => value && value !== baselineId) || '',
-    firstBaselineId,
-  );
+  const historicalCurrentId = (await readKuSelectOptions(page, 'snapshot-compare-current-select'))
+    .find((option) => option.value && option.value !== firstBaselineId && !option.disabled)?.value || '';
   if (!historicalCurrentId) {
     throw new Error('snapshot history did not retain a selectable current capture');
   }
-  await page.getByTestId('snapshot-compare-current-select').selectOption(historicalCurrentId);
+  await selectKuOption(page, 'snapshot-compare-current-select', historicalCurrentId);
   await expect(page.getByTestId('snapshot-compare-current-count')).toContainText('resources');
-  await page.getByTestId('snapshot-compare-current-select').selectOption('');
+  await selectKuOption(page, 'snapshot-compare-current-select', '');
   for (let captureIndex = 0; captureIndex < 7; captureIndex += 1) {
     await page.getByTestId('snapshot-compare-capture').click();
   }
   await expect(page.getByTestId('snapshot-history-count')).toContainText('8 / 8');
-  await expect(page.getByTestId('snapshot-compare-baseline-select').locator(`option[value="${firstBaselineId}"]`)).toHaveCount(1);
+  if (!(await readKuSelectOptionValues(page, 'snapshot-compare-baseline-select')).includes(firstBaselineId)) {
+    throw new Error('snapshot history baseline entry was not retained after reaching the history cap');
+  }
   const historyMetadataDownload = await Promise.all([
     page.waitForEvent('download'),
     page.getByTestId('snapshot-history-metadata-export').click(),
@@ -255,17 +255,20 @@ async function verifySnapshotComparison(page, initialMode, viewportName) {
   await firstHistoryRow.getByTestId('snapshot-history-rename-input').fill('Visual checkpoint');
   await firstHistoryRow.getByTestId('snapshot-history-rename-save').click();
   await expect(firstHistoryRow).toContainText('Visual checkpoint');
-  const renamedHistoryId = await page.getByTestId('snapshot-compare-current-select').locator('option', { hasText: 'Visual checkpoint' }).getAttribute('value');
+  const renamedHistoryId = (await readKuSelectOptions(page, 'snapshot-compare-current-select'))
+    .find((option) => option.label.includes('Visual checkpoint'))?.value || '';
   if (!renamedHistoryId) {
     throw new Error('renamed snapshot history entry was not reflected in selectors');
   }
-  await page.getByTestId('snapshot-compare-current-select').selectOption(renamedHistoryId);
+  await selectKuOption(page, 'snapshot-compare-current-select', renamedHistoryId);
   await firstHistoryRow.getByTestId('snapshot-history-delete').click();
   await expect(firstHistoryRow.getByTestId('snapshot-history-delete')).toContainText('삭제 확인');
   await firstHistoryRow.getByTestId('snapshot-history-delete').click();
   await expect(page.getByTestId('snapshot-history-count')).toContainText('7 / 8');
-  await expect(page.getByTestId('snapshot-compare-current-select')).toHaveValue('');
-  await expect(page.getByTestId('snapshot-compare-current-select').locator(`option[value="${renamedHistoryId}"]`)).toHaveCount(0);
+  await expect(page.getByTestId('snapshot-compare-current-select')).toHaveAttribute('data-selected-value', '');
+  if ((await readKuSelectOptionValues(page, 'snapshot-compare-current-select')).includes(renamedHistoryId)) {
+    throw new Error('deleted snapshot history entry remained selectable');
+  }
   await page.getByTestId('snapshot-compare-capture').click();
   await expect(page.getByTestId('snapshot-history-count')).toContainText('8 / 8');
   const latestHistoryRow = page.getByTestId('snapshot-history-row').first();
@@ -1226,16 +1229,24 @@ async function verifyResourceListSorting(page) {
 }
 
 async function readKuSelectOptionValues(page, testId) {
+  return (await readKuSelectOptions(page, testId)).map((option) => option.value);
+}
+
+async function readKuSelectOptions(page, testId) {
   const trigger = page.getByTestId(testId);
   await trigger.click();
   const listbox = page.locator('.ku-select-popover [data-slot="list-box"]');
   await expect(listbox).toBeVisible({ timeout: 10_000 });
-  const values = await listbox.locator('[data-ku-select-value]').evaluateAll((options) =>
-    options.map((option) => option.getAttribute('data-ku-select-value')).filter(Boolean),
+  const options = await listbox.locator('[data-ku-select-value]').evaluateAll((elements) =>
+    elements.map((element) => ({
+      disabled: element.matches(':disabled'),
+      label: element.textContent?.trim() || '',
+      value: element.getAttribute('data-ku-select-value') || '',
+    })).filter((option) => option.value),
   );
-  await page.keyboard.press('Escape');
+  await listbox.press('Escape');
   await expect(listbox).toBeHidden({ timeout: 10_000 });
-  return values;
+  return options;
 }
 
 async function selectKuOption(page, testId, value) {

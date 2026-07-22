@@ -4,6 +4,7 @@ import { downloadSnapshotHistoryMetadata } from '../../features/snapshot/exportS
 import { importSnapshotDiffFile, type ImportedSnapshotDiff } from '../../features/snapshot/importSnapshotDiff';
 import type { SnapshotHistoryEntry } from '../../features/snapshot/snapshotHistory';
 import { formatLastSync } from '../../utils/formatTime';
+import { KuSelect } from '../ui/KuSelect';
 import { SnapshotDiffImportPreview } from './SnapshotDiffImportPreview';
 import { SnapshotHistoryManager } from './SnapshotHistoryManager';
 
@@ -44,6 +45,10 @@ export function SnapshotHistoryControls({
   const [importedDiff, setImportedDiff] = useState<{ fileName: string; report: ImportedSnapshotDiff } | null>(null);
   const [comparedDiff, setComparedDiff] = useState<{ fileName: string; report: ImportedSnapshotDiff } | null>(null);
   const [diffComparisonError, setDiffComparisonError] = useState('');
+  const historyOptions = history.map((entry) => ({
+    value: entry.id,
+    label: `${entry.label} · ${entry.snapshot.nodes.length} resources · ${formatLastSync(entry.capturedAt)}`,
+  }));
 
   const handleBaselineImport = async (file?: File) => {
     if (!file) {
@@ -184,33 +189,31 @@ export function SnapshotHistoryControls({
         <div className="grid gap-3 border-b border-[rgba(60,60,67,0.12)] px-4 py-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] lg:items-end" data-testid="snapshot-history-selector">
           <label className="min-w-0">
             <span className="ku-meta mb-1 block">기준 기록</span>
-            <select
-              className="ku-input w-full"
+            <KuSelect
+              ariaLabel="기준 기록"
               value={baselineId}
-              data-testid="snapshot-compare-baseline-select"
-              onChange={(event) => {
-                const nextId = event.target.value;
+              testId="snapshot-compare-baseline-select"
+              options={[{ value: '', label: '기준 선택' }, ...historyOptions]}
+              onChange={(nextId) => {
                 onSelectBaseline(nextId);
                 if (nextId === currentId) {
                   onSelectCurrent('');
                 }
               }}
-            >
-              <option value="">기준 선택</option>
-              {history.map((entry) => <SnapshotHistoryOption key={entry.id} entry={entry} />)}
-            </select>
+            />
           </label>
           <label className="min-w-0">
             <span className="ku-meta mb-1 block">비교 대상</span>
-            <select
-              className="ku-input w-full"
+            <KuSelect
+              ariaLabel="비교 대상"
               value={currentId}
-              data-testid="snapshot-compare-current-select"
-              onChange={(event) => onSelectCurrent(event.target.value)}
-            >
-              <option value="">현재 화면 · {liveCurrentLabel}</option>
-              {history.map((entry) => <SnapshotHistoryOption key={entry.id} entry={entry} disabled={entry.id === baselineId} />)}
-            </select>
+              testId="snapshot-compare-current-select"
+              options={[
+                { value: '', label: `현재 화면 · ${liveCurrentLabel}` },
+                ...historyOptions.map((option) => ({ ...option, disabled: option.value === baselineId })),
+              ]}
+              onChange={onSelectCurrent}
+            />
           </label>
           <p className="ku-meta pb-2" data-testid="snapshot-history-count">기록 {history.length} / 8</p>
         </div>
@@ -226,13 +229,5 @@ export function SnapshotHistoryControls({
       ) : null}
       {baselineImportError ? <p className="px-4 py-2 text-sm font-semibold text-[#b26a00]" data-testid="snapshot-baseline-import-error">{baselineImportError}</p> : null}
     </>
-  );
-}
-
-function SnapshotHistoryOption({ entry, disabled = false }: { entry: SnapshotHistoryEntry; disabled?: boolean }) {
-  return (
-    <option value={entry.id} disabled={disabled}>
-      {entry.label} · {entry.snapshot.nodes.length} resources · {formatLastSync(entry.capturedAt)}
-    </option>
   );
 }

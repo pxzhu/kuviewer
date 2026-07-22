@@ -4,6 +4,7 @@ import { Popover } from '@heroui/react/popover';
 import { Check, ChevronDown } from 'lucide-react';
 
 export interface KuSelectOption<Value extends string = string> {
+  disabled?: boolean;
   value: Value;
   label: string;
 }
@@ -53,22 +54,37 @@ export function KuSelect<Value extends string>({
       </Button>
       <Popover.Content className="ku-select-popover" placement="bottom start">
         <Popover.Dialog aria-label={`${ariaLabel} 선택`} className="outline-none">
-          <div className="ku-select-listbox" data-slot="list-box" role="listbox" aria-label={`${ariaLabel} 선택`}>
+          <div
+            className="ku-select-listbox"
+            data-slot="list-box"
+            role="listbox"
+            aria-label={`${ariaLabel} 선택`}
+            onKeyDown={(event) => {
+              if (event.key === 'Escape') {
+                event.preventDefault();
+                setIsOpen(false);
+              }
+            }}
+          >
             {options.map((option) => {
               const selected = option.value === selectedOption?.value;
               return (
                 <button
                   key={option.value}
+                  aria-disabled={option.disabled || undefined}
                   aria-selected={selected}
-                  autoFocus={selected}
+                  autoFocus={selected && !option.disabled}
                   className={`ku-select-option ${selected ? 'ku-select-option-selected' : ''}`}
                   data-ku-select-value={option.value}
+                  disabled={option.disabled}
                   role="option"
                   type="button"
                   onKeyDown={handleOptionKeyDown}
                   onClick={() => {
-                    onChange(option.value);
-                    setIsOpen(false);
+                    if (!option.disabled) {
+                      onChange(option.value);
+                      setIsOpen(false);
+                    }
                   }}
                 >
                   <span className="min-w-0 flex-1 truncate text-left">{option.label}</span>
@@ -89,7 +105,7 @@ function handleOptionKeyDown(event: KeyboardEvent<HTMLButtonElement>) {
   }
   event.preventDefault();
   const listbox = event.currentTarget.closest('[role="listbox"]');
-  const optionElements = Array.from(listbox?.querySelectorAll<HTMLElement>('[role="option"]') ?? []);
+  const optionElements = Array.from(listbox?.querySelectorAll<HTMLButtonElement>('[role="option"]:not(:disabled)') ?? []);
   const currentIndex = optionElements.indexOf(event.currentTarget);
   const nextIndex = event.key === 'Home'
     ? 0

@@ -1,5 +1,6 @@
 import type { MutableRefObject } from 'react';
 import { ArrowDown, ArrowUp, Copy, Download, FileText, Search } from 'lucide-react';
+import { KuSelect } from '../ui/KuSelect';
 import { DetailSection, InlineWarning } from './ResourceDetailPrimitives';
 import { ResourceLogLines } from './ResourceLogLines';
 import { eventTimeRangeOptions, logSortOptions } from './resourceDetailTypes';
@@ -70,13 +71,18 @@ export function ResourceLogsSection({ actions, model }: { actions: ResourceLogsS
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="ku-meta">최근 200줄 · 따라가기 최대 500줄 · 읽기 전용 · 저장 안 함</p>
             {model.containerOptions.length > 1 ? (
-              <select className="ku-select min-w-[180px]" value={model.effectiveContainer} onChange={(event) => actions.changeContainer(event.target.value)} disabled={model.loading || model.streaming}>
-                {model.containerOptions.map((option) => (
-                  <option key={`${option.init ? 'init' : 'app'}:${option.name}`} value={option.name}>
-                    {option.init ? `init: ${option.name}` : option.name}
-                  </option>
-                ))}
-              </select>
+              <KuSelect
+                ariaLabel="로그 컨테이너"
+                className="min-w-[180px]"
+                disabled={model.loading || model.streaming}
+                testId="resource-log-container-select"
+                value={model.effectiveContainer}
+                options={model.containerOptions.map((option) => ({
+                  value: option.name,
+                  label: option.init ? `init: ${option.name}` : option.name,
+                }))}
+                onChange={actions.changeContainer}
+              />
             ) : null}
             <label className="flex items-center gap-2 rounded-[9px] border border-[rgba(60,60,67,0.12)] bg-white/70 px-2.5 py-1.5 text-xs font-semibold text-[rgba(60,60,67,0.72)]">
               <input className="h-3.5 w-3.5 accent-[#007aff]" type="checkbox" checked={model.previous} onChange={(event) => actions.changePrevious(event.target.checked)} disabled={model.loading || model.streaming} />
