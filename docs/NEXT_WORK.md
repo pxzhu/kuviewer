@@ -5,7 +5,7 @@
 ## Recommended Order
 
 1. HeroUI UI migration
-   - HeroUI v3, React 19, Tailwind CSS v4 foundation과 앱 header/source/token/search/segmented controls, Resource Explorer 필터/정렬 select, Snapshot history selectors, Pod-log container selector 전환은 완료했다.
+   - HeroUI v3, React 19, Tailwind CSS v4 foundation과 앱 header/source/token/search/segmented controls, command-center 상태 rail, Resource Explorer 필터/정렬 select, Snapshot history selectors, Pod-log container selector 전환은 완료했다.
    - B/D theme token은 HeroUI light/dark token과 연결하고 component subpath import 및 필요한 CSS만 포함한다.
    - 다음 배치는 topology controls, 이후 desktop-only panel 순서로 전환한다.
    - 각 배치는 기존 test id, keyboard, storage/API 경계를 유지하고 desktop/mobile visual smoke와 중간 폭 overflow를 검증한다.

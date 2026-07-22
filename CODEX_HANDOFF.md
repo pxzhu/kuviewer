@@ -25,7 +25,7 @@
 - NasCR image release deployment과 SSH/self-hosted fallback/rollback diagnostics
 - Pull request `validate` CI와 tag-only deploy를 분리해 merge 후 중복 CI를 실행하지 않으며, `main`은 GitHub branch protection으로 PR과 required check를 강제한다.
 - App/Vite TypeScript는 `noUnusedLocals`와 `noUnusedParameters`를 강제해 dead code가 typecheck/CI를 통과하지 못하게 한다.
-- Frontend는 HeroUI v3, React 19, Tailwind CSS v4 기반이다. 앱 header/source/token/search/segmented control, Resource Explorer 필터/정렬 select, Snapshot history selector와 Pod-log container selector는 `components/ui/`의 얇은 adapter를 사용하고 B/D theme token을 HeroUI light/dark token과 연결한다.
+- Frontend는 HeroUI v3, React 19, Tailwind CSS v4 기반이다. 앱 header/source/token/search/segmented control, command-center 상태 rail, Resource Explorer 필터/정렬 select, Snapshot history selector와 Pod-log container selector는 `components/ui/`의 얇은 adapter를 사용하고 B/D theme token을 HeroUI light/dark token과 연결한다.
 
 ## Architecture Notes
 
@@ -46,7 +46,7 @@
 - Resource detail section open/active/focus와 document keyboard listener는 `useResourceDetailSectionsController.ts`가 담당하고 shortcut 해석은 `resourceDetailShortcut.ts` pure helper로 검증한다.
 - Metadata/Status/Safe/YAML/Labels/Annotations rendering은 `ResourceCoreDetailSections.tsx`가 담당한다.
 - Resource detail identity/density, section navigation/jump controls, overview header는 `ResourceExplorerDetailHeader.tsx` 표시 component가 담당한다.
-- App sticky header의 theme/view controls, sync 상태, refresh/lock rendering은 `AppHeader.tsx`가 담당하고 오류 표시는 `appHeaderPresentation.ts`의 bounded formatter로 제한한다.
+- App sticky header의 theme/view controls, command-center 상태 rail, sync 상태, refresh/lock rendering은 `AppHeader.tsx`가 담당하고 오류 표시는 `appHeaderPresentation.ts`의 bounded formatter로 제한한다.
 - HeroUI는 component subpath import와 필요한 button/chip/input/surface CSS만 사용해 전체 component bundle CSS를 싣지 않는다. `KuSelect`는 Button/Popover 조합으로 옵션 collection 교체 시 React 19 production update loop를 피하고, 공통 control 확장은 `website/src/components/ui/`에서 먼저 처리한다.
 - Safe Preview 검색/match 상태와 rendering은 `ResourceSafePreviewSection.tsx`가 담당하며, 저장하지 않고 resource id가 바뀌면 초기화한다.
 - Relations, Events, Logs section과 highlight renderer는 `website/src/components/resourceExplorer/` 아래 표시 component로 분리돼 있다.
