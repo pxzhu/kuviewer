@@ -25,7 +25,7 @@
 - NasCR image release deployment과 SSH/self-hosted fallback/rollback diagnostics
 - Pull request `validate` CI와 tag-only deploy를 분리해 merge 후 중복 CI를 실행하지 않으며, `main`은 GitHub branch protection으로 PR과 required check를 강제한다.
 - App/Vite TypeScript는 `noUnusedLocals`와 `noUnusedParameters`를 강제해 dead code가 typecheck/CI를 통과하지 못하게 한다.
-- Frontend는 HeroUI v3, React 19, Tailwind CSS v4 기반이다. 앱 header/source/token/search/segmented control과 Resource Explorer 필터/정렬 select는 `components/ui/`의 얇은 adapter를 사용하고 B/D theme token을 HeroUI light/dark token과 연결한다.
+- Frontend는 HeroUI v3, React 19, Tailwind CSS v4 기반이다. 앱 header/source/token/search/segmented control, Resource Explorer 필터/정렬 select, Snapshot history selector와 Pod-log container selector는 `components/ui/`의 얇은 adapter를 사용하고 B/D theme token을 HeroUI light/dark token과 연결한다.
 
 ## Architecture Notes
 
@@ -136,4 +136,4 @@ go test ./...
 2. Desktop CM local prototype의 실제 CM 사용 흐름 검증 후 유지 또는 archive 범위 결정
 3. Desktop CM session group/card/bulk toolbar와 saved-layout toolbar/conflict/folder/preset list는 표시 모듈로 분리됐고, saved-layout state와 reorder controller도 독립 hook으로 분리됐다.
 4. scripts의 반복 코드가 다시 확인될 때 reusable helper/CLI entrypoint 분리 확대
-5. HeroUI 후속 전환: snapshot/topology controls, desktop-only panel 순서로 진행
+5. HeroUI 후속 전환: topology controls, desktop-only panel 순서로 진행
