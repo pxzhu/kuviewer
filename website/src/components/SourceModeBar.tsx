@@ -102,6 +102,7 @@ export function SourceModeBar({
   const [checkingToken, setCheckingToken] = useState(false);
   const [tokenError, setTokenError] = useState('');
   const [warningsOpen, setWarningsOpen] = useState(false);
+  const sourceState = sourceModeState(mode, liveUnlocked, uploadedState, canExport);
 
   useEffect(() => {
     setToken(getStoredAdminToken());
@@ -212,6 +213,18 @@ export function SourceModeBar({
             </KuChip>
           ) : null}
         </div>
+      </div>
+
+      <div className="grid gap-2 border-t border-[rgba(60,60,67,0.08)] bg-white/35 px-3 py-2 sm:grid-cols-3 lg:px-4">
+        {sourceState.map((item) => (
+          <div key={item.label} className="ku-source-state-item">
+            <span className={`h-2.5 w-2.5 rounded-full ${item.tone}`} aria-hidden="true" />
+            <div className="min-w-0">
+              <p className="ku-meta">{item.label}</p>
+              <p className="truncate text-sm font-semibold text-[var(--ku-text)]">{item.value}</p>
+            </div>
+          </div>
+        ))}
       </div>
 
       {mode === 'upload' ? (
@@ -385,4 +398,21 @@ function shortError(error: string) {
   }
 
   return '확인 실패';
+}
+
+function sourceModeState(mode: TopologySourceMode, liveUnlocked: boolean, uploadedState: UploadedTopologyState | null, canExport: boolean) {
+  const sourceValue = mode === 'live' ? (liveUnlocked ? '실시간 연결' : '실시간 잠김') : mode === 'mock' ? '목업 데모' : 'YAML 업로드';
+  const dataValue = uploadedState
+    ? `${uploadedState.files.length} files · ${uploadedState.warnings.length} warnings`
+    : mode === 'mock'
+      ? '샘플 그래프'
+      : mode === 'live'
+        ? '클러스터 API'
+        : '대기';
+
+  return [
+    { label: 'Source', value: sourceValue, tone: mode === 'live' && !liveUnlocked ? 'bg-[#ff9500]' : 'bg-[#267aff]' },
+    { label: 'Dataset', value: dataValue, tone: uploadedState?.warnings.length ? 'bg-[#ff9500]' : 'bg-[#28b853]' },
+    { label: 'Export', value: canExport ? '가능' : '데이터 없음', tone: canExport ? 'bg-[#36cfe2]' : 'bg-[rgba(60,60,67,0.28)]' },
+  ];
 }

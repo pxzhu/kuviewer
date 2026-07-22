@@ -16,6 +16,7 @@ export function StatTiles({ clusters, selectedClusterId }: StatTilesProps) {
       detail: selectedCluster ? `${selectedCluster.provider} ${selectedCluster.version}` : `Namespace ${summary.namespaces}개`,
       icon: Boxes,
       accent: '#007aff',
+      progress: clusters.length > 0 ? 100 : 0,
     },
     {
       label: 'Node',
@@ -23,6 +24,7 @@ export function StatTiles({ clusters, selectedClusterId }: StatTilesProps) {
       detail: 'Ready 상태 Node',
       icon: Server,
       accent: '#34c759',
+      progress: percent(summary.nodeReady, summary.nodeTotal),
     },
     {
       label: 'Pod',
@@ -30,6 +32,7 @@ export function StatTiles({ clusters, selectedClusterId }: StatTilesProps) {
       detail: 'Running 상태 Pod',
       icon: Activity,
       accent: '#5856d6',
+      progress: summary.podRunning > 0 ? 100 : 0,
     },
     {
       label: '경고',
@@ -37,6 +40,7 @@ export function StatTiles({ clusters, selectedClusterId }: StatTilesProps) {
       detail: '주의 필요 Pod',
       icon: CircleAlert,
       accent: '#ff9500',
+      progress: summary.podWarning > 0 ? 100 : 0,
     },
   ];
 
@@ -60,11 +64,25 @@ export function StatTiles({ clusters, selectedClusterId }: StatTilesProps) {
                 <Icon size={19} aria-hidden="true" />
               </div>
             </div>
+            <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-[rgba(137,158,186,0.16)]" aria-hidden="true">
+              <div
+                className="h-full rounded-full transition-[width] duration-300 ease-out"
+                style={{ width: `${stat.progress}%`, backgroundColor: stat.accent }}
+              />
+            </div>
           </article>
         );
       })}
     </section>
   );
+}
+
+function percent(value: number, total: number) {
+  if (total <= 0) {
+    return 0;
+  }
+
+  return Math.max(0, Math.min(100, Math.round((value / total) * 100)));
 }
 
 function aggregateClusters(clusters: ClusterSummary[]): ClusterSummary {

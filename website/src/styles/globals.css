@@ -521,11 +521,90 @@ select:focus-visible,
   flex-wrap: wrap;
   align-items: center;
   gap: 0.5rem;
+  justify-content: flex-end;
+}
+
+.ku-command-center {
+  display: grid;
+  min-width: 0;
+  gap: 1rem;
+  align-items: center;
+}
+
+.ku-status-rail {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.625rem;
+}
+
+.ku-status-card {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 0.625rem;
+  border: 1px solid var(--ku-border);
+  border-radius: var(--ku-radius-control);
+  background: rgba(255, 255, 255, 0.72);
+  padding: 0.625rem 0.75rem;
+  color: var(--ku-text);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.72) inset, 0 7px 20px rgba(73, 104, 143, 0.08);
+}
+
+.ku-status-card svg {
+  color: var(--ku-accent);
+}
+
+.ku-status-card-success svg {
+  color: var(--ku-success);
+}
+
+.ku-status-card-warning svg {
+  color: var(--ku-warning);
+}
+
+.ku-status-card-warning {
+  border-color: rgba(255, 149, 0, 0.28);
+  background: rgba(255, 247, 235, 0.82);
+}
+
+.ku-source-state-item {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 0.625rem;
+  border: 1px solid rgba(137, 158, 186, 0.16);
+  border-radius: var(--ku-radius-inner);
+  background: rgba(255, 255, 255, 0.62);
+  padding: 0.625rem 0.75rem;
 }
 
 .ku-title {
   color: var(--ku-text);
   text-wrap: balance;
+}
+
+@media (min-width: 1180px) {
+  .ku-command-center {
+    grid-template-columns: minmax(340px, 1fr) auto;
+  }
+}
+
+@media (max-width: 980px) {
+  .ku-header-actions {
+    justify-content: flex-start;
+  }
+
+  .ku-status-rail {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 620px) {
+  .ku-status-rail {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 .ku-copy {
@@ -758,6 +837,17 @@ select:focus-visible,
 .ku-app-shell[data-brand-theme="radar"] .ku-chip {
   background: rgba(13, 28, 46, 0.72);
   box-shadow: 0 1px 10px rgba(0, 0, 0, 0.18);
+}
+
+.ku-app-shell[data-brand-theme="radar"] .ku-status-card,
+.ku-app-shell[data-brand-theme="radar"] .ku-source-state-item {
+  background: rgba(12, 26, 43, 0.72);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.05) inset, 0 12px 30px rgba(0, 0, 0, 0.24);
+}
+
+.ku-app-shell[data-brand-theme="radar"] .ku-status-card-warning {
+  border-color: rgba(255, 173, 31, 0.26);
+  background: rgba(49, 35, 12, 0.72);
 }
 
 .ku-app-shell[data-brand-theme="radar"] .ku-segmented {
